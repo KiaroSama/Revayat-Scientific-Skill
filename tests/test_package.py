@@ -1,0 +1,126 @@
+"""Portable behavior at the public installer, package and dispatcher seams."""
+import json
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+import zipfile
+
+from processes import run as owned_run
+
+ROOT = Path(__file__).resolve().parents[1]
+SKILL = ROOT / 'skills/revayat-scientific'
+
+
+def run(*command, cwd=ROOT, timeout=30):
+    return owned_run(command, timeout=timeout, cwd=cwd)
+
+
+class PackageTest(unittest.TestCase):
+    def test_image_preparation_and_pdf_pages(self):
+        from PIL import Image
+        import pymupdf
+
+        cli = str(SKILL / 'scripts/revayat-scientific.py')
+        with tempfile.TemporaryDirectory(prefix='scientific figures ') as directory:
+            work = Path(directory)
+            figures = work / 'figures'
+            figures.mkdir()
+            image = figures / 'diagram.png'
+            Image.new('RGBA', (80, 60), (160, 190, 220, 128)).save(image)
+            prepared = run(sys.executable, cli, 'figures', str(figures))
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            with Image.open(image) as flattened:
+                self.assertNotIn('A', flattened.mode)
+            checked = run(sys.executable, cli, 'figures', str(figures), '--check')
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            source = work / 'source.pdf'
+            with pymupdf.open() as document:
+                for _ in range(3):
+                    page = document.new_page()
+                    page.insert_image(pymupdf.Rect(50, 80, 210, 200), filename=str(image))
+                document.save(source)
+            output = work / 'range.pdf'
+            extracted = run(sys.executable, cli, 'pages', str(source), str(output), '2-3')
+            self.assertEqual(extracted.returncode, 0, extracted.stderr)
+            with pymupdf.open(output) as document:
+                self.assertEqual(document.page_count, 2)
+                self.assertEqual(len(document[0].get_images()), 1)
+
+    def test_metadata_and_references(self):
+        text = (SKILL / 'SKILL.md').read_text(encoding='utf-8')
+        self.assertIn('name: revayat-scientific\n', text)
+        self.assertLess(len(text.splitlines()), 500)
+        for reference in re.findall(r'\]\(((?:references|scripts|assets)/[^)]+)\)', text):
+            self.assertTrue((SKILL / reference).is_file(), reference)
+        for folder in ['.claude-plugin', '.cursor-plugin', '.codex-plugin']:
+            manifest = json.loads((ROOT / folder / 'plugin.json').read_text(encoding='utf-8'))
+            self.assertEqual(manifest['name'], 'revayat-scientific')
+            self.assertEqual(manifest['version'], '1.0.0')
+            self.assertTrue((ROOT / manifest['skills']).is_dir())
+
+    def test_install_launchers_replacement_and_logs(self):
+        if sys.platform == 'win32':
+            launcher = [shutil.which('pwsh') or shutil.which('powershell'), '-NoProfile',
+                        '-NonInteractive', '-File', str(ROOT / 'install/install.ps1')]
+        else:
+            launcher = [shutil.which('bash'), str(ROOT / 'install/install.sh')]
+        with tempfile.TemporaryDirectory(prefix='revayat install ') as directory:
+            project = Path(directory)
+            for name in ['.claude', '.agents', '.cursor', '.kiro', '.cline', '.hermes', '.opencode']:
+                (project / name).mkdir()
+            command = [*launcher, '--scope', 'project', '--path', str(project)]
+            installed = run(*command, cwd=project)
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            paths = list(project.glob('*/skills/revayat-scientific'))
+            self.assertEqual(len(paths), 7, installed.stdout)
+            source = project / '.agents/skills/revayat-scientific'
+            marker = source / 'local-note.txt'
+            marker.write_text('preserve on replacement', encoding='utf-8')
+            refused = run(*launcher, '--agent', 'codex', '--scope', 'project', '--path', str(project))
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertTrue(marker.is_file())
+            updated = run(*launcher, '--agent', 'codex', '--scope', 'project', '--path', str(project), '--force')
+            self.assertEqual(updated.returncode, 0, updated.stderr)
+            backups = list((source.parent.parent / 'skill-backups').glob('revayat-scientific-*'))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual((backups[0] / marker.name).read_text(encoding='utf-8'), 'preserve on replacement')
+            cli = source / 'scripts/revayat-scientific.py'
+            for _ in range(2):
+                help_result = run(sys.executable, str(cli), 'build', '--help', cwd=project)
+                self.assertEqual(help_result.returncode, 0, help_result.stderr)
+                self.assertIn('--output-dir', help_result.stdout)
+            logs = list((source / 'logs').glob('revayat-scientific_*_UTC*.log'))
+            self.assertEqual(len(logs), 2)
+            for log in logs:
+                value = log.read_text(encoding='utf-8')
+                self.assertIn('[INFO] [revayat-scientific] command=build', value)
+                self.assertNotIn('preserve on replacement', value)
+            missing = run(sys.executable, str(cli), 'lint', str(project / 'absent.tex'), cwd=project)
+            self.assertNotEqual(missing.returncode, 0)
+
+    def test_archive_is_self_contained(self):
+        with tempfile.TemporaryDirectory(prefix='revayat package ') as directory:
+            package = Path(directory) / 'scientific.skill'
+            result = run(sys.executable, str(ROOT / 'tools/package.py'), '--output', str(package))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with zipfile.ZipFile(package) as archive:
+                names = archive.namelist()
+                self.assertIn('revayat-scientific/LICENSE', names)
+                self.assertIn('revayat-scientific/scripts/runtime.py', names)
+                self.assertIn('revayat-scientific/references/terminology.md', names)
+                self.assertFalse(any('/logs/' in name or '__pycache__' in name or '/tests/' in name for name in names))
+                self.assertIsNone(archive.testzip())
+                archive.extractall(Path(directory) / 'extracted')
+            lint = Path(directory) / 'extracted/revayat-scientific/scripts/revayat-scientific.py'
+            result = run(sys.executable, str(lint), 'lint', str(ROOT / 'tests/fixtures/journal.tex'),
+                         '--level', 'journal', '--terms', str(ROOT / 'tests/fixtures/terms-empty.tsv'),
+                         '--manifest', str(ROOT / 'tests/fixtures/manifest-empty.txt'), '--strict')
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+
+if __name__ == '__main__':
+    unittest.main()

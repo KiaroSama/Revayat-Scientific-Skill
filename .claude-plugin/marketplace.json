@@ -1,0 +1,16 @@
+{
+  "name": "revayat-scientific-skill",
+  "owner": {
+    "name": "Kiaro Sama",
+    "url": "https://github.com/KiaroSama"
+  },
+  "plugins": [
+    {
+      "name": "revayat-scientific",
+      "source": "./",
+      "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
+      "version": "1.0.0",
+      "license": "GPL-3.0-or-later"
+    }
+  ]
+}

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TITLE</title>
+  <style>
+    /* Copy Vazirmatn-Regular.ttf and Vazirmatn-Bold.ttf into fonts/ next to
+       this file (scripts/fetch-vazirmatn.sh fonts). Never the UI-FD cut: it
+       draws Farsi digits and breaks the Western-digit lock. */
+    @font-face {
+      font-family: "Vazirmatn";
+      src: url("fonts/Vazirmatn-Regular.ttf") format("truetype");
+      font-weight: 400;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: "Vazirmatn";
+      src: url("fonts/Vazirmatn-Bold.ttf") format("truetype");
+      font-weight: 700;
+      font-style: normal;
+    }
+    @page {
+      size: A4;
+      margin: 2.2cm;
+    }
+    body {
+      margin: 1.5rem auto;
+      max-width: 46rem;
+      padding: 0 1rem 3rem;
+      direction: rtl;
+      unicode-bidi: isolate;
+      font-family: "Vazirmatn", "Tahoma", "Segoe UI", sans-serif;
+      line-height: 1.85;
+      orphans: 2;
+      widows: 2;
+      color: #000;
+      background: #fff;
+    }
+    h1, h2, h3, h4 {
+      line-height: 1.45;
+      break-after: avoid;
+      page-break-after: avoid;
+      /* English-only headings are one LTR isolate; without an explicit
+         right align WeasyPrint packs them to the physical left. */
+      text-align: right;
+    }
+    p {
+      margin: 0.85em 0;
+    }
+    /* `dir="ltr"` on the element is what isolates in WeasyPrint, which
+       ignores unicode-bidi. Keep both: the property is for Chromium. */
+    .ltr,
+    .en,
+    pre,
+    pre code,
+    code,
+    kbd,
+    samp,
+    math {
+      direction: ltr;
+      unicode-bidi: isolate;
+    }
+    pre,
+    pre code {
+      text-align: left;
+    }
+    pre {
+      /* On paper overflow-x does nothing; without pre-wrap long listing
+         lines are cut off at the margin. `word-break: break-word` is not a
+         valid value — WeasyPrint rejects it — so use overflow-wrap. */
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      padding: 0.75rem 1rem;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    code {
+      font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace,
+                   Consolas, monospace;
+      font-size: 0.92em;
+    }
+    a {
+      color: inherit;
+      overflow-wrap: break-word;
+    }
+    a[dir="ltr"] {
+      unicode-bidi: isolate;
+    }
+    figure {
+      margin: 1.5rem 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      text-align: center;
+    }
+    figure img,
+    figure svg {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin-inline: auto;
+      direction: ltr;
+      unicode-bidi: isolate;
+      transform: none;
+      /* Alpha composited onto black is the usual “the figure turned
+         black” failure. White backing plus a flattened RGB file. */
+      background: #fff;
+      mix-blend-mode: normal;
+      filter: none;
+    }
+    figcaption, caption {
+      font-size: 0.95em;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    /* Repeat the header when a table breaks across pages. */
+    thead {
+      display: table-header-group;
+    }
+    tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 0.4rem 0.6rem;
+    }
+    td.num, th.num {
+      direction: ltr;
+      unicode-bidi: isolate;
+      text-align: left;
+    }
+    .refs {
+      direction: ltr;
+      unicode-bidi: isolate;
+      text-align: left;
+    }
+    .refs h2 {
+      direction: rtl;
+      unicode-bidi: isolate;
+      text-align: right;
+    }
+    .colophon {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid #999;
+      font-size: 0.9em;
+      break-before: page;
+    }
+    /* Printed table of contents for books. Live page numbers from the
+       engine — never copy folios from the English source PDF. */
+    nav.toc {
+      break-after: page;
+      page-break-after: always;
+    }
+    nav.toc ol {
+      list-style: none;
+      padding: 0;
+      margin: 0.3rem 0 0.6rem;
+    }
+    nav.toc li {
+      margin: 0.25rem 0;
+    }
+    nav.toc > ol > li > ol {
+      padding-inline-start: 1.1rem;
+    }
+    nav.toc a {
+      text-decoration: none;
+      color: inherit;
+    }
+    nav.toc a.toc-leaf::after {
+      content: " " leader(".") " " target-counter(attr(href url), page);
+    }
+  </style>
+</head>
+<body>
+  <h1><span dir="ltr">TITLE</span></h1>
+
+  <!--
+    Isolate every English term, whole collocation, number cluster, formula,
+    URL, and citation. One isolate per cluster — two spans with a slash
+    between them render reversed:
+      <span dir="ltr">Adam (Kingma &amp; Ba, 2015)</span>
+      <span dir="ltr">OP_IF/OP_NOTIF</span>
+      <span dir="ltr">1.0.1 (2026-08-09)</span>
+      شکل <span dir="ltr">3</span>
+
+    Listings keep dir="ltr" on <pre>, never RTL:
+      <pre dir="ltr"><code>…</code></pre>
+
+    Figures are the artwork only, flattened RGB, never a full source page:
+      <figure>
+        <img dir="ltr" src="figures/artwork/fig-3.png" alt="…" width="720" height="420">
+        <figcaption>شکل <span dir="ltr">3</span>. معماری
+        <span dir="ltr">transformer</span></figcaption>
+      </figure>
+    A numbered English heading is one isolate, not two:
+      <h2><span dir="ltr">3.1 The OpenStack service</span>ها</h2>
+
+    Books print a translated table of contents, not only a PDF outline:
+      <nav class="toc">
+        <h2>فهرست مطالب</h2>
+        <ol>
+          <li><a class="toc-leaf" href="#ch-1">فصل
+            <span dir="ltr">1</span>. …</a></li>
+        </ol>
+      </nav>
+
+    Tables that break across pages need a real <thead>.
+  -->
+
+  <section class="refs" dir="ltr">
+    <h2>منابع</h2>
+    <ol>
+      <!-- Original-language bibliography. Do not translate entries. -->
+    </ol>
+  </section>
+
+  <section class="colophon">
+    <h2>یادداشت نشر</h2>
+    <p>این متن ترجمهٔ فارسی <span dir="ltr">SOURCE TITLE</span> است.
+    منبع: <a dir="ltr" href="SOURCE URL">SOURCE URL</a> —
+    مجوز: <span dir="ltr">LICENSE</span> —
+    تاریخ دریافت: <span dir="ltr">YYYY-MM-DD</span>.
+    ترجمه با <span dir="ltr">revayat-scientific</span> انجام شده
+    است.</p>
+  </section>
+</body>
+</html>

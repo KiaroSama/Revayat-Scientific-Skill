@@ -1,0 +1,93 @@
+name: CI
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: macos-latest
+            python: '3.14'
+          - os: windows-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Public command and package contracts
+        run: python -m pip install -r skills/revayat-scientific/requirements.txt
+      - name: Windows PDF verification tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command pdftoppm -ErrorAction SilentlyContinue)) {
+            choco install poppler --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $tool = Get-ChildItem 'C:/ProgramData/chocolatey/lib/poppler' -Recurse -Filter pdftoppm.exe | Select-Object -First 1
+            if (-not $tool) { throw 'Poppler installation did not provide pdftoppm' }
+            $tool.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+      - name: Run public contracts
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Syntax and UTF-8
+        run: python tools/validate.py
+      - name: PowerShell 5.1 syntax
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $failed = $false
+          Get-ChildItem skills/revayat-scientific/scripts/*.ps1, install/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { $errors | Write-Output; $failed = $true }
+          }
+          if ($failed) { exit 1 }
+  scientific:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install real document toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core
+      - name: Lint shell scripts
+        run: shellcheck -S warning $(git ls-files '*.sh')
+      - name: Upstream mechanical and rendering regressions
+        run: timeout 180 bash tests/upstream.sh
+      - name: Verified TeX delivery through portable command
+        run: |
+          work="$RUNNER_TEMP/scientific render"
+          mkdir -p "$work"
+          cp skills/revayat-scientific/assets/rtl-document.tex "$work/doc.tex"
+          cp tests/fixtures/terms-empty.tsv "$work/terms.tsv"
+          cp tests/fixtures/manifest-empty.txt "$work/manifest.txt"
+          python skills/revayat-scientific/scripts/revayat-scientific.py --timeout 120 build "$work/doc.tex" article --verify --output-dir "$work/output"
+          test -s "$work/output/article.pdf"
+          test -s "$work/verify-article-first.png"
+      - name: Preserve rendered verification samples
+        uses: actions/upload-artifact@v4
+        with:
+          name: scientific-render
+          path: |
+            ${{ runner.temp }}/scientific render/output/article.pdf
+            ${{ runner.temp }}/scientific render/verify-article-*.png
+          if-no-files-found: error
