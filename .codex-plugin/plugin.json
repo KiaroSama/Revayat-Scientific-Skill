@@ -1,0 +1,38 @@
+{
+  "name": "revayat-scientific",
+  "version": "1.0.0",
+  "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
+  "author": {
+    "name": "Kiaro Sama",
+    "url": "https://github.com/KiaroSama"
+  },
+  "homepage": "https://github.com/KiaroSama/Revayat-Scientific-Skill",
+  "repository": "https://github.com/KiaroSama/Revayat-Scientific-Skill",
+  "license": "GPL-3.0-or-later",
+  "keywords": [
+    "scientific",
+    "translation",
+    "persian",
+    "farsi",
+    "rtl",
+    "pdf"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Revayat Scientific",
+    "shortDescription": "Scientific papers in accurate Persian, ready to print.",
+    "developerName": "Kiaro Sama",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/KiaroSama/Revayat-Scientific-Skill",
+    "defaultPrompt": [
+      "Translate this scientific paper into Persian and give me a verified PDF.",
+      "Review the scientific accuracy and Persian fluency of this translation."
+    ],
+    "brandColor": "#1f6f5c",
+    "longDescription": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs."
+  }
+}

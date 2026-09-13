@@ -1,0 +1,159 @@
+% !TEX program = xelatex
+% Scientific Persian print template. Compile with scripts/build-pdf.sh.
+%
+% For a book-length source switch the class to `report` (or `book`) and use
+% \chapter; everything else below is unchanged.
+\documentclass[a4paper,12pt]{article}
+
+% graphicx / hyperref / geometry must load BEFORE xepersian.
+\usepackage{fontspec}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}   % tables that run past one page
+\usepackage{xcolor}
+\usepackage{fancyvrb}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage[unicode=true,colorlinks=true,linkcolor=black,citecolor=black,
+            urlcolor=black,bookmarksnumbered=true]{hyperref}
+\usepackage{bookmark}
+\usepackage{xurl}        % let long URLs break instead of overflowing
+
+\usepackage{xepersian}
+
+% Font resolution without hand-editing: first face that exists wins.
+%
+% Every chain must cover Windows as well as Linux, and the LAST entry is
+% unguarded — if it is missing too, fontspec aborts the build. So the
+% guarded middle of each chain carries the Windows faces (Times New Roman,
+% Courier New, Tahoma all ship with the OS) and the unguarded tail is the
+% Linux-typical DejaVu, which those Windows guards never fall through to.
+% Do not leave a Linux-only face as the last entry.
+%
+% Persian text face.
+%
+% A local fonts/ directory beside this file wins over every system name,
+% and that is not a preference - it is the only way a *variable* font can
+% be used at all. Asked for a family name, XeTeX hands the driver a named
+% instance of the variable font, and xdvipdfmx cannot embed one: it warns
+% "Invalid TTC index (not TTC font)" and dies with
+% "dvipdfmx:fatal: Invalid font: -1 (4)". The identical file loaded by
+% *path* carries no instance index and embeds fine. Vazirmatn now installs
+% as Vazirmatn-VariableFont_wght.ttf from Google Fonts, so this is the
+% common case on Windows, not an edge case.
+%
+% Put the files there with scripts/fetch-vazirmatn.sh (or .ps1) run in the
+% document's own directory - the same fonts/ the HTML template embeds.
+\IfFontExistsTF{fonts/Vazirmatn-Regular.ttf}{%
+  \settextfont[Path=fonts/,BoldFont=Vazirmatn-Bold.ttf,
+               Ligatures=TeX]{Vazirmatn-Regular.ttf}}{%
+\IfFontExistsTF{Vazirmatn}{\settextfont[Ligatures=TeX]{Vazirmatn}}{%
+  \IfFontExistsTF{Shabnam}{\settextfont[Ligatures=TeX]{Shabnam}}{%
+    \IfFontExistsTF{Sahel}{\settextfont[Ligatures=TeX]{Sahel}}{%
+      \IfFontExistsTF{Amiri}{\settextfont[Ligatures=TeX]{Amiri}}{%
+        \IfFontExistsTF{Noto Naskh Arabic}{%
+          \settextfont[Ligatures=TeX]{Noto Naskh Arabic}}{%
+          \IfFontExistsTF{Tahoma}{\settextfont[Ligatures=TeX]{Tahoma}}{%
+            \settextfont[Ligatures=TeX]{DejaVu Sans}}}}}}}}
+% Latin text face for isolated English and Western digits.
+%
+% OS-native faces come FIRST, and that ordering is not cosmetic. On MiKTeX
+% \IfFontExistsTF answers "yes" for a face that is not installed: MiKTeX
+% tries to manufacture a METAFONT font for it, the name gets truncated
+% ("TeX Gyre Term.cfg", "Liberation Ser.cfg"), makemf fails, and the run
+% dies later in the driver with "dvipdfmx:fatal: Invalid font: -1 (4)".
+% Testing a real system font first never reaches that path. On Linux,
+% fontconfig answers honestly, so the TeX Gyre / DejaVu tail still wins.
+\IfFontExistsTF{Times New Roman}{%
+  \setlatintextfont{Times New Roman}}{%
+  \IfFontExistsTF{TeX Gyre Termes}{%
+    \setlatintextfont{TeX Gyre Termes}}{%
+    \IfFontExistsTF{Liberation Serif}{%
+      \setlatintextfont{Liberation Serif}}{%
+      \setlatintextfont{DejaVu Serif}}}}
+% Monospace for listings. Same ordering rule.
+\IfFontExistsTF{Consolas}{\setmonofont[Scale=0.92]{Consolas}}{%
+  \IfFontExistsTF{Courier New}{\setmonofont[Scale=0.92]{Courier New}}{%
+    \IfFontExistsTF{TeX Gyre Cursor}{\setmonofont[Scale=0.92]{TeX Gyre Cursor}}{%
+      \IfFontExistsTF{Liberation Mono}{\setmonofont[Scale=0.90]{Liberation Mono}}{%
+        \setmonofont[Scale=0.90]{DejaVu Sans Mono}}}}}
+
+% xepersian requires U+06F0 in the digit font. Keep numeric runs in \en.
+% Resolve the local file first to avoid variable-font named instances on MiKTeX.
+\IfFontExistsTF{fonts/Vazirmatn-Regular.ttf}{%
+  \setdigitfont[Path=fonts/]{Vazirmatn-Regular.ttf}}{%
+  \IfFontExistsTF{Vazirmatn}{\setdigitfont{Vazirmatn}}{%
+    \IfFontExistsTF{Tahoma}{\setdigitfont{Tahoma}}{%
+      \IfFontExistsTF{Amiri}{\setdigitfont{Amiri}}{%
+        \setdigitfont{DejaVu Sans}}}}}
+
+\newcommand{\en}[1]{\lr{#1}}
+
+% \lr and \en reach hyperref bookmarks from \section and \caption and break
+% them. Strip the wrapper there; the visible text is unaffected.
+\pdfstringdefDisableCommands{\def\lr#1{#1}\def\en#1{#1}}
+
+% RTL justification with long LTR isolates needs slack, or lines overfull.
+\emergencystretch=2em
+\setlength{\parskip}{0.4em}
+
+\begin{document}
+
+\title{\en{TITLE}}
+\author{}
+\date{}
+\maketitle
+
+% Books: translate the source table of contents and print it. Generated
+% TOC (uncomment) or a hand-translated فهرست مطالب matching the source —
+% omitting those pages is a missing section, not a layout choice.
+% \renewcommand{\contentsname}{فهرست مطالب}
+% \tableofcontents
+% \clearpage
+
+% Persian prose. Isolate every English run, whole collocations included:
+% الگوریتم \en{Adam (Kingma \& Ba, 2015)} استفاده شد.
+% One isolate per cluster, including a space:
+% \en{OP_IF/OP_NOTIF}, \en{1.0.1 (2026-08-09)},
+% \en{3.1 The OpenStack service}ها — not \en{3.1} \en{The OpenStack services}.
+
+% Code: never RTL.
+\begin{latin}
+\begin{Verbatim}[fontsize=\small,frame=single,framesep=6pt,baselinestretch=1.1]
+# listing
+\end{Verbatim}
+\end{latin}
+
+% Figures: the source files, unmirrored, in source order. Wrap in LTR so
+% xepersian cannot invert or paint the artwork black. Flatten PNG alpha
+% first (scripts/prepare-figures.py).
+% \begin{figure}[ht]
+% \centering
+% Crop to the artwork, never a full source-page raster:
+% \begin{LTR}
+% \includegraphics[width=0.92\linewidth]{figures/artwork/fig-3.png}
+% \end{LTR}
+% \caption{شکل \lr{3}. معماری \en{transformer}}
+% \end{figure}
+
+% Tables past one page: longtable with a repeated header.
+% \begin{longtable}{ll}
+% \toprule \en{Service} & توضیح \\ \midrule \endhead
+% \en{Identity service} & احراز هویت \\
+% \bottomrule
+% \end{longtable}
+
+\begin{latin}
+\section*{References}
+% Original-language bibliography. Do not translate entries.
+\end{latin}
+
+% Colophon: source, licence, provenance. Fill from inventory.md.
+\clearpage
+\section*{یادداشت نشر}
+این متن ترجمهٔ فارسی \en{SOURCE TITLE} است.
+منبع: \en{\url{SOURCE URL}} — مجوز: \en{LICENSE} — تاریخ دریافت:
+\en{YYYY-MM-DD}.
+ترجمه با \en{revayat-scientific} انجام شده است.
+
+\end{document}

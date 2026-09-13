@@ -1,0 +1,20 @@
+% !TEX program = xelatex
+% Fixture: journal-level prose. Must lint clean with --level journal, and
+% must report forbidden-fa at the default system-docs level.
+\documentclass[a4paper,12pt]{article}
+\usepackage{fontspec}
+\usepackage{xepersian}
+\settextfont{Vazirmatn}
+\newcommand{\en}[1]{\lr{#1}}
+\pdfstringdefDisableCommands{\def\lr#1{#1}\def\en#1{#1}}
+
+\begin{document}
+
+\section*{مقدمه}
+
+این پیاده‌سازی از رمزنگاری برای حفاظت از هر گره استفاده می‌کند.
+پیکربندی هر افراز با یک پالایه و یک کارساز انجام شد.
+مجموعه داده با \en{gradient descent} و الگوریتم \en{Adam} آموزش داده شد.
+بازهٔ \lr{2017-2024} بررسی شد.
+
+\end{document}

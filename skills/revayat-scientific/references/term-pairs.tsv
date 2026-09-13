@@ -1,0 +1,45 @@
+# Machine-readable half of the terminology policy.
+#
+# Each row: a source term that stays English, and the Persian calque that
+# must never appear in its place. `scripts/check-fa.py` reads this file and
+# fails the build when the forbidden form shows up in a translation.
+#
+# Columns (tab-separated):
+#   english          form that must survive in the output (singular stem
+#                    of a kept term; regular plurals are stem + ها, not -s)
+#   forbidden_fa     Persian form that is wrong for this source term
+#   scope            always `universal` (kept for TSV compatibility)
+#   levels           `system-docs` = one-word field noun, skipped at journal
+#                    `all` = multi-word label / named phrase, both levels
+#
+# The checker reads every row. There is no `--domains` switch and no
+# per-field pack. `--level journal` skips `system-docs` rows so a paper
+# may use پیاده‌سازی / گره. Add a row here at the same time you add a
+# Keep-English note in glossary.md; this file is the single source of
+# truth for the checker. Document-specific field terms are inferred from
+# the source and locked in the job's terms.tsv, not here.
+
+english	forbidden_fa	scope	levels
+node	گره	universal	system-docs
+node	گره‌ها	universal	system-docs
+deployment	استقرار	universal	system-docs
+deploy	استقرار	universal	system-docs
+configuration	پیکربندی	universal	system-docs
+configure	پیکربندی	universal	system-docs
+implementation	پیاده‌سازی	universal	system-docs
+implement	پیاده‌سازی	universal	system-docs
+integration	یکپارچه‌سازی	universal	system-docs
+firewall	دیوار آتش	universal	system-docs
+firewall	دیوارهای آتش	universal	system-docs
+firewalling service	خدمات دیوار آتش	universal	all
+encryption	رمزنگاری	universal	system-docs
+command	فرمان‌ها	universal	system-docs
+command	فرمان	universal	system-docs
+server	کارساز	universal	system-docs
+partition	افراز	universal	system-docs
+filter	پالایه	universal	system-docs
+test vector	بردارهای آزمون	universal	all
+reference implementation	پیاده‌سازی مرجع	universal	all
+underlying infrastructure	زیرساخت زیربنایی	universal	all
+account with administrative privilege	حسابی با امتیازهای مدیریتی	universal	all
+performance and redundancy requirement	نیازمندی‌های کارایی و افزونگی	universal	all

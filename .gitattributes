@@ -1,0 +1,11 @@
+* text=auto
+*.py text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.tsv text eol=lf whitespace=-blank-at-eol
+*.png binary
+*.skill binary

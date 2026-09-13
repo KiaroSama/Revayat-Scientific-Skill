@@ -1,0 +1,6 @@
+interface:
+  display_name: "Revayat Scientific"
+  short_description: "Translate scientific papers into accurate Persian."
+  default_prompt: "Use $revayat-scientific to translate this paper into Persian and produce a verified PDF."
+policy:
+  allow_implicit_invocation: true
