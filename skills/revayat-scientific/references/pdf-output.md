@@ -170,14 +170,13 @@ Windows specifics worth knowing:
 
 | Priority | Engine | When |
 | --- | --- | --- |
-| 1 | XeLaTeX + `xepersian` | best Persian print RTL; **logical** text order (copy-paste works); needs a TeX install |
-| 2 | Headless Chromium print of the RTL HTML | no TeX; display RTL is correct; **visual** text order (copy-paste reverses Persian) |
-| 3 | WeasyPrint on the same HTML | no TeX and no Chrome; same visual-order copy-paste limit |
+| 1 | XeLaTeX + `xepersian` | preferred Persian print engine; enable ActualText and verify extraction |
+| 2 | Headless Chromium print of the RTL HTML | HTML fallback; inspect layout and measure extraction on this build |
+| 3 | WeasyPrint on the same HTML | no TeX and no Chrome; inspect layout and measure extraction |
 
-Do not use pdfLaTeX. Do not use pandoc's default PDF engine without
-`xepersian` / `bidi`. Do not ship a Chromium/WeasyPrint PDF when XeLaTeX
-is installed — `--verify` will refuse it. CSS `dir="rtl"`, tagged-PDF
-flags, and `unicode-bidi` do not fix extraction.
+Use an engine with Persian shaping and bidi support. Prefer XeLaTeX with
+`xepersian`; a requested HTML engine is acceptable when its actual output passes
+the required checks. CSS direction or an engine name alone is not extraction evidence.
 
 Debian/Ubuntu install for the preferred path:
 

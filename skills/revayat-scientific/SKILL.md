@@ -10,7 +10,7 @@ The agent reads and translates. Scripts check mechanical rules, prepare figures 
 
 ## Environment
 
-Python 3.10+ runs the helpers on Windows, macOS and Linux. PDF output needs XeLaTeX with xepersian or an HTML renderer, plus Poppler for verification.
+Python 3.10+ runs the helpers on Windows, macOS and Linux. PDF output needs XeLaTeX with xepersian or an HTML renderer, plus Poppler and PyMuPDF for verification.
 
 Resolve `SKILL_DIR` to this file's directory, `WORK` to a separate job directory, and `PY` to Python 3.10+. Quote paths; PowerShell needs `&` before a quoted executable.
 
@@ -59,7 +59,7 @@ The dispatcher chooses PowerShell on Windows and Bash on Linux/macOS, with ident
 
 `crop`, `figures`, `pages` and `fonts` invoke the existing helpers. Use `<command> --help` for syntax. Every dispatcher execution writes a UTC log under the skill's `logs/`, recording operations and exit codes, not source content.
 
-HTML PDFs can look correct while copy-paste returns reversed Persian. Report the observed text-order result and prefer XeLaTeX when available. Text-only requests skip PDF stages but retain scientific review and bidi rules.
+HTML PDFs can look correct while copy-paste returns reversed Persian. Report the observed PyMuPDF extraction result, without promising every viewer's clipboard behavior, and prefer XeLaTeX when available. Text-only requests skip PDF stages but retain scientific review and bidi rules.
 
 ## Completion gate
 
