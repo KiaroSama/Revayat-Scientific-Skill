@@ -4,6 +4,8 @@
 % For a book-length source switch the class to `report` (or `book`) and use
 % \chapter; everything else below is unchanged.
 \documentclass[a4paper,12pt]{article}
+% Preserve source Unicode for copying; shaped glyph CMaps can omit Persian letters.
+\XeTeXgenerateactualtext=1
 
 % graphicx / hyperref / geometry must load BEFORE xepersian.
 \usepackage{fontspec}
