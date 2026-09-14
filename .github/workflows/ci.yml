@@ -78,6 +78,13 @@ jobs:
           work="$RUNNER_TEMP/scientific render"
           mkdir -p "$work"
           cp skills/revayat-scientific/assets/rtl-document.tex "$work/doc.tex"
+          python - "$work/doc.tex" <<'PY'
+          from pathlib import Path
+          import sys
+          target = Path(sys.argv[1])
+          body = Path('tests/fixtures/build-smoke-body.tex').read_text(encoding='utf-8')
+          target.write_text(target.read_text(encoding='utf-8').replace(r'\maketitle', r'\maketitle' + '\n' + body), encoding='utf-8')
+          PY
           cp tests/fixtures/terms-empty.tsv "$work/terms.tsv"
           cp tests/fixtures/manifest-empty.txt "$work/manifest.txt"
           python skills/revayat-scientific/scripts/revayat-scientific.py --timeout 120 build "$work/doc.tex" article --verify --output-dir "$work/output"
