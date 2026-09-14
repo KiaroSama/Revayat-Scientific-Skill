@@ -23,6 +23,6 @@ python install/install.py --agent claude --force
 
 The Bash and PowerShell entry points forward these same options. Paths with spaces must be quoted. They never download dependencies; Python 3.10+ is required before installation.
 
-For a standalone upload, run `python tools/package.py` and use `dist/revayat-scientific.skill` in a host that accepts ZIP skill uploads. Extract it into the host skill parent otherwise. The package includes GPL-3.0 and the original MIT attribution.
+For a standalone upload, run `python tools/package.py` and use `dist/revayat-scientific.skill` in a host that accepts ZIP skill uploads. Extract it into the host skill parent otherwise. The package includes the required license notices.
 
 Discovery references: [Agent Skills](https://agentskills.io/specification), [Claude Code](https://code.claude.com/docs/en/skills), [Codex](https://developers.openai.com/codex/skills), [Cursor](https://cursor.com/docs/context/skills), [Kiro](https://kiro.dev/docs/skills/), [Cline](https://docs.cline.bot/customization/skills), [OpenCode](https://opencode.ai/docs/skills/), [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills), [Antigravity](https://antigravity.google/docs/migration/workflows-to-skills).
