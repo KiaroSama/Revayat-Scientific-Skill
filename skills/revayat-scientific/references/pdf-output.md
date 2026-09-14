@@ -21,7 +21,7 @@ job ledgers outside temporary directories for resumption.
 The XeLaTeX template enables `\XeTeXgenerateactualtext=1` so the PDF carries
 source Unicode alongside shaped glyphs. This prevents missing or presentation-form
 Persian in extraction with fonts whose glyph mappings are incomplete. Keep the
-actual `pdftotext -raw` check; setting the primitive is not proof of correct output.
+actual PyMuPDF extraction check; setting the primitive is not proof of correct output.
 
 Run this **first**, before choosing an approach:
 
@@ -136,12 +136,12 @@ Windows specifics worth knowing:
   `xelatex` twice, so no action is required. Install Strawberry Perl only
   if you want latexmk's bibliography reruns.
 - **MiKTeX's on-the-fly installer will stall an unattended build.** The
-  basic install carries only a small package set, and MiKTeX fetches the
+  basic install carries only a small package set, and MiKTeX may fetch the
   rest during the first compile — `fancyvrb`, `bidi`, and the xepersian
   dependencies among them. Out of the box it *asks first*, with a modal
   dialog per package. A person clicks Install; an agent-driven build hangs
   on a window it cannot see, with no error and no `.log`. Turn the prompt
-  off once, before the first build:
+  off only after the user approves dependency installation:
 
   ```powershell
   initexmf --set-config-value "[MPM]AutoInstall=1"
@@ -276,18 +276,22 @@ preference, it is the difference between right and wrong output. The
 checker's `split-isolate` rule exists for this, and Chromium is preferred
 over WeasyPrint when both are present.
 
-**Copy-paste is a separate property from display.** Chromium
-`--print-to-pdf` (and typical WeasyPrint) paint Persian on the page in
-the right direction, then write the *visual* glyph order into the PDF
-text stream. Selecting a line and pasting into an editor yields reversed
-characters (`پیش از آنکه` → `هکنآ زا شیپ`). The caret can also jump from
-the right of one line to the left of the next. XeLaTeX + xepersian writes
-logical order; that is the only selectable-text engine this skill uses.
-`scripts/check-pdf-text-order.py` compares Persian phrases from the print
-source with `pdftotext -raw` (content-stream order). `--verify` runs it
-and fails a visual-order PDF when XeLaTeX is installed — rebuild from
-the `.tex`. When TeX is missing, verify still copies the PDF after the
-raster checks but logs a warning; tell the user copy-paste will reverse.
+**Text extraction is separate from display.** The checker uses PyMuPDF
+`page.get_text("text", sort=False)` with default ActualText handling and compares
+Persian source phrases. This measures readable text through that extractor;
+MuPDF applies bidi heuristics, so it does not prove raw storage order or every
+viewer's clipboard behavior. Never reverse extracted strings to force a match.
+
+Poppler's `pdftotext -raw` still reverses RTL fragments and inserts bidi controls.
+Stripping those controls is not a valid test of stored Unicode order. Use Poppler
+for page/font/raster inspection, and install the pinned PyMuPDF requirement for
+text verification. A conclusive `logical` result matches source phrases; `visual`
+means the extractor reverses them. Inconclusive output fails verification.
+With no TeX available, a visual-order HTML fallback may be delivered with the
+explicit warning that selectable text is unverified.
+
+References: [PyMuPDF text extraction](https://pymupdf.readthedocs.io/en/latest/recipes-text.html)
+and [Poppler's text output implementation](https://skia.googlesource.com/third_party/poppler/+/master/poppler/TextOutputDev.cc).
 
 Surface WeasyPrint's warnings instead of discarding them; `build-pdf.sh`
 keeps them.
@@ -350,10 +354,9 @@ directory as cwd — the build script does this.
 A PDF that exists is not a PDF that is correct. `build-pdf.sh --verify`
 runs all of this and **exits non-zero** if poppler tools are missing, the
 page count cannot be read, no font is embedded, a raster file was not
-written, or (when XeLaTeX is installed) the text stream is visual-order
-Persian. First, last, and (when there are more than two pages) a middle
+written, or (when XeLaTeX is installed) PyMuPDF extraction reverses source phrases. First, last, and (when there are more than two pages) a middle
 page are sampled. Do it every time. The script will not copy the PDF to
-`$HOME/Documents/books` until lint, figure check, compile, and this
+the selected output directory until lint, figure check, compile, and this
 verification have succeeded.
 
 ```bash
@@ -363,8 +366,8 @@ pdftoppm -png -r 110 -f 1 -l 2 out.pdf /tmp/check-p
 ```
 
 Then **look at the PNG**. Do not treat default `pdftotext` as visual
-truth on an RTL PDF; it reorders. Use `pdftotext -raw` only to check
-*extraction* order (`scripts/check-pdf-text-order.py`). What to look for
+truth on an RTL PDF; it reorders. Use the PyMuPDF-backed
+`scripts/check-pdf-text-order.py` for the separate extraction check. What to look for
 on the raster is in `review.md`. Figures must match
 the **artwork** on the source page — a black rectangle is a failed extract
 or unflattened alpha; a whole English book page (header, body, folio) is
