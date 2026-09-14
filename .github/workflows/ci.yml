@@ -74,7 +74,7 @@ jobs:
       - name: Install real document toolchain
         run: |
           python -m pip install -r skills/revayat-scientific/requirements.txt
-          sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core
+          sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn
       - name: Upstream mechanical and rendering regressions
         id: regressions
         env:

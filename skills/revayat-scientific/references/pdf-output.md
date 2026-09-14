@@ -23,6 +23,11 @@ source Unicode alongside shaped glyphs. This prevents missing or presentation-fo
 Persian in extraction with fonts whose glyph mappings are incomplete. Keep the
 actual PyMuPDF extraction check; setting the primitive is not proof of correct output.
 
+Use the preferred Vazirmatn font for selectable-text builds. The CI Amiri fallback
+rendered correctly but produced reordered text with its shaped glyph mappings,
+even with ActualText enabled. A fallback font is therefore not a promise of
+correct extraction: run the check and install/fetch Vazirmatn when it fails.
+
 Run this **first**, before choosing an approach:
 
 ```bash
