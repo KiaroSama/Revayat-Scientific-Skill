@@ -44,9 +44,44 @@ In PowerShell put `&` before the quoted executable. Quote every path.
 6. Report only checks that ran. A mechanical pass does not certify scientific
    accuracy, independent review or visual quality.
 
+## Translation log — required for every agent
+
+Whenever an agent uses this skill, it must create and maintain a UTF-8 log
+**in the same directory as the translation file it is producing**. This duty
+applies to the agent's own translation, review and corrections, including work
+done without running a helper script.
+
+Before starting, choose the translation filename and create a new log beside it:
+`<translation-stem>_YYYY-MM-DD_HH-mm-ss_UTC.log`. Use the host's file-writing
+tools; no particular logger, shell or API is required. Never overwrite an older
+run's log. A resumed run creates a new log and identifies the previous one.
+
+Append an entry after each meaningful action, using this form:
+
+```text
+[YYYY-MM-DD HH:mm:ss UTC] [INFO|WARNING|ERROR] [STAGE] Action; outcome; affected section or file
+```
+
+Record the source and target filenames, selected level, stage starts/completions,
+translated sections, terminology decisions, review findings, corrections and
+their reasons, commands/checks actually run and their outcomes, errors/retries,
+unresolved items, and final delivered filenames. Summarize changes; do not dump
+whole source passages, translations, secrets, credentials or private user data.
+If several agents participate, the coordinating agent appends their reported
+actions to the log so concurrent writers do not corrupt it.
+
+Keep the log current throughout the workflow, not just in a final recap. If the
+translation is delivered in another directory, deliver its completed log beside
+it too. Include the log path in the handoff. Helper diagnostic logs do not replace
+this agent-written record. If file writing is unavailable, explicitly report that
+logging could not be performed; never claim that a log exists or that the full
+workflow is complete.
+
 ---
 
 ## Step 1 — Check the tools
+
+Initialize the translation log before the first operation and record this check.
 
 ```bash
 "$PY" "$SKILL_DIR/scripts/revayat-scientific.py" doctor
@@ -247,7 +282,8 @@ standalone result conclusive.
 
 Deliver the PDF and editable source, and report: absolute paths, page count,
 engine, review coverage, unresolved ambiguities and unperformed checks. Retain
-the source inventory, terms and progress for resumption. Never describe an unbuilt
+the source inventory, terms and progress for resumption. Finish the translation
+log beside the delivered translation and report its path. Never describe an unbuilt
 or uninspected artifact as a finished publication.
 
 ---
