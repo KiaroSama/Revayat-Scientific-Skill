@@ -78,6 +78,12 @@ class PackageTest(unittest.TestCase):
             paths = list(project.glob('*/skills/revayat-scientific'))
             self.assertEqual(len(paths), 7, installed.stdout)
             source = project / '.agents/skills/revayat-scientific'
+            if sys.platform == 'win32':
+                acl_probe = project / 'read-acl.ps1'
+                acl_probe.write_text('param($Target)\nif ((Get-Acl -LiteralPath $Target).AreAccessRulesProtected) { exit 1 }\n', encoding='utf-8')
+                checked = run(launcher[0], '-NoProfile', '-NonInteractive', '-ExecutionPolicy',
+                              'Bypass', '-File', str(acl_probe), str(source))
+                self.assertEqual(checked.returncode, 0, 'installed directory must inherit its parent ACL')
             marker = source / 'local-note.txt'
             marker.write_text('preserve on replacement', encoding='utf-8')
             refused = run(*launcher, '--agent', 'codex', '--scope', 'project', '--path', str(project))
