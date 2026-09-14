@@ -6,7 +6,8 @@ argument-hint: [working directory]
 Use `revayat-scientific` to resume the job in `$ARGUMENTS`.
 
 Read the skill, then the job's `inventory.md`, `terms.tsv`, `manifest.txt` and
-`progress.md`. Preserve its selected terminology level and output directory.
+`progress.md` and `coverage.tsv`. Preserve source language/variety, translation route,
+selected terminology revision, page/image inventory and output directory.
 Read the previous translation log and start the new run's log beside the translation
 file, referring to that previous log. Append each resumed action and correction.
 Compare the current source and translated parts with those records; re-review

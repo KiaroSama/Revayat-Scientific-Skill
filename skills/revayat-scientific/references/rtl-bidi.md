@@ -1,9 +1,16 @@
 # RTL and bidirectional isolation
 
 Precise right-to-left layout is not `text-align: right`. Persian is RTL;
-English terms, digits, math, and URLs are LTR. The Unicode Bidirectional
+Latin/Cyrillic/CJK spans, digits, math, and URLs normally use LTR. The Unicode Bidirectional
 Algorithm will misplace punctuation and parentheses unless every LTR run
 is isolated.
+
+Preserved Arabic, Urdu and Hebrew source spans remain RTL in their own language
+and font; do not wrap them as English. Keep original diacritics/characters and use
+the narrow quote procedure in [source-languages.md](source-languages.md) when a
+Persian-only lint rule conflicts. Preserve bibliography direction per entry rather
+than assuming every source reference is English. The old English examples below
+illustrate LTR handling, not a source-language restriction.
 
 **Agent chat is not the RTL surface.** Do not right-align the
 conversation. For papers, articles, and books the deliverable is a
@@ -222,7 +229,7 @@ RLM only for a leftover end-of-sentence period.
 | Images / SVG | unchanged pixels; `dir="ltr"` on `<img>`; flatten alpha |
 | URLs, DOIs, emails | `<span dir="ltr">` or `<a dir="ltr">` |
 | File paths and identifiers | `<span dir="ltr">` |
-| Reference list | a `dir="ltr"` section |
+| Reference list | direction per entry's original language; isolate numeric/Latin spans |
 
 ## Headings, lists, tables, figures
 
@@ -297,4 +304,4 @@ Never reverse English letter order by hand. Never rewrite `(Adam)` as
 5. Code blocks are LTR, left-aligned, and optically identical to the
    source listing. Images are the source pixels, unmirrored, uninverted,
    in source order — not a black rectangle.
-6. No `ك` / `ي` introduced while editing markup.
+6. No `ك` / `ي` contamination in translated Persian; preserve them in verified Arabic originals.

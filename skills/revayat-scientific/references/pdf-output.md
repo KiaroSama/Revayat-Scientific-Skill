@@ -7,6 +7,11 @@ deliverable is a printable PDF with maximum bidi precision.
 Read this file whenever the output is a paper, article, book, or the user
 asks for PDF / چاپ.
 
+Preserve physical source page/book dimensions and image information according to
+[layout-and-images.md](layout-and-images.md). Set measured dimensions in the TeX or
+HTML template; its example A4 values are not a source-format choice. Verify final
+geometry and modified/low-resolution figures separately from the generic build gate.
+
 ## Destination
 
 Use the directory requested by the user. Otherwise default to
