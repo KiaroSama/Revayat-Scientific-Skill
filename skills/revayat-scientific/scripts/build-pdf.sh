@@ -97,7 +97,7 @@ if [[ ! -f $terms ]]; then
   exit 1
 fi
 if [[ ! -f $manifest ]]; then
-  log "no manifest.txt at ${manifest} — write it at ingest (source-ingest.md)"
+  log "no manifest.txt at ${manifest} — write it at ingest (extraction.md)"
   exit 1
 fi
 

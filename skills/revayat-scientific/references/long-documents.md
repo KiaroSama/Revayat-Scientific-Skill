@@ -38,7 +38,7 @@ Before drafting any body text:
    job memory and stays with the editable source for resumption.
 4. Show the user the rows that were close calls, announce **genre**
    (`tutorial` / `reference` / `paper`), then translate with the
-   available translation and review roles in `ensemble.md`; the fluency
+   available translation and review roles in `translation-policy.md`; the fluency
    reader checks the prose against `fluency-gold.md`.
 
 This step is the fix for the recorded `password` / گذرواژه drift: the body
@@ -49,7 +49,7 @@ repairing it after a 174-page build costs a rebuild.
 ## Sectioning
 
 One file per top-level section, numbered in reading order, in the working
-tree from `source-ingest.md`:
+tree from `extraction.md`:
 
 ```text
 parts/01-overview.tex   parts/05-networking.tex
@@ -91,7 +91,7 @@ must be able to resume without re-deriving anything:
 ```
 
 States: `todo`, `drafting`, `done`, `needs-review`. Fluency:
-`—` until the part is chosen, then `ok` or `revised` per `ensemble.md`
+`—` until the part is chosen, then `ok` or `revised` per `translation-policy.md`
 (a part is not `done` without one of those). On resume, read
 `progress.md` and `terms.tsv` first, then the part in `drafting`. Never
 restart a `done` part; never re-decide a term already in `terms.tsv`.

@@ -1,0 +1,5 @@
+# The implementation lives in directories that CMM otherwise treats as tooling.
+!skills/revayat-scientific/scripts/
+!skills/revayat-scientific/scripts/**
+!tools/
+!tools/**

@@ -8,7 +8,7 @@ then offer the edit.
 
 ## Inputs
 
-Best case the working tree from `source-ingest.md` still exists and the
+Best case the working tree from `extraction.md` still exists and the
 `.tex` / `.html` is available. If only the PDF exists, rasterise it and work
 from images plus whatever source text can be recovered; say in the report
 that the check was visual and therefore partial.
@@ -53,7 +53,7 @@ term that appears both English and Persian.
 
 ### L3 — Language / fluency
 
-Run (or re-run) the fluency-reader brief in `ensemble.md` on running
+Run (or re-run) the fluency-reader brief in `translation-policy.md` on running
 prose, scoring against Canonical manner and `fluency-gold.md`, recording whether review was independent or self-review. Also flag over-English: Latin
 isolates that are ordinary dictionary words, not terms of art. Glance at
 ezafe chains, over-nominalisation, and passive piles. Do not "fix"

@@ -1,92 +1,215 @@
-# Revayat Scientific — روایت علمی
+<div dir="rtl">
 
-[English](README.md) · [راهنمای اسکیل](skills/revayat-scientific/SKILL.md)
+# روایت علمی — Revayat Scientific
 
-[![CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
+**مقالهٔ علمی را به فارسی دقیق ترجمه کنید و متن قابل‌ویرایش همراه با PDF بررسی‌شده و آمادهٔ چاپ تحویل بگیرید.**
 
-اسکیل ترجمهٔ مقاله، پایان‌نامه، کتاب فنی و مستندات علمی از انگلیسی به فارسی. ادعاها، میزان قطعیت، عددها، فرمول‌ها، شکل‌ها و ارجاع‌ها حفظ می‌شوند. ساختار پروژه با خانوادهٔ Revayat هماهنگ است.
+اسکیلی برای Claude Code، Claude Desktop، Codex، Kiro، Cursor، Cline،
+Hermes، OpenCode، Antigravity و هر ایجنتی که بتواند فایل `SKILL.md` را بخواند.
+اصطلاحات در طول سند ثابت می‌مانند، میزان قطعیت ادعاها حفظ می‌شود و شکل‌ها،
+فرمول‌ها و خروجی فارسی پیش از تحویل بررسی می‌شوند.
 
-## قابلیت‌ها
+<div align="right"><a href="LICENSE">مجوز GPL-3.0</a></div>
+<div align="left"><a href="README.md">English</a></div>
 
-| قابلیت | رفتار |
+---
+
+## چه چیزی آن را از یک مترجم معمولی جدا می‌کند
+
+| | |
 | --- | --- |
-| دقت علمی | حفظ معنا، عدم قطعیت، واحدها، فرمول‌ها و منابع |
-| اصطلاحات | یک معادل ترجیحی برای هر مفهوم و قواعد جداگانه برای مقاله و مستندات |
-| فارسی روان | بازبینی دقت و روانی متن با ثبت پوشش واقعی |
-| خروجی چاپ | اولویت XeLaTeX؛ بررسی جداگانهٔ ظاهر و ترتیب متن قابل کپی |
-| چندسکویی | Windows، macOS و Linux؛ بدون وابستگی به مدل یا API مشخص |
+| **ثبت ساختار منبع پیش از ترجمه** | بخش‌ها، شکل‌ها، جدول‌ها، فرمول‌ها، یادداشت‌ها و منابع ثبت می‌شوند تا حذف‌شدن آن‌ها مشخص باشد. |
+| **حفظ معنای ادعاهای علمی** | نفی، عدم قطعیت، مقدارها و واحدها با منبع مقایسه می‌شوند؛ روان‌سازی نباید معنای آن‌ها را عوض کند. |
+| **یک صورت ترجیحی برای هر مفهوم** | دفتر اصطلاحات مخصوص همان سند است. مقاله از سطح `journal` و راهنمای عملیاتی از `system-docs` استفاده می‌کند. |
+| **حفظ شکل‌های اصلی** | شکل‌ها از منبع آماده می‌شوند، با صفحهٔ اصلی مقایسه می‌شوند و حضورشان در خروجی بررسی می‌شود. |
+| **صفحه‌آرایی واقعی راست‌به‌چپ** | فارسی به ترتیب منطقی نوشته می‌شود؛ عبارت‌های کامل انگلیسی، فرمول‌ها و عددها در محدودهٔ چپ‌به‌راست قرار می‌گیرند. |
+| **کنترل‌های مکانیکی** | نویسه‌ها، اصطلاحات، جهت متن، تصویرهای مفقود، فونت‌ها، تعداد صفحات و تصویر نمونهٔ صفحات بررسی می‌شوند. |
+| **سنجش استخراج متن** | عبارت‌های فارسیِ نرمال‌شده با استخراج PyMuPDF مقایسه می‌شوند؛ محدودیت هر بررسی اعلام می‌شود. |
+| **یک فرمان چندسکویی** | فرمان Python در Windows از PowerShell و در Linux/macOS از Bash استفاده می‌کند؛ ترجمه کار مدل همان ایجنت است. |
 
 ## نصب
 
-Python 3.10 یا جدیدتر لازم است. نصب‌کننده و بررسی متن از کتابخانهٔ استاندارد استفاده می‌کنند. وابستگی‌های پردازش تصویر و استخراج PDF اختیاری‌اند:
+<div dir="ltr">
 
 ```bash
 git clone https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 python -m pip install -r skills/revayat-scientific/requirements.txt
-bash install/install.sh
 ```
 
-در Windows:
+</div>
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File ./install/install.ps1
-```
+سپس اسکیل را برای ایجنت‌هایی که استفاده می‌کنید نصب کنید:
 
-هر دو نصب‌کننده گزینه‌های یکسان دارند. پیش‌فرض، نصب برای ایجنت‌های شناسایی‌شده است. برای نصب محدود به پروژه:
+<div dir="ltr">
 
 ```bash
-python install/install.py --agent codex --scope project --path "/path/to/project"
+# macOS / Linux
+./install/install.sh
+
+# Windows
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install\install.ps1
 ```
 
-برای جایگزینی نسخهٔ موجود `--force` لازم است؛ نسخهٔ قبلی به‌صورت پشتیبان باقی می‌ماند. هیچ وابستگی یا تنظیم ایجنتی خودکار تغییر نمی‌کند. [مسیرهای نصب](docs/installation.md).
+</div>
 
-### پلاگین
+پیش‌فرض، نصب برای ایجنت‌های شناسایی‌شده است: Claude Code، Codex، Kiro،
+Cursor، Cline، Hermes، OpenCode و Antigravity. برای یک ایجنت از
+`--agent claude` و برای یک پروژه از `--scope project --path <dir>` استفاده کنید.
+گزینه‌های دو نصب‌کننده یکسان‌اند و پوشهٔ واقعی می‌سازند. جایگزینی نسخهٔ موجود
+به `--force` نیاز دارد؛ نسخهٔ تازه ابتدا کامل آماده می‌شود و نسخهٔ قبلی
+بیرون از مسیر شناسایی اسکیل نگه داشته می‌شود. [جزئیات نصب](docs/installation.md).
+
+### به‌عنوان پلاگین Claude Code
+
+<div dir="ltr">
 
 ```text
 /plugin marketplace add KiaroSama/Revayat-Scientific-Skill
 /plugin install revayat-scientific@revayat-scientific-skill
 ```
 
-فایل‌های معرفی پلاگین برای Claude Code، Cursor و Codex موجودند. برای میزبان‌هایی که فایل اسکیل می‌پذیرند، `python tools/package.py` بستهٔ `dist/revayat-scientific.skill` را می‌سازد. شناسایی در رابط هر برنامه جدا از صحت بسته است.
+</div>
 
-## استفاده
+فرمان‌های `/translate-paper`، `/revayat-scientific-resume` و
+`/revayat-scientific-qa` نیز در دسترس قرار می‌گیرند. فایل‌های معرفی پلاگین
+Cursor و Codex هم موجودند. نام صریح خود اسکیل در Codex برابر
+`$revayat-scientific` است.
 
-به ایجنت بگو: «با revayat-scientific این مقاله را به فارسی ترجمه کن، فرمول‌ها و شکل‌ها را حفظ کن و PDF تأییدشده بده.»
+### بررسی نصب
 
-در Codex نام صریح `$revayat-scientific` است. ورودی می‌تواند فایل محلی، پیوست یا لینک قابل‌دسترسی باشد. خود ایجنت متن را می‌خواند و ترجمه می‌کند؛ اسکریپت‌ها کار مکانیکی را انجام می‌دهند.
+**Python 3.10 یا جدیدتر** روی Linux، macOS یا Windows لازم است.
+محیط مجازی موجودِ پروژه را ترجیح دهید. نصب‌کننده و بررسی متن از کتابخانهٔ
+استاندارد استفاده می‌کنند؛ آماده‌سازی تصویر و بررسی استخراج PDF به وابستگی‌های
+ثبت‌شده نیاز دارند.
+
+<div dir="ltr">
 
 ```bash
 python skills/revayat-scientific/scripts/revayat-scientific.py doctor
-python skills/revayat-scientific/scripts/revayat-scientific.py lint work/doc.tex --level journal --terms work/terms.tsv --manifest work/manifest.txt --strict
-python skills/revayat-scientific/scripts/revayat-scientific.py build work/doc.tex article --level journal --verify --output-dir work/output
 ```
 
-این فرمان‌ها در هر سه سیستم‌عامل یکسان‌اند. برای جزئیات `build --help` را اجرا کن. فرمان‌های `crop`، `figures`، `pages`، `fonts` و `text-order` نیز موجودند.
+</div>
 
-## گردش کار
+پیش از وعدهٔ PDF، گزارش را بخوانید:
 
-ثبت ساختار منبع ← تثبیت اصطلاحات ← آماده‌سازی شکل‌ها ← ترجمهٔ بخش‌ها ← بازبینی دقت و روانی ← بررسی مکانیکی ← ساخت PDF ← بررسی دیداری ← تحویل.
+| مورد گزارش | کاربرد |
+| --- | --- |
+| XeLaTeX / xepersian | مسیر ترجیحی ساخت از TeX |
+| Edge، Chrome یا WeasyPrint | مسیر ساخت از HTML |
+| فونت فارسی | نمایش خوانای فارسی؛ فونت ترجیحی Vazirmatn است |
+| Poppler و PyMuPDF | بررسی صفحات، فونت‌ها، تصاویر نمونه و متن استخراج‌شده |
+| Pillow | آماده‌سازی شکل‌ها |
 
-فایل‌های `terms.tsv` و `manifest.txt` برای بررسی سخت‌گیرانه لازم‌اند. اگر شکل وجود ندارد، manifest فقط یک توضیح دارد. برای ادامهٔ کار، منبع قابل‌ویرایش و دفتر پیشرفت نگه داشته می‌شوند.
+کمبود هر ابزار فقط مراحل وابسته به آن را محدود می‌کند. نصب پیش‌نیازها با اجازهٔ
+کاربر انجام می‌شود؛ نصب‌کننده و doctor آن‌ها را خودکار نصب نمی‌کنند.
 
-خروجی پیش‌فرض در `$HOME/Documents/books` است؛ `--output-dir` مسیر را عوض می‌کند. شکست بررسی یا ساخت، PDF تحویل‌شدهٔ قبلی را دست‌نخورده نگه می‌دارد. `--verify` به Poppler و PyMuPDF نیاز دارد و تصویر نمونهٔ صفحات را تولید می‌کند؛ ایجنت باید آن‌ها را ببیند.
+## استفاده
 
-## محدودیت‌ها
+به ایجنت بگویید:
 
-- عبور از بررسی مکانیکی، صحت علمی ترجمه را اثبات نمی‌کند.
-- اسکن و PDF چندستونی به خواندن دیداری یا OCR و تطبیق با منبع نیاز دارند؛ برش شکل‌ها نیز باید بررسی شود.
-- PDF حاصل از HTML ممکن است ظاهر درست ولی متن قابل‌کپی معکوس داشته باشد؛ اولویت با XeLaTeX است.
-- بازسازی دقیق صفحه‌آرایی ناشر تضمین نمی‌شود؛ هدف حفظ محتوای علمی و خوانایی است.
-- تست‌های CI کیفیت ترجمهٔ یک مقالهٔ دلخواه یا فعال‌شدن در رابط همهٔ ایجنت‌ها را تأیید نمی‌کنند.
+> `paper.pdf` را به فارسی ترجمه کن، فرمول‌ها و شکل‌ها را حفظ کن و PDF بررسی‌شده بده.
 
-## گزارش اجرا
+یا از فرمان پلاگین استفاده کنید: `/translate-paper ./paper.pdf`.
 
-گزارش‌های UTF-8 فرمان اصلی در `skills/revayat-scientific/logs/` و گزارش نصب و بسته‌بندی در `logs/` هستند. نام هر فایل زمان UTC دارد و اجرای قبلی بازنویسی نمی‌شود. نام عملیات، مدت و کد خروج ثبت می‌شوند؛ متن سند، آرگومان‌ها و خروجی ابزارها در این گزارش‌ها کپی نمی‌شوند. اگر ساخت گزارش ممکن نباشد، پیام در stderr نمایش داده می‌شود. گزارش‌ها محلی‌اند و تا حذف دستی باقی می‌مانند. TeX گزارش مستقل خود را کنار سند می‌نویسد.
+ایجنت نه مرحلهٔ `SKILL.md` را دنبال می‌کند. خواندن، ترجمه، سنجش معنای علمی
+و دیدن صفحات خروجی کار ایجنت است؛ اسکریپت‌ها فایل‌ها را آماده و کنترل می‌کنند.
+مدل ثابت یا API ترجمه لازم نیست.
 
-## مستندات و توسعه
+### یا خودتان مرحله‌به‌مرحله اجرا کنید
 
-[گردش کار اسکیل](skills/revayat-scientific/SKILL.md)، [معماری](docs/architecture.md)، [اصطلاحات](skills/revayat-scientific/references/terminology.md)، [سبک علمی](skills/revayat-scientific/references/scientific-style.md) و [بازبینی](skills/revayat-scientific/references/review.md).
+<div dir="ltr">
+
+```bash
+PY=python   # or python3; use the same interpreter throughout
+SKILL=skills/revayat-scientific
+WORK=work
+
+"$PY" "$SKILL/scripts/revayat-scientific.py" doctor
+# Preserve the source; write inventory.md, terms.tsv and manifest.txt.
+# Translate into work/doc.tex, then review meaning and fluency.
+"$PY" "$SKILL/scripts/revayat-scientific.py" figures "$WORK/figures" --check
+"$PY" "$SKILL/scripts/revayat-scientific.py" lint "$WORK/doc.tex" --level journal --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
+"$PY" "$SKILL/scripts/revayat-scientific.py" build "$WORK/doc.tex" article --level journal --output-dir "$WORK/output" --verify
+"$PY" "$SKILL/scripts/revayat-scientific.py" text-order "$WORK/output/article.pdf" --source "$WORK/doc.tex"
+```
+
+</div>
+
+فرمان شکل‌ها زمانی اجرا می‌شود که سند شکل داشته باشد. manifest سند بدون شکل
+فقط یک توضیح دارد. در PowerShell پیش از مسیر نقل‌قول‌شدهٔ برنامه، `&` بگذارید.
+
+**ورودی:** مقاله، پایان‌نامه، کتاب فنی یا مرجع به‌صورت فایل محلی، پیوست،
+صفحهٔ قابل‌دسترسی یا متن منبع. PDF به استخراج متن یا خواندن دیداری/OCR نیاز دارد.
+
+**خروجی:** متن قابل‌ویرایش TeX یا HTML همراه با PDF بررسی‌شده؛ یا متن بازبینی‌شده
+وقتی کاربر فقط متن بخواهد.
+
+**زبان منبع:** پیش‌فرض انگلیسی. **زبان مقصد:** فارسی علمی.
+
+## بدون پوسته
+
+ایجنت همچنان می‌تواند اسکیل و مراجعش را بخواند، اصطلاحات را تعیین کند، متن را
+ترجمه کند و یافته‌های بازبینی را ثبت کند. پردازش فایل، ساخت PDF و بررسی آن
+به محیطی نیاز دارند که بتواند ابزارها را اجرا کند. این مراحل تا زمان اجرای واقعی
+انجام‌نشده محسوب می‌شوند؛ وجود متن فارسی به معنی ساخته‌شدن PDF نیست.
+
+## معماری
+
+<div dir="ltr">
+
+```text
+source → inventory → terms → figures → translation
+                                      ↓
+                        fidelity → fluency → strict lint
+                                      ↓
+                            build → inspect → deliver
+```
+
+```text
+commands/                    translate-paper, resume and QA entry points
+install/                     shared installer + Bash/PowerShell launchers
+skills/revayat-scientific/
+  SKILL.md                   ordered stages and decisions
+  agents/openai.yaml         Codex discovery metadata
+  assets/                    TeX/HTML templates and terms header
+  references/                stage-specific policies
+  scripts/                   portable command and deterministic helpers
+tests/                       fixtures and public-command regressions
+tools/                       package construction and source validation
+docs/                        installation and architecture
+```
+
+</div>
+
+هر ترجمه پوشهٔ کاری مستقل با منبع، `inventory.md`، `terms.tsv`،
+`manifest.txt`، `progress.md` و متن قابل‌ویرایش دارد. شکست بررسی یا ساخت،
+PDF تحویل‌شدهٔ قبلی را حفظ می‌کند. مسیر پیش‌فرض `$HOME/Documents/books` است
+و `--output-dir` آن را عوض می‌کند. [معماری و مسئولیت‌ها](docs/architecture.md).
+
+## آنچه صادقانه باید گفت
+
+- عبور از بررسی مکانیکی، صحت علمی را اثبات نمی‌کند؛ معنا و روانی باید واقعاً خوانده شوند.
+- اسکن و PDF چندستونی به بررسی دیداری/OCR نیاز دارند. برش شکل‌ها تقریبی است و باید با منبع مقایسه شود.
+- بعضی فونت‌ها یا رندررهای HTML متن دشواری برای استخراج می‌سازند. معیار این ابزار خروجی نرمال‌شدهٔ PyMuPDF است، نه رفتار کپی در همهٔ نمایشگرها.
+- بازسازی دقیق صفحه‌آرایی ناشر تضمین نمی‌شود؛ محتوای علمی و خوانایی اولویت دارند.
+- CI ابزارها را با نمونه‌های آزمایشی می‌سنجد؛ کیفیت ترجمهٔ یک مقالهٔ دلخواه و رابط شناسایی همهٔ میزبان‌ها را ارزیابی نمی‌کند.
+
+## مستندات
+
+- [SKILL.md](skills/revayat-scientific/SKILL.md) — گردش کار کامل و مرتب
+- [سیاست ترجمه](skills/revayat-scientific/references/translation-policy.md) — دستور مترجم و بازبین
+- [استخراج](skills/revayat-scientific/references/extraction.md) — ثبت منبع و آماده‌سازی شکل‌ها
+- [اصطلاحات](skills/revayat-scientific/references/terminology.md) — تصمیم‌های مفهومی و سطح واژگان
+- [سبک علمی](skills/revayat-scientific/references/scientific-style.md) — فارسی علمی روشن
+- [راست‌به‌چپ](skills/revayat-scientific/references/rtl-bidi.md) — محدوده‌های کامل چپ‌به‌راست
+- [بازبینی](skills/revayat-scientific/references/review.md) — دقت، روانی و کامل‌بودن
+- [خروجی PDF](skills/revayat-scientific/references/pdf-output.md) — موتور، فونت و بررسی خروجی
+- [عیب‌یابی](skills/revayat-scientific/references/troubleshooting.md) — خطاها و راه بازیابی
+
+## توسعه
+
+<div dir="ltr">
 
 ```bash
 python -m unittest discover -s tests -p 'test_*.py' -v
@@ -95,15 +218,39 @@ python tools/validate.py
 python tools/package.py
 ```
 
-CI روی Linux، macOS و Windows اجرا می‌شود و ساخت واقعی PDF با Windows و XeLaTeX روی Linux را بررسی می‌کند. نمونه‌های تست ساختگی و موقت‌اند؛ مقالهٔ واقعی کاربر محسوب نمی‌شوند.
+</div>
 
-## قدردانی
+[CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
+روی Python 3.10 در Linux، نسخهٔ 3.14 در macOS و نسخهٔ 3.13 در Windows
+اجرا می‌شود؛ ساخت واقعی Windows، تست‌های بررسی متن و ساخت واقعی XeLaTeX در
+Linux را پوشش می‌دهد. CodeQL و بازبینی وابستگی‌ها فعال‌اند؛ Dependabot
+پکیج‌های Python و Actions را دنبال می‌کند. بستهٔ
+`dist/revayat-scientific.skill` مجوز و انتساب را همراه دارد و وابستگی‌های
+اجرایی در آن کپی نمی‌شوند.
 
-مبتنی بر [اسکیل اصلی isArman](https://github.com/isArman/scientific-fa-translation-skill)، با حفظ مجوز MIT و [انتساب](skills/revayat-scientific/NOTICE.md). ساختار بسته‌بندی از قراردادهای خانوادهٔ [Revayat Comic](https://github.com/KiaroSama/Revayat-Comic-Skill) و [Revayat Novel](https://github.com/KiaroSama/Revayat-Novel-Skill) پیروی می‌کند.
+### گزارش‌های اجرا
+
+گزارش فرمان اصلی در `logs/` داخل اسکیل و گزارش نصب و بسته‌بندی در
+`logs/` ریپو قرار می‌گیرد. نام هر اجرا
+`<command>_YYYY-MM-DD_HH-mm-ss_UTC.log` است و برخورد نام با پسوند حل می‌شود.
+گزارش UTF-8 شامل زمان UTC، سطح، عملیات، مدت و کد خروج است؛ متن سند،
+آرگومان‌ها و خروجی ابزارها در آن کپی نمی‌شوند. اگر ایجاد فایل ممکن نباشد،
+پیام در stderr نمایش داده می‌شود. گزارش‌ها محلی می‌مانند تا حذف شوند؛ TeX
+گزارش مستقل خود را کنار سند می‌نویسد.
+
+## سپاس
+
+مبتنی بر [اسکیل علمی isArman](https://github.com/isArman/scientific-fa-translation-skill)،
+با حفظ انتساب MIT در [NOTICE](skills/revayat-scientific/NOTICE.md).
+ساختار و شیوهٔ ارائه از خانوادهٔ
+[Revayat Comic](https://github.com/KiaroSama/Revayat-Comic-Skill) و
+[Revayat Novel](https://github.com/KiaroSama/Revayat-Novel-Skill) پیروی می‌کند.
 
 ## حمایت مالی
 
-If this project helps you, donations are appreciated.
+اگر این پروژه برای شما مفید است، می‌توانید از توسعهٔ آن حمایت کنید.
+
+</div>
 
 | Currency | Network | Address |
 | --- | --- | --- |
@@ -116,10 +263,16 @@ If this project helps you, donations are appreciated.
 | Solana (SOL) | Solana | `7B2wkczUjmkDhETwQuknBL8sUsbuV7nErxc317TmQuwR` |
 | Polygon (POL) | Polygon | `0x0Bd0BA443a8B9cf15922bf7f0Bb0a4b495fD06Ef` |
 
+<div dir="rtl">
+
 ## نویسنده
 
-Kiaro Sama - [GitHub](https://github.com/KiaroSama)
+نویسنده: Kiaro Sama  
+گیت‌هاب: [KiaroSama](https://github.com/KiaroSama)
 
 ## مجوز
 
-[GPL-3.0-or-later](LICENSE), with the scientific upstream MIT notice retained. Optional dependencies and source documents retain their own licenses.
+[مجوز عمومی گنو، نسخهٔ ۳ یا بالاتر](LICENSE). انتساب MIT کد علمی اولیه
+حفظ شده است؛ وابستگی‌های اختیاری و اسناد منبع مجوز مستقل خود را دارند.
+
+</div>

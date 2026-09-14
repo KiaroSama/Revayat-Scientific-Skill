@@ -29,7 +29,7 @@ through, with field terms kept English per `terminology.md`.
   | ارزیابی می‌کنیم | انجام یک ارزیابی از |
 
   Do **not** enforce this by grepping a fixed list. The fluency reader
-  in `ensemble.md` judges the whole sentence.
+  in `translation-policy.md` judges the whole sentence.
 - **Split long English sentences.** One English period may become two
   Persian sentences (or a short clause after `؛`). Do not keep a
   parenthesis-stuffed English mega-sentence as one Persian blob.
@@ -122,7 +122,7 @@ reason.
 ### Fluency pass
 
 After terminology is locked in `terms.tsv` and a part is drafted and
-lint-clean, run the **fluency reader** step in `ensemble.md` using the available review arrangement. Gold standard is the Canonical
+lint-clean, run the **fluency reader** step in `translation-policy.md` using the available review arrangement. Gold standard is the Canonical
 manner above **and** the paragraphs in `fluency-gold.md`. The model
 decides whether the Persian matches that voice; the primary revises
 only flagged spans. Also fix the five EN→FA structure failures below
@@ -171,7 +171,7 @@ is technically accurate and still unreadable.
 `scripts/check-fa.py` fails the build on the letters, ZWNJ verbs and
 plurals, Latin comma/semicolon/question mark, Eastern digits, and Arabic
 decimal separators in this section. Register fluency is a model
-judgement (`ensemble.md` fluency reader), not a pattern match. SI unit
+judgement (`translation-policy.md` fluency reader), not a pattern match. SI unit
 conversion, hedges, ezafe chains, and the rest of register beyond that
 pass are judgement — `review.md`.
 
