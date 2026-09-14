@@ -546,7 +546,15 @@ if command -v xelatex >/dev/null 2>&1 \
     && command -v kpsewhich >/dev/null 2>&1 \
     && kpsewhich xepersian.sty >/dev/null 2>&1; then
   smoke=$(mktemp -d)
-  cp "$skill/assets/rtl-document.tex" "$smoke/smoke.tex"
+  # Fill the template: its empty body/English colophon is not a text-order specimen.
+  python3 - "$skill/assets/rtl-document.tex" "$fixtures/build-smoke-body.tex" "$smoke/smoke.tex" <<'PY'
+from pathlib import Path
+import sys
+template, body, destination = map(Path, sys.argv[1:])
+text = template.read_text(encoding="utf-8")
+text = text.replace(r"\maketitle", r"\maketitle" + "\n" + body.read_text(encoding="utf-8"))
+destination.write_text(text, encoding="utf-8")
+PY
   if (cd "$smoke" && xelatex -interaction=nonstopmode -halt-on-error \
         smoke.tex >/dev/null 2>&1); then
     echo "ok   rtl-document.tex compiles with XeLaTeX"
@@ -560,6 +568,7 @@ if command -v xelatex >/dev/null 2>&1 \
       else
         echo "FAIL XeLaTeX PDF was not logical order (rc=$order_rc)"
         echo "$order_out" | sed 's/^/    /'
+        pdftotext -raw "$smoke/smoke.pdf" - | python3 -c 'import sys; print(ascii(sys.stdin.read()))'
         fail=1
       fi
     else
