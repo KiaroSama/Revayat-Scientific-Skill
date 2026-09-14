@@ -7,3 +7,12 @@
 `install/install.py` stages allowlisted payload files before replacing an installation, retaining its previous copy. Shell entrypoints share this implementation. `tools/package.py` uses the same payload selection. Tests exercise public commands, installed packages and scientific fixtures; CI adds actual renderer checks.
 
 Job data stays outside the installed skill: preserved sources, inventory, terms, figure manifest, progress, editable document and delivered PDF. A failed build or requested verification preserves the previous delivered PDF. Logs contain operation names, durations and exit codes, not document text.
+
+Source-language profiles guide direct translation and scoped linguistic research;
+they are agent instructions, not installed translation models or accuracy claims.
+The coverage map binds source locations/languages to target anchors and review
+state. The agent compares source/output page geometry and image fidelity; generic
+build verification does not perform those comparisons automatically. Raster crops
+use a requested minimum DPI and preserve higher embedded-image sampling, with a
+pixel-allocation limit instead of silent downsampling. Research references record
+adopted lessons without bundling third-party code, corpora or model weights.

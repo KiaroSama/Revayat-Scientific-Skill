@@ -1,244 +1,120 @@
 # Terminology policy
 
-Single owner of the keep-English / write-Persian split.
-`scientific-style.md` owns register and orthography, `glossary.md` holds
-the house lists (document chrome, keep-English classes, recurring
-infrastructure nouns), and `term-pairs.tsv` is the machine-readable half
-that `scripts/check-fa.py` enforces. Do not restate this policy anywhere
-else.
+This file owns the choice between Persian concepts and preserved source terms.
+`scientific-style.md` owns register; `rtl-bidi.md` owns direction. The source can
+be in any language: follow [source-languages.md](source-languages.md) at intake.
+Choose terms for the actual discipline, audience and sense, not a generic word list.
 
-There is no per-field glossary in this skill. It covers **any** scientific
-or technical book—especially software—not a single product stack. Infer
-the **jobs** and the **subjects** from the source in hand (library
-manuals, database guides, ML texts, compilers, papers, web-server books,
-…). Counts are not fixed — choose how many of each the source needs. Do
-not look up a pack name, and do not write terms into `glossary.md`.
+## Level and audience
 
-## Level
-
-Two levels, because a sysadmin install guide and a journal paper cannot take
-the same treatment. Announce the level in the first chat message.
-
-| Level | For | Job lexicon (one-word field nouns) |
+| Level | Select for | Terminology treatment |
 | --- | --- | --- |
-| `system-docs` (default) | books, install guides, protocol specs, product docs, RFC/BIP, runbooks | English (`deployment`, `upstream`, `configure`) |
-| `journal` | papers, theses, review articles for a general scientific audience | Persian, unless the token is in the subject lexicon |
+| `journal` | Scientific papers, theses, research reviews and scholarly books | Prefer established Persian concepts, including multi-word terms; give the original designation at first use when useful |
+| `system-docs` | Operational manuals, product/API documentation, installation guides and runbooks | Preserve exact tooling names and the familiar operational lexicon; translate ordinary explanation into Persian |
 
-The **subject** lexicon (products, protocols, tools the document is about)
-stays English at both levels. The level only moves the boundary for the
-**job** lexicon — ordinary one-word terms of the practice — and their
-operation verbs. The user switches with «سطح journal» or «سطح system-docs».
+Choose `journal` for a research paper even though the helper CLI's legacy default
+is `system-docs`. Pass the selected level explicitly to lint/build. A technical book
+is not automatically a system manual: infer genre from its content. The user's
+explicit choice wins. Both modes preserve equations, identifiers, citation targets,
+proper-name identity and official artifact names.
 
-### Audience (do not collapse these)
+A concept does not become English-only because it is central to a paper or contains
+two to five words. For example, causal effect can be اثر علّی, confidence interval
+فاصلهٔ اطمینان, and reference implementation پیاده‌سازی مرجع in journal prose.
+Those are candidate discipline-appropriate forms, not a replacement for the source
+or the user's approved glossary. Keep `PyTorch`, `PCR`, `HTTP`, `Adam`, `p`,
+`fit(x)`, DOI strings and executable option names exact.
 
-- **`system-docs`.** Write for practitioners who already live in the
-  English tooling lexicon. Prefer the community designation (`deployment`,
-  `source code`, `request`) over Academy neologisms that specialists do
-  not actually use. Unfamiliar coined Persian that forces the reader to
-  re-translate mentally is a terminology failure, not a patriotic success.
-- **`journal`.** Write for a general scientific reader. Where a Persian
-  designation is **stable and familiar** in that discipline (and not a
-  house-forbidden calque for a kept subject term), prefer Persian and
-  gloss the English once on first mention. Where the Academy form is
-  unused or ambiguous in the field, keep English — familiarity beats
-  novelty. Subject-lexicon tokens stay English at this level too.
+## Decide in context
 
-Announce level, jobs, subjects, and **genre** (`tutorial`, `reference`,
-`paper`) with the first terminology message. Genre only shifts tone
-(`scientific-style.md`); it does not move the keep-English boundary.
+Apply the first matching rule to the complete source concept:
 
-## Concept-oriented `terms.tsv`
+0. **Generic document label:** translate the function into Persian in every source
+   language: abstract, methods, figure, appendix and contents. A heading containing
+   an artifact name can have Persian explanatory words around its exact name.
+1. **Verbatim identity or notation:** preserve source spelling for code, identifiers,
+   official product/model/standard names, units, formulas and reference entries.
+   Do not force Arabic, Cyrillic or CJK names through an invented English spelling.
+2. **Approved concept:** use the job's preferred form for the same sense, source
+   language and domain. A glossary of another meaning does not override context.
+3. **Journal concept:** use familiar, accurate scholarly Persian for descriptive
+   technical terms, including multi-word phrases. Give the original term once if
+   it aids lookup or disambiguation. If no reliable Persian equivalent exists,
+   retain the original and record the choice as provisional until reviewed.
+4. **System-document term:** retain a defined command, configuration label or
+   operational term where the original form is what practitioners use. Preserve a
+   kept multi-word label as a whole; do not translate half of its locked identity.
+5. **Ordinary prose:** write natural Persian. An ordinary verb or noun does not
+   need an English isolate merely because it occurs in a scientific document.
 
-Before drafting, lock designations in a working-tree `terms.tsv`
-(`long-documents.md`). Treat it as a **concept entry list**, not a flat
-word dump (ISO 704 / ISO 12616 practice, simplified for one job):
+For a close decision, consult the source definition, an approved glossary and
+comparable publications in that discipline. Record the source/evidence and reason.
+Neither a rare coinage nor the shortest English form is automatically superior.
+A disputed community proposal is a candidate, not a settled standard.
 
-| Column | Required | Meaning |
-| --- | --- | --- |
-| `source` | yes | English (or source-language) designation as it appears |
-| `output` | yes | Form that must appear in the translation |
-| `step` | yes | Decision step / reason (`subject-lexicon`, `job-lexicon`, `prose`, `chrome`, …) |
-| `count` | yes | Rough occurrence count in the source |
-| `forbidden_fa` | yes on keep-English rows | Persian calque that must never replace `output` |
-| `concept` | recommended | Short concept id shared by synonyms (`cfg-deploy`, `src-code`) |
-| `status` | recommended | `preferred` (default), `admitted`, or `deprecated` |
-| `admitted` | no | Pipe-separated alternate OK forms |
-| `deprecated` | no | Pipe-separated extra forms to avoid (checker also forbids these) |
+## One concept, one preferred form
 
-Rules:
+Create `WORK/terms.tsv` before drafting; retain it with the editable document.
+Use [the template](../assets/terms.tsv). Existing required columns stay compatible:
+`source`, `output`, `step`, `count`, `forbidden_fa`. Recommended columns:
+`concept`, `status`, `admitted`, `deprecated`. For multilingual jobs, the agent may
+add `source_lang`, `context` and `evidence`; the current checker ignores these extra
+columns, so the fidelity reviewer must inspect them.
 
-- One **preferred** designation per `concept` for the whole document.
-- Keep-English preferred rows must set `forbidden_fa` (and usually list
-  further junk forms in `deprecated`).
-- Persian-output prose/chrome rows leave `forbidden_fa` empty.
-- Never half-translate a concept. Never write two preferred forms for
-  one concept.
-- Retain `terms.tsv` with the job for resumption; do not merge it into `glossary.md`.
+- Key a choice by sense and discipline. Selection bias, estimator bias and neural
+  network bias need separate concept decisions; the spelling bias alone is not a
+  sufficient identifier. Do not replace every occurrence of an ambiguous word.
+- Distinguish a translated descriptive name from a quoted identifier. Original
+  source aliases and an official English alias, if one exists, can aid lookup.
+- `preferred` governs output; `admitted` is not a second interchangeable preferred.
+  Mark uncertainty in notes rather than inventing an authoritative equivalent.
+- Record the selected ledger revision with each reviewed part. Drafting, reviewing
+  and resuming use that same ledger. An explicitly supplied unreadable glossary is
+  an error; do not silently substitute another or overwrite user corrections.
+- When a term changes, find affected parts and review those spans and nearby
+  references. A source or glossary change invalidates their prior review status.
+- Reuse neighbor context to resolve pronouns and repeated names. Keep the source
+  text and its scientific meaning as the authority when a ledger entry is wrong.
 
-Example:
+## First mention, morphology and direction
 
-```text
-source	output	step	count	forbidden_fa	concept	status	admitted	deprecated
-source code	source code	3 job-lexicon	12	کد منبع	src-code	preferred		کد مبدأ|کد اصلی
-deployment	deployment	3 job-lexicon	22	استقرار	cfg-deploy	preferred		
-DataLoader	DataLoader	3 subject-lexicon	40	بارگذار داده	ml-dataloader	preferred		
-WAL	WAL	3 subject-lexicon	15	لاگ پیش‌نوشته	pg-wal	preferred		
-security	امنیت	5 prose	41		sec-generic	preferred		
-Introduction	مقدمه	0 chrome	1		chrome-intro	preferred		
-```
+In `journal`, introduce a useful original designation once after the Persian term;
+subsequent mentions use the preferred Persian form. Repeated parenthetical English
+is noise. In `system-docs`, retained operational terms normally need no gloss.
 
-## Infer jobs and subjects
+Keep the full retained expression together and isolate it according to its own
+script. Latin/Cyrillic/CJK normally use LTR; Arabic/Urdu/Hebrew originals use RTL.
+Use [source-languages.md](source-languages.md) for non-Persian quote exceptions and
+font checks. Do not reverse character order or remove diacritics from originals.
 
-Before classifying tokens, read enough of the source to name these, and
-announce them with the level. **Counts are not fixed** — choose how many
-jobs and how many subjects the source needs; do not pad to three and do
-not force a single subject when the document is clearly about more than
-one product.
+For an ordinary retained English term, Persian plural morphology may use
+`\en{service}ها`. Preserve true names such as `Windows` and source-language titles
+unchanged. English plural rules do not apply to French, German or other original
+forms. Avoid ambiguous affix glue; rephrase the Persian sentence around the exact
+identifier when needed. Do not apply a system-docs half-translation heuristic to
+forbid accurate scholarly Persian descriptions around a named algorithm.
 
-- **Jobs** — one or more short practice labels, ranked by how much of the
-  source they cover (`software development`, `DevOps`, `networking`,
-  `Linux`, …). Include a broader practice when it supplies lexicon the
-  narrower ops labels miss (e.g. `software development` so `source code`
-  stays English in a Kubernetes book). Each label must be a real thread
-  in the source (a chapter, audience, or repeated terms of art). Do not
-  invent a practice the source does not use. The **job lexicon** is the
-  union of the jobs you named.
-- **Subjects** — one or more products, protocols, tools, or corpora the
-  document is about (`nginx`, `Kubernetes`, `Helm`, Bitcoin, ImageNet,
-  …). When two tools are co-equal topics, name both; when everything
-  orbits one product, name one. The **subject lexicon** is the union of
-  those subjects.
+## Mechanical coverage and its limits
 
-Those names are not pack ids and are not looked up in this repository.
-Examples: jobs `software development`, `DevOps`; subjects `Kubernetes`,
-`Helm`; level `system-docs`. Or jobs `machine learning`, `Python`;
-subject `PyTorch`; level `system-docs`. Or jobs `databases`,
-`software development`; subject `PostgreSQL`; genre `reference`.
+`term-pairs.tsv` contains the house system-document bans. Its `system-docs` rows,
+including descriptive multi-word labels, are skipped at `journal`. The optional
+`all` value remains available for explicitly justified rules applying to both
+levels. A word's presence in a house table is not evidence about every discipline.
 
-Then every term that belongs to that job lexicon **or** that subject
-lexicon stays English: directives, modules, CLI flags, config keys,
-named blocks, operation verbs of those terms, and multi-word labels in
-that lexicon.
-
-A token belongs to the inferred lexicon when at least one of these holds:
-
-- it is a name, directive, module, flag, API, or config key of a named
-  subject (`nginx` / `location`, `PyTorch` / `DataLoader`, `PostgreSQL` / `WAL`);
-- it is a term of art of one of the named jobs as this document uses it
-  (the field-term test below);
-- it appears in the source's own glossary, or in a named subject's man
-  page, `--help`, or spec index.
-
-It does **not** belong when it is ordinary dictionary use in a sentence
-about something else. In an nginx book, `location` as a block directive stays English; in a
-PyTorch book, `DataLoader` stays English; «if the file is missing» is
-ordinary prose (فایل / پرونده) unless `file` is locked as a term of art.
-In «increase security using firewalls», `security` is امنیت and
-`firewalls` stays English.
-
-Do not append rows to `glossary.md`. Do not create `glossary.local.md`.
-Lock the choices in the working tree as `terms.tsv` (`long-documents.md`)
-and discard that file with the job.
-
-## Decision procedure
-
-Ordered. First match wins. Apply to each source token or noun phrase.
-
-0. **Document chrome.** A generic IMRAD or book label — `Abstract`,
-   `Introduction`, `Methods`, `Results`, `Discussion`, `Conclusion`,
-   `References`, `Figure`, `Table`, `Equation`, `Section`, `Appendix`,
-   `Contents` / `Table of contents` / `Brief contents`, `Foreword`,
-   `Preface` — is Persian, always, at every level. This step exists so a
-   source glossary cannot drag `Introduction` into English. It applies
-   only to the bare label, never to a heading that names an artifact. A
-   book contents page is translated and printed; omitting it is a missing
-   section, not a layout choice.
-1. **Named artifact.** Product, project, algorithm, library, protocol,
-   standard, opcode, identifier, acronym, unit, statistical symbol,
-   person, journal, conference, DOI, URL, licence → English.
-2. **Multi-word technical label.** A 2–5 word noun phrase that names a
-   component, role, requirement class, or configuration in this document
-   → English, the **whole** phrase, one isolate. Covers *X of Y*,
-   *Adjective + Name*, and *Name + common noun*.
-3. **Inferred lexicon.** Subject lexicon → English at both levels.
-   Job lexicon → English at `system-docs`, including the operation verb
-   of the same term; at `journal`, Persian unless step 1 or 2 already
-   claimed it.
-4. **Listed as Persian** in `glossary.md` → Persian.
-5. **Otherwise** ordinary scholarly prose → Persian.
-
-Tie-break when steps 1–3 are genuinely uncertain: at `system-docs` keep the
-whole noun phrase English; at `journal` write Persian and gloss the English
-once, unless the token is clearly part of the subject (`nginx`, `location`).
-Record the choice in `terms.tsv` when that file exists. Never resolve
-uncertainty by half-translating. Never write the choice into the skill's
-glossary.
-
-## The field-term test
-
-A token is a field term of art of one of the named **jobs** when at least
-one of these holds:
-
-- it appears in the source document's own glossary or terminology section;
-- it appears in the upstream project's official glossary, man page,
-  `--help` output, or spec index;
-- the source itself marks it as defined — monospace, italics on first
-  use, or capitalised mid-sentence.
-
-## Isolation and morphology
-
-Mechanics live in `rtl-bidi.md`. Three rules belong here because they are
-terminology decisions, not layout:
-
-- One isolate per whole noun phrase, never one isolate per word.
-- Regular English plurals of a kept term drop `-s` / `-es` / `-ies`. The
-  singular stem stays in the isolate; Persian `ها` (or `های` / `هایی`)
-  follows it: `\en{service}ها`, `\en{platform}ها`, `\en{API}ها`,
-  `\en{OpenStack service}ها`. Never `services`, `platforms`, `APIs`,
-  `nodes`. Names that merely end in *s* (`Kubernetes`, `Windows`) stay
-  as written. Do not attach any other Persian affix (`\en{Go}ی`).
-- No Persian head noun in front of an English name. `\en{OpenStack
-  service}ها` stays whole; «سرویس‌های OpenStack» is a half-translation,
-  not a compromise.
-
-## First mention and consistency
-
-At `system-docs`, no gloss on first mention. At `journal`, one gloss is
-allowed the first time a Persian **preferred** term carries an English
-concept (and only when that Persian form is the chosen `output`).
-
-One **preferred** form per `concept` for the whole document, in both
-directions: never mix `location` and مکان, never mix a preferred English
-form with an unisolated bare copy, and never silently upgrade an
-`admitted` synonym into a second preferred. For anything longer than a
-few pages, produce the concept-oriented `terms.tsv` in
-`long-documents.md` **before** translating the body. Pass it with
-`--terms terms.tsv` so a calque or deprecated form in chapter nine fails
-the build.
-
-## Forbidden output
-
-The canonical house list is `term-pairs.tsv`, not prose. Each row pairs a
-source term with the Persian calque that must never replace it, and a
-`levels` column: `system-docs` for one-word field nouns (skipped at
-`--level journal`) or `all` for multi-word labels kept English at both
-levels. The checker reads the whole file. Add a row there in the same
-commit as any new Keep-English note in `glossary.md`, then confirm with:
+The checker also reads job terms. Its legacy keep-original Latin rows require an
+actual `forbidden_fa` counterform and may forbid `deprecated` forms. Use concrete
+wrong alternatives, never invented filler merely to fill a cell. Terms whose exact
+identity needs preservation but has no useful global ban can be recorded as
+protected source objects in the inventory and checked in fidelity review.
+The checker does not understand word senses or language-specific inflection.
+Do not globally ban a Persian form that is valid for another concept in the same
+file. Separate the relevant part's ledger/scope and review the ambiguity explicitly.
 
 ```bash
-scripts/check-fa.py path/to/doc.tex --level system-docs --terms terms.tsv --manifest manifest.txt --strict
+"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
 ```
 
-House `system-docs` rows today: `node`, `deployment`, `configuration`,
-`implementation`, `integration`, `firewall`, `encryption`, `command`,
-`server`, `partition`, `filter`. At `journal` those one-word forms are
-Persian unless they are in the inferred subject lexicon. A kept-term
-plural is `\en{node}ها`, not `nodes` and not گره‌ها.
-
-`--terms FILE` reads this job's `terms.tsv` and forbids `forbidden_fa`
-plus any `deprecated` forms on keep-English rows. An empty
-`forbidden_fa` on those rows is an error. Optional columns (`concept`,
-`status`, `admitted`, `deprecated`) are ignored when absent so older
-five-column files still lint. `--pairs FILE` merges extra rows in
-term-pairs format. Neither is a reason to write a glossary file into the
-skill.
+A clean result proves only the implemented string/structure checks. Verify preferred
+Persian outputs, context, definitions and source-language meaning by reading.
+Do not modify the shipped glossary during a translation job; capture job-specific
+knowledge with that job so later agents can resume it.
