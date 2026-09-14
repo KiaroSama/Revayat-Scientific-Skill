@@ -17,6 +17,7 @@ $HOME/Documents/books/_work/<slug>/
   manifest.txt       one image basename per line
   terms.tsv          every job: concept-oriented terminology ledger
   progress.md        section ledger (see long-documents.md)
+  coverage.tsv       source locations/languages and target anchors
   doc.tex / doc.html the translation being built
 ```
 
@@ -45,9 +46,10 @@ pdftotext -layout source/doc.pdf source/doc.txt   # text, reading order kept
 pdfinfo source/doc.pdf                            # page count for inventory
 ```
 
-`-layout` matters: without it, two-column papers interleave. Do not treat
-`pdftotext` output of an RTL document as visual truth — that applies to
-checking your own output, not to reading an English source.
+`-layout` can help, but compare reading order with rendered columns; extraction is
+not proof of correct order in any source language. Read `source-languages.md` for
+language/script identification and quote-safe processing. Record source page/book
+dimensions and original image pixels using `layout-and-images.md` before drafting.
 
 ## Extracting figures
 
@@ -73,7 +75,7 @@ figure**, not the whole source page around it.
 
    ```bash
    scripts/crop-source-figures.py source/doc.pdf --out figures/artwork \
-       --map figures-map.tsv --cover --author-page 18
+       --map figures-map.tsv --cover --author-page 18 --dpi 300
    ```
 
    `figures-map.tsv` is `figure_id`, optional printed page, then **PDF page**.

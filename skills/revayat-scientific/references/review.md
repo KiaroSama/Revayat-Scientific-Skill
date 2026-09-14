@@ -1,114 +1,111 @@
 # Review mode
 
-Second entry point of this skill: judging an existing translation instead of
-producing one. Trigger it when the user asks whether the skill was applied
-correctly, asks for a review or ویرایش of a finished PDF, or hands back an
-output with highlights. Do not silently rewrite the document — review first,
-then offer the edit.
+Use for a translation's review stage or a user-requested audit of an existing
+translation. A review-only request produces findings first. If the user already
+requested corrections or a completed translation, apply necessary corrections
+within that scope and review the changed spans again; no extra approval loop.
 
-## Inputs
+## Inputs and review scope
 
-Best case the working tree from `extraction.md` still exists and the
-`.tex` / `.html` is available. If only the PDF exists, rasterise it and work
-from images plus whatever source text can be recovered; say in the report
-that the check was visual and therefore partial.
+Read the original, editable translation, source-language profile, inventory,
+coverage map, selected terminology revision and progress. The source can be in
+any language; [source-languages.md](source-languages.md) governs interpretation.
+If the original is absent, assess Persian fluency/presentation only and disclose
+that fidelity cannot be verified. A translation PDF alone cannot prove the source
+was preserved. Record reviewer identity/mode and exactly which parts were read.
 
-## Order of work
+## L0 — Mechanical checks
 
-Follow Mossop-style layers. Finish each layer before the next. Do not
-silently rewrite until the report is accepted.
-
-### L0 — Mechanical (machine)
-
-Run the checker over every source file:
-
-```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint parts/*.tex --level <selected-level> --terms terms.tsv --manifest manifest.txt --strict
-```
-
-This settles orthography, forbidden / deprecated calques, half-translated
-noun phrases, split isolates, English `-s` plurals of kept terms,
-leftover Latin ezafe, listing direction, and missing images. Report
-counts only — do not spend human review on this list.
-
-### L1 — Transfer (claims and hedges)
-
-Sample abstract / intro, one methods-heavy or procedure-heavy section,
-one hedged section, and the conclusion. Compare to the source for added,
-dropped, or hardened claims. Hedges (`may`, `might`, `suggest`, `remain
-unknown`) and negative results are the usual casualties.
-
-**Back-translation spot-check:** pick about 1–2 % of sentences that
-carry hedges or numbers (cap 12). Mentally or on paper render them back
-to English and confirm the epistemic force and quantities match. Record
-mismatches as transfer findings, not as fluency nits.
-
-### L2 — Content / terminology
-
-Compare the output against concept-oriented `terms.tsv`: one preferred
-form per `concept`; jobs/subjects lexicon stayed English; no silent use
-of `deprecated` or `admitted` as a second preferred. Without `terms.tsv`,
-extract every isolate and look for two forms of one concept, and for any
-term that appears both English and Persian.
-
-### L3 — Language / fluency
-
-Run (or re-run) the fluency-reader brief in `translation-policy.md` on running
-prose, scoring against Canonical manner and `fluency-gold.md`, recording whether review was independent or self-review. Also flag over-English: Latin
-isolates that are ordinary dictionary words, not terms of art. Glance at
-ezafe chains, over-nominalisation, and passive piles. Do not "fix"
-fluency by softening hedges.
-
-### L4 — Presentation (visual / RTL)
-
-Rasterise a spread of pages and look at them. Never judge RTL from
-`pdftotext`.
+Run strict lint with the job's explicit level, terms and scoped figure manifest.
+Use the full manifest for the assembled document, part-specific manifests for
+partial files. Check findings against their source context; the checker cannot
+resolve scientific senses or proofread every retained source language.
 
 ```bash
-pdftoppm -png -r 110 -f 1 -l 4 out.pdf /tmp/rev-p
-pdffonts out.pdf | head
-pdfinfo out.pdf | grep Pages
+"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
 ```
 
-Look for: sentence-final periods on the correct side, parentheses that
-enclose the English rather than the Persian, numbered English headings
-that still read `3.1 Title` (not `Title 3.1`), listings left-aligned,
-figures matching the **artwork** on the source page (not black, not
-mirrored, not a dump of the English page around the figure) and in
-source order, tables whose headers repeat across pages, no missing-glyph
-boxes. If a figure still shows a source running header or an English
-body paragraph, the crop is wrong.
+A narrowly documented quote exception may be valid. Never hide a real Persian
+error or use `allow all` to obtain a green result. Fixing punctuation must not
+rewrite code, URLs, formulas, identifiers or original-language quotations.
 
-### L5 — Completeness
+## L1 — Meaning and scientific force
 
-Figure count against `manifest.txt`, section list against `inventory.md`,
-page count sanity, and the deliverable actually at
-the selected output directory and filename. For a book, the printed pages
-must include `فهرست مطالب` matching the source contents — not only a PDF
-outline, and not omitted because it looked like chrome.
+For a full translation, compare every selected source part with its target;
+check critical claims, numbers, equations, table cells, captions, notes and cited
+relationships. Sampling is useful for triage or an explicitly scoped audit, but
+must not be reported as full-document review.
 
-## Report shape
+Inspect actor, action/relation, condition, quantifier, negation, modality and
+reference target. Prioritize added/omitted claims, sign or exponent changes,
+wrong units, correlation→causation, no-significance→equivalence, and misleading
+rounding. Check source-language endings and qualifiers before approving Persian.
+Back-translate a small set of difficult hedges/numerical statements **into the
+original language** as an additional diagnostic, then compare with the actual
+original. English pivot agreement or the same model agreeing with itself is not
+independent evidence. Unreadable source material remains unresolved.
 
-Lead with the verdict, then evidence. Four parts, in this order:
+## L2 — Terms and document context
 
-- **Verdict** — is it usable as it stands, and if not, why.
-- **Findings that must be fixed** — each with a file and line, grouped by
-  Mossop layer (L0–L5) and cause rather than by location, so the fix is one edit per group. Put back-translation mismatches under L1.
-- **Borderline, not errors** — decisions that look wrong but follow the
-  policy, named explicitly so they are not "fixed" later. Ordinary-prose
-  «سرویس‌ها» without a preceding English name is the standard example.
-- **Engine limits** — anything caused by the PDF engine rather than the
-  translation, e.g. WeasyPrint's partial `unicode-bidi: isolate` support,
-  or copy-paste reversing Persian on a Chromium/WeasyPrint PDF (visual
-  text order). Do not report an engine limit as a translation error.
+Use the same `terms.tsv` revision used for the draft. Prefer the approved form
+for the matching concept, domain and source language. Keep exact identifiers;
+allow established Persian multi-word concepts at `journal`. Do not treat a house
+system-document ban as proof that a scholarly Persian equivalent is wrong.
+Check repeated names, pronoun antecedents and abbreviations across part boundaries.
+Neighbor context is for interpretation, not duplicate output. Source or term changes
+invalidate affected review status; re-review these spans instead of trusting a stale
+checkpoint. The checker does not enforce sense-specific preferred Persian forms.
 
-Say which checks were mechanical and which were judgement. A review that
-cannot distinguish the two invites a second review of the same file.
+## L3 — Persian readability
 
-## After the report
+Read target prose alone against [scientific-style.md](scientific-style.md) and
+[fluency-gold.md](fluency-gold.md). Flag unclear predicates, ambiguous ezafe chains,
+word-for-word source structure, excessive nominalization and unnecessary foreign
+jargon. Judge verbs/passives in context; do not turn editorial preference into an
+accuracy error. Preserve author voice and scientific force while improving flow.
+After a fluency edit, return to L1 for the changed span.
 
-Offer the repair as a separate step, and when the user accepts, fix by cause
-across the whole document rather than at the reported locations only — a
-calque found in a glossary caption is almost always present in three other
-captions. Re-lint, rebuild, and re-verify; then report the new path and page
-count.
+## L4 — Page and image fidelity
+
+Follow [layout-and-images.md](layout-and-images.md). Measure output physical page
+sizes/orientations and applicable print boxes against the source inventory. Inspect
+all unusual page classes and all modified/low-resolution figures, plus first,
+middle and last page samples. Verify original pixel information, effective PPI,
+aspect ratio, labels, scale bars, source order and unmodified scientific evidence.
+A larger pixel count does not prove successful enhancement.
+
+Inspect actual rendered pages for Persian joining, punctuation, script glyphs,
+clipping, table relationships and complete math. Keep original Arabic/Urdu/Hebrew
+quotes RTL and appropriate LTR source spans isolated. Do not diagnose visual order
+from extracted text alone or claim that selecting a font proves correct shaping.
+Generic build verification does not automatically compare original page geometry.
+
+## L5 — Completeness and handoff
+
+Reconcile `coverage.tsv` with the source inventory. Each location appears once in
+its intended role or has a recorded reason to remain original. Check for missing,
+duplicate, empty, truncated or source-mismatched parts. Identical paragraphs at
+different source locations remain distinct; a content hash alone is not an ID.
+Figures match the manifest; tables/notes/appendices and a source contents page are
+accounted for. Reflow may change page count, not source coverage or physical format.
+Check actual output paths and the translation log beside the delivered file.
+
+## Finding records and acceptance
+
+Each finding records: source location/language, exact source and target spans,
+category, severity, consequence, correction and recheck status. Categories are
+accuracy, terminology, fluency, locale/notation, layout/image or completeness.
+Severity follows consequence: `critical` changes a central scientific/safety claim;
+`major` changes meaning or loses content; `minor` impairs presentation without
+changing meaning; `preference` is an equally accurate editorial alternative.
+This is an adapted review vocabulary, not a calibrated MQM score or certification.
+
+Resolve critical/major findings before marking the affected part `done`. Record
+minor unresolved limits explicitly. Do not hide a critical error in an average
+score or claim unseen parts passed. Report `self-review`, the actual separate
+reviewer or `unreviewed`; model count alone does not establish independence.
+
+Lead the report with usability and scope, then actionable findings, policy-correct
+borderline cases and unperformed/engine-limited checks. Record corrections and
+their reasons throughout the translation log. A final fluent paragraph is not a
+substitute for a traceable source comparison.
