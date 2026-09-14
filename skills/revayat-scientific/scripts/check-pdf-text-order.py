@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Detect visual-order (reversed) Persian in a PDF text stream.
+"""Check Persian extraction order with PyMuPDF, honoring PDF ActualText.
 
-Chromium --print-to-pdf and typical WeasyPrint runs paint RTL correctly
-but write the *visual* glyph order into the content stream. Copy-paste
-and `pdftotext -raw` then reverse the Persian. XeLaTeX + xepersian writes
-logical order.
-
-CSS dir=rtl does not fix extraction. This script compares Persian phrases
-from the print source with `pdftotext -raw` (content-stream order, not the
-default bidi "reading order").
+Compare source phrases with unsorted PyMuPDF text extraction. This measures
+that extractor's output, not every viewer's clipboard. Poppler's pdftotext
+adds bidi controls and can reverse RTL fragments even with -raw, so stripping
+those controls does not reveal the PDF's stored Unicode order.
 
 Usage:
     check-pdf-text-order.py doc.pdf --source doc.tex
@@ -16,12 +12,13 @@ Usage:
 
 Exit 0: logical order, or not enough evidence.
 Exit 1: usage / missing tools.
-Exit 2: visual order — copy-paste will reverse Persian.
+Exit 2: source phrases are reversed in this extractor's output.
 """
 from __future__ import annotations
 
 import argparse
 import html as html_mod
+import importlib.util
 import re
 import subprocess
 import sys
@@ -140,26 +137,37 @@ def classify(
     return "inconclusive"
 
 
-def pdf_raw_text(pdf: Path) -> str:
+def pdf_text(pdf: Path) -> str:
+    if importlib.util.find_spec('pymupdf') is None:
+        print('check-pdf-text-order: PyMuPDF is required; install the skill requirements',
+              file=sys.stderr)
+        sys.exit(1)
+    code = (
+        'import sys,pymupdf; sys.stdout.reconfigure(encoding="utf-8"); '
+        'doc=pymupdf.open(sys.argv[1]); '
+        'print("\\f".join(page.get_text("text", sort=False) for page in doc),end=""); '
+        'doc.close()'
+    )
     try:
         proc = subprocess.run(
-            ["pdftotext", "-raw", "-nopgbrk", str(pdf), "-"],
+            [sys.executable, '-c', code, str(pdf)],
             check=False,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             timeout=60,
         )
     except subprocess.TimeoutExpired:
-        print("check-pdf-text-order: pdftotext timed out", file=sys.stderr)
+        print("check-pdf-text-order: PyMuPDF extraction timed out", file=sys.stderr)
         sys.exit(1)
     except FileNotFoundError:
-        print("check-pdf-text-order: pdftotext not found (poppler-utils)",
+        print("check-pdf-text-order: Python extractor could not start",
               file=sys.stderr)
         sys.exit(1)
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or "").strip()
-        print(f"check-pdf-text-order: pdftotext failed: {err}", file=sys.stderr)
+        print(f"check-pdf-text-order: PyMuPDF extraction failed: {err}", file=sys.stderr)
         sys.exit(1)
     return proc.stdout or ""
 
@@ -170,7 +178,7 @@ def main() -> int:
     ap.add_argument("--source", type=Path, required=True,
                     help="print source (.tex or .html)")
     ap.add_argument("--extracted", type=Path,
-                    help="use this text dump instead of pdftotext -raw")
+                    help="classify an already extracted text dump")
     ap.add_argument("--min-letters", type=int, default=12)
     args = ap.parse_args()
 
@@ -189,7 +197,7 @@ def main() -> int:
         if not args.pdf.is_file():
             print(f"check-pdf-text-order: not a file: {args.pdf}", file=sys.stderr)
             return 1
-        extracted = pdf_raw_text(args.pdf)
+        extracted = pdf_text(args.pdf)
 
     kind = classify(windows, extracted, min_letters=args.min_letters)
     n = len(windows)
@@ -199,8 +207,8 @@ def main() -> int:
     )
     if kind == "visual":
         print(
-            "check-pdf-text-order: PDF text stream is visual order; "
-            "copy-paste will reverse Persian. Rebuild with XeLaTeX.",
+            "check-pdf-text-order: PyMuPDF extraction is visual order; "
+            "selectable Persian is not verified. Check the font and ActualText mapping.",
             file=sys.stderr,
         )
         return 2

@@ -47,7 +47,7 @@ function Test-OutputPdf {
     }
     Write-Log 'rasterised first/middle/last samples; inspect their display visually'
     $order = ''
-    if (Get-Tool 'pdftotext') {
+    if ((Invoke-Tool $python @('-c', 'import pymupdf')).ExitCode -eq 0) {
         $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'check-pdf-text-order.py'),
             $Pdf, '--source', $srcItem.FullName)
         Write-ToolOutput $r.Output
@@ -57,16 +57,16 @@ function Test-OutputPdf {
         }
         $order = ($r.Output | ForEach-Object { "$_" }) -join "`n"
     }
-    else { Write-Log 'VERIFY WARN: pdftotext missing; copy-paste order is unverified' }
+    else { Write-Log 'VERIFY FAIL: PyMuPDF missing; text extraction order is unverified'; return $false }
     if ($order -match 'check-pdf-text-order: visual') {
         if (Test-XeLaTeX) {
-            Write-Log 'VERIFY FAIL: visual text order; rebuild the .tex with XeLaTeX'
+            Write-Log 'VERIFY FAIL: PyMuPDF extraction reverses source phrases; check ActualText and fonts'
             return $false
         }
-        Write-Log 'VERIFY WARN: copy-paste reverses Persian; XeLaTeX is unavailable'
+        Write-Log 'VERIFY WARN: PyMuPDF extraction is reversed; selectable text is unverified'
     }
-    elseif ($script:UsedEngine -eq 'html' -and $order -notmatch 'check-pdf-text-order: logical' -and (Test-XeLaTeX)) {
-        Write-Log 'VERIFY FAIL: HTML PDF while XeLaTeX is installed; rebuild the .tex'
+    elseif ($order -notmatch 'check-pdf-text-order: logical') {
+        Write-Log 'VERIFY FAIL: Persian extraction order is inconclusive'
         return $false
     }
     return $true

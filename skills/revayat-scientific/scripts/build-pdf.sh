@@ -12,9 +12,8 @@
 # does not — it reports the error and stops, so a broken build is never
 # quietly downgraded.
 #
-# Chromium and WeasyPrint paint RTL correctly but store visual order in the
-# text stream; copy-paste reverses Persian. Selectable text requires XeLaTeX.
-# --verify fails an HTML-engine PDF when XeLaTeX is installed.
+# Rendered layout and PyMuPDF text extraction are checked separately.
+# A PDF engine name alone does not prove readable extracted text.
 set -uo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -149,8 +148,7 @@ pdf_is_complete() {
 }
 
 warn_html_copy_order() {
-  log "HTML engine stores RTL in visual order; copy-paste will reverse Persian"
-  log "  Selectable text requires XeLaTeX + xepersian"
+  log "HTML engine selected; verify layout and text extraction separately"
 }
 
 show_tex_error() {
@@ -388,7 +386,7 @@ verify_pdf() {
   log "  judge *display* RTL from pdftotext"
 
   local order_rc=0 order_out="" visual=0 logical=0
-  if command -v pdftotext >/dev/null 2>&1; then
+  if python3 -c 'import pymupdf' >/dev/null 2>&1; then
     order_out=$(python3 "$here/check-pdf-text-order.py" "$pdf" \
       --source "${src_dir}/${src_base}" 2>&1) || order_rc=$?
     if [[ -n $order_out ]]; then
@@ -397,7 +395,8 @@ verify_pdf() {
       done <<<"$order_out"
     fi
   else
-    log "VERIFY WARN: pdftotext missing; cannot check copy-paste text order"
+    log "VERIFY FAIL: PyMuPDF missing; cannot verify text extraction order"
+    return 1
   fi
   if [[ $order_rc -eq 1 ]]; then
     log "VERIFY FAIL: check-pdf-text-order could not run"
@@ -408,15 +407,13 @@ verify_pdf() {
 
   if [[ $visual -eq 1 ]]; then
     if have_xelatex; then
-      log "VERIFY FAIL: PDF text stream is visual order (copy-paste reverses Persian)"
-      log "  Rebuild from the .tex with XeLaTeX. HTML engines cannot store logical RTL."
+      log "VERIFY FAIL: PyMuPDF extraction reverses source phrases"
+      log "  Check the font and ActualText mapping in the print source."
       return 1
     fi
-    log "VERIFY WARN: copy-paste will reverse Persian (HTML engine, no XeLaTeX)"
-  elif [[ $logical -eq 0 && ( $used_engine == chromium || $used_engine == weasyprint ) ]] \
-      && have_xelatex; then
-    log "VERIFY FAIL: HTML-engine PDF while XeLaTeX is installed"
-    log "  Chromium/WeasyPrint store visual order. Build the .tex instead."
+    log "VERIFY WARN: PyMuPDF extraction is reversed; selectable text is unverified"
+  elif [[ $logical -eq 0 ]]; then
+    log "VERIFY FAIL: Persian extraction order is inconclusive"
     return 1
   fi
   return 0

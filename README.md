@@ -76,13 +76,13 @@ Source inventory → terminology → figures → section translation → fidelit
 
 The skill supplies TeX/HTML templates, terminology rules and review briefs. For long documents it keeps a section ledger and unresolved questions. It records whether review was independent or a separate pass by the same model.
 
-PDF output defaults to `$HOME/Documents/books`; `--output-dir` overrides it. A failed lint, build or requested verification preserves the previous delivered PDF. `--verify` needs Poppler and produces first/middle/last samples. The agent must actually inspect those images.
+PDF output defaults to `$HOME/Documents/books`; `--output-dir` overrides it. A failed lint, build or requested verification preserves the previous delivered PDF. `--verify` needs Poppler and PyMuPDF and produces first/middle/last samples. The agent must actually inspect those images.
 
 ## Limits
 
 - A green checker does not prove scientific accuracy; translation and semantic review are model work.
 - Scanned or complex multi-column PDFs need an available visual reader/OCR and comparison with original pages. Figure cropping is a heuristic that requires visual confirmation.
-- HTML renderers can show correct RTL while storing reversed copy-paste text. XeLaTeX is preferred; text-order checks report what was measured.
+- HTML renderers can show correct RTL while storing reversed copy-paste text. XeLaTeX is preferred; text-order checks report what PyMuPDF extracted, not every viewer's clipboard behavior.
 - No exact recreation of a publisher's page layout is promised. Preserve scientific content and readable typesetting.
 - CI fixtures exercise the tools, not translation quality on an arbitrary research paper. Individual host UI activation is not automated.
 

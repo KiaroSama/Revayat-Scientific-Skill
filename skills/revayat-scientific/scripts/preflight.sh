@@ -103,11 +103,11 @@ if [[ $tex -eq 1 ]]; then
   echo "  build .tex with XeLaTeX — best print RTL, selectable text"
 elif [[ $chrome -eq 1 ]]; then
   echo "  no TeX: build .html with Chromium (display RTL only;"
-  echo "  copy-paste will reverse Persian)"
+  echo "  verify text extraction separately)"
 elif [[ $weasy -eq 1 ]]; then
   echo "  no TeX and no Chromium: build .html with WeasyPrint, and keep"
   echo "  every English cluster in a single dir=\"ltr\" isolate"
-  echo "  (copy-paste will reverse Persian)"
+  echo "  (verify text extraction separately)"
 else
   echo "  no engine can produce a PDF — stop and tell the user"
 fi
