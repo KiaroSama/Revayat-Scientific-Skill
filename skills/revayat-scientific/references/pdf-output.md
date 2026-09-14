@@ -18,15 +18,16 @@ job ledgers outside temporary directories for resumption.
 
 ## Preflight
 
-The XeLaTeX template enables `\XeTeXgenerateactualtext=1` so the PDF carries
-source Unicode alongside shaped glyphs. This prevents missing or presentation-form
-Persian in extraction with fonts whose glyph mappings are incomplete. Keep the
-actual PyMuPDF extraction check; setting the primitive is not proof of correct output.
+Use the preferred Vazirmatn font for selectable-text builds. Its glyph mappings
+can contain Arabic presentation forms: the checker uses Unicode NFKC normalization
+for comparison, without reversing text or rewriting the document. In the CI
+fixture, the Amiri fallback rendered correctly but had incomplete glyph mappings.
 
-Use the preferred Vazirmatn font for selectable-text builds. The CI Amiri fallback
-rendered correctly but produced reordered text with its shaped glyph mappings,
-even with ActualText enabled. A fallback font is therefore not a promise of
-correct extraction: run the check and install/fetch Vazirmatn when it fails.
+Do not enable automatic per-glyph `\XeTeXgenerateactualtext` as a blanket fix.
+With the tested fonts it caused MuPDF to reorder or interleave replaced characters.
+The template leaves it disabled; the extractor still honors ActualText already
+present in other input PDFs. Always verify the actual output instead of assuming
+that a font or metadata setting guarantees readable extraction.
 
 Run this **first**, before choosing an approach:
 
@@ -175,7 +176,7 @@ Windows specifics worth knowing:
 
 | Priority | Engine | When |
 | --- | --- | --- |
-| 1 | XeLaTeX + `xepersian` | preferred Persian print engine; enable ActualText and verify extraction |
+| 1 | XeLaTeX + `xepersian` | preferred Persian print engine; use Vazirmatn and verify extraction |
 | 2 | Headless Chromium print of the RTL HTML | HTML fallback; inspect layout and measure extraction on this build |
 | 3 | WeasyPrint on the same HTML | no TeX and no Chrome; inspect layout and measure extraction |
 
@@ -282,7 +283,7 @@ over WeasyPrint when both are present.
 
 **Text extraction is separate from display.** The checker uses PyMuPDF
 `page.get_text("text", sort=False)` with default ActualText handling and compares
-Persian source phrases. This measures readable text through that extractor;
+Persian source phrases after NFKC compatibility normalization. This measures readable text through that extractor;
 MuPDF applies bidi heuristics, so it does not prove raw storage order or every
 viewer's clipboard behavior. Never reverse extracted strings to force a match.
 

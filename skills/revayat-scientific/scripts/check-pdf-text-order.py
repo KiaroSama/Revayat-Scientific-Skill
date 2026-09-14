@@ -22,6 +22,7 @@ import importlib.util
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 ARABIC_WORD = re.compile(
@@ -41,6 +42,7 @@ def strip_bidi(s: str) -> str:
 
 
 def fold(s: str) -> str:
+    s = unicodedata.normalize('NFKC', s)
     return re.sub(r"\s+", "", strip_bidi(s).replace("\u200c", ""))
 
 
