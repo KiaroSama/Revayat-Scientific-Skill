@@ -225,7 +225,7 @@ python tools/package.py
 اجرا می‌شود؛ ساخت واقعی Windows، تست‌های بررسی متن و ساخت واقعی XeLaTeX در
 Linux را پوشش می‌دهد. CodeQL و بازبینی وابستگی‌ها فعال‌اند؛ Dependabot
 پکیج‌های Python و Actions را دنبال می‌کند. بستهٔ
-`dist/revayat-scientific.skill` مجوز و انتساب را همراه دارد و وابستگی‌های
+`dist/revayat-scientific.skill` اعلان‌های مجوز را همراه دارد و وابستگی‌های
 اجرایی در آن کپی نمی‌شوند.
 
 ### گزارش‌های اجرا
@@ -245,14 +245,6 @@ Linux را پوشش می‌دهد. CodeQL و بازبینی وابستگی‌ه�
 آرگومان‌ها و خروجی ابزارها در آن کپی نمی‌شوند. اگر ایجاد فایل ممکن نباشد،
 پیام در stderr نمایش داده می‌شود. گزارش‌ها محلی می‌مانند تا حذف شوند؛ TeX
 گزارش مستقل خود را کنار سند می‌نویسد.
-
-## سپاس
-
-مبتنی بر [اسکیل علمی isArman](https://github.com/isArman/scientific-fa-translation-skill)،
-با حفظ انتساب MIT در [NOTICE](skills/revayat-scientific/NOTICE.md).
-ساختار و شیوهٔ ارائه از خانوادهٔ
-[Revayat Comic](https://github.com/KiaroSama/Revayat-Comic-Skill) و
-[Revayat Novel](https://github.com/KiaroSama/Revayat-Novel-Skill) پیروی می‌کند.
 
 ## حمایت مالی
 
@@ -280,7 +272,7 @@ Linux را پوشش می‌دهد. CodeQL و بازبینی وابستگی‌ه�
 
 ## مجوز
 
-[مجوز عمومی گنو، نسخهٔ ۳ یا بالاتر](LICENSE). انتساب MIT کد علمی اولیه
-حفظ شده است؛ وابستگی‌های اختیاری و اسناد منبع مجوز مستقل خود را دارند.
+[مجوز عمومی گنو، نسخهٔ ۳ یا بالاتر](LICENSE). وابستگی‌های اختیاری و اسناد
+منبع مجوز مستقل خود را دارند.
 
 </div>

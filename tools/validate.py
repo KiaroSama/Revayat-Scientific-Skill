@@ -14,9 +14,9 @@ def validate_family_layout():
     sections = {
         'README.md': ['Install', 'Use', 'Without a shell', 'How it works',
                       'What it is honest about', 'Documentation', 'Development',
-                      'Credits', 'Donate', 'Author', 'License'],
+                      'Donate', 'Author', 'License'],
         'README.fa.md': ['نصب', 'استفاده', 'بدون پوسته', 'معماری', 'آنچه صادقانه باید گفت',
-                         'مستندات', 'توسعه', 'سپاس', 'حمایت مالی', 'نویسنده', 'مجوز'],
+                         'مستندات', 'توسعه', 'حمایت مالی', 'نویسنده', 'مجوز'],
     }
     for name, expected in sections.items():
         text = (ROOT / name).read_text(encoding='utf-8')
