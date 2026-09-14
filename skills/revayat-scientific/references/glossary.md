@@ -11,13 +11,13 @@ subjects Kubernetes + Helm — not a pack id). Append a row here **only** if it 
 document in hand (chrome, a keep-English class, or a recurring
 infrastructure noun). A directive, opcode, or byline from one book does
 not belong here — lock it in that job's `terms.tsv` if the document is
-long, then discard the file with the job.
+long, and retain that ledger with the editable translation for resumption.
 
 ## Always Persian
 
 Document chrome. Step 0 of the decision procedure: these are Persian at
 every level, and no source glossary overrides them. Applies to the bare
-label only — a heading that names an artifact stays English.
+label only; a heading may translate its explanation while preserving an artifact's name.
 
 | English | Persian |
 | --- | --- |
@@ -49,11 +49,10 @@ label only — a heading that names an artifact stays English.
 
 ## Persian unless it is this document's field term
 
-Ordinary scholarly vocabulary. Persian by default, English when the
-field-term test in `terminology.md` says the source is using it as its own
-defined lexicon. This is the tier that used to contradict itself: `dataset`
-is مجموعه داده in a clinical paper and `dataset` in an ML paper, and both
-are correct.
+Ordinary scholarly vocabulary is Persian by default. In journal prose, use an
+established Persian concept even when it is central to the discipline. An exact
+identifier, official name or operational-system term can retain its source form
+under `terminology.md`; the table's keep-original examples are context-dependent.
 
 | English | Persian | Stays English when |
 | --- | --- | --- |
@@ -61,7 +60,7 @@ are correct.
 | analysis / study | بررسی | named study or corpus |
 | hypothesis | فرضیه | — |
 | experiment | آزمایش | — |
-| dataset | مجموعه داده | ML lexicon, or a named corpus (`ImageNet`, `GLUE`) |
+| dataset | مجموعه داده | an exact identifier; named corpora such as `ImageNet` retain their own names |
 | specification | مشخصات | the document *is* a spec |
 | limitation | محدودیت | — |
 | motivation | انگیزه | — |
@@ -75,14 +74,14 @@ are correct.
 | steganography | پنهان‌نگاری | — |
 | grandfathering | معافیت عطف‌به‌ماسبق | — |
 
-## Keep English — classes
+## Preserve original identity — classes
 
-Non-exhaustive by design. Anything of the same kind stays English even when
-unlisted; that is what makes step 1 of the decision procedure workable.
+Preserve exact names and notation in their original script, which may not be
+English. Descriptive scientific concepts use the selected terminology level.
 
 | Class | Examples |
 | --- | --- |
-| Algorithms, models, architectures | `transformer`, `backpropagation`, `gradient descent`, `Adam`, `BERT`, `ResNet` |
+| Official algorithm/model names | `Adam`, `BERT`, `ResNet`; descriptive concepts such as gradient descent may be Persian at journal level |
 | Libraries, tools, products, projects | `PyTorch`, `NumPy`, `TensorFlow`, `Kubernetes`, `OpenStack`, `Bitcoin` |
 | Protocols and standards | `HTTP`, `AMQP`, `Segwit`, `Taproot` |
 | Acronyms | `API`, `PCR`, `GPU`, `CI`, `CPU`, `TPU`, `RMSE`, `BLEU`, `RAM` |
@@ -113,8 +112,8 @@ the checker fails the build on the Persian calque unless `--level journal`.
 | partition | `single disk partition` |
 | filter | — |
 
-At `journal` level these become Persian unless the surrounding phrase is a
-named artifact or a multi-word label.
+At `journal` level descriptive concepts, including multi-word labels, can be
+Persian. Exact artifact identity and notation remain original.
 
 ## Job terms
 
@@ -122,7 +121,7 @@ Do not create `glossary.local.md`. The working tree holds `terms.tsv`
 (`long-documents.md`) so chapter three and chapter nine
 use the same form. Keep-English rows for the inferred job and subject
 lexicon belong there, with a required `forbidden_fa` calque for the checker.
-That file is discarded with the job. Never copy it into this skill.
+Retain that file with the job for resumption. Never copy job-private terms into this skill.
 
 ```bash
 scripts/check-fa.py doc.tex --level system-docs --terms terms.tsv --manifest manifest.txt --strict
