@@ -382,7 +382,6 @@ function Invoke-TexBuild {
         Show-DriverFailure $r.Output $srcDir
         return 2
     }
-    $script:UsedEngine = 'xelatex'
     return 0
 }
 
@@ -413,7 +412,6 @@ function ConvertTo-FileUri {
 
 function Invoke-HtmlBuild {
     param([string]$Html, [string]$Destination)
-    $script:UsedEngine = 'html'
     Write-Log 'HTML engines may store visual text order; selectable Persian requires XeLaTeX'
     Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
 
@@ -525,7 +523,6 @@ if ([IO.Path]::GetFullPath($dest) -eq [IO.Path]::GetFullPath($localPdf)) {
     Write-Log 'output destination must differ from the working PDF; use -OutputDirectory'
     exit 2
 }
-$script:UsedEngine = ''
 if (-not $Terms) { $Terms = Join-Path $srcDir 'terms.tsv' }
 if (-not $Manifest) { $Manifest = Join-Path $srcDir 'manifest.txt' }
 $python = Get-Tool 'python'
