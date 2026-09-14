@@ -18,6 +18,11 @@ job ledgers outside temporary directories for resumption.
 
 ## Preflight
 
+The XeLaTeX template enables `\XeTeXgenerateactualtext=1` so the PDF carries
+source Unicode alongside shaped glyphs. This prevents missing or presentation-form
+Persian in extraction with fonts whose glyph mappings are incomplete. Keep the
+actual `pdftotext -raw` check; setting the primitive is not proof of correct output.
+
 Run this **first**, before choosing an approach:
 
 ```bash
