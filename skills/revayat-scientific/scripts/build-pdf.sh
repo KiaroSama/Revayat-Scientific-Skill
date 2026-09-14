@@ -31,7 +31,6 @@ src=""
 slug=""
 verify=0
 engine=""
-used_engine=""
 level=system-docs
 terms=""
 manifest=""
@@ -249,7 +248,6 @@ compile_tex() {
     explain_driver_failure "$out"
     return 2
   fi
-  used_engine=xelatex
   return 0
 }
 
@@ -279,14 +277,12 @@ html_to_pdf() {
       log "chromium produced no PDF (exit ${crc})"
       return 2
     fi
-    used_engine=chromium
     warn_html_copy_order
     return 0
   fi
   if command -v weasyprint >/dev/null 2>&1; then
     log "engine: weasyprint (keeps its bidi warnings; read them)"
     weasyprint "$html" "$out" || return 2
-    used_engine=weasyprint
     warn_html_copy_order
     return 0
   fi
@@ -294,7 +290,6 @@ html_to_pdf() {
     log "engine: weasyprint (python module)"
     python3 -c 'from weasyprint import HTML; import sys;
 HTML(sys.argv[1]).write_pdf(sys.argv[2])' "$html" "$out" || return 2
-    used_engine=weasyprint
     warn_html_copy_order
     return 0
   fi
