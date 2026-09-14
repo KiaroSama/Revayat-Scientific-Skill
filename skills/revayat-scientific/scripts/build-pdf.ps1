@@ -615,10 +615,10 @@ New-Item -ItemType Directory -Path $destDir -Force | Out-Null
 $stagedPdf = Join-Path $destDir ('.scientific-' + [Guid]::NewGuid().ToString('N') + '.pdf')
 try {
     Copy-Item -LiteralPath $localPdf -Destination $stagedPdf -ErrorAction Stop
-    if (Test-Path -LiteralPath $dest) { [IO.File]::Replace($stagedPdf, $dest, $null) }
+    if (Test-Path -LiteralPath $dest) { [IO.File]::Replace($stagedPdf, $dest, [NullString]::Value) }
     else { [IO.File]::Move($stagedPdf, $dest) }
 }
-catch { Write-Log 'delivery failed; previous destination was preserved'; exit 1 }
+catch { Write-Log "delivery failed: $($_.Exception.Message); previous destination was preserved"; exit 1 }
 finally { Remove-Item -LiteralPath $stagedPdf -Force -ErrorAction SilentlyContinue }
 Write-Output $dest
 exit 0
