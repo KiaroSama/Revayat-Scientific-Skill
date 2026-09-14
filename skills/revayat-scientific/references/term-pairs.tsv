@@ -9,8 +9,8 @@
 #                    of a kept term; regular plurals are stem + ها, not -s)
 #   forbidden_fa     Persian form that is wrong for this source term
 #   scope            always `universal` (kept for TSV compatibility)
-#   levels           `system-docs` = one-word field noun, skipped at journal
-#                    `all` = multi-word label / named phrase, both levels
+#   levels           `system-docs` = operational term, skipped at journal
+#                    `all` = explicitly justified rule for both levels
 #
 # The checker reads every row. There is no `--domains` switch and no
 # per-field pack. `--level journal` skips `system-docs` rows so a paper
@@ -31,15 +31,15 @@ implement	پیاده‌سازی	universal	system-docs
 integration	یکپارچه‌سازی	universal	system-docs
 firewall	دیوار آتش	universal	system-docs
 firewall	دیوارهای آتش	universal	system-docs
-firewalling service	خدمات دیوار آتش	universal	all
+firewalling service	خدمات دیوار آتش	universal	system-docs
 encryption	رمزنگاری	universal	system-docs
 command	فرمان‌ها	universal	system-docs
 command	فرمان	universal	system-docs
 server	کارساز	universal	system-docs
 partition	افراز	universal	system-docs
 filter	پالایه	universal	system-docs
-test vector	بردارهای آزمون	universal	all
-reference implementation	پیاده‌سازی مرجع	universal	all
-underlying infrastructure	زیرساخت زیربنایی	universal	all
-account with administrative privilege	حسابی با امتیازهای مدیریتی	universal	all
-performance and redundancy requirement	نیازمندی‌های کارایی و افزونگی	universal	all
+test vector	بردارهای آزمون	universal	system-docs
+reference implementation	پیاده‌سازی مرجع	universal	system-docs
+underlying infrastructure	زیرساخت زیربنایی	universal	system-docs
+account with administrative privilege	حسابی با امتیازهای مدیریتی	universal	system-docs
+performance and redundancy requirement	نیازمندی‌های کارایی و افزونگی	universal	system-docs

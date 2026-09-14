@@ -1,6 +1,6 @@
 # Revayat Scientific — روایت علمی
 
-**Translate a scientific paper into accurate Persian, and receive an editable source and a verified, printable PDF.**
+**Translate scientific sources from any language into accurate Persian, preserving page dimensions and image fidelity, with editable output and a verified PDF.**
 
 An agent skill for Claude Code, Claude Desktop, Codex, Kiro, Cursor, Cline,
 Hermes, OpenCode, Antigravity and any other agent that can read a `SKILL.md`.
@@ -21,7 +21,9 @@ remain accounted for, and Persian pages whose output is actually checked.
 | **Scientific claims keep their force** | The workflow reviews negation, hedges, quantities and units against the source; fluency edits must preserve their meaning. |
 | **One form per concept** | A job-local terms ledger keeps preferred terms consistent. Papers use `journal`; operational guides use `system-docs`. |
 | **Figures remain source artwork** | Crop and prepare original figures, compare them with source pages, and check the figure manifest before delivery. |
-| **Real right-to-left typesetting** | Persian stays in logical order. Complete English, formula and number clusters stay in LTR isolates. |
+| **Real right-to-left typesetting** | Persian stays in logical order; retained source spans follow their own script direction, with complete formula and number isolates. |
+| **Source-aware language and style** | Identify language/script and research uncertain terms. Journal prose uses familiar Persian scientific concepts, with source-language fidelity review. |
+| **Page and image fidelity** | Keep physical page/book size, original pixels and aspect ratio; improve poor figures faithfully. Raster crops preserve higher source density above the selected minimum DPI. |
 | **Mechanical quality gates** | Check orthography, terminology, isolates, missing images, embedded fonts, page count and sampled rasters. |
 | **Text extraction is measured** | Compare normalized Persian source phrases with PyMuPDF extraction; record limits instead of promising every viewer's clipboard behavior. |
 | **One portable entry point** | The same Python command chooses PowerShell on Windows and Bash on Linux/macOS, using the current host model for translation. |
@@ -123,7 +125,10 @@ an available visual/OCR reader.
 **Out:** an editable TeX or HTML source and a verified PDF; reviewed text when
 that is what the user requests.
 
-**Source language:** English by default. **Target:** scientific Persian.
+**Source language:** identified from the actual source, including mixed-language
+documents. **Target:** scientific Persian. The skill includes researched starting
+profiles and a research procedure for other languages; accuracy depends on the
+host's language competence and actual source review, not a language-code list.
 
 ## Without a shell
 
@@ -178,12 +183,15 @@ to `$HOME/Documents/books`; `--output-dir` selects another directory.
 - [SKILL.md](skills/revayat-scientific/SKILL.md) — the full ordered workflow
 - [Translation policy](skills/revayat-scientific/references/translation-policy.md) — translator and reviewer briefs
 - [Extraction](skills/revayat-scientific/references/extraction.md) — source inventory and figure handling
+- [Source languages](skills/revayat-scientific/references/source-languages.md) — direct translation, language profiles and research
+- [Page and image fidelity](skills/revayat-scientific/references/layout-and-images.md) — source dimensions, resolution and faithful enhancement
 - [Terminology](skills/revayat-scientific/references/terminology.md) — concept decisions and terminology levels
 - [Scientific style](skills/revayat-scientific/references/scientific-style.md) — clear scholarly Persian
 - [RTL and bidi](skills/revayat-scientific/references/rtl-bidi.md) — complete LTR isolates
 - [Review](skills/revayat-scientific/references/review.md) — fidelity, fluency and completeness
 - [PDF output](skills/revayat-scientific/references/pdf-output.md) — engines, fonts and verification
 - [Troubleshooting](skills/revayat-scientific/references/troubleshooting.md) — failures and recovery actions
+- [Research evidence](skills/revayat-scientific/references/research-sources.md) — inspected repositories, adopted lessons and limits
 
 ## Development
 

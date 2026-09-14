@@ -15,8 +15,9 @@ Before drafting any body text:
    Kubernetes, PyTorch, PostgreSQL, …). Announce them with the level. There is no domain
    pack to select.
 2. Scan the whole source for candidate terms. Classify each with the
-   decision procedure in `terminology.md`. The inferred job and subject
-   lexicons stay English.
+   decision procedure in `terminology.md`. Preserve exact artifact identity;
+   journal concepts can use established Persian, while operational terms follow
+   the selected system-document policy.
 3. Write concept-oriented `terms.tsv` in the working tree (see
    `terminology.md`). Required columns: `source`, `output`, `step`,
    `count`, `forbidden_fa`. Recommended: `concept`, `status`,
@@ -56,7 +57,10 @@ parts/01-overview.tex   parts/05-networking.tex
 parts/02-environment.tex   parts/06-glossary.tex
 ```
 
-Aim for 1500–3000 words per part. Assemble with `\input` from a thin
+Use complete paragraphs/argument units sized for the host's context budget; do not
+apply an English whitespace-word count to Chinese/Japanese or split at every period.
+Supply the adjacent source paragraph, referents and the same glossary revision as
+context, clearly marked not to be translated twice. Assemble with `\input` from a thin
 `doc.tex` that holds only the preamble, title, TOC, and the input list —
 for HTML, concatenate parts in order into `doc.html`.
 
@@ -76,6 +80,18 @@ Lint each part as it is finished, not at the end:
 
 A part that lints clean stays clean. A 174-page document linted once at the
 end produces a finding list nobody works through.
+
+## Coverage map
+
+Keep `coverage.tsv` beside the existing ledgers. Use source location as identity,
+not only a text hash: repeated identical paragraphs at different locations are
+different objects. Minimal columns are `id`, `source_location`, `source_lang`,
+`target_location`, `state`. Include paragraphs, captions, table blocks, notes and
+other inventoried objects. Retained original bibliography/quotes are explicitly
+marked rather than counted as missing translations. Record source and terminology
+revisions in `progress.md`; changed revisions invalidate affected approvals.
+Check for missing/duplicate IDs, empty targets and mismatched source locations
+before assembly. A split or merged segment needs a new explicit mapping and review.
 
 ## Progress ledger
 
@@ -113,9 +129,10 @@ leave a `TODO` marker in the compiled PDF text.
 
 ## Context budget
 
-Read the source part you are translating and `terms.tsv` — not the whole
-source and not previously finished parts. If a decision needs an earlier
-part, look it up in `terms.tsv` first; that is what the file is for.
+Read the active source part, its source-language profile, `terms.tsv` and the small
+neighbor context needed for referents and argument continuity. Look up established
+decisions first, then inspect earlier source passages when a pronoun, acronym or
+claim depends on them. Do not guess across a context boundary or duplicate overlap.
 
 ## Assembly and verification
 

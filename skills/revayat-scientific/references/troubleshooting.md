@@ -36,6 +36,9 @@ previous delivered PDF intact. Correct a failed stage before continuing.
 | Extraction is inconclusive | Inspect the source and rendered artifact; zero from the standalone checker is not proof of readable extraction |
 | Output collides with working PDF | Choose a distinct output directory so a failed build cannot overwrite the delivered edition |
 | Timeout or cancellation | Treat the stage as incomplete; fix its cause before retrying with a justified limit |
+| Crop exceeds 50 million pixels | Extract the original/vector asset or choose a smaller faithful crop; do not silently downsample |
+| Output page size differs from source | Set measured geometry in the editable template and verify again; see [layout-and-images.md](layout-and-images.md) |
+| Correct source quote triggers Persian lint | Verify the original and use only its documented rule-specific exception; see [source-languages.md](source-languages.md) |
 
 ## Resumption
 

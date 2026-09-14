@@ -3,7 +3,7 @@
 %
 % For a book-length source switch the class to `report` (or `book`) and use
 % \chapter; everything else below is unchanged.
-\documentclass[a4paper,12pt]{article}
+\documentclass[12pt]{article}
 
 % graphicx / hyperref / geometry must load BEFORE xepersian.
 \usepackage{fontspec}
@@ -13,7 +13,8 @@
 \usepackage{longtable}   % tables that run past one page
 \usepackage{xcolor}
 \usepackage{fancyvrb}
-\usepackage[a4paper,margin=2.2cm]{geometry}
+% Example dimensions only: replace with the measured source page/book geometry.
+\usepackage[paperwidth=210mm,paperheight=297mm,margin=2.2cm]{geometry}
 \usepackage[unicode=true,colorlinks=true,linkcolor=black,citecolor=black,
             urlcolor=black,bookmarksnumbered=true]{hyperref}
 \usepackage{bookmark}

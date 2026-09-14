@@ -12,11 +12,11 @@ Delegate a bounded review only when available and authorized. The translator own
 
 ## Translation brief
 
-Translate into clear formal Persian. Follow `terms.tsv` and the selected level. Preserve claims, uncertainty, negation, numbers, units, equations and citations. Use one LTR isolate per complete English cluster. Return the assigned translation and any claim-changing ambiguity with its source span.
+Translate directly from the identified original language into clear scholarly Persian. Read its profile in `source-languages.md`, the selected terminology revision and adjacent source context. Follow `terms.tsv` and the selected level; established Persian multi-word concepts belong in journal prose. Preserve claims, uncertainty, negation, numbers, units, equations, protected originals and citations. Isolate retained text by its own script direction. Translate only the assigned source locations, not overlap supplied for context. Return source/target locations and unresolved meaning-changing ambiguities.
 
 ## Fidelity brief
 
-Compare for additions, omissions, changed certainty, wrong numbers/units, lost negation and incorrect references. Check terms. Return exact source span, target span, consequence and bounded correction. An unclear source remains unclear; do not invent a scientific resolution.
+Compare the original-language source and target for additions, omissions, changed certainty, wrong numbers/units, lost negation and incorrect references. Check the same glossary revision and coverage map. Return exact source/target spans, category, consequence-based severity and a bounded correction. Distinguish direct review from a pivot-only check. An unclear source remains unclear; do not invent a scientific resolution.
 
 ## Fluency brief
 
