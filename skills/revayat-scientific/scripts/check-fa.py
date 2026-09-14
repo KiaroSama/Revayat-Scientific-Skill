@@ -9,7 +9,7 @@ Accepts `.tex` and `.html`/`.htm` sources. Every rule here is one of the
 mechanical items from the skill's quality checklist, so the checklist that
 stays in SKILL.md is only the part a machine cannot judge. Register
 fluency (does the Persian read like normal formal prose?) is a model
-judgement in `references/ensemble.md`, not a pattern list here.
+judgement in `references/translation-policy.md`, not a pattern list here.
 
 `--level journal` drops one-word field-noun bans (`گره`, `پیاده‌سازی`,
 `مجموعه داده`, …) so a paper that follows terminology.md does not fail.
