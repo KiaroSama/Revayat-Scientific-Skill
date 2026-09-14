@@ -4,7 +4,6 @@ import argparse
 from pathlib import Path
 import shutil
 import sys
-import tempfile
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +50,9 @@ def install(destination: Path, force: bool, logger):
     if destination.exists() and not force:
         raise FileExistsError('skill already exists; use --force to replace it and retain a backup')
     destination.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix='.revayat-scientific-stage-', dir=destination.parent))
+    # mkdtemp's 0700 creates an owner-only Windows ACL that survives the final rename.
+    staging = destination.parent / ('.revayat-scientific-stage-' + uuid.uuid4().hex)
+    staging.mkdir()
     backup = None
     try:
         for path, relative in payload_files():
