@@ -15,6 +15,14 @@ FIXTURES = ROOT / 'tests/fixtures'
 
 
 class NativeBuildTest(unittest.TestCase):
+    def test_presentation_forms_preserve_logical_order(self):
+        # Captured from the real Vazirmatn/XeLaTeX fixture, not reversed to fit the check.
+        result = owned_run([sys.executable, str(SKILL / 'scripts/check-pdf-text-order.py'),
+            '--source', str(FIXTURES / 'build-smoke-body.tex'), '--extracted',
+            str(FIXTURES / 'pdf-text-presentation.txt')], timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('check-pdf-text-order: logical', result.stderr)
+
     @unittest.skipUnless(sys.platform == 'win32', 'PowerShell font verification')
     def test_unicode_font_flag_is_not_embedding(self):
         shell = shutil.which('pwsh') or shutil.which('powershell')
