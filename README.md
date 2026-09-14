@@ -203,6 +203,14 @@ with its license and attribution; runtime dependencies stay outside the package.
 
 ### Logs
 
+Every agent using the skill must maintain a translation log **beside the translation
+file**. It records the stages, terminology decisions, review findings, corrections
+and their reasons, check results, errors and final delivery. The agent writes it
+with its normal file tools throughout the job, even when no helper script runs.
+Each run creates `<translation-stem>_YYYY-MM-DD_HH-mm-ss_UTC.log`; the log accompanies
+the delivered translation. See the required logging rule in `SKILL.md`.
+
+The following helper diagnostics are separate from that translation log.
 The dispatcher writes UTF-8 logs under the skill's `logs/`; installation and
 packaging use the repository's `logs/`. Each run has a new
 `<command>_YYYY-MM-DD_HH-mm-ss_UTC.log`, with a unique suffix on collision.
