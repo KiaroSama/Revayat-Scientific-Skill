@@ -592,7 +592,7 @@ fi
 
 # Observe this Chromium build's extraction, without assuming all versions reverse RTL.
 chrome=""
-for c in chromium chromium-browser google-chrome google-chrome-stable; do
+for c in google-chrome google-chrome-stable chromium chromium-browser; do
   if command -v "$c" >/dev/null 2>&1; then chrome=$c; break; fi
 done
 if [[ -n $chrome ]] && command -v pdftotext >/dev/null 2>&1; then
@@ -604,12 +604,13 @@ if [[ -n $chrome ]] && command -v pdftotext >/dev/null 2>&1; then
 <p>در این روش برای کمینه کردن تابع هزینه استفاده می‌شود.</p>
 </html>
 HTML
+  chrome_rc=0
   timeout 25 "$chrome" --headless=new --no-sandbox --disable-dev-shm-usage \
     --user-data-dir="$cdir/profile" \
     --no-pdf-header-footer --virtual-time-budget=10000 \
     --run-all-compositor-stages-before-draw \
     --print-to-pdf="$cdir/t.pdf" "file://${cdir}/t.html" \
-    >/dev/null 2>&1 || true
+    >"$cdir/chromium.log" 2>&1 || chrome_rc=$?
   if [[ -s $cdir/t.pdf ]]; then
     order_rc=0
     order_out=$(python3 "$order" "$cdir/t.pdf" \
@@ -623,7 +624,8 @@ HTML
       fail=1
     fi
   else
-    echo "FAIL Chromium text-order (print-to-pdf failed)"
+    echo "FAIL Chromium text-order ($chrome exit $chrome_rc, print-to-pdf failed)"
+    tail -20 "$cdir/chromium.log"
     fail=1
   fi
   rm -rf "$cdir"

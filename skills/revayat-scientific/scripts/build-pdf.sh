@@ -129,7 +129,7 @@ have_xelatex() {
 
 find_chrome() {
   local c
-  for c in chromium chromium-browser google-chrome google-chrome-stable; do
+  for c in google-chrome google-chrome-stable chromium chromium-browser; do
     if command -v "$c" >/dev/null 2>&1; then printf '%s\n' "$c"; return 0; fi
   done
   return 1
