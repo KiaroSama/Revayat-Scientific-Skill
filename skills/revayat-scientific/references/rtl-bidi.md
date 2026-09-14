@@ -26,10 +26,11 @@ and warns about it on every run. The `dir="ltr"` **attribute** is what
 actually does the work there; keep the CSS property as well for Chromium
 and browsers. See the measured cases in `pdf-output.md`.
 
-HTML engines also store Persian in **visual** order in the PDF text
-stream: the page looks right, copy-paste comes out reversed. Selectable
-text requires XeLaTeX. `build-pdf.sh --verify` fails an HTML-engine PDF
-when XeLaTeX is installed.
+Visible RTL and extracted text are separate properties. Prefer XeLaTeX for
+scientific typesetting, but judge each generated PDF through the extraction
+check in `pdf-output.md`. A requested HTML engine is acceptable when its actual
+output passes the required checks. Report reversed or inconclusive extraction
+as observed; an engine name alone does not establish clipboard behavior.
 
 ## Document root
 
