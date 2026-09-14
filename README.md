@@ -199,7 +199,7 @@ covers Python 3.10/Linux, 3.14/macOS and 3.13/Windows, native Windows
 rendering, inherited checker regressions and a real Linux XeLaTeX build.
 CodeQL and dependency review are configured; Dependabot covers Python packages
 and Actions. The generated `dist/revayat-scientific.skill` is an uploadable ZIP
-with its license and attribution; runtime dependencies stay outside the package.
+with its license notices; runtime dependencies stay outside the package.
 
 ### Logs
 
@@ -218,14 +218,6 @@ Entries contain UTC time, level, operation, duration and exit code. Document
 text, arguments and tool output are not copied into these logs. Initialization
 failure falls back to stderr. Logs remain local until removed. TeX also keeps
 its document log beside the source.
-
-## Credits
-
-Based on [isArman's scientific Persian translation skill](https://github.com/isArman/scientific-fa-translation-skill),
-with its original MIT attribution retained in [NOTICE](skills/revayat-scientific/NOTICE.md).
-[Revayat Comic](https://github.com/KiaroSama/Revayat-Comic-Skill) and
-[Revayat Novel](https://github.com/KiaroSama/Revayat-Novel-Skill) supply the family
-structure and presentation conventions.
 
 ## Donate
 
@@ -249,6 +241,5 @@ GitHub: [KiaroSama](https://github.com/KiaroSama)
 
 ## License
 
-[GNU General Public License v3.0 or later](LICENSE). Original scientific
-upstream MIT attribution is retained. Optional dependencies and source documents
-keep their own licenses.
+[GNU General Public License v3.0 or later](LICENSE). Optional dependencies and
+source documents keep their own licenses.
