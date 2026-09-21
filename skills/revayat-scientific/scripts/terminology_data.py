@@ -25,15 +25,24 @@ def load_pairs(paths: list[Path], level: str
         if not path.exists():
             continue
         loaded = True
-        for raw in path.read_text(encoding="utf-8").splitlines():
+        for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
-            parts = [p.strip() for p in line.split("\t") if p.strip()]
-            if len(parts) < 3 or parts[0] == "english":
+            parts = [p.strip() for p in line.split("\t")]
+            if parts[0] == "english":
+                if parts not in (['english', 'forbidden_fa', 'scope'],
+                                 ['english', 'forbidden_fa', 'scope', 'levels']):
+                    raise ValueError(f'{path}:{lineno}: invalid terminology header')
                 continue
+            if len(parts) not in (3, 4) or not all(parts[:3]):
+                raise ValueError(f'{path}:{lineno}: expected english, forbidden_fa, scope and optional levels')
             en, fa, scope = parts[0], parts[1], parts[2]
             levels = parts[3] if len(parts) > 3 else "all"
+            if levels not in ('all', 'system-docs', 'journal'):
+                raise ValueError(f'{path}:{lineno}: unsupported terminology level')
+            if levels == 'journal' and level != 'journal':
+                continue
             if levels == "system-docs" and level == "journal":
                 continue
             key = (en, fa)

@@ -14,12 +14,15 @@ PYTHON_COMMANDS = {
     'lint': 'check-fa.py', 'text-order': 'check-pdf-text-order.py',
     'figures': 'prepare-figures.py', 'crop': 'crop-source-figures.py',
     'pages': 'extract-pdf-pages.py',
+    'docx': 'document-docx.py',
+    'pdf': 'document-pdf.py',
 }
 SHELL_COMMANDS = {'doctor': 'preflight', 'build': 'build-pdf', 'fonts': 'fetch-vazirmatn'}
 POWERSHELL_OPTIONS = {
     '--verify': '-Verify', '--level': '-Level', '--terms': '-Terms',
     '--manifest': '-Manifest', '--engine': '-Engine',
     '--output-dir': '-OutputDirectory', '--require-tex': '-RequireTex',
+    '--version': '-Version',
 }
 HELP = {
     'build': 'build SOURCE [SLUG] [--verify] [--level journal|system-docs] '

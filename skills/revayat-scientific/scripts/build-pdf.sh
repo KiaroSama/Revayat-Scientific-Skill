@@ -7,7 +7,7 @@
 # Lints with check-fa.py --strict before any engine runs, and will not copy
 # a PDF to Documents/books if lint, figure check, compile, or --verify fail.
 #
-# Engine order for .tex: XeLaTeX (via latexmk when present). For .html:
+# Engine order for .tex: isolated XeLaTeX in Docker/Podman. For .html:
 # Chromium, then WeasyPrint. A missing engine falls back; a *failing* engine
 # does not — it reports the error and stops, so a broken build is never
 # quietly downgraded.
@@ -101,39 +101,51 @@ if [[ ! -f $manifest ]]; then
   exit 1
 fi
 
+have_xelatex() {
+  python3 "$here/tex-container.py" --probe >/dev/null 2>&1
+}
+
+find_chrome() {
+  local c
+  if [[ -n ${REVAYAT_CHROMIUM:-} ]]; then
+    [[ -x $REVAYAT_CHROMIUM ]] || return 1
+    printf '%s\n' "$REVAYAT_CHROMIUM"
+    return 0
+  fi
+  for c in google-chrome google-chrome-stable chromium chromium-browser; do
+    if command -v "$c" >/dev/null 2>&1; then printf '%s\n' "$c"; return 0; fi
+  done
+  c='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  if [[ -x $c ]]; then printf '%s\n' "$c"; return 0; fi
+  return 1
+}
+
+available=""
+have_xelatex && available="tex,"
+if find_chrome >/dev/null && python3 -c 'import playwright.sync_api, pymupdf' 2>/dev/null; then
+  available="${available}chromium,"
+fi
+python3 -c 'from weasyprint import HTML; from weasyprint.urls import URLFetcher, URLFetcherResponse, FatalURLFetchingError; import pymupdf' 2>/dev/null && available="${available}weasyprint"
+plan=$(python3 "$here/build-support.py" select "$src" --engine "${engine:-auto}" --available "$available") || exit 1
+src=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["source"])' <<<"$plan") || exit 1
+engine=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["engine"])' <<<"$plan") || exit 1
+src_base=$(basename "$src")
+ext=${src_base##*.}
+ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+python3 "$here/build-support.py" destination "$dest" "$src" "$local_pdf" || exit 1
+
 python3 "$here/check-fa.py" "${src_dir}/${src_base}" \
   --level "$level" --terms "$terms" --manifest "$manifest" --strict || {
   log "lint failed; not writing ${dest}"
   exit 1
 }
 
-if [[ -d ${src_dir}/figures ]]; then
-  python3 "$here/prepare-figures.py" "${src_dir}/figures" --check || {
-    log "figure check failed; flatten with prepare-figures.py, then retry"
-    exit 1
-  }
-fi
+python3 "$here/build-support.py" assets "$src" || {
+  log "figure check failed; inspect the required source assets"
+  exit 1
+}
 
 cd "$src_dir" || exit 1
-
-have_xelatex() {
-  command -v xelatex >/dev/null 2>&1 || return 1
-  # xepersian is the part that is usually missing on a bare TeX install.
-  # Exit code alone is not enough: MiKTeX's kpsewhich can exit 0 while
-  # printing nothing for a package the basic install does not carry.
-  if command -v kpsewhich >/dev/null 2>&1; then
-    [ -n "$(kpsewhich xepersian.sty 2>/dev/null)" ] || return 1
-  fi
-  return 0
-}
-
-find_chrome() {
-  local c
-  for c in google-chrome google-chrome-stable chromium chromium-browser; do
-    if command -v "$c" >/dev/null 2>&1; then printf '%s\n' "$c"; return 0; fi
-  done
-  return 1
-}
 
 # A PDF that exists is not a PDF that is complete. XeLaTeX can exit 0 while
 # the xdvipdfmx driver dies, leaving a truncated file with a valid header and
@@ -150,152 +162,22 @@ warn_html_copy_order() {
   log "HTML engine selected; verify layout and text extraction separately"
 }
 
-show_tex_error() {
-  local logfile=$1
-  [[ -f $logfile ]] || return 0
-  local errs
-  errs=$(grep -n '^!' "$logfile" | head -20)
-  if [[ -n $errs ]]; then
-    log "--- first TeX errors in ${logfile} ---"
-    printf '%s\n' "$errs" >&2
-  else
-    # A truncated log with no '!' line usually means the engine died mid-run
-    # rather than rejecting the document - say so instead of printing an
-    # empty section under a heading that promises errors.
-    log "no '!' error line in ${logfile}; the engine stopped mid-run"
-  fi
-  log "--- last 25 log lines ---"
-  tail -25 "$logfile" >&2
-}
-
-# xdvipdfmx cannot embed a *named instance* of a variable font, and a named
-# instance is exactly what XeTeX hands it for any family that is installed
-# only as a variable face - Vazirmatn from Google Fonts among them. What it
-# prints is "Invalid TTC index" and "Invalid font: -1 (4)", which says
-# nothing about fonts to anyone who has not met it before. Translate it.
-explain_driver_failure() {
-  case $1 in
-    *'Invalid TTC index'*|*'Invalid font: -1'*) ;;
-    *) return 0 ;;
-  esac
-  log 'that is a variable font: XeTeX selected a named instance of it and'
-  log '  the PDF driver cannot embed one. The same file loaded by path'
-  log '  works, so put the TTFs beside the document and rebuild:'
-  log "    scripts/fetch-vazirmatn.sh ${src_dir}/fonts"
-}
-
-# 0 = built, 1 = engine unavailable, 2 = engine present but failed.
+# Selection already established container readiness; never execute native TeX.
 compile_tex() {
-  have_xelatex || return 1
-  local pdf="${stem_src}.pdf" logfile="${stem_src}.log"
-  local out rc use_latexmk=0
-  command -v latexmk >/dev/null 2>&1 && use_latexmk=1
-
-  # Clear artefacts from a previous run first. Without this a stale .log
-  # makes "latexmk left no .log" read as "latexmk reached the compiler", so
-  # the fallback never fires and the old log gets reported as this build's
-  # error; a stale .pdf could likewise be shipped as a success.
-  rm -f "$logfile" "$pdf"
-
-  if [[ $use_latexmk -eq 1 ]]; then
-    log "engine: latexmk -xelatex"
-    out=$(latexmk -xelatex -interaction=nonstopmode -halt-on-error \
-                  -silent "$src_base" 2>&1); rc=$?
-    if [[ $rc -ne 0 && ! -f $logfile ]]; then
-      # No .log at all means the compiler was never reached - a latexmk
-      # problem (it is a Perl script, so a missing Perl kills it) rather
-      # than a broken document. Any real TeX error writes a .log first, so
-      # retrying here cannot hide one.
-      log "latexmk wrote no .log, so it never reached the compiler:"
-      printf '%s\n' "$out" >&2
-      log "retrying with xelatex directly"
-      use_latexmk=0
-    fi
-  fi
-
-  if [[ $use_latexmk -eq 0 ]]; then
-    log "engine: xelatex (two passes)"
-    out=$(xelatex -interaction=nonstopmode -halt-on-error "$src_base" 2>&1); rc=$?
-    if [[ $rc -eq 0 ]]; then
-      out=$(xelatex -interaction=nonstopmode -halt-on-error "$src_base" 2>&1); rc=$?
-    fi
-  fi
-
-  if [[ $rc -ne 0 ]]; then
-    if [[ -f $logfile ]]; then
-      show_tex_error "$logfile"
-    else
-      # Never claim "the error is above" when nothing was printed.
-      log "no ${logfile} was written; the engine's own output follows"
-      printf '%s\n' "$out" >&2
-    fi
-    return 2
-  fi
-  [[ -f $pdf ]] || { log "expected PDF missing: ${src_dir}/${pdf}"; return 2; }
-  # A zero exit code from xelatex only means TeX itself was happy. The PDF
-  # driver runs afterwards and reports its own failure in the log while
-  # xelatex still exits 0, so check for that before believing it.
-  if [[ -f $logfile ]] && grep -q 'driver return code' "$logfile"; then
-    log "the PDF driver failed even though xelatex exited 0:"
-    grep -n 'driver return code' "$logfile" >&2
-    printf '%s\n' "$out" >&2
-    explain_driver_failure "$out"
-    return 2
-  fi
-  if ! pdf_is_complete "$pdf"; then
-    log "${pdf} is truncated (no %%EOF); the driver did not finish"
-    printf '%s\n' "$out" >&2
-    explain_driver_failure "$out"
-    return 2
-  fi
+  python3 "$here/tex-container.py" "$src" "$local_pdf" >&2 || return 2
   return 0
 }
 
 html_to_pdf() {
-  local html=$1 out=$2 chrome crc
-  rm -f -- "$out"
-  if [[ $engine != weasyprint ]] && chrome=$(find_chrome); then
-    log "engine: $chrome --print-to-pdf"
-    # Without a virtual-time budget Chromium can print before the webfonts
-    # finish loading, which produces fallback boxes for Persian.
-    # --disable-gpu paints raster images as black rectangles; do not pass it.
-    # Headless Chrome often hangs after writing the PDF; accept a non-empty
-    # file even when timeout kills the process.
-    crc=0
-    if command -v timeout >/dev/null 2>&1; then
-      timeout 90 "$chrome" --headless=new --no-pdf-header-footer \
-        --virtual-time-budget=10000 \
-        --run-all-compositor-stages-before-draw \
-        --print-to-pdf="$out" "file://$(realpath "$html")" || crc=$?
-    else
-      "$chrome" --headless=new --no-pdf-header-footer \
-        --virtual-time-budget=10000 \
-        --run-all-compositor-stages-before-draw \
-        --print-to-pdf="$out" "file://$(realpath "$html")" || crc=$?
-    fi
-    if [[ ! -s $out ]]; then
-      log "chromium produced no PDF (exit ${crc})"
-      return 2
-    fi
-    warn_html_copy_order
-    return 0
+  local html=$1 out=$2 chrome
+  local arguments=("$here/render-html.py" "$html" "$out" --engine "$engine")
+  if [[ $engine == chromium ]]; then
+    chrome=$(find_chrome) || { log "selected Chromium became unavailable"; return 2; }
+    arguments+=(--browser "$chrome")
   fi
-  if command -v weasyprint >/dev/null 2>&1; then
-    log "engine: weasyprint (keeps its bidi warnings; read them)"
-    weasyprint "$html" "$out" || return 2
-    warn_html_copy_order
-    return 0
-  fi
-  if python3 -c "import weasyprint" >/dev/null 2>&1; then
-    log "engine: weasyprint (python module)"
-    python3 -c 'from weasyprint import HTML; import sys;
-HTML(sys.argv[1]).write_pdf(sys.argv[2])' "$html" "$out" || return 2
-    warn_html_copy_order
-    return 0
-  fi
-  log "no HTML engine: install Chromium, or WeasyPrint in a venv"
-  log "  (python3 -m venv … && pip install weasyprint; see pdf-output.md)"
-  return 1
+  python3 "${arguments[@]}" || return 2
+  warn_html_copy_order
+  return 0
 }
 
 _first_glob() {
@@ -337,7 +219,7 @@ verify_pdf() {
 
   log "embedded fonts:"
   pdffonts "$pdf" 2>/dev/null | sed -n '1,8p' >&2
-  if ! pdffonts "$pdf" 2>/dev/null | awk 'NR > 2 && $(NF-4) == "yes" {found=1} END {exit !found}'; then
+  if ! pdffonts "$pdf" 2>/dev/null | awk 'NR > 2 && NF {found=1; if ($(NF-4) != "yes") bad=1} END {exit (!found || bad)}'; then
     log "VERIFY FAIL: no embedded font; Persian may render as boxes"
     return 1
   fi
@@ -380,35 +262,12 @@ verify_pdf() {
   log "rasterised samples: ${out_prefix}-*.png — look at them, do not"
   log "  judge *display* RTL from pdftotext"
 
-  local order_rc=0 order_out="" visual=0 logical=0
-  if python3 -c 'import pymupdf' >/dev/null 2>&1; then
-    order_out=$(python3 "$here/check-pdf-text-order.py" "$pdf" \
-      --source "${src_dir}/${src_base}" 2>&1) || order_rc=$?
-    if [[ -n $order_out ]]; then
-      while IFS= read -r line; do
-        log "$line"
-      done <<<"$order_out"
-    fi
-  else
-    log "VERIFY FAIL: PyMuPDF missing; cannot verify text extraction order"
-    return 1
-  fi
-  if [[ $order_rc -eq 1 ]]; then
-    log "VERIFY FAIL: check-pdf-text-order could not run"
-    return 1
-  fi
-  grep -q 'check-pdf-text-order: visual' <<<"$order_out" && visual=1
-  grep -q 'check-pdf-text-order: logical' <<<"$order_out" && logical=1
-
-  if [[ $visual -eq 1 ]]; then
-    if have_xelatex; then
-      log "VERIFY FAIL: PyMuPDF extraction reverses source phrases"
-      log "  Check the font and ActualText mapping in the print source."
-      return 1
-    fi
-    log "VERIFY WARN: PyMuPDF extraction is reversed; selectable text is unverified"
-  elif [[ $logical -eq 0 ]]; then
-    log "VERIFY FAIL: Persian extraction order is inconclusive"
+  local order_rc=0 order_out=""
+  order_out=$(python3 "$here/check-pdf-text-order.py" "$pdf" \
+    --source "${src_dir}/${src_base}" --json 2>&1) || order_rc=$?
+  if [[ $order_rc -ne 0 ]] || ! python3 -c 'import json,sys; r=json.load(sys.stdin); raise SystemExit(r.get("status") != "passed")' <<<"$order_out"; then
+    log "VERIFY FAIL: text extraction order failed or is inconclusive"
+    log "$order_out"
     return 1
   fi
   return 0
@@ -417,30 +276,10 @@ verify_pdf() {
 rc=0
 case "$ext" in
   tex)
-    if [[ $engine == chromium || $engine == weasyprint ]]; then
-      html="${stem_src}.html"
-      [[ -f $html ]] || { log "no $html next to the .tex"; exit 1; }
-      html_to_pdf "$html" "$local_pdf"; rc=$?
-    else
-      compile_tex; rc=$?
-      if [[ $rc -eq 2 ]]; then
-        log "XeLaTeX is installed but the build failed."
-        log "Fix the problem reported above. Not falling back to HTML — a"
-        log "  fallback here would hide a real error in the .tex."
-        exit 1
-      fi
-      if [[ $rc -eq 1 ]]; then
-        log "xelatex or xepersian not available (see scripts/preflight.sh)"
-        html="${stem_src}.html"
-        if [[ -f $html ]]; then
-          log "falling back to $html"
-          html_to_pdf "$html" "$local_pdf"; rc=$?
-        else
-          log "write the HTML from assets/rtl-document.html and retry:"
-          log "  $0 ${src_dir}/${html} ${stem}"
-          exit 1
-        fi
-      fi
+    compile_tex; rc=$?
+    if [[ $rc -ne 0 ]]; then
+      log "selected TeX engine failed or became unavailable; no fallback after source checks"
+      exit 1
     fi
     ;;
   html|htm)
@@ -463,12 +302,8 @@ if [[ $verify -eq 1 ]]; then
   verify_pdf "$local_pdf" || exit 1
 fi
 
-mkdir -p "$dest_dir"
-staged_pdf=$(mktemp "${dest_dir}/.scientific-XXXXXX") || exit 1
-if ! cp -f "$local_pdf" "$staged_pdf" || ! mv -f "$staged_pdf" "$dest"; then
-  rm -f -- "$staged_pdf"
+python3 "$here/build-support.py" publish "$local_pdf" "$dest" || {
   log "delivery failed; previous destination was preserved"
   exit 1
-fi
-
+}
 echo "$dest"

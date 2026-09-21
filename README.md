@@ -1,5 +1,9 @@
 # Revayat Scientific — روایت علمی
 
+[![CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](skills/revayat-scientific/requirements.txt)
+
 **Translate scientific sources from any language into accurate Persian, preserving page dimensions and image fidelity, with editable output and a verified PDF.**
 
 An agent skill for Claude Code, Claude Desktop, Codex, Kiro, Cursor, Cline,
@@ -27,6 +31,8 @@ remain accounted for, and Persian pages whose output is actually checked.
 | **Mechanical quality gates** | Check orthography, terminology, isolates, missing images, embedded fonts, page count and sampled rasters. |
 | **Text extraction is measured** | Compare normalized Persian source phrases with PyMuPDF extraction; record limits instead of promising every viewer's clipboard behavior. |
 | **One portable entry point** | The same Python command chooses PowerShell on Windows and Bash on Linux/macOS, using the current host model for translation. |
+| **Built-in DOCX and PDF tools** | Inspect/create/edit DOCX; extract PDF text, tables and images, inspect/fill forms, merge pages and run optional OCR. Preserve originals and untouched document structures. |
+| **Optional parallel translation/editing** | Ask before using subagents; separate section ownership, shared terminology, worker logs and coordinator review keep the document consistent. |
 
 ## Install
 
@@ -78,7 +84,7 @@ Read the report before promising a PDF:
 
 | Report item | What it controls |
 | --- | --- |
-| XeLaTeX / xepersian | Preferred TeX build path |
+| Docker/Podman + XeLaTeX / xepersian image | Isolated TeX build; see the PDF output setup |
 | Edge, Chrome or WeasyPrint | HTML build path when selected |
 | Persian font | A readable Persian page; Vazirmatn is the preferred face |
 | Poppler and PyMuPDF | PDF page/font/raster inspection and extraction checks |
@@ -88,6 +94,13 @@ Missing optional tools affect only their stages. Install prerequisites with the
 user's approval; the installer and doctor do not install them automatically.
 
 ## Use
+
+The agent asks whether to use **parallel subagents for translation and editing**.
+This is optional: affirmative consent enables available workers; declining or
+leaving it unanswered keeps sequential work. Workers handle separate sections or
+review patches, keep their own logs, and the coordinator integrates the document
+against one glossary before final checks. Parallel work may use more tokens.
+[Parallel workflow and limits](skills/revayat-scientific/references/parallel-work.md).
 
 Tell the agent:
 
@@ -204,9 +217,10 @@ python tools/package.py
 
 [CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
 covers Python 3.10/Linux, 3.14/macOS and 3.13/Windows, native Windows
-rendering, inherited checker regressions and a real Linux XeLaTeX build.
-CodeQL and dependency review are configured; Dependabot covers Python packages
-and Actions. The generated `dist/revayat-scientific.skill` is an uploadable ZIP
+rendering, inherited checker regressions, isolated TeX, WeasyPrint and OCR.
+Workflow lint/security and Python audits run in CI. CodeQL and dependency review
+are configured; Dependabot covers Python packages, Actions and the container base.
+The generated `dist/revayat-scientific.skill` is an uploadable ZIP
 with its license notices; runtime dependencies stay outside the package.
 
 ### Logs
@@ -224,8 +238,14 @@ packaging use the repository's `logs/`. Each run has a new
 `<command>_YYYY-MM-DD_HH-mm-ss_UTC.log`, with a unique suffix on collision.
 Entries contain UTC time, level, operation, duration and exit code. Document
 text, arguments and tool output are not copied into these logs. Initialization
-failure falls back to stderr. Logs remain local until removed. TeX also keeps
-its document log beside the source.
+failure falls back to stderr. Logs remain local until removed. Container TeX
+scratch files are removed after confirmed cleanup; unresolved cleanup retains
+its local recovery evidence and blocks publication.
+
+Native document, figure, font and render helpers write diagnostics under
+`scripts/logs/`. `REVAYAT_LOG_LEVEL` selects `DEBUG`, `INFO` (default), `WARNING`
+or `ERROR`. Diagnostic decoding tolerates malformed tool output; source documents
+and structured reports retain strict format/encoding validation.
 
 ## Donate
 

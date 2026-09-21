@@ -5,7 +5,7 @@
     $HOME\Documents\books. Windows counterpart of build-pdf.sh.
 
 .DESCRIPTION
-    Engine order for .tex: XeLaTeX (via latexmk when present). For .html:
+    Engine order for .tex: isolated XeLaTeX through Docker/Podman. For .html:
     a Chromium browser (Edge, then Chrome), then WeasyPrint. A *missing*
     engine falls back; a *failing* engine does not - it reports the error
     and stops, so a broken build is never quietly downgraded.
@@ -89,7 +89,7 @@ function Test-Windows {
 }
 
 if (-not (Test-Windows)) {
-    Write-Log 'this script drives Windows tooling (registry fonts, Edge, MiKTeX).'
+    Write-Log 'this script drives Windows tooling (registry fonts, Edge, local containers).'
     Write-Log 'On Linux or macOS run the POSIX twin instead:'
     Write-Log '  scripts/build-pdf.sh <file.tex|file.html> <slug> --verify'
     exit 2
@@ -119,8 +119,7 @@ function Get-Tool {
 
 function Invoke-Tool {
     # Run a *console* executable, capture merged stdout+stderr, return the
-    # exit code. A GUI-subsystem executable needs Invoke-Browser instead -
-    # see the note there.
+    # exit code. The bounded Python renderer owns GUI-subsystem browsers.
     #
     # $Exe must be a resolved path from Get-Tool, never a bare name: the call
     # operator runs full command discovery, which prefers an alias, function
@@ -157,49 +156,6 @@ function Invoke-Tool {
     return [pscustomobject]@{ ExitCode = $code; Output = $out }
 }
 
-function Invoke-Browser {
-    # Same contract as Invoke-Tool, but for a GUI-subsystem executable.
-    #
-    # PowerShell only waits for *console* applications. msedge.exe and
-    # chrome.exe are GUI binaries, so `& $browser --print-to-pdf ...`
-    # returns the instant the process is launched: nothing is captured,
-    # nothing writes $LASTEXITCODE, and the check for the finished PDF runs
-    # while the browser is still starting. Invoke-Tool reads that unset
-    # exit code as its "never launched" sentinel and reports 127, which is
-    # why the HTML path failed on every Windows machine that has Edge.
-    #
-    # Start-Process -Wait is the form that actually blocks on a GUI
-    # process. It hands the arguments over as one joined string instead of
-    # an argv array, so anything holding a space - every path under
-    # "Program Files", every slug with a space in it - has to be quoted
-    # here; the call operator did that itself.
-    param([string]$Exe, [string[]]$Arguments)
-    $stem = Join-Path ([IO.Path]::GetTempPath()) ('fa-run-' + [Guid]::NewGuid().ToString('N'))
-    $outFile = "$stem.out"
-    $errFile = "$stem.err"
-    $quoted = @($Arguments | ForEach-Object {
-        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
-    })
-    try {
-        $p = Start-Process -FilePath $Exe -ArgumentList $quoted -Wait -PassThru `
-            -WindowStyle Hidden -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-        $lines = @()
-        foreach ($f in @($outFile, $errFile)) {
-            if (Test-Path -LiteralPath $f) {
-                $lines += @(Get-Content -LiteralPath $f -Encoding UTF8 -ErrorAction SilentlyContinue)
-            }
-        }
-        return [pscustomobject]@{ ExitCode = $p.ExitCode; Output = $lines }
-    }
-    catch {
-        # Could not start at all: report it the way Invoke-Tool would.
-        return [pscustomobject]@{ ExitCode = 127; Output = @($_.Exception.Message) }
-    }
-    finally {
-        Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function Write-ToolOutput {
     param($Output)
     if ($null -eq $Output) { return }
@@ -221,22 +177,18 @@ function Write-ToolFailure {
 }
 
 function Test-XeLaTeX {
-    if (-not (Get-Tool 'xelatex')) { return $false }
-    # xepersian is the part that is usually missing on a bare TeX install.
-    $kpse = Get-Tool 'kpsewhich'
-    if ($kpse) {
-        # Exit code alone is not enough: MiKTeX's kpsewhich can exit 0 while
-        # printing nothing for a package the basic install does not carry.
-        # Require an actual path back.
-        $r = Invoke-Tool $kpse @('xepersian.sty')
-        if ($r.ExitCode -ne 0) { return $false }
-        $hit = $r.Output | Where-Object { "$_" -match 'xepersian\.sty' }
-        if (-not $hit) { return $false }
-    }
-    return $true
+    $interpreter = Get-Tool 'python'
+    if (-not $interpreter) { $interpreter = Get-Tool 'python3' }
+    if (-not $interpreter) { return $false }
+    $result = Invoke-Tool $interpreter @((Join-Path $PSScriptRoot 'tex-container.py'), '--probe')
+    return ($result.ExitCode -eq 0)
 }
 
 function Find-Chromium {
+    if ($env:REVAYAT_CHROMIUM) {
+        if (Test-Path -LiteralPath $env:REVAYAT_CHROMIUM -PathType Leaf) { return $env:REVAYAT_CHROMIUM }
+        return $null
+    }
     # Edge ships with Windows and is the same Chromium engine, so it is the
     # first choice here; Chrome and a bare chromium build follow.
     foreach ($name in 'msedge', 'chrome', 'chromium') {
@@ -262,126 +214,11 @@ function Find-Chromium {
     return $null
 }
 
-function Show-TexError {
-    param([string]$LogFile)
-    if (-not (Test-Path -LiteralPath $LogFile -PathType Leaf)) { return }
-    $errs = Get-Content -LiteralPath $LogFile -Encoding UTF8 |
-        Where-Object { $_ -like '!*' } |
-        Select-Object -First 20
-    if ($errs) {
-        Write-Log "--- first TeX errors in $LogFile ---"
-        $errs | ForEach-Object { [Console]::Error.WriteLine($_) }
-    }
-    else {
-        # A truncated log with no '!' line usually means the engine died
-        # mid-run rather than rejecting the document - say so instead of
-        # printing an empty section under a heading that promises errors.
-        Write-Log "no '!' error line in $LogFile; the engine stopped mid-run"
-    }
-    Write-Log '--- last 25 log lines ---'
-    Get-Content -LiteralPath $LogFile -Encoding UTF8 -Tail 25 |
-        ForEach-Object { [Console]::Error.WriteLine($_) }
-}
-
-function Show-DriverFailure {
-    # xdvipdfmx cannot embed a *named instance* of a variable font, and a
-    # named instance is exactly what XeTeX hands it for any family that is
-    # installed only as a variable face - Vazirmatn from Google Fonts among
-    # them. What it prints is "Invalid TTC index" and "Invalid font: -1 (4)",
-    # which says nothing about fonts to anyone who has not met it before.
-    # Translate it.
-    param($Output, [string]$SourceDir)
-    $hit = $Output | Where-Object {
-        "$_" -like '*Invalid TTC index*' -or "$_" -like '*Invalid font: -1*'
-    }
-    if (-not $hit) { return }
-    Write-Log 'that is a variable font: XeTeX selected a named instance of it and'
-    Write-Log '  the PDF driver cannot embed one. The same file loaded by path'
-    Write-Log '  works, so put the TTFs beside the document and rebuild:'
-    Write-Log "    scripts\fetch-vazirmatn.ps1 $(Join-Path $SourceDir 'fonts')"
-}
-
-# 0 = built, 1 = engine unavailable, 2 = engine present but failed.
 function Invoke-TexBuild {
     param([string]$SourceName, [string]$Stem, [string]$Destination)
-    if (-not (Test-XeLaTeX)) { return 1 }
-    $pdf = "$Stem.pdf"
-    $log = "$Stem.log"
-    $xelatex = Get-Tool 'xelatex'
-    $latexmk = Get-Tool 'latexmk'
-    $useLatexmk = [bool]$latexmk
-    $r = $null
-
-    # Clear artefacts from a previous run first. Without this a stale .log
-    # makes "latexmk left no .log" read as "latexmk reached the compiler",
-    # so the fallback never fires and the old log gets reported as this
-    # build's error; a stale .pdf could likewise be shipped as a success.
-    Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $pdf -Force -ErrorAction SilentlyContinue
-
-    if ($useLatexmk) {
-        Write-Log 'engine: latexmk -xelatex'
-        $r = Invoke-Tool $latexmk @(
-            '-xelatex', '-interaction=nonstopmode', '-halt-on-error',
-            '-silent', $SourceName)
-        if ($r.ExitCode -ne 0 -and -not (Test-Path -LiteralPath $log -PathType Leaf)) {
-            # No .log at all means the compiler was never reached - a
-            # latexmk problem (MiKTeX ships it as a Perl script, so a
-            # missing Perl kills it) rather than a broken document. Any
-            # real TeX error writes a .log first, so retrying here cannot
-            # hide one.
-            Write-Log 'latexmk wrote no .log, so it never reached the compiler:'
-            Write-ToolOutput $r.Output
-            Write-Log 'retrying with xelatex directly'
-            $useLatexmk = $false
-        }
-    }
-
-    if (-not $useLatexmk) {
-        Write-Log 'engine: xelatex (two passes)'
-        $r = Invoke-Tool $xelatex @(
-            '-interaction=nonstopmode', '-halt-on-error', $SourceName)
-        if ($r.ExitCode -eq 0) {
-            $r = Invoke-Tool $xelatex @(
-                '-interaction=nonstopmode', '-halt-on-error', $SourceName)
-        }
-    }
-
-    if ($r.ExitCode -ne 0) {
-        if (Test-Path -LiteralPath $log -PathType Leaf) {
-            Show-TexError $log
-        }
-        else {
-            # Never claim "the error is above" when nothing was printed.
-            Write-Log "no $log was written; the engine's own output follows"
-            Write-ToolOutput $r.Output
-        }
-        return 2
-    }
-    if (-not (Test-Path -LiteralPath $pdf -PathType Leaf)) {
-        Write-Log "expected PDF missing: $pdf"
-        return 2
-    }
-    # A zero exit code from xelatex only means TeX itself was happy. The
-    # PDF driver runs afterwards and reports its own failure in the log
-    # while xelatex still exits 0, so check for that before believing it.
-    if (Test-Path -LiteralPath $log -PathType Leaf) {
-        $driver = Get-Content -LiteralPath $log -Encoding UTF8 |
-            Where-Object { $_ -like '*driver return code*' }
-        if ($driver) {
-            Write-Log 'the PDF driver failed even though xelatex exited 0:'
-            $driver | ForEach-Object { [Console]::Error.WriteLine($_) }
-            Write-ToolOutput $r.Output
-            Show-DriverFailure $r.Output $srcDir
-            return 2
-        }
-    }
-    if (-not (Test-PdfStructure $pdf)) {
-        Write-Log "$pdf is truncated (no %%EOF); the driver did not finish"
-        Write-ToolOutput $r.Output
-        Show-DriverFailure $r.Output $srcDir
-        return 2
-    }
+    $result = Invoke-Tool $python @((Join-Path $PSScriptRoot 'tex-container.py'), $srcItem.FullName, $Destination)
+    Write-ToolOutput $result.Output
+    if ($result.ExitCode -ne 0) { return 2 }
     return 0
 }
 
@@ -405,93 +242,18 @@ function Test-PdfStructure {
     return $tail.Contains('%%EOF')
 }
 
-function ConvertTo-FileUri {
-    param([string]$LiteralPath)
-    return ([Uri](Resolve-Path -LiteralPath $LiteralPath).ProviderPath).AbsoluteUri
-}
-
 function Invoke-HtmlBuild {
     param([string]$Html, [string]$Destination)
-    Write-Log 'HTML engines may store visual text order; selectable Persian requires XeLaTeX'
-    Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
-
-    if ($Engine -ne 'weasyprint') {
+    $arguments = @((Join-Path $PSScriptRoot 'render-html.py'), $Html, $Destination, '--engine', $Engine)
+    if ($Engine -eq 'chromium') {
         $browser = Find-Chromium
-        if ($browser) {
-            Write-Log "engine: $([IO.Path]::GetFileName($browser)) --print-to-pdf"
-            # A dedicated profile directory keeps the headless run from
-            # attaching to an already-open Edge/Chrome window, which is the
-            # usual reason --print-to-pdf silently writes nothing on Windows.
-            $profileDir = Join-Path ([IO.Path]::GetTempPath()) ('fa-pdf-' + [Guid]::NewGuid().ToString('N'))
-            try {
-                # Without a virtual-time budget Chromium can print before the
-                # webfonts finish loading, which produces fallback boxes for
-                # Persian. --disable-gpu paints raster images as black
-                # rectangles; do not pass it.
-                $r = Invoke-Browser $browser @(
-                    '--headless=new',
-                    '--no-pdf-header-footer',
-                    '--virtual-time-budget=10000',
-                    '--run-all-compositor-stages-before-draw',
-                    "--user-data-dir=$profileDir",
-                    "--print-to-pdf=$Destination",
-                    (ConvertTo-FileUri $Html)
-                )
-            }
-            finally {
-                Remove-Item -LiteralPath $profileDir -Recurse -Force -ErrorAction SilentlyContinue
-            }
-            if ($r.ExitCode -ne 0) {
-                Write-ToolFailure "$([IO.Path]::GetFileName($browser)) --print-to-pdf" $r
-                Write-Log "  source: $Html"
-                Write-Log "  target: $Destination"
-                return 2
-            }
-            # Headless Chromium can exit 0 without writing the file.
-            if (-not (Test-Path -LiteralPath $Destination -PathType Leaf)) {
-                Write-Log "the browser exited 0 but wrote no PDF: $Destination"
-                Write-ToolOutput $r.Output
-                return 2
-            }
-            if (-not (Test-PdfStructure $Destination)) {
-                Write-Log "the browser wrote a truncated PDF: $Destination"
-                Write-ToolOutput $r.Output
-                return 2
-            }
-            return 0
-        }
+        if (-not $browser) { Write-Log 'selected Chromium became unavailable'; return 2 }
+        $arguments += @('--browser', $browser)
     }
-
-    $weasyprint = Get-Tool 'weasyprint'
-    if ($weasyprint) {
-        Write-Log 'engine: weasyprint (keeps its bidi warnings; read them)'
-        $r = Invoke-Tool $weasyprint @($Html, $Destination)
-        if ($r.ExitCode -ne 0) {
-            Write-ToolFailure 'weasyprint' $r
-            return 2
-        }
-        return 0
-    }
-
-    $python = Get-Tool 'python'
-    if (-not $python) { $python = Get-Tool 'python3' }
-    if ($python) {
-        $probe = Invoke-Tool $python @('-c', 'import weasyprint')
-        if ($probe.ExitCode -eq 0) {
-            Write-Log 'engine: weasyprint (python module)'
-            $code = 'from weasyprint import HTML; import sys; HTML(sys.argv[1]).write_pdf(sys.argv[2])'
-            $r = Invoke-Tool $python @('-c', $code, $Html, $Destination)
-            if ($r.ExitCode -ne 0) {
-                Write-ToolOutput $r.Output
-                return 2
-            }
-            return 0
-        }
-    }
-
-    Write-Log 'no HTML engine: install Edge/Chrome, or WeasyPrint in a venv'
-    Write-Log '  (py -m venv .venv; .venv\Scripts\pip install weasyprint)'
-    return 1
+    $result = Invoke-Tool $python $arguments
+    Write-ToolOutput $result.Output
+    if ($result.ExitCode -ne 0) { return 2 }
+    return 0
 }
 
 . (Join-Path $PSScriptRoot 'verify-pdf.ps1')
@@ -534,51 +296,39 @@ foreach ($sidecar in @($Terms, $Manifest)) {
         exit 1
     }
 }
+$available = @()
+if (Test-XeLaTeX) { $available += 'tex' }
+if ((Find-Chromium) -and (Invoke-Tool $python @('-c', 'import playwright.sync_api, pymupdf')).ExitCode -eq 0) { $available += 'chromium' }
+if ((Invoke-Tool $python @('-c', 'from weasyprint import HTML; from weasyprint.urls import URLFetcher, URLFetcherResponse, FatalURLFetchingError; import pymupdf')).ExitCode -eq 0) { $available += 'weasyprint' }
+$requestedEngine = if ($Engine) { $Engine } else { 'auto' }
+$r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'select',
+    $srcItem.FullName, '--engine', $requestedEngine, '--available', ($available -join ','))
+if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; exit 1 }
+$plan = (($r.Output | ForEach-Object { "$_" }) -join "`n") | ConvertFrom-Json
+$srcItem = Get-Item -LiteralPath $plan.source
+$srcName = $srcItem.Name
+$ext = $srcItem.Extension.TrimStart('.').ToLowerInvariant()
+$Engine = $plan.engine
+$r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'destination',
+    $dest, $srcItem.FullName, $localPdf)
+if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; exit 1 }
 $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'check-fa.py'), $srcItem.FullName,
     '--level', $Level, '--terms', $Terms, '--manifest', $Manifest, '--strict')
 Write-ToolOutput $r.Output
 if ($r.ExitCode -ne 0) { Write-Log 'lint failed; destination was not changed'; exit 1 }
-$figures = Join-Path $srcDir 'figures'
-if (Test-Path -LiteralPath $figures -PathType Container) {
-    $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'prepare-figures.py'), $figures, '--check')
-    Write-ToolOutput $r.Output
-    if ($r.ExitCode -ne 0) { Write-Log 'figure check failed'; exit 1 }
-}
+$r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'assets', $srcItem.FullName)
+Write-ToolOutput $r.Output
+if ($r.ExitCode -ne 0) { Write-Log 'figure check failed'; exit 1 }
 
 $rc = 1
 Push-Location -LiteralPath $srcDir
 try {
     switch ($ext) {
         'tex' {
-            if ($Engine -eq 'chromium' -or $Engine -eq 'weasyprint') {
-                $html = "$srcStem.html"
-                if (-not (Test-Path -LiteralPath $html -PathType Leaf)) {
-                    Write-Log "no $html next to the .tex"
-                    exit 1
-                }
-                $rc = Invoke-HtmlBuild $html $localPdf
-            }
-            else {
-                $rc = Invoke-TexBuild $srcName $srcStem $localPdf
-                if ($rc -eq 2) {
-                    Write-Log 'XeLaTeX is installed but the build failed.'
-                    Write-Log 'Fix the problem reported above. Not falling back to HTML - a'
-                    Write-Log '  fallback here would hide a real error in the .tex.'
-                    exit 1
-                }
-                if ($rc -eq 1) {
-                    Write-Log 'xelatex or xepersian not available (see scripts\preflight.ps1)'
-                    $html = "$srcStem.html"
-                    if (Test-Path -LiteralPath $html -PathType Leaf) {
-                        Write-Log "falling back to $html"
-                        $rc = Invoke-HtmlBuild $html $localPdf
-                    }
-                    else {
-                        Write-Log 'write the HTML from assets\rtl-document.html and retry:'
-                        Write-Log "  build-pdf.ps1 $(Join-Path $srcDir $html) $Slug"
-                        exit 1
-                    }
-                }
+            $rc = Invoke-TexBuild $srcName $srcStem $localPdf
+            if ($rc -ne 0) {
+                Write-Log 'selected TeX engine failed or became unavailable; no fallback after source checks'
+                exit 1
             }
         }
         { $_ -in 'html', 'htm' } {
@@ -608,14 +358,7 @@ finally {
 }
 
 if (-not (Test-PdfStructure $localPdf)) { Write-Log 'build produced an invalid PDF'; exit 1 }
-New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-$stagedPdf = Join-Path $destDir ('.scientific-' + [Guid]::NewGuid().ToString('N') + '.pdf')
-try {
-    Copy-Item -LiteralPath $localPdf -Destination $stagedPdf -ErrorAction Stop
-    if (Test-Path -LiteralPath $dest) { [IO.File]::Replace($stagedPdf, $dest, [NullString]::Value) }
-    else { [IO.File]::Move($stagedPdf, $dest) }
-}
-catch { Write-Log "delivery failed: $($_.Exception.Message); previous destination was preserved"; exit 1 }
-finally { Remove-Item -LiteralPath $stagedPdf -Force -ErrorAction SilentlyContinue }
+$r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'publish', $localPdf, $dest)
+if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; Write-Log 'delivery failed; previous destination was preserved'; exit 1 }
 Write-Output $dest
 exit 0

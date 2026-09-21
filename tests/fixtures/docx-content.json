@@ -1,0 +1,29 @@
+{
+  "language": "fa-IR",
+  "rtl": true,
+  "sections": [
+    {
+      "width_mm": 160,
+      "height_mm": 240,
+      "margins_mm": {"top": 18, "bottom": 18, "left": 16, "right": 16},
+      "header": "گزارش علمی",
+      "footer": "نسخهٔ آزمایشی",
+      "blocks": [
+        {"type": "paragraph", "runs": [
+          {"text": "Scientific example", "bold": true, "language": "en-US", "rtl": false},
+          {"text": " — نمونهٔ فارسی", "italic": true, "font": "Vazirmatn", "size_pt": 12}
+        ]},
+        {"type": "table", "rows": [["کمیت", "مقدار"], ["دما", {
+          "text": "23.5 °C", "language": "en-US", "rtl": false
+        }]]},
+        {"type": "image", "path": "figure.png", "width_mm": 40}
+      ]
+    },
+    {
+      "width_mm": 240,
+      "height_mm": 160,
+      "margins_mm": {"top": 15, "bottom": 15, "left": 15, "right": 15},
+      "blocks": [{"type": "paragraph", "text": "نتیجهٔ پژوهش در صفحهٔ افقی."}]
+    }
+  ]
+}

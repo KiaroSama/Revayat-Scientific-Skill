@@ -102,6 +102,12 @@ Never manufacture a dedicated repository or a tested-language badge.
 ## Narrow checker exceptions for preserved originals
 
 The mechanical checker is Persian-oriented, not a multilingual proofreader.
+In HTML, declare the actual `lang` on retained foreign spans and use `cite`, `q`
+or `blockquote` for original identities/quotations; `data-source-identity="true"`
+marks other explicitly preserved identities. English morphology checks respect
+these boundaries. TeX `latin` blocks preserve original source passages. Ordinary
+LTR term isolates are not automatically original titles: mark their identity or
+use the narrow documented exception with source evidence.
 If a correctly preserved source quote triggers a Persian-only rule, keep the
 quote on its own line and use the existing `fa-lint: allow <check-id>` comment on
 that line or immediately before it. Record language, source location and reason.
@@ -110,6 +116,8 @@ Persian translated prose must still use `کتاب علمی`. A foreign original 
 `s` may need the specific `en-plural` exception; do not singularize its name.
 Never use `allow all`, a document-wide waiver or a fake code block. Check the exact
 source quote manually; neighboring Persian and unrelated checks must remain active.
+Only real source comments can waive a rule; attribute text cannot. Waivers stay
+within the original file when literal TeX chapters are included.
 
 ## Completion evidence
 

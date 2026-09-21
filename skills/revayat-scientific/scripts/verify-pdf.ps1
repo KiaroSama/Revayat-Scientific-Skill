@@ -22,11 +22,12 @@ function Test-OutputPdf {
     if ($pages -lt 1) { Write-Log 'VERIFY FAIL: empty PDF'; return $false }
     Write-Log "pages: $pages"
     $r = Invoke-Tool (Get-Tool 'pdffonts') @($Pdf)
-    $embedded = $r.Output | Select-Object -Skip 2 | Where-Object {
+    $fontRows = @($r.Output | Select-Object -Skip 2 | Where-Object { "$_".Trim() })
+    $embedded = @($fontRows | Where-Object {
         $fields = "$_".Trim() -split '\s+'
         $fields.Count -ge 8 -and $fields[-5] -eq 'yes'
-    }
-    if ($r.ExitCode -ne 0 -or -not $embedded) {
+    })
+    if ($r.ExitCode -ne 0 -or -not $embedded -or $embedded.Count -ne $fontRows.Count) {
         Write-Log 'VERIFY FAIL: no embedded font; Persian may render as boxes'
         return $false
     }
@@ -46,27 +47,17 @@ function Test-OutputPdf {
         }
     }
     Write-Log 'rasterised first/middle/last samples; inspect their display visually'
-    $order = ''
-    if ((Invoke-Tool $python @('-c', 'import pymupdf')).ExitCode -eq 0) {
-        $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'check-pdf-text-order.py'),
-            $Pdf, '--source', $srcItem.FullName)
+    $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'check-pdf-text-order.py'),
+        $Pdf, '--source', $srcItem.FullName, '--json')
+    if ($r.ExitCode -ne 0) {
         Write-ToolOutput $r.Output
-        if ($r.ExitCode -notin @(0, 2)) {
-            Write-Log 'VERIFY FAIL: check-pdf-text-order could not run'
-            return $false
-        }
-        $order = ($r.Output | ForEach-Object { "$_" }) -join "`n"
+        Write-Log 'VERIFY FAIL: text extraction order failed or is inconclusive'
+        return $false
     }
-    else { Write-Log 'VERIFY FAIL: PyMuPDF missing; text extraction order is unverified'; return $false }
-    if ($order -match 'check-pdf-text-order: visual') {
-        if (Test-XeLaTeX) {
-            Write-Log 'VERIFY FAIL: PyMuPDF extraction reverses source phrases; check ActualText and fonts'
-            return $false
-        }
-        Write-Log 'VERIFY WARN: PyMuPDF extraction is reversed; selectable text is unverified'
-    }
-    elseif ($order -notmatch 'check-pdf-text-order: logical') {
-        Write-Log 'VERIFY FAIL: Persian extraction order is inconclusive'
+    try { $order = (($r.Output | ForEach-Object { "$_" }) -join "`n") | ConvertFrom-Json }
+    catch { Write-Log 'VERIFY FAIL: invalid text-order result'; return $false }
+    if ($order.status -ne 'passed') {
+        Write-Log 'VERIFY FAIL: text extraction order is unverified'
         return $false
     }
     return $true
