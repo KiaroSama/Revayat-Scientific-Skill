@@ -39,3 +39,7 @@ Thumbs.db
 !/.env.sample
 !/.env.template
 !/.env.dist
+
+/.specify/
+/specs/
+/plans/

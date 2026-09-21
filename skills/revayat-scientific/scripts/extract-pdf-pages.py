@@ -15,11 +15,16 @@ Page numbers are 1-based and inclusive.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+import tempfile
 from pathlib import Path
 
+from publication import publish_files, validate_destination
+from runtime import operation_log
 
-def main() -> int:
+
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("src", type=Path, help="source PDF")
     ap.add_argument("dest", type=Path, help="output PDF")
@@ -30,17 +35,18 @@ def main() -> int:
     )
     ap.add_argument("--from", dest="first", type=int, help="first page (1-based)")
     ap.add_argument("--to", dest="last", type=int, help="last page (1-based)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     first = args.first
     last = args.last
     if args.range:
-        if "-" in args.range:
-            a, b = args.range.split("-", 1)
-            first = int(a)
-            last = int(b)
-        else:
-            first = last = int(args.range)
+        if first is not None or last is not None:
+            ap.error('choose either positional range or --from/--to')
+        match = re.fullmatch(r'([1-9][0-9]*)(?:-([1-9][0-9]*))?', args.range)
+        if match is None:
+            ap.error('range must contain positive integer page numbers')
+        first = int(match[1])
+        last = int(match[2] or match[1])
     if first is None or last is None:
         ap.error("need a range (1-20) or --from and --to")
     if first < 1 or last < first:
@@ -57,24 +63,36 @@ def main() -> int:
         print(f"extract-pdf-pages.py: not a file: {args.src}", file=sys.stderr)
         return 1
 
-    src = pymupdf.open(args.src)
-    n = src.page_count
-    if last > n:
-        print(f"extract-pdf-pages.py: {args.src} has {n} pages, not {last}",
-              file=sys.stderr)
-        src.close()
-        return 1
-
-    out = pymupdf.open()
-    # One range: keeps shared XObjects. Do not loop insert_pdf per page.
-    out.insert_pdf(src, from_page=first - 1, to_page=last - 1)
-    args.dest.parent.mkdir(parents=True, exist_ok=True)
-    out.save(args.dest, garbage=4, deflate=True, clean=True)
-    out.close()
-    src.close()
+    validate_destination(args.dest, [args.src])
+    with pymupdf.open(args.src) as src:
+        if not src.is_pdf or src.needs_pass:
+            raise ValueError('source must be an unlocked PDF')
+        if last > src.page_count:
+            raise ValueError('requested page range exceeds source page count')
+        expected = [tuple(src[number].rect) for number in range(first - 1, last)]
+        args.dest.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='.revayat-pages-', dir=args.dest.parent) as directory:
+            stage = Path(directory) / 'pages.pdf'
+            with pymupdf.open() as out:
+                # One range keeps shared XObjects; never insert one page at a time.
+                out.insert_pdf(src, from_page=first - 1, to_page=last - 1)
+                out.save(stage, garbage=4, deflate=True, clean=True)
+            with pymupdf.open(stage) as reopened:
+                if not reopened.is_pdf or reopened.needs_pass or reopened.page_count != last - first + 1:
+                    raise ValueError('staged extraction failed PDF validation')
+                if [tuple(page.rect) for page in reopened] != expected:
+                    raise ValueError('staged extraction changed page geometry')
+            publish_files([(stage, args.dest)], protected_sources=[args.src])
     print(f"wrote {args.dest} pages {first}-{last}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        with operation_log('extract-pdf-pages', Path(__file__).resolve().parent / 'logs') as log:
+            result = main()
+            log.info('exit_code=%d', result)
+        sys.exit(result)
+    except Exception as error:
+        print(f'extract-pdf-pages: failed ({type(error).__name__}): {error}', file=sys.stderr)
+        sys.exit(2)

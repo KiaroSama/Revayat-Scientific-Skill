@@ -19,6 +19,9 @@ from __future__ import annotations
 import argparse
 import html as html_mod
 import importlib.util
+import json
+from tex_source import source_closure, plain_tex
+from runtime import operation_log
 import re
 import subprocess
 import sys
@@ -47,29 +50,7 @@ def fold(s: str) -> str:
 
 
 def strip_tex(text: str) -> str:
-    lines = []
-    for line in text.splitlines():
-        out = []
-        i = 0
-        while i < len(line):
-            if line[i] == "%" and (i == 0 or line[i - 1] != "\\"):
-                break
-            out.append(line[i])
-            i += 1
-        lines.append("".join(out))
-    text = "\n".join(lines)
-    text = re.sub(
-        r"\\begin\{latin\}.*?\\end\{latin\}", " ", text, flags=re.S
-    )
-    for _ in range(8):
-        nxt = re.sub(
-            r"\\(?:lr|en|texttt|textbf|textit)\{([^{}]*)\}", " ", text
-        )
-        if nxt == text:
-            break
-        text = nxt
-    text = re.sub(r"\\[a-zA-Z@]+\*?(?:\[[^\]]*\])?", " ", text)
-    return re.sub(r"[{}\\]", " ", text)
+    return plain_tex(text)
 
 
 def strip_html(text: str) -> str:
@@ -81,7 +62,7 @@ def strip_html(text: str) -> str:
 
 def source_plain(path: Path, text: str | None = None) -> str:
     if text is None:
-        text = path.read_text(encoding="utf-8")
+        text = source_closure(path).text if path.suffix.lower() in {".tex", ".ltx"} else path.read_text(encoding="utf-8")
     suffix = path.suffix.lower()
     if suffix in {".tex", ".ltx"}:
         return strip_tex(text)
@@ -182,6 +163,7 @@ def main() -> int:
     ap.add_argument("--extracted", type=Path,
                     help="classify an already extracted text dump")
     ap.add_argument("--min-letters", type=int, default=12)
+    ap.add_argument("--json", action="store_true", help="write structured verification status to stdout")
     args = ap.parse_args()
 
     if not args.source.is_file():
@@ -191,7 +173,11 @@ def main() -> int:
         print("check-pdf-text-order: pass a PDF or --extracted", file=sys.stderr)
         return 1
 
-    plain = source_plain(args.source)
+    try:
+        plain = source_plain(args.source)
+    except (OSError, UnicodeError, ValueError) as error:
+        print(f"check-pdf-text-order: source closure failed: {error}", file=sys.stderr)
+        return 1
     windows = persian_windows(plain, min_letters=args.min_letters)
     if args.extracted is not None:
         extracted = args.extracted.read_text(encoding="utf-8")
@@ -203,6 +189,9 @@ def main() -> int:
 
     kind = classify(windows, extracted, min_letters=args.min_letters)
     n = len(windows)
+    if args.json:
+        print(json.dumps({"check": "text-order", "status": "passed" if kind == "logical" else "failed" if kind == "visual" else "inconclusive", "order": kind, "probes": n}))
+        return 0 if kind == "logical" else 2 if kind == "visual" else 3
     print(
         f"check-pdf-text-order: {kind} ({n} Persian phrase probes)",
         file=sys.stderr,
@@ -218,4 +207,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    with operation_log('check-pdf-text-order', Path(__file__).resolve().parent / 'logs') as logger:
+        result = main()
+        logger.info('exit_code=%d', result)
+    sys.exit(result)

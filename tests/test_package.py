@@ -20,12 +20,47 @@ def run(*command, cwd=ROOT, timeout=30):
 
 
 class PackageTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        (ROOT / '.scratch').mkdir(exist_ok=True)
+
+    def assert_native_document_commands(self, cli, project):
+        import pymupdf
+        content = project / 'محتوا.json'
+        document = project / 'ترجمه.docx'
+        report = project / 'docx-report.json'
+        content.write_text(json.dumps({'language': 'fa-IR', 'rtl': True, 'sections': [{
+            'width_mm': 160, 'height_mm': 240,
+            'margins_mm': {'top': 15, 'bottom': 15, 'left': 15, 'right': 15},
+            'blocks': [{'type': 'paragraph', 'text': 'این یک متن علمی فارسی است.'}]}]},
+            ensure_ascii=False), encoding='utf-8')
+        for arguments in (['docx', 'create', str(content), str(document)],
+                          ['docx', 'inspect', str(document), '--output', str(report)]):
+            result = run(sys.executable, str(cli), *arguments, cwd=project)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        with zipfile.ZipFile(document) as package:
+            self.assertIsNone(package.testzip())
+            self.assertIn('متن علمی فارسی', package.read('word/document.xml').decode('utf-8'))
+        metadata = json.loads(report.read_text(encoding='utf-8'))
+        self.assertTrue(metadata['text_nodes'])
+        source, extracted = project / 'source.pdf', project / 'pdf-text.json'
+        with pymupdf.open() as pdf:
+            page = pdf.new_page(width=230, height=340)
+            page.insert_text((20, 30), 'Scientific package boundary')
+            pdf.save(source)
+        original = source.read_bytes()
+        result = run(sys.executable, str(cli), 'pdf', 'text', str(source), str(extracted), cwd=project)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = json.loads(extracted.read_text(encoding='utf-8'))
+        self.assertEqual(text['pages'][0]['text'].strip(), 'Scientific package boundary')
+        self.assertEqual(source.read_bytes(), original)
+
     def test_image_preparation_and_pdf_pages(self):
         from PIL import Image
         import pymupdf
 
         cli = str(SKILL / 'scripts/revayat-scientific.py')
-        with tempfile.TemporaryDirectory(prefix='scientific figures ') as directory:
+        with tempfile.TemporaryDirectory(prefix='scientific figures ', dir=ROOT / '.scratch') as directory:
             work = Path(directory)
             figures = work / 'figures'
             figures.mkdir()
@@ -68,7 +103,7 @@ class PackageTest(unittest.TestCase):
                         '-NonInteractive', '-File', str(ROOT / 'install/install.ps1')]
         else:
             launcher = [shutil.which('bash'), str(ROOT / 'install/install.sh')]
-        with tempfile.TemporaryDirectory(prefix='revayat install ') as directory:
+        with tempfile.TemporaryDirectory(prefix='revayat install فارسی ', dir=ROOT / '.scratch') as directory:
             project = Path(directory)
             for name in ['.claude', '.agents', '.cursor', '.kiro', '.cline', '.hermes', '.opencode']:
                 (project / name).mkdir()
@@ -107,9 +142,10 @@ class PackageTest(unittest.TestCase):
                 self.assertNotIn('preserve on replacement', value)
             missing = run(sys.executable, str(cli), 'lint', str(project / 'absent.tex'), cwd=project)
             self.assertNotEqual(missing.returncode, 0)
+            self.assert_native_document_commands(cli, project)
 
     def test_archive_is_self_contained(self):
-        with tempfile.TemporaryDirectory(prefix='revayat package ') as directory:
+        with tempfile.TemporaryDirectory(prefix='revayat package فارسی ', dir=ROOT / '.scratch') as directory:
             package = Path(directory) / 'scientific.skill'
             result = run(sys.executable, str(ROOT / 'tools/package.py'), '--output', str(package))
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -118,6 +154,12 @@ class PackageTest(unittest.TestCase):
                 self.assertIn('revayat-scientific/LICENSE', names)
                 self.assertIn('revayat-scientific/scripts/runtime.py', names)
                 self.assertIn('revayat-scientific/references/terminology.md', names)
+                for relative in ('scripts/document-docx.py', 'scripts/docx_package.py',
+                                 'scripts/document-pdf.py', 'scripts/pdf_forms.py',
+                                 'scripts/publication.py', 'scripts/tex-container.py',
+                                 'assets/Dockerfile.tex', 'assets/tex-container-entry.sh',
+                                 'references/docx.md', 'references/pdf-processing.md'):
+                    self.assertIn('revayat-scientific/' + relative, names)
                 self.assertFalse(any('/logs/' in name or '__pycache__' in name or '/tests/' in name for name in names))
                 self.assertIsNone(archive.testzip())
                 archive.extractall(Path(directory) / 'extracted')
@@ -126,6 +168,7 @@ class PackageTest(unittest.TestCase):
                          '--level', 'journal', '--terms', str(ROOT / 'tests/fixtures/terms-empty.tsv'),
                          '--manifest', str(ROOT / 'tests/fixtures/manifest-empty.txt'), '--strict')
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assert_native_document_commands(lint, Path(directory))
 
 
 if __name__ == '__main__':

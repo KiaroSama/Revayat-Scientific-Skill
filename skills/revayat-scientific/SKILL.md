@@ -3,7 +3,7 @@ name: revayat-scientific
 description: Translate scientific papers, theses, scholarly books and technical documentation from any source language into accurate Persian, with source-language review and natural scholarly register. Preserve claims, equations, citations, page dimensions and image fidelity; deliver editable sources and a verified PDF. Use for scientific Persian translation or review (فارسی).
 license: GPL-3.0-or-later
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, Agent, AskUserQuestion
-metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"Python 3.10+","dependencies":"Pillow and PyMuPDF; PDF renderer and Poppler for PDF output"}
+metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"Python 3.10+","dependencies":"See requirements.txt and the bundled document/renderer references"}
 ---
 
 # Revayat Scientific — scientific documents into Persian
@@ -87,6 +87,16 @@ workflow is complete.
 
 Initialize the translation log before the first operation and record this check.
 
+Ask once per job: **"Would you like parallel subagents for translation and
+editing, or sequential work? Parallel work can be faster but may use more
+tokens; you can specify a worker limit."** Record the answer in `progress.md`
+and the translation log. Only an affirmative answer enables subagents. Refusal
+or no answer means sequential work; do not wait to begin independent sequential
+steps. Reuse the recorded choice on resume unless the user changes it.
+If approved, read [parallel-work.md](references/parallel-work.md) before assigning
+translation, review or correction. If the host cannot spawn subagents, disclose
+that and continue sequentially.
+
 ```bash
 "$PY" "$SKILL_DIR/scripts/revayat-scientific.py" doctor
 ```
@@ -115,6 +125,19 @@ variety and mixed-language spans; research uncertain language/domain terms using
 its procedure. Accept the user's local file,
 attachment, accessible URL or supplied text. Preserve original files under
 `WORK/source/`; fetch all requested sections before drafting.
+
+For DOCX input, creation or editing, first read the bundled
+[docx.md](references/docx.md) and use the `docx` command. Inspect sections, tables,
+images, relationships and original text addresses before editing. Workers return
+addressed patches; preserve untouched structures and validate before delivery.
+These tools are included in this skill; no separately installed DOCX skill is
+required. Package validation still needs a separate rendered layout review.
+
+For PDF text, tables, images, forms, merge or OCR, first read the bundled
+[pdf-processing.md](references/pdf-processing.md) and use the `pdf` command.
+Inspect page geometry and field types, preserve originals and validate staged
+results. OCR requires available Tesseract language data and source comparison;
+empty table detection or successful extraction is not proof of complete coverage.
 
 For a digital PDF, when Poppler is available:
 
@@ -181,8 +204,10 @@ Continue when every inventoried object has a source and a placement plan.
 
 Read [translation-policy.md](references/translation-policy.md),
 [rtl-bidi.md](references/rtl-bidi.md), and the relevant scientific-style guidance.
-Use the current host model. Delegate bounded translation or review only when
-available and authorized; record what actually ran.
+Use the current host model. For approved parallel work, follow
+[parallel-work.md](references/parallel-work.md): assign disjoint parts against
+one glossary revision, collect separate drafts, then integrate and review the
+assembled document. Record which workers actually ran.
 
 Start from `assets/rtl-document.tex` or `assets/rtl-document.html` and replace
 all demonstration content. Set the measured source page dimensions before layout;
@@ -217,6 +242,10 @@ neighbor context for drafting and review; label actual coverage and error severi
 Then read the Persian for fluency using
 [fluency-gold.md](references/fluency-gold.md). Revise only the necessary spans,
 preserving terms and scientific force.
+
+Approved review/correction workers receive completed draft snapshots and return
+located findings or separate patches. The coordinator alone accepts corrections
+into the canonical translation and reconciles cross-part terminology and meaning.
 
 | Review arrangement | Record |
 | --- | --- |

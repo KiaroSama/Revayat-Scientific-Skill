@@ -10,8 +10,8 @@
     piped.
 
 .PARAMETER RequireTex
-    Exit 1 when XeLaTeX + xepersian is not usable, so a caller can gate on
-    the preferred engine.
+    Exit 1 when local Linux Docker/Podman, the prepared toolchain image or
+    same-interpreter PyMuPDF prerequisites are unavailable. No native fallback.
 
 .EXAMPLE
     .\preflight.ps1
@@ -104,7 +104,7 @@ if (-not (Test-Windows)) {
 }
 
 function Get-Python {
-    foreach ($n in 'python', 'python3', 'py') {
+    foreach ($n in 'python', 'python3') {
         $p = Get-Tool $n
         if ($p) { return $p }
     }
@@ -118,7 +118,17 @@ function Test-PyModule {
     return ($r.ExitCode -eq 0)
 }
 
+function Test-PythonCode {
+    param([string]$Python, [string]$Code)
+    if (-not $Python) { return $false }
+    return ((Invoke-Tool $Python @('-c', $Code)).ExitCode -eq 0)
+}
+
 function Find-Browser {
+    if ($env:REVAYAT_CHROMIUM) {
+        if (Test-Path -LiteralPath $env:REVAYAT_CHROMIUM -PathType Leaf) { return $env:REVAYAT_CHROMIUM }
+        return $null
+    }
     foreach ($name in 'msedge', 'chrome', 'chromium') {
         $p = Get-Tool $name
         if ($p) { return $p }
@@ -166,70 +176,37 @@ $faFont = $false
 $python = Get-Python
 
 Write-Output 'PDF engines'
-$xelatex = Get-Tool 'xelatex'
-if ($xelatex) {
-    $xepersianMissing = $false
-    $kpse = Get-Tool 'kpsewhich'
-    if ($kpse) {
-        # Exit code alone is not enough: MiKTeX's kpsewhich can exit 0 while
-        # printing nothing for a package the basic install does not carry.
-        # Require an actual path back.
-        $r = Invoke-Tool $kpse @('xepersian.sty')
-        $hit = $r.Output | Where-Object { "$_" -match 'xepersian\.sty' }
-        if ($r.ExitCode -ne 0 -or -not $hit) { $xepersianMissing = $true }
-    }
-    if ($xepersianMissing) {
-        Write-No 'xepersian.sty' 'xelatex is present but the Persian package is not'
-    }
-    else {
-        $v = Invoke-Tool $xelatex @('--version')
-        $ver = "$($v.Output | Select-Object -First 1)"
-        Write-Ok 'xelatex + xepersian' $ver
-        $tex = $true
-
-        # MiKTeX installs missing packages on the fly and, by default, asks
-        # first with a modal dialog. That is fine for a human at a keyboard
-        # and fatal for an unattended or agent-driven build, which simply
-        # hangs on an invisible window. AutoInstall: 1 = yes, 0 = no,
-        # anything else (2) = ask.
-        if ($ver -match '(?i)miktex') {
-            $initexmf = Get-Tool 'initexmf'
-            if ($initexmf) {
-                $a = Invoke-Tool $initexmf @('--show-config-value=[MPM]AutoInstall')
-                $auto = "$($a.Output | Select-Object -First 1)".Trim()
-                if ($auto -eq '1') {
-                    Write-Ok 'MiKTeX auto-install' 'missing packages install without prompting'
-                }
-                else {
-                    Write-No 'MiKTeX auto-install' "set to '$auto'; a build will stop on a dialog"
-                    Write-Output '        fix: initexmf --set-config-value "[MPM]AutoInstall=1"'
-                }
-            }
-        }
-    }
+if ($python -and (Invoke-Tool $python @((Join-Path $PSScriptRoot 'tex-container.py'), '--probe')).ExitCode -eq 0 -and (Test-PyModule $python 'pymupdf')) {
+    Write-Ok 'isolated XeLaTeX' 'local Linux runtime/image and PyMuPDF available; no document rendered'
+    $tex = $true
 }
-else {
-    Write-No 'xelatex' 'preferred engine unavailable'
-}
-if (Get-Tool 'latexmk') { Write-Ok 'latexmk' 'used for reruns and bibliography' }
+else { Write-No 'isolated XeLaTeX' 'set up Docker/Podman and assets/Dockerfile.tex; no native fallback' }
 
 $browserPath = Find-Browser
-if ($browserPath) {
-    Write-Ok ([IO.Path]::GetFileName($browserPath)) 'HTML print fallback'
+if ($browserPath -and (Test-PythonCode $python 'from playwright.sync_api import sync_playwright; import pymupdf')) {
+    Write-Ok 'Chromium candidate' 'executable and same-Python Playwright/PyMuPDF available; not launched'
     $browser = $true
 }
 else {
-    Write-No 'edge/chrome' 'no browser print fallback'
+    Write-No 'Chromium candidate' 'needs valid REVAYAT_CHROMIUM/PATH browser and same-Python Playwright/PyMuPDF'
 }
 
-if ((Get-Tool 'weasyprint') -or (Test-PyModule $python 'weasyprint')) {
-    Write-Ok 'weasyprint' 'HTML print fallback'
+$weasyProbe = @'
+import re
+from importlib.metadata import version
+from weasyprint import HTML
+from weasyprint.urls import URLFetcher, URLFetcherResponse, FatalURLFetchingError
+import pymupdf
+v = version('weasyprint')
+raise SystemExit(0 if re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', v) and int(v.split('.')[0]) >= 68 else 1)
+'@
+if (Test-PythonCode $python $weasyProbe) {
+    Write-Ok 'WeasyPrint candidate' 'same-Python stable 68+ and restricted-fetcher APIs import; not rendered'
     $weasy = $true
-    Write-Output '        note: ignores unicode-bidi: isolate - rely on dir="ltr"'
-    Write-Output '        attributes and keep every cluster in one isolate'
+    Write-Output '        Keep whole English/number clusters inside one dir="ltr" span.'
 }
 else {
-    Write-No 'weasyprint' 'py -m venv .venv; .venv\Scripts\pip install weasyprint'
+    Write-No 'WeasyPrint candidate' 'needs same-Python stable 68+, URLFetcher APIs, native libraries and PyMuPDF'
 }
 
 Write-Output ''
@@ -244,11 +221,11 @@ $faCandidates = $families | Where-Object {
 }
 if ($faCandidates) {
     $shown = ($faCandidates | Sort-Object -Unique | Select-Object -First 8) -join ', '
-    Write-Ok 'fa-capable faces' $shown
+    Write-Ok 'host font candidates' $shown
     $faFont = $true
     $vazir = $faCandidates | Where-Object { $_ -match '(?i)vazirmatn' -and $_ -notmatch $fdPattern }
     if ($vazir) {
-        Write-Ok 'Vazirmatn' 'preferred text face'
+        Write-Ok 'Vazirmatn' 'registry entry only; actual rendering/embedding still requires verification'
     }
     else {
         Write-No 'Vazirmatn' 'run scripts\fetch-vazirmatn.ps1 fonts'
@@ -278,11 +255,12 @@ else {
 if (Test-PyModule $python 'PIL.Image') {
     Write-Ok 'Pillow' 'scripts\prepare-figures.py'
 }
-elseif ((Get-Tool 'magick') -or (Get-Tool 'convert')) {
-    Write-Ok 'ImageMagick' 'scripts\prepare-figures.py fallback'
-}
 else {
-    Write-No 'Pillow/ImageMagick' 'figures cannot be flattened; pip install pillow'
+    Write-No 'Pillow' 'image inspection/preparation requires the skill requirements'
+}
+foreach ($module in 'docx', 'playwright') {
+    if (Test-PyModule $python $module) { Write-Ok $module 'built-in document helpers' }
+    else { Write-No $module 'install the skill requirements' }
 }
 if (Test-PyModule $python 'pymupdf') {
     Write-Ok 'PyMuPDF' 'scripts\crop-source-figures.py'
@@ -293,27 +271,27 @@ else {
 
 Write-Output ''
 Write-Output 'Verdict'
+Write-Output '  Discovery only: no document, browser launch, font usage or extraction quality was verified.'
 if ($tex) {
-    Write-Output '  build .tex with XeLaTeX - best print RTL'
+    Write-Output '  TeX candidate: isolated XeLaTeX; run the actual build and -Verify.'
 }
 elseif ($browser) {
-    Write-Output '  no TeX: build .html with Edge/Chrome (display RTL; copy-paste may reverse)'
+    Write-Output '  HTML candidate: Chromium through the restricted renderer; verify layout and extraction.'
 }
 elseif ($weasy) {
     Write-Output '  no TeX and no browser: build .html with WeasyPrint, and keep'
     Write-Output '  every English cluster in a single dir="ltr" isolate'
 }
 else {
-    Write-Output '  no engine can produce a PDF - stop and tell the user'
+    Write-Output '  No configured engine has the required prerequisites; resolve the missing items.'
 }
-if (-not $faFont) { Write-Output '  fetch a Persian font before building' }
+if (-not $faFont) { Write-Output '  Host Persian font discovery found no candidate; container/job-local fonts are separate.' }
+Write-Output '  HTML/local fonts: deliver real static Regular/Bold files, OFL.txt and provenance beside the source.'
+Write-Output '  -Verify requires pdfinfo, pdffonts, pdftoppm and same-Python PyMuPDF; missing tools fail.'
 
 if (-not $tex) {
-    Write-Output ''
-    Write-Output 'Install the preferred engine (Windows):'
-    Write-Output '  winget install MiKTeX.MiKTeX'
-    Write-Output '  then let MiKTeX install xepersian on first use, or:'
-    Write-Output '  mpm --install=xepersian --install=bidi'
+    Write-Output '  TeX setup: build assets/Dockerfile.tex as revayat-scientific-tex:1'
+    Write-Output '  The helper never installs a runtime or pulls an image automatically.'
 }
 if (-not (Get-Tool 'pdftoppm')) {
     Write-Output ''

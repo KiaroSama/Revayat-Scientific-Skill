@@ -1,0 +1,17 @@
+FROM debian:trixie-slim
+
+LABEL org.revayat.tex.toolchain="1"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    texlive-xetex texlive-lang-arabic texlive-latex-extra \
+    fonts-vazirmatn fonts-texgyre fonts-dejavu-core fontconfig coreutils \
+    && test -s /usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf \
+    && test -s /usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY tex-container-entry.sh /usr/local/bin/revayat-tex-entry
+RUN chmod 0555 /usr/local/bin/revayat-tex-entry
+USER 65532:65532
+WORKDIR /input
+ENTRYPOINT ["/usr/bin/timeout", "--signal=TERM", "--kill-after=5s", "120s", "/usr/local/bin/revayat-tex-entry"]

@@ -1,6 +1,14 @@
 version: 2
 updates:
   - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /skills/revayat-scientific/assets
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
     directory: /skills/revayat-scientific
     schedule:
       interval: weekly
