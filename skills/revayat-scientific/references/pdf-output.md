@@ -75,6 +75,11 @@ the run label, container name and ID; uncertain cleanup retains recovery evidenc
 and fails. Never substitute a raw native TeX command for a missing prerequisite
 or failed isolation check.
 
+A nonzero compiler exit reports a bounded error category such as a missing
+resource, unavailable font or undefined control sequence. It does not print
+manuscript lines from TeX's raw console log. Use the source and the reported
+category for a local correction; keep the source private during diagnosis.
+
 The dispatcher and the bundled CI runner keep host-only ownership receipts in a
 surviving process. If their child build is cancelled or times out, that owner
 checks and removes only containers carrying its exact receipt and label before
