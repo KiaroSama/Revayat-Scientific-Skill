@@ -16,6 +16,7 @@ PYTHON_COMMANDS = {
     'pages': 'extract-pdf-pages.py',
     'docx': 'document-docx.py',
     'pdf': 'document-pdf.py',
+    'term-brief': 'term-brief.py',
 }
 SHELL_COMMANDS = {'doctor': 'preflight', 'build': 'build-pdf', 'fonts': 'fetch-vazirmatn'}
 POWERSHELL_OPTIONS = {
@@ -63,7 +64,8 @@ def main(argv=None):
             print(HELP[args.command])
             return 0
         try:
-            return run_command(command_line(args.command, args.arguments), args.timeout, logger)
+            return run_command(command_line(args.command, args.arguments), args.timeout, logger,
+                               supervise_containers=args.command == 'build')
         except (OSError, RuntimeError) as error:
             logger.error('command_unavailable type=%s', type(error).__name__)
             print(f'revayat-scientific: {error}', file=sys.stderr)

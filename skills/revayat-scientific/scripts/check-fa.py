@@ -152,13 +152,6 @@ class Finding:
 from source_model import Source
 
 
-def _sidecar(files: list[Path], name: str) -> Path | None:
-    if not files:
-        return None
-    candidate = files[0].resolve().parent / name
-    return candidate if candidate.is_file() else None
-
-
 def fa_pattern(word: str) -> str:
     """Match a Persian term whether it uses ZWNJ or a plain space.
 
@@ -334,18 +327,11 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                 'no white-space: pre-wrap on pre; long code lines are clipped on paper')
         for m in live_finditer(r"scaleX\(\s*-1\s*\)"):
             add(ERROR, 'mirrored-image', m.start(), 'horizontal flip on artwork is forbidden')
-        images = []
+        images = src.image_references()
         for node in nodes:
             if node['tag'] != 'img':
                 continue
             attrs, pos = node['attrs'], node['start']
-            reference = attrs.get('src')
-            if reference:
-                images.append((pos, reference))
-                base = os.path.basename(reference)
-                if re.match(r'(?:srcpage|page)-\d+\.(?:png|jpe?g|webp)$', base, re.I):
-                    add(ERROR, 'full-page-figure', pos,
-                        f'image {base!r} is a full source-page raster; crop to the artwork')
             if (attrs.get('dir') or '').lower() != 'ltr':
                 add(ERROR, 'figure-direction', pos, '<img> requires dir="ltr"')
     else:
@@ -363,16 +349,8 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                 "\\lr/\\en used in a heading or caption without "
                 "\\pdfstringdefDisableCommands; hyperref bookmarks will "
                 "break")
-        images = [(m.start(), m.group(1)) for m in
-                  live_finditer(
-                      r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}")]
+        images = src.image_references()
         for pos, ref in images:
-            base = os.path.basename(ref)
-            if re.match(r"(?:srcpage|page)-\d+\.(?:png|jpe?g|webp)$",
-                        base, re.I):
-                add(ERROR, "full-page-figure", pos,
-                    f"image {base!r} is a full source-page raster; "
-                    "crop to the artwork (scripts/crop-source-figures.py)")
             before = text[:pos]
             last_begin = max(
                 before.rfind("\\begin{LTR}"),
@@ -388,19 +366,19 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                     "\\includegraphics is not inside LTR/latin; xepersian "
                     "can paint the figure black or mirrored")
 
-    base = src.path.parent
+    context = DocumentContext(src.path.resolve(), src.path.resolve().parent, [], None)
     found: list[str] = []
     for pos, ref in images:
-        if re.match(r"^(?:https?:|data:)", ref):
-            continue
-        candidates = [base / ref]
-        if not os.path.splitext(ref)[1]:
-            candidates += [base / (ref + ext) for ext in
-                           (".pdf", ".png", ".jpg", ".jpeg", ".eps")]
-        if not any(c.is_file() for c in candidates):
-            add(ERROR, "missing-image", pos,
-                f"image {ref!r} does not exist next to the source")
-        found.append(os.path.basename(ref))
+        name = os.path.basename(ref)
+        try:
+            asset = context.asset(ref)
+            name = asset.name
+            found.append(name)
+        except (OSError, ValueError) as error:
+            add(ERROR, 'missing-image', pos, str(error))
+        if re.match(r'(?:srcpage|page)-\d+\.(?:png|jpe?g|webp)$', name, re.I):
+            add(ERROR, 'full-page-figure', pos,
+                f'image {name!r} is a full source-page raster; crop to the artwork')
 
     if manifest is not None:
         missing = [n for n in manifest if n not in found]

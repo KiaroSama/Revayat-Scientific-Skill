@@ -55,6 +55,18 @@ def iter_images(paths):
 
 
 def inspect_image(image):
+    # getexif/n_frames may load PNG pixels and clear fp; read IHDR first.
+    if image.format == 'PNG':
+        if image.fp:
+            position = image.fp.tell()
+            image.fp.seek(24)
+            depth = image.fp.read(1)
+            image.fp.seek(position)
+            image.info['_revayat_source_depth'] = depth[0] if depth else None
+        if image.info.get('_revayat_source_depth') is None:
+            raise ValueError('PNG bit depth cannot be verified after external decoding')
+        if image.info['_revayat_source_depth'] > 8:
+            raise ValueError('unsupported PNG bit depth; preserve original intensities')
     if any(key in image.info for key in ('gamma', 'chromaticity', 'srgb')):
         raise ValueError('PNG color metadata requires a reviewed color-preserving workflow')
     if image.getexif().get(274, 1) != 1 and any(
@@ -67,14 +79,6 @@ def inspect_image(image):
         bits = (bits,)
     if image.mode not in ('1', 'L', 'LA', 'P', 'RGB', 'RGBA') or max(bits) > 8:
         raise ValueError('unsupported image depth or mode; preserve original intensities')
-    # Pillow decodes RGB16 PNG as RGB8; inspect IHDR before that information loss.
-    if image.format == 'PNG' and image.fp:
-        position = image.fp.tell()
-        image.fp.seek(24)
-        depth = image.fp.read(1)
-        image.fp.seek(position)
-        if depth and depth[0] > 8:
-            raise ValueError('unsupported PNG bit depth; preserve original intensities')
     if image.info.get('icc_profile'):
         from PIL import ImageCms
         profile = ImageCms.ImageCmsProfile(io.BytesIO(image.info['icc_profile']))

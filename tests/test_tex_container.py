@@ -39,6 +39,24 @@ class TexContainerTest(unittest.TestCase):
             with self.subTest(endpoint=endpoint), self.assertRaises(ValueError):
                 controller.validate_endpoint(endpoint, 'docker')
 
+    def test_surviving_owner_sweeps_receipts_after_child_timeout(self):
+        import tex_supervisor
+        from runtime import run_command
+        swept = []
+        def sweep(directory, token, logger):
+            self.assertEqual((directory / 'registered').read_text(encoding='utf-8'), token)
+            swept.append(directory)
+        program = ('import os,pathlib,threading; '
+                   'p=pathlib.Path(os.environ["REVAYAT_TEX_OWNER_DIR"]); '
+                   '(p/"registered").write_text(os.environ["REVAYAT_TEX_OWNER_TOKEN"],encoding="utf-8"); '
+                   'threading.Event().wait()')
+        with tempfile.TemporaryDirectory(dir=ROOT / '.scratch') as directory:
+            with patch.object(tex_supervisor, 'sweep', side_effect=sweep), self.assertRaises(subprocess.TimeoutExpired):
+                run_command([sys.executable, '-B', '-c', program], 2, self.logger,
+                            cwd=directory, idle_timeout=1, supervise_containers=True)
+            self.assertEqual(len(swept), 1)
+            self.assertFalse(swept[0].exists())
+
     def test_endpoint_accepts_local_only_and_probe_never_pulls(self):
         controller = self.controller
         for endpoint, kind in [('unix:///var/run/docker.sock', 'docker'),

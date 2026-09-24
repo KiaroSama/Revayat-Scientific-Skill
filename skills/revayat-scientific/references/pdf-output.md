@@ -75,6 +75,13 @@ the run label, container name and ID; uncertain cleanup retains recovery evidenc
 and fails. Never substitute a raw native TeX command for a missing prerequisite
 or failed isolation check.
 
+The dispatcher and the bundled CI runner keep host-only ownership receipts in a
+surviving process. If their child build is cancelled or times out, that owner
+checks and removes only containers carrying its exact receipt and label before
+returning. If a whole host process is abruptly killed, the container's internal
+deadline and Docker/Podman auto-removal still bound its lifetime; inspect retained
+recovery receipts before retrying an interrupted job.
+
 ## Choose the actual source and engine
 
 | Source | Automatic selection | Explicit selection |

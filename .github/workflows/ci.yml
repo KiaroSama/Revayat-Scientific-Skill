@@ -114,6 +114,7 @@ jobs:
       - name: Build isolated TeX toolchain
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 skills/revayat-scientific/assets
       - name: Isolated renderer contracts
+        id: isolated
         env:
           SCIENTIFIC_RENDER: '1'
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
@@ -141,7 +142,7 @@ jobs:
           test -s "$work/output/article.pdf"
           test -s "$work/verify-article-first.png"
       - name: Preserve rendered verification samples
-        if: ${{ always() && (steps.regressions.outcome == 'success' || steps.regressions.outcome == 'failure') }}
+        if: ${{ always() && (steps.isolated.outcome == 'success' || steps.isolated.outcome == 'failure') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: scientific-render

@@ -13,6 +13,9 @@ edits. `document-pdf.py` and `pdf_forms.py` reuse PyMuPDF for extraction, forms,
 merging and optional Tesseract OCR. `font-fetch.py` validates font identity, weight
 and licensing before delivering the pair and provenance together. Structural
 validation does not certify rendered layout or scientific translation accuracy.
+`term-brief.py` reads reviewed source text and the job's approved ledger to emit
+source-located terminology candidates with input hashes. It cannot infer a concept,
+translate or verify a scholarly claim; the agent applies the evidence reference.
 
 Optional parallel translation/editing requires explicit job consent. Workers own
 separate drafts/patches and logs; the coordinator owns canonical documents,

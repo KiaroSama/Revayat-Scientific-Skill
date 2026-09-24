@@ -1,7 +1,6 @@
 """Resolve document-local terminology, inventory and asset boundaries."""
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from urllib.parse import unquote, urlsplit
 
 from terminology_data import load_pairs, load_terms_pairs

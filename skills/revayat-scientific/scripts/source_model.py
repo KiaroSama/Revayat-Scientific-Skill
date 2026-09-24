@@ -66,6 +66,15 @@ class Source:
     def location(self, pos):
         return self.closure.location(pos) if self.closure else (self.path, self.line_of(pos))
 
+    def image_references(self):
+        """Return located graphics references using the checked document syntax."""
+        if self.kind == 'html':
+            return [(node['start'], node['attrs']['src']) for node in self.html.nodes
+                    if node['tag'] == 'img' and node['attrs'].get('src')]
+        return [(match.start(), match.group(1).strip()) for match in re.finditer(
+            r'\\includegraphics\*?\s*(?:\[[^\]]*\]\s*)?\{([^{}]+)\}', self.text)
+            if not self.inert(match.start())]
+
     # -- region scanning ---------------------------------------------------
 
     def _protect(self, start: int, end: int) -> None:
@@ -144,7 +153,7 @@ class Source:
                         self._protect(start, i + 1)
                         break
                 i += 1
-        for m in re.finditer(r"\\([A-Za-z@]+)\s*(\[[^\]]*\])?\s*\{",
+        for m in re.finditer(r"\\([A-Za-z@]+)\*?\s*(\[[^\]]*\])?\s*\{",
                              self.text):
             name = m.group(1)
             open_pos = m.end() - 1

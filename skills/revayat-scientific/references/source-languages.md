@@ -73,6 +73,8 @@ Links and licensing caveats are in [research-sources.md](research-sources.md).
 | Polish | NI `task1263_ted_translation_pl_fa` | Case roles, compound terminology and decimal notation; examples are TED, not journal validation |
 | Galician | NI `task1245_ted_translation_gl_fa` | Identify it independently of Spanish/Portuguese; inspect technical equivalents in context |
 | Tajik / Dari | FLORES `tgk_Cyrl` / `prs_Arab`; variety research | Script conversion alone does not adapt terminology or register; preserve source variety and target choice |
+| Luri Bakhtiari, Gilaki, Hawrami, Laki, Mazanderani, Southern Kurdish, Talysh | [PARME](https://github.com/DOLMA-NLP/PARME) English–Persian–X aligned sentences | Identify the exact variety and orthography before reviewing meaning. The corpus is general-domain evidence, not a scientific translation model or proof that a passage can be translated. Do not flatten distinct regional languages into Persian. |
+| Zazaki | [PARME](https://github.com/DOLMA-NLP/PARME) English/Kurmanji–Zazaki material | Its published pair is not a direct Persian-target corpus; use original-language research and mark any unsupported scientific terminology unresolved. |
 
 For **any other language**, use the identification/research procedure above and
 write a short job-specific profile: evidence, segmentation risks, negation/modality,

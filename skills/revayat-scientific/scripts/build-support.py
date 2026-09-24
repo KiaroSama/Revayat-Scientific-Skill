@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Shared source selection, asset checks and delivery for both native adapters."""
 import argparse
-import importlib.util
 import json
 from pathlib import Path
-import re
 import shutil
 import sys
 import tempfile
@@ -19,15 +17,8 @@ HERE = Path(__file__).resolve().parent
 
 def source_assets(source):
     model = Source(source)
-    if model.kind == 'html':
-        references = [node['attrs']['src'] for node in model.html.nodes
-                      if node['tag'] == 'img' and node['attrs'].get('src')]
-    else:
-        references = [match.group(1) for match in re.finditer(
-            r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}', model.text)
-            if not model.inert(match.start())]
     context = DocumentContext(Path(source).resolve(), Path(source).resolve().parent, [], None)
-    return list(dict.fromkeys(context.asset(reference) for reference in references))
+    return list(dict.fromkeys(context.asset(reference) for _, reference in model.image_references()))
 
 
 def main(argv=None):

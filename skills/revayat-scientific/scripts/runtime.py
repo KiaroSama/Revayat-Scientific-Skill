@@ -51,10 +51,15 @@ def operation_log(name: str, directory: Path, *, level=None):
 
 
 def run_command(command: list[str], timeout: int, logger: logging.Logger, *, cwd=None,
-                env=None, idle_timeout=None) -> int:
+                env=None, idle_timeout=None, supervise_containers=False) -> int:
     if timeout <= 0 or (idle_timeout is not None and idle_timeout <= 0):
         raise ValueError('process time limits must be positive')
     environment = {**os.environ, **(env or {}), 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'}
+    if supervise_containers:
+        from tex_supervisor import container_scope
+        with container_scope(logger, environment, cwd) as owned_environment:
+            return run_command(command, timeout, logger, cwd=cwd, env=owned_environment,
+                               idle_timeout=idle_timeout)
     environment['PATH'] = str(Path(sys.executable).parent) + os.pathsep + environment.get('PATH', '')
     job = None
     process = None

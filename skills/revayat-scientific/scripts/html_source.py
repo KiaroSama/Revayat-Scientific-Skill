@@ -72,7 +72,7 @@ class ParsedHTML(HTMLParser):
         language = attributes.get('lang', parent['language'] if parent else 'fa') or 'fa'
         classes = set((attributes.get('class') or '').split())
         isolate = ((attributes.get('dir') or '').lower() == 'ltr' or bool(classes & {'ltr', 'en', 'num', 'refs'}))
-        identity = (tag in {'cite', 'q', 'blockquote'} or 'refs' in classes
+        identity = (tag in INERT or tag in {'cite', 'q', 'blockquote'} or 'refs' in classes
                     or attributes.get('data-source-identity') == 'true'
                     or (parent is not None and parent['identity']))
         node = {'tag': tag, 'attrs': attributes, 'start': start, 'content': end,
@@ -94,8 +94,16 @@ class ParsedHTML(HTMLParser):
     def finish(self, node, content_end, end):
         if node['protected']:
             self.protected.append((node['content'], content_end))
-        if node['isolate']:
-            body = unescape(re.sub('<[^>]*>', '', self.raw[node['content']:content_end]))
+        if node['isolate'] and not node['identity']:
+            # Child code/quotes retain literal wording even inside a prose isolate.
+            chunks, cursor = [], node['content']
+            for start, stop in sorted(self.identity):
+                if stop <= cursor or start >= content_end:
+                    continue
+                chunks.extend((self.raw[cursor:max(cursor, start)], ' '))
+                cursor = min(content_end, stop)
+            chunks.append(self.raw[cursor:content_end])
+            body = unescape(re.sub('<[^>]*>', '', ''.join(chunks)))
             self.isolates.append((node['start'], end, body))
         if node['identity'] or node['language'] not in ('fa', 'fa-ir', 'en', 'en-us', 'en-gb'):
             self.identity.append((node['start'], end))

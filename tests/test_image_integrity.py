@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import struct
+import zlib
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -54,6 +55,24 @@ class ImageIntegrityTest(unittest.TestCase):
                     PREP.main([str(work / name)])
                 self.assertEqual(snapshot(work), before)
                 image.close()
+
+    def test_rgb16_png_is_refused_before_lazy_metadata_decodes_pixels(self):
+        def chunk(kind, payload):
+            return (struct.pack('>I', len(payload)) + kind + payload
+                    + struct.pack('>I', zlib.crc32(kind + payload)))
+        # Real RGB16 PNG with no EXIF: getexif() otherwise triggers Pillow loading.
+        encoded = (b'\x89PNG\r\n\x1a\n'
+                   + chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 16, 2, 0, 0, 0))
+                   + chunk(b'IDAT', zlib.compress(b'\x00' + struct.pack('>HHH', 256, 512, 1024)))
+                   + chunk(b'IEND', b''))
+        with tempfile.TemporaryDirectory(dir=ROOT / '.scratch') as directory:
+            source = Path(directory) / 'depth.png'
+            source.write_bytes(encoded)
+            for arguments in ([str(source), '--check'], [str(source), '--invert-dark']):
+                with self.subTest(arguments=arguments), self.assertRaisesRegex(ValueError, 'bit depth'):
+                    PREP.main(arguments)
+                self.assertEqual(source.read_bytes(), encoded)
+                self.assertFalse(source.with_name(source.name + '.orig').exists())
 
     def test_transparency_forms_and_check_only(self):
         from PIL import Image
