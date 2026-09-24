@@ -34,10 +34,8 @@ class ImageIntegrityTest(unittest.TestCase):
             Image.new('RGB', (12, 10), 'red').save(work / 'sample.jpg')
             Image.new('RGBA', (12, 10), (0, 255, 0, 120)).save(work / 'sample.png')
             before = snapshot(work)
-            try:
+            with self.assertRaises((ValueError, OSError)):
                 PREP.main([str(work)])
-            except (ValueError, OSError):
-                pass
             self.assertEqual(snapshot(work), before)
 
     def test_depth_frames_and_invalid_profile_refuse_without_mutation(self):

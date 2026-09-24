@@ -33,10 +33,8 @@ class CropIntegrityTest(unittest.TestCase):
             previous = output / 'fig-first.png'
             previous.write_bytes(b'previous approved figure')
             mapping.write_text('figure_id\tpdf_page\nfirst\t1\ninvalid\t-1\n', encoding='utf-8')
-            try:
+            with self.assertRaises((ValueError, OSError)):
                 CROP.main([str(source), '--map', str(mapping), '--out', str(output)])
-            except (ValueError, OSError):
-                pass
             self.assertEqual(previous.read_bytes(), b'previous approved figure')
             self.assertEqual(sorted(p.name for p in output.iterdir()), ['fig-first.png'])
 
