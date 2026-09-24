@@ -232,7 +232,7 @@ def edit_package(source, destination, patches, protected_sources=()):
     require_editable(unsupported)
     if not isinstance(patches, list) or not patches or len(patches) > 100000:
         raise ValueError('patch must be a nonempty array of at most 100000 edits')
-    edits, seen = {}, set()
+    edits, seen, node_index = {}, set(), {}
     for patch in patches:
         if not isinstance(patch, dict) or set(patch) != {'part', 'index', 'expected', 'text'}:
             raise ValueError('patch needs exactly part, index, expected and text')
@@ -244,7 +244,9 @@ def edit_package(source, destination, patches, protected_sources=()):
         if (part, index) in seen:
             raise ValueError('duplicate patch address')
         seen.add((part, index))
-        nodes = list(roots[part].iter('{' + W + '}t'))
+        if part not in node_index:
+            node_index[part] = list(roots[part].iter('{' + W + '}t'))
+        nodes = node_index[part]
         if index >= len(nodes) or (nodes[index].text or '') != expected:
             raise ValueError('stale patch: expected text does not match addressed node')
         if any(ord(char) < 32 for char in text) or any(0xD800 <= ord(char) <= 0xDFFF or ord(char) in (0xFFFE, 0xFFFF) for char in text):
@@ -255,8 +257,18 @@ def edit_package(source, destination, patches, protected_sources=()):
         data = members[part]
         spans = _text_spans(data)
         replacements = [_replacement(data, spans[index], text) for index, text in items]
-        for start, end, value in sorted(replacements, reverse=True):
-            data = data[:start] + value + data[end:]
+        output_size = len(data) + sum(len(value) - (end - start)
+                                      for start, end, value in replacements)
+        if output_size > MAX_XML:
+            raise ValueError('XML part exceeds 16 MiB limit')
+        # Rebuild once in source order. Repeated whole-part slices make a large
+        # valid translation quadratic in both edit count and document size.
+        chunks, cursor = [], 0
+        for start, end, value in sorted(replacements):
+            chunks.extend((data[cursor:start], value))
+            cursor = end
+        chunks.append(data[cursor:])
+        data = b''.join(chunks)
         _xml(data)
         changed[part] = data
     with tempfile.TemporaryDirectory(prefix='.revayat-docx-', dir=destination.parent) as directory:
