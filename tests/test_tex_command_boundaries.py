@@ -117,5 +117,14 @@ class TexCommandBoundaryTest(unittest.TestCase):
         self.assertIn('IncludedUniqueMarker', result.text)
 
 
+def load_tests(loader, tests, pattern):
+    # The scientific tier already invokes this module with a mandatory native
+    # toolchain. Include lexical contracts there without duplicating portable runs.
+    if os.environ.get('SCIENTIFIC_REQUIRE_TEX_BOUNDARY') == '1':
+        from test_tex_lexical_regions import TexLexicalRegionsTest
+        tests.addTests(loader.loadTestsFromTestCase(TexLexicalRegionsTest))
+    return tests
+
+
 if __name__ == '__main__':
     unittest.main()

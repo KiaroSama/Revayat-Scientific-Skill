@@ -9,18 +9,31 @@ MAX_DEPTH = 32
 MAX_BYTES = 16 * 1024 * 1024
 
 
+def tex_ignored_regions(text):
+    """Yield comment/literal spans using one escape-aware lexical scan."""
+    environments = r'verbatim\*?|Verbatim|lstlisting|minted'
+    pattern = re.compile(
+        r'\\begin\{(' + environments + r')\}.*?\\end\{\1\}'
+        r'|\\verb(?![A-Za-z])\*?(?P<delim>[^\s])[^\r\n]*?(?P=delim)'
+        r'|(?P<invalid>\\verb(?![A-Za-z])|\\begin\{(?:' + environments + r')\})'
+        r'|\\.|%[^\r\n]*', re.S)
+    for match in pattern.finditer(text):
+        if match.group('invalid'):
+            raise ValueError('unterminated or invalid literal TeX region')
+        token = match.group()
+        if token.startswith('%'):
+            yield match.start(), match.end(), 'comment'
+        elif token.startswith(('\\begin', '\\verb')):
+            yield match.start(), match.end(), 'literal'
+
+
 def masked_tex(text):
     """Mask comments/verbatim with spaces, retaining offsets and newlines."""
     chars = list(text)
-    pattern = re.compile(r'\\begin\{(verbatim\*?|Verbatim|lstlisting|minted)\}'
-                         r'.*?\\end\{\1\}|\\verb\*?(?P<delim>[^\w\s]).*?(?P=delim)'
-                         r'|\\.|%[^\n]*', re.S)
-    for match in pattern.finditer(text):
-        token = match.group()
-        if token.startswith('%') or token.startswith(('\\begin', '\\verb')):
-            for index in range(match.start(), match.end()):
-                if chars[index] != '\n':
-                    chars[index] = ' '
+    for start, end, _ in tex_ignored_regions(text):
+        for index in range(start, end):
+            if chars[index] not in '\r\n':
+                chars[index] = ' '
     return ''.join(chars)
 
 
@@ -99,6 +112,10 @@ def source_closure(source, *, root=None):
             expand(root / child, (*stack, path))
             cursor = match.end() + argument.end()
         append(text[cursor:], path, cursor, text)
+        if stack and text and not text.endswith(('\n', '\r')):
+            # TeX ends an input's final logical line at EOF. In particular, a
+            # trailing comment must never consume resumed parent-file content.
+            append('\n', path, len(text), text)
 
     expand(source, ())
     return SourceClosure(''.join(chunks), segments, tuple(dict.fromkeys(sources)))

@@ -3,7 +3,7 @@ import bisect
 from pathlib import Path
 import re
 from html_source import ParsedHTML
-from tex_source import source_closure, MAX_BYTES
+from tex_source import source_closure, masked_tex, tex_ignored_regions, MAX_BYTES
 
 class Source:
     """A translation file plus the regions where prose rules do not apply."""
@@ -21,6 +21,7 @@ class Source:
         self.lines = self.text.splitlines()
         self.protected: list[tuple[int, int]] = []
         self.comments: list[tuple[int, int]] = []
+        self.literals: list[tuple[int, int]] = []
         self.isolates: list[tuple[int, int, str]] = []
         self.identity = []
         self.preamble_end = 0
@@ -35,14 +36,14 @@ class Source:
         return pos < self.preamble_end
 
     def inert(self, pos: int) -> bool:
-        """Preamble or comment: structural checks must not fire here.
+        """Preamble, comment or literal: structural checks must not fire here.
 
         Templates and real documents both carry commented-out examples and
         `% TODO(ambiguity)` markers; those are not output.
         """
         if pos < self.preamble_end:
             return True
-        return any(start <= pos < end for start, end in self.comments)
+        return any(start <= pos < end for start, end in (*self.comments, *self.literals))
 
     def excerpt(self, pos: int, width: int = 60) -> str:
         start = max(0, pos - width // 3)
@@ -72,7 +73,7 @@ class Source:
             return [(node['start'], node['attrs']['src']) for node in self.html.nodes
                     if node['tag'] == 'img' and node['attrs'].get('src')]
         return [(match.start(), match.group(1).strip()) for match in re.finditer(
-            r'\\includegraphics\*?\s*(?:\[[^\]]*\]\s*)?\{([^{}]+)\}', self.text)
+            r'\\includegraphics\*?\s*(?:\[[^\]]*\]\s*)?\{([^{}]+)\}', self.tex_live)
             if not self.inert(match.start())]
 
     # -- region scanning ---------------------------------------------------
@@ -84,8 +85,8 @@ class Source:
     def _match_brace(self, open_pos: int) -> int:
         depth = 0
         i = open_pos
-        while i < len(self.text):
-            ch = self.text[i]
+        while i < len(self.tex_live):
+            ch = self.tex_live[i]
             if ch == "\\":
                 i += 2
                 continue
@@ -106,27 +107,29 @@ class Source:
         self.protected.sort()
 
     def _scan_tex(self) -> None:
-        body = re.search(r"\\begin\{document\}", self.text)
+        for start, end, kind in tex_ignored_regions(self.text):
+            self._protect(start, end)
+            (self.comments if kind == 'comment' else self.literals).append((start, end))
+        # A paired backslash is a control symbol, not the start of the next word.
+        # Keep offsets stable while preventing escaped commands from becoming live.
+        self.tex_live = re.sub(r"\\\\", "  ", masked_tex(self.text))
+        body = re.search(r"\\begin\{document\}", self.tex_live)
         if body:
             self.preamble_end = body.end()
             self._protect(0, body.end())
-
-        for m in re.finditer(r"(?<!\\)%.*$", self.text, re.M):
-            self._protect(m.start(), m.end())
-            self.comments.append((m.start(), m.end()))
 
         for env in ("verbatim", "Verbatim", "lstlisting", "latin",
                     "equation", "equation*", "align", "align*", "minted"):
             pattern = re.compile(
                 r"\\begin\{" + re.escape(env) + r"\}.*?\\end\{"
                 + re.escape(env) + r"\}", re.S)
-            for m in pattern.finditer(self.text):
+            for m in pattern.finditer(self.tex_live):
                 self._protect(m.start(), m.end())
                 if env == 'latin':
                     self.identity.append((m.start(), m.end()))
 
         for m in re.finditer(r"\$\$.*?\$\$|(?<!\\)\$.*?(?<!\\)\$"
-                             r"|\\\[.*?\\\]|\\\(.*?\\\)", self.text, re.S):
+                             r"|\\\[.*?\\\]|\\\(.*?\\\)", self.tex_live, re.S):
             self._protect(m.start(), m.end())
 
         arg_only = ("begin", "end", "label", "ref", "eqref", "cite", "url",
@@ -139,12 +142,12 @@ class Source:
                     "pdfstringdefDisableCommands", "IfFontExistsTF")
         # Optional arguments (`[width=0.92\linewidth]`) are plumbing, not
         # prose; otherwise unisolated-number fires on every includegraphics.
-        for m in re.finditer(r"\\[A-Za-z@]+\*?\s*\[", self.text):
+        for m in re.finditer(r"\\[A-Za-z@]+\*?\s*\[", self.tex_live):
             start = m.end() - 1
             depth = 0
             i = start
-            while i < len(self.text):
-                ch = self.text[i]
+            while i < len(self.tex_live):
+                ch = self.tex_live[i]
                 if ch == "[":
                     depth += 1
                 elif ch == "]":
@@ -154,7 +157,7 @@ class Source:
                         break
                 i += 1
         for m in re.finditer(r"\\([A-Za-z@]+)\*?\s*(\[[^\]]*\])?\s*\{",
-                             self.text):
+                             self.tex_live):
             name = m.group(1)
             open_pos = m.end() - 1
             close = self._match_brace(open_pos)
@@ -165,14 +168,14 @@ class Source:
                 # Whole `\en{…}` so the gap between two isolates is only
                 # the characters *between* the constructs, not `\en{`.
                 self.isolates.append((m.start(), close + 1,
-                                      self.text[open_pos + 1:close]))
+                                      self.tex_live[open_pos + 1:close]))
             elif name in arg_only:
                 self._protect(m.start(), close + 1)
             else:
                 # Protect only the macro name, never its Persian argument.
                 self._protect(m.start(), m.end() - 1)
 
-        for m in re.finditer(r"\\[A-Za-z@]+\*?", self.text):
+        for m in re.finditer(r"\\[A-Za-z@]+\*?", self.tex_live):
             self._protect(m.start(), m.end())
 
     def _scan_html(self) -> None:
