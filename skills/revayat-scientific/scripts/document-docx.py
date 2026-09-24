@@ -88,7 +88,10 @@ def _paragraph(parent, spec, language, rtl):
         run.font.rtl = _boolean(item.get('rtl', rtl))
         for flag in ('bold', 'italic'):
             if flag in item:
-                setattr(run, flag, _boolean(item[flag]))
+                enabled = _boolean(item[flag])
+                setattr(run, flag, enabled)
+                # Persian and other complex-script runs use separate OOXML flags.
+                setattr(run.font, 'cs_' + flag, enabled)
         if 'font' in item:
             run.font.name = _text(item['font'])
             fonts = run._r.get_or_add_rPr().get_or_add_rFonts()
@@ -97,7 +100,7 @@ def _paragraph(parent, spec, language, rtl):
             size = _number(item['size_pt'], 1, 200)
             run.font.size = Pt(size)
             complex_size = OxmlElement('w:szCs')
-            complex_size.set(qn('w:val'), str(round(size * 2)))
+            complex_size.set(qn('w:val'), str(int(run.font.size.pt * 2)))
             run._r.get_or_add_rPr().append(complex_size)
         lang = OxmlElement('w:lang')
         selected = _language(item.get('language', language))
