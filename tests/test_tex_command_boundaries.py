@@ -17,7 +17,8 @@ class TexCommandBoundaryTest(unittest.TestCase):
     def setUp(self):
         self.work = tempfile.TemporaryDirectory(prefix='scientific tex boundary ')
         self.addCleanup(self.work.cleanup)
-        self.root = Path(self.work.name)
+        # Compare canonical paths on systems with linked temporary directories.
+        self.root = Path(self.work.name).resolve()
         self.log = operation_log('test-tex-command-boundaries', self.root / 'logs')
         self.logger = self.log.__enter__()
         self.addCleanup(self.log.__exit__, None, None, None)
