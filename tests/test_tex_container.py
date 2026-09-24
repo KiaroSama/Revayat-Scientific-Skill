@@ -18,6 +18,16 @@ CONTROLLER = SCRIPTS / 'tex-container.py'
 
 
 class TexContainerTest(unittest.TestCase):
+    def test_missing_tex_font_file_is_classified_without_exposing_log(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.scratch') as directory:
+            outgoing = Path(directory)
+            (outgoing / 'console-pass-1.log').write_text(
+                "! I can't find file `pzdr'.\nl.9 PRIVATE_MANUSCRIPT_LINE\n",
+                encoding='utf-8',
+            )
+            self.assertEqual(self.controller.failure_class(outgoing),
+                             'missing-resource-or-package')
+
     def setUp(self):
         # Mocked controller failures deliberately remove their own staging;
         # they must not register fake containers with the surrounding real owner.

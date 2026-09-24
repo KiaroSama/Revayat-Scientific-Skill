@@ -254,6 +254,7 @@ def failure_class(outgoing):
         (b'Undefined control sequence', 'undefined-control-sequence'),
         (b'fontspec error', 'font-unavailable'),
         (b'not found', 'missing-resource-or-package'),
+        (b"I can't find file", 'missing-resource-or-package'),
         (b'Missing $ inserted', 'math-syntax'),
         (b'Package xepersian Error', 'xepersian-package'),
         (b'cannot write', 'output-permission'),

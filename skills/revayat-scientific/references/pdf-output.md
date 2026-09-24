@@ -55,7 +55,8 @@ podman build --tag revayat-scientific-tex:1 --file assets/Dockerfile.tex assets
 
 The image build downloads its Linux toolchain packages. Translation runs do not
 install a runtime, pull an image or download TeX packages. The Dockerfile installs
-XeLaTeX, `xepersian`, static Vazirmatn Regular/Bold and the entry script
+XeLaTeX, `xepersian`, recommended TeX font metrics (including `pzdr`), static
+Vazirmatn Regular/Bold and the entry script
 `assets/tex-container-entry.sh`. That script performs two compilation passes with
 shell escape disabled; it does not run bibliography tools automatically.
 
