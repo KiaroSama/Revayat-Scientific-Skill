@@ -91,11 +91,15 @@ python scripts/revayat-scientific.py pages source.pdf selected.pdf 3-8
 ```
 
 Merge follows the explicit argument order and validates every input before writing.
-It preserves page geometry/rotation and copies page content, annotations, links and
-ordinary outline entries. Document-level identities, advanced outline actions and
-metadata are not combined as a lossless document archive. Forms and attachments
-are refused for merging because field-name collisions and document-level objects
-need deliberate reconciliation. Preserve the original documents alongside a merge.
+It preserves page geometry/rotation and copies page content, annotations and links.
+Supported outlines retain hierarchy, titles, precise local destinations, zoom,
+URI actions, emphasis, color and expansion state. Their semantics are checked
+again after saving the staged PDF. See [outline preservation](pdf-outlines.md)
+for supported destination modes and the limits on advanced actions. Unsupported
+outline actions are refused rather than silently discarded; URLs are data only.
+Document-level identities and metadata are not combined as a lossless archive.
+Forms and attachments are refused for merging because field-name collisions and
+document-level objects need deliberate reconciliation. Preserve the originals.
 Use the existing `pages` command for contiguous extraction rather than rasterizing
 or rebuilding every page.
 
