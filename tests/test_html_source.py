@@ -27,6 +27,10 @@ class LiveHTMLTest(unittest.TestCase):
             ('<html lang="fa" dir="rtl"><p>گ&#1585;ه</p></html>', 1, 'forbidden-fa'),
             ('<html lang="fa" dir="rtl"><p data-note="fa-lint: allow all">كتاب</p></html>', 1, 'arabic-letters'),
             ('<html lang="fa" dir="rtl">\n<!-- fa-lint: allow arabic-letters -->\nكتاب</html>', 0, None),
+            ('<html lang="fa" dir="rtl"><style>pre{white-space:pre-wrap}</style><pre dir="ltr">services</pre></html>', 0, None),
+            ('<html lang="fa" dir="rtl"><style>code{white-space:pre-wrap}</style><code class="ltr"><span dir="ltr">services</span></code></html>', 0, None),
+            ('<html lang="fa" dir="rtl"><style>code{white-space:pre-wrap}</style><span dir="ltr">value <code>services</code></span></html>', 0, None),
+            ('<html lang="fa" dir="rtl"><span dir="ltr">services</span></html>', 1, 'en-plural'),
         ]
         with tempfile.TemporaryDirectory(dir=scratch) as directory:
             source = Path(directory) / 'doc.html'

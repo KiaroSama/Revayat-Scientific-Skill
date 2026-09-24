@@ -24,6 +24,7 @@ remain accounted for, and Persian pages whose output is actually checked.
 | **A source inventory before drafting** | Record sections, figures, tables, equations, notes and references so a missing object cannot be dismissed as a layout choice. |
 | **Scientific claims keep their force** | The workflow reviews negation, hedges, quantities and units against the source; fluency edits must preserve their meaning. |
 | **One form per concept** | A job-local terms ledger keeps preferred terms consistent. Papers use `journal`; operational guides use `system-docs`. |
+| **Source-located term briefs** | A bundled offline command finds approved terms in reviewed text from any source script, records source and glossary hashes, and flags ambiguous choices. |
 | **Figures remain source artwork** | Crop and prepare original figures, compare them with source pages, and check the figure manifest before delivery. |
 | **Real right-to-left typesetting** | Persian stays in logical order; retained source spans follow their own script direction, with complete formula and number isolates. |
 | **Source-aware language and style** | Identify language/script and research uncertain terms. Journal prose uses familiar Persian scientific concepts, with source-language fidelity review. |
@@ -199,6 +200,7 @@ to `$HOME/Documents/books`; `--output-dir` selects another directory.
 - [Source languages](skills/revayat-scientific/references/source-languages.md) — direct translation, language profiles and research
 - [Page and image fidelity](skills/revayat-scientific/references/layout-and-images.md) — source dimensions, resolution and faithful enhancement
 - [Terminology](skills/revayat-scientific/references/terminology.md) — concept decisions and terminology levels
+- [Evidence and terminology](skills/revayat-scientific/references/evidence-and-terminology.md) — local term briefs and source-bound scientific review
 - [Scientific style](skills/revayat-scientific/references/scientific-style.md) — clear scholarly Persian
 - [RTL and bidi](skills/revayat-scientific/references/rtl-bidi.md) — complete LTR isolates
 - [Review](skills/revayat-scientific/references/review.md) — fidelity, fluency and completeness

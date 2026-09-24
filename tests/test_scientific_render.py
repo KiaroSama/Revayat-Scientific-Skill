@@ -4,9 +4,13 @@ import logging
 import os
 from pathlib import Path
 import re
+import signal
 import shutil
+import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -108,6 +112,55 @@ La mesure dépend des conditions expérimentales.
                 container.compile_document(source, output, logging.Logger('deadline-test'))
             self.assertEqual(output.read_bytes(), approved)
             self.assertFalse(list(work.glob('.revayat-tex-*')))
+
+    def test_surviving_owner_reaps_container_after_controller_is_killed(self):
+        import tex_supervisor
+        spec = importlib.util.spec_from_file_location('cancel_tex_container', SCRIPTS / 'tex-container.py')
+        container = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(container)
+        logger = logging.Logger('cancel-test')
+        config = container.runtime_config(logger)
+        with tempfile.TemporaryDirectory(dir=ROOT / '.scratch') as directory:
+            work = Path(directory)
+            source, output = work / 'paper.tex', work / 'paper.pdf'
+            output.write_bytes(b'previous approved delivery')
+            source.write_text('\\documentclass{article}\n\\begin{document}\n'
+                              '\\loop\\iftrue\\repeat\n\\end{document}', encoding='utf-8')
+            with tex_supervisor.container_scope(logger, dict(os.environ), work) as environment:
+                process = subprocess.Popen([sys.executable, str(SCRIPTS / 'tex-container.py'),
+                                            str(source), str(output)], cwd=work,
+                                           env=environment, stdin=subprocess.DEVNULL,
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                           start_new_session=True)
+                run_id = None
+                try:
+                    deadline = time.monotonic() + 40
+                    while time.monotonic() < deadline:
+                        receipts = list(work.glob('.revayat-tex-*/owner.json'))
+                        if receipts:
+                            import json
+                            run_id = json.loads(receipts[0].read_text(encoding='utf-8'))['run_id']
+                            listing = subprocess.run([*config['base'], 'ps', '--filter',
+                                'label=' + container.RUN_LABEL + '=' + run_id,
+                                '--format', '{{.ID}}'], capture_output=True, text=True, timeout=5)
+                            if listing.returncode == 0 and listing.stdout.strip():
+                                break
+                        if process.poll() is not None:
+                            raise AssertionError('controller exited before the cancellation seam')
+                        threading.Event().wait(0.1)
+                    else:
+                        self.fail('owned TeX container did not start within 40 seconds')
+                finally:
+                    if process.poll() is None:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.communicate(timeout=10)
+            self.assertEqual(output.read_bytes(), b'previous approved delivery')
+            self.assertFalse(list(work.glob('.revayat-tex-*')))
+            listing = subprocess.run([*config['base'], 'ps', '-a', '--filter',
+                'label=' + container.RUN_LABEL + '=' + run_id, '--format', '{{.ID}}'],
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(listing.returncode, 0, listing.stderr)
+            self.assertFalse(listing.stdout.strip(), 'owned container survived its controller')
 
     def test_weasyprint_resource_denial_preserves_previous_output(self):
         import pymupdf

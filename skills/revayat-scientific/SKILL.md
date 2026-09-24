@@ -162,6 +162,8 @@ Read [terminology.md](references/terminology.md) and
 [scientific-style.md](references/scientific-style.md). Infer the document's
 subjects, practices and genre from its contents; no fixed count or domain pack
 is required.
+Follow [evidence-and-terminology.md](references/evidence-and-terminology.md)
+for source-located term candidates and section-specific scientific evidence.
 
 Create `WORK/terms.tsv` using [assets/terms.tsv](assets/terms.tsv) as the header.
 Record preferred forms, concept identity and forbidden/deprecated alternatives
@@ -178,6 +180,12 @@ terms; a technical concept is not automatically English-only.
 | Stylistic uncertainty | Record it for review without inventing a scientific resolution |
 
 Finish the initial ledger before drafting. Retain it with the editable source.
+For reviewed extracted text, `term-brief` selects only matching approved ledger
+rows and records source/ledger hashes; inspect ambiguous candidates before use:
+
+```bash
+"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" term-brief "$WORK/source/part-01.txt" --terms "$WORK/terms.tsv" --language <source-language> > "$WORK/term-brief-01.json"
+```
 
 ## Step 4 — Prepare figures and document objects
 
@@ -235,6 +243,8 @@ approved parts when resuming.
 
 Follow [review.md](references/review.md): compare every selected source part and target for omissions,
 added claims, changed certainty, wrong quantities and incorrect references.
+Apply the source-location claim and citation checks in
+[evidence-and-terminology.md](references/evidence-and-terminology.md).
 Back-translate a small sample into its original language as an additional check,
 not a substitute for source comparison. Use the same terminology revision and
 neighbor context for drafting and review; label actual coverage and error severity.
@@ -346,6 +356,7 @@ Read each only when its stage calls for it:
 - [source-languages.md](references/source-languages.md) — language profiles and per-language research
 - [layout-and-images.md](references/layout-and-images.md) — page geometry and faithful image improvement
 - [terminology.md](references/terminology.md) — levels and concept decisions
+- [evidence-and-terminology.md](references/evidence-and-terminology.md) — local term briefs and source-bound claims/citations
 - [scientific-style.md](references/scientific-style.md) — scholarly Persian
 - [rtl-bidi.md](references/rtl-bidi.md) — isolation and direction
 - [long-documents.md](references/long-documents.md) — part records and resumption

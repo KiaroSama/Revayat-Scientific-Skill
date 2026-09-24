@@ -28,7 +28,8 @@ def main():
                            'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUTF8': '1'}
             try:
                 return run_command(command, args.timeout, logger, cwd=ROOT,
-                                   env=environment, idle_timeout=args.idle_timeout)
+                                   env=environment, idle_timeout=args.idle_timeout,
+                                   supervise_containers=True)
             except subprocess.TimeoutExpired:
                 print('check exceeded its wall or idle deadline; owned processes terminated', file=sys.stderr)
                 return 124

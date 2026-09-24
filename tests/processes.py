@@ -16,5 +16,6 @@ def run(command, *, timeout=30, **options):
     with redirect_stdout(stdout), redirect_stderr(stderr):
         code = run_command(list(command), timeout, logging.Logger('test-process'),
                            cwd=options.get('cwd'), env=options.get('env'),
-                           idle_timeout=options.get('idle_timeout', min(timeout, 90)))
+                           idle_timeout=options.get('idle_timeout', min(timeout, 90)),
+                           supervise_containers=True)
     return subprocess.CompletedProcess(command, code, stdout.getvalue(), stderr.getvalue())

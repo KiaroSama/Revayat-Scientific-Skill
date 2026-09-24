@@ -54,6 +54,14 @@ class PackageTest(unittest.TestCase):
         text = json.loads(extracted.read_text(encoding='utf-8'))
         self.assertEqual(text['pages'][0]['text'].strip(), 'Scientific package boundary')
         self.assertEqual(source.read_bytes(), original)
+        original_text, approved_terms = project / 'اصل.txt', project / 'terms.tsv'
+        original_text.write_text('核融合 در گزارش.', encoding='utf-8')
+        approved_terms.write_text('source\toutput\tconcept\tstatus\n'
+            '核融合\tهمجوشی هسته‌ای\tphysics-fusion\tpreferred\n', encoding='utf-8')
+        brief = run(sys.executable, str(cli), 'term-brief', str(original_text),
+                    '--terms', str(approved_terms), '--language', 'ja', cwd=project)
+        self.assertEqual(brief.returncode, 0, brief.stderr)
+        self.assertEqual(json.loads(brief.stdout)['terms'][0]['output'], 'همجوشی هسته‌ای')
 
     def test_image_preparation_and_pdf_pages(self):
         from PIL import Image
@@ -158,7 +166,8 @@ class PackageTest(unittest.TestCase):
                                  'scripts/document-pdf.py', 'scripts/pdf_forms.py',
                                  'scripts/publication.py', 'scripts/tex-container.py',
                                  'assets/Dockerfile.tex', 'assets/tex-container-entry.sh',
-                                 'references/docx.md', 'references/pdf-processing.md'):
+                                 'references/docx.md', 'references/pdf-processing.md',
+                                 'references/evidence-and-terminology.md', 'scripts/term-brief.py'):
                     self.assertIn('revayat-scientific/' + relative, names)
                 self.assertFalse(any('/logs/' in name or '__pycache__' in name or '/tests/' in name for name in names))
                 self.assertIsNone(archive.testzip())

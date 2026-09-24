@@ -19,6 +19,7 @@ from document_context import DocumentContext
 from publication import publish_files, validate_destination
 from runtime import operation_log, run_command
 from tex_source import masked_tex, source_closure
+from tex_supervisor import acknowledge, records, register
 
 DEFAULT_IMAGE = 'revayat-scientific-tex:1'
 IMAGE_LABEL = 'org.revayat.tex.toolchain'
@@ -62,6 +63,7 @@ def runtime_config(logger):
     executable = shutil.which(requested) if requested else (shutil.which('docker') or shutil.which('podman'))
     if not executable:
         raise RuntimeError('Docker or Podman is not available on PATH')
+    executable = str(Path(executable).resolve())
     kind = Path(executable).stem.lower()
     if kind not in ('docker', 'podman'):
         raise ValueError('runtime must be Docker or Podman')
@@ -183,7 +185,7 @@ def run_arguments(config, directory, source_name, run_id):
     return command
 
 
-def cleanup(config, directory, run_id, logger):
+def cleanup(config, directory, run_id, logger, require_receipt=False):
     base = config['base']
     listing = [*base, 'ps', '-a', '--filter', 'label=' + RUN_LABEL + '=' + run_id,
                '--no-trunc', '--format', '{{.ID}}']
@@ -193,6 +195,8 @@ def cleanup(config, directory, run_id, logger):
     identifiers = text.split()
     cid = directory / 'container.cid'
     expected = cid.read_text(encoding='utf-8').strip() if cid.exists() else None
+    if require_receipt and expected is None and not identifiers:
+        raise RuntimeError('container launch outcome is unknown; ownership evidence retained')
     if expected is not None and not re.fullmatch(r'[0-9a-f]{64}', expected):
         raise RuntimeError('invalid owned-container receipt; cleanup evidence retained')
     if expected and expected not in identifiers:
@@ -216,6 +220,34 @@ def cleanup(config, directory, run_id, logger):
         raise RuntimeError('owned container cleanup could not be confirmed')
 
 
+def cleanup_receipts(directory, token, logger):
+    planned = list(records(directory, token))
+    for receipt, item, staging in planned:
+        config = item['config']
+        if not isinstance(config, dict) or set(config) != {'base', 'kind', 'image'}:
+            raise ValueError('invalid container recovery configuration')
+        base, kind = config['base'], config['kind']
+        if (not isinstance(base, list) or not all(isinstance(value, str) for value in base)
+                or not base or not Path(base[0]).is_absolute() or not Path(base[0]).is_file()
+                or kind not in ('docker', 'podman') or Path(base[0]).stem.lower() != kind):
+            raise ValueError('invalid recovery runtime identity')
+        if kind == 'docker':
+            if len(base) != 3 or base[1] != '--host':
+                raise ValueError('invalid Docker recovery endpoint')
+            validate_endpoint(base[2], kind)
+        elif base[1:] != ['--remote=false']:
+            if len(base) not in (3, 5) or base[1] != '--url' or (len(base) == 5 and base[3] != '--identity'):
+                raise ValueError('invalid Podman recovery endpoint')
+            validate_endpoint(base[2], kind)
+        if not re.fullmatch(r'(?:sha256:)?[0-9a-f]{64}', config['image']):
+            raise ValueError('invalid recovery image identity')
+    for receipt, item, staging in planned:
+        cleanup(item['config'], staging, item['run_id'], logger, require_receipt=True)
+        shutil.rmtree(staging)
+        acknowledge(receipt)
+    logger.info('supervised_container_cleanup receipts=%d', len(planned))
+
+
 def compile_document(source, output, logger):
     # Endpoint/image readiness precedes even reading the document.
     config = runtime_config(logger)
@@ -227,6 +259,7 @@ def compile_document(source, output, logger):
     directory = Path(tempfile.mkdtemp(prefix='.revayat-tex-', dir=output.parent))
     run_id = uuid.uuid4().hex
     keep = False
+    receipt = None
     try:
         incoming, outgoing = directory / 'input', directory / 'output'
         incoming.mkdir(mode=0o755)
@@ -239,12 +272,14 @@ def compile_document(source, output, logger):
             # The mount enforces RO. Windows read-only attributes prevent cleanup.
             target.chmod(0o644)
         try:
+            receipt = register(config, directory, run_id)
             code, _ = call(run_arguments(config, directory, source.name, run_id), logger, timeout=INNER_TIMEOUT + 30)
             if code:
                 raise RuntimeError(f'isolated XeLaTeX failed or exceeded its deadline (exit_code={code})')
         finally:
             try:
                 cleanup(config, directory, run_id, logger)
+                acknowledge(receipt)
             except BaseException:
                 keep = True
                 (directory / 'recovery.json').write_text(json.dumps({'run_id': run_id,
@@ -271,10 +306,15 @@ def compile_document(source, output, logger):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe', action='store_true')
+    parser.add_argument('--cleanup-receipts', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--owner-token', help=argparse.SUPPRESS)
     parser.add_argument('source', nargs='?', type=Path)
     parser.add_argument('output', nargs='?', type=Path)
     args = parser.parse_args(argv)
     with operation_log('tex-container', Path(__file__).resolve().parent / 'logs') as logger:
+        if args.cleanup_receipts is not None:
+            cleanup_receipts(args.cleanup_receipts, args.owner_token, logger)
+            return 0
         if args.probe:
             try:
                 config = runtime_config(logger)
