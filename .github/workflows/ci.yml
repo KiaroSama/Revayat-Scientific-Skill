@@ -111,6 +111,10 @@ jobs:
           python -m pip install -r skills/revayat-scientific/requirements.txt
           python -m pip install WeasyPrint==70.0
           sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn libpango-1.0-0 libcairo2
+      - name: Literal TeX source-closure regression
+        env:
+          SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
+        run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_tex_command_boundaries.py' -v
       - name: Build isolated TeX toolchain
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 skills/revayat-scientific/assets
       - name: Isolated renderer contracts
