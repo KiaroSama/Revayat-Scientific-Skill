@@ -75,10 +75,12 @@ def source_closure(source, *, root=None):
         text = raw.decode('utf-8')
         sources.append(path)
         masked = masked_tex(text)
-        pattern = re.compile(r'(?<!\\)\\(input|include|includeonly)\b')
+        pattern = re.compile(r'(?<!\\)(?:\\\\)*\\(input|include|includeonly)\b')
         cursor = 0
         for match in pattern.finditer(masked):
-            if match.start() < cursor:
+            # Paired backslashes are TeX linebreaks, not escapes of the next command.
+            command_start = match.end() - len(match.group(1)) - 1
+            if command_start < cursor:
                 continue
             if match.group(1) == 'includeonly':
                 raise ValueError('includeonly requires an explicit reviewed source closure')
@@ -93,7 +95,7 @@ def source_closure(source, *, root=None):
                 child = child.with_suffix('.tex')
             if child.suffix.lower() not in ('.tex', '.ltx'):
                 raise ValueError('unsupported TeX include type')
-            append(text[cursor:match.start()], path, cursor, text)
+            append(text[cursor:command_start], path, cursor, text)
             expand(root / child, (*stack, path))
             cursor = match.end() + argument.end()
         append(text[cursor:], path, cursor, text)
