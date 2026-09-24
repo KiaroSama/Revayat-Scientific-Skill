@@ -36,14 +36,20 @@ class Source:
         return pos < self.preamble_end
 
     def inert(self, pos: int) -> bool:
-        """Preamble, comment or literal: structural checks must not fire here.
+        """Ignore comments and literal contents, not a real listing's opener.
 
-        Templates and real documents both carry commented-out examples and
-        `% TODO(ambiguity)` markers; those are not output.
+        Code-direction checks must still inspect a genuine listing boundary.
+        A fake opener inside an inline or block literal remains inert, while
+        prose checks protect the entire literal through is_protected().
         """
         if pos < self.preamble_end:
             return True
-        return any(start <= pos < end for start, end in (*self.comments, *self.literals))
+        if any(start <= pos < end for start, end in self.comments):
+            return True
+        for start, end in self.literals:
+            if start <= pos < end:
+                return not (pos == start and self.text.startswith(r'\begin{', start))
+        return False
 
     def excerpt(self, pos: int, width: int = 60) -> str:
         start = max(0, pos - width // 3)
