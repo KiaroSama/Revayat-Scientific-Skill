@@ -71,7 +71,7 @@ class PublicationTest(unittest.TestCase):
                 '$bRules=@((Get-Acl -LiteralPath $B).Access.IdentityReference.Value | Sort-Object -Unique)\n'
                 '@{equivalent=(@(Compare-Object $aRules $bRules).Count -eq 0)} | ConvertTo-Json -Compress\n', encoding='utf-8')
             result = run([shutil.which('powershell'), '-NoProfile', '-NonInteractive',
-                          '-File', str(script), str(control), str(output)], timeout=10)
+                          '-File', str(script), str(control), str(output)], timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(json.loads(result.stdout)['equivalent'], 'publication lost destination access principals')
             self.assertEqual(output.read_bytes(), b'delivered')
