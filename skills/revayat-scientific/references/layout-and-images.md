@@ -89,6 +89,13 @@ also require a reviewed specialist workflow rather than silently dropping metada
 the original and choose an explicitly reviewed specialist workflow. `--check` is
 read-only and cannot pass when faithful inspection is unavailable.
 
+A dark-background original is not necessarily an inverted extraction. Compare it
+with the source instead of changing its intensities to satisfy a heuristic. After
+an actual comparison, use the per-image hash-bound decision described in
+[reviewing legitimate dark figures](figure-review.md). This clears only that
+image's darkness finding; unsupported depth/frames, transparency and other checks
+still apply. The helper never creates review approvals automatically.
+
 ## Improve poor images without inventing evidence
 
 Act when a figure is blurred, pixelated or unreadable at its intended print size:

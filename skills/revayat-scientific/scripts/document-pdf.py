@@ -16,6 +16,7 @@ import tempfile
 
 from pdf_forms import inventory, ensure_transformable, signature_present, plan_fill, apply_fill, verify_fill
 from publication import publish_files, validate_destination
+from pdf_outlines import outline_plan, apply_outlines, verify_outlines
 from runtime import operation_log, run_command
 
 
@@ -189,14 +190,14 @@ def merge_pdfs(sources, destination):
             for document in documents:
                 offset = result.page_count
                 result.insert_pdf(document)
-                for item in document.get_toc():
-                    toc.append([item[0], item[1], item[2] + offset if item[2] > 0 else -1])
+                toc.extend(outline_plan(document, offset))
                 expected.extend(geometry(document))
             for index, page in enumerate(expected):
                 page['page'] = index + 1
             if toc:
-                result.set_toc(toc)
-            _save_document(result, destination, sources, expected)
+                apply_outlines(result, toc)
+            _save_document(result, destination, sources, expected,
+                           validator=lambda output: verify_outlines(output, toc))
 
 
 def fill_pdf(source, destination, values, protected_sources=()):
