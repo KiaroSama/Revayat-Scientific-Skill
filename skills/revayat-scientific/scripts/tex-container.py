@@ -248,6 +248,30 @@ def cleanup_receipts(directory, token, logger):
     logger.info('supervised_container_cleanup receipts=%d', len(planned))
 
 
+def failure_class(outgoing):
+    """Expose only a bounded TeX error category, never manuscript log lines."""
+    categories = (
+        (b'Undefined control sequence', 'undefined-control-sequence'),
+        (b'fontspec error', 'font-unavailable'),
+        (b'not found', 'missing-resource-or-package'),
+        (b'Missing $ inserted', 'math-syntax'),
+        (b'Package xepersian Error', 'xepersian-package'),
+        (b'cannot write', 'output-permission'),
+        (b'TeX capacity exceeded', 'tex-capacity'),
+    )
+    for name in ('console-pass-2.log', 'console-pass-1.log'):
+        path = outgoing / name
+        if path.is_symlink() or not path.is_file():
+            continue
+        with path.open('rb') as handle:
+            handle.seek(max(0, path.stat().st_size - 128 * 1024))
+            tail = handle.read(128 * 1024)
+        for marker, category in categories:
+            if marker.lower() in tail.lower():
+                return category
+    return 'unclassified'
+
+
 def compile_document(source, output, logger):
     # Endpoint/image readiness precedes even reading the document.
     config = runtime_config(logger)
@@ -275,7 +299,9 @@ def compile_document(source, output, logger):
             receipt = register(config, directory, run_id)
             code, _ = call(run_arguments(config, directory, source.name, run_id), logger, timeout=INNER_TIMEOUT + 30)
             if code:
-                raise RuntimeError(f'isolated XeLaTeX failed or exceeded its deadline (exit_code={code})')
+                reason = failure_class(outgoing)
+                logger.error('isolated_tex_failed exit_code=%d category=%s', code, reason)
+                raise RuntimeError(f'isolated XeLaTeX failed or exceeded its deadline (exit_code={code}, category={reason})')
         finally:
             try:
                 cleanup(config, directory, run_id, logger)
