@@ -1,5 +1,6 @@
 """Literal TeX commands must respect escaped-backslash token boundaries."""
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import sys
@@ -17,7 +18,6 @@ class TexCommandBoundaryTest(unittest.TestCase):
     def setUp(self):
         self.work = tempfile.TemporaryDirectory(prefix='scientific tex boundary ')
         self.addCleanup(self.work.cleanup)
-        # Compare canonical paths on systems with linked temporary directories.
         self.root = Path(self.work.name).resolve()
         self.log = operation_log('test-tex-command-boundaries', self.root / 'logs')
         self.logger = self.log.__enter__()
@@ -25,10 +25,11 @@ class TexCommandBoundaryTest(unittest.TestCase):
         self.logger.info('running test=%s', self._testMethodName)
         self.source = self.root / 'doc.tex'
         self.child = self.root / 'chapter.tex'
-        self.child.write_text('CHAPTER CONTENT\n', encoding='utf-8')
+        self.child.write_bytes(b'CHAPTER CONTENT\n')
 
     def closure(self, text):
-        self.source.write_text(text, encoding='utf-8')
+        # Byte fixtures avoid platform newline conversion; CRLF is tested explicitly.
+        self.source.write_bytes(text.encode('utf-8'))
         return source_closure(self.source)
 
     def test_odd_backslash_runs_expand_and_preserve_linebreaks(self):
@@ -64,7 +65,7 @@ class TexCommandBoundaryTest(unittest.TestCase):
         self.assertEqual(result.sources, (self.source,))
 
     def test_missing_cyclic_dynamic_and_includeonly_still_fail(self):
-        self.child.write_text(r'\input{doc}', encoding='utf-8')
+        self.child.write_bytes(br'\input{doc}')
         for command in ('input{missing}', 'include{missing}', r'input{\macro}',
                         'includeonly{chapter}', 'input{chapter}'):
             with self.subTest(command=command), self.assertRaises(ValueError):
@@ -72,8 +73,8 @@ class TexCommandBoundaryTest(unittest.TestCase):
 
     def test_nested_and_unbraced_include_location_mapping(self):
         nested = self.root / 'nested.tex'
-        nested.write_text('NESTED\n', encoding='utf-8')
-        self.child.write_text('Chapter\n' + '\\' * 3 + 'input nested\nEnd', encoding='utf-8')
+        nested.write_bytes(b'NESTED\n')
+        self.child.write_bytes(('Chapter\n' + '\\' * 3 + 'input nested\nEnd').encode())
         result = self.closure('Start\n' + '\\' * 3 + 'input{chapter}\nFinish')
         self.assertEqual(result.sources, (self.source, self.child, nested))
         self.assertIn('\\\\NESTED', result.text)
@@ -81,10 +82,25 @@ class TexCommandBoundaryTest(unittest.TestCase):
         self.assertEqual(result.location(result.text.index('End')), (self.child, 3))
         self.assertEqual(result.location(result.text.index('Finish')), (self.source, 3))
 
-    @unittest.skipUnless(shutil.which('xelatex') and shutil.which('pdftotext'),
-                         'requires real XeLaTeX and Poppler')
+    def test_crlf_and_mixed_newlines_are_preserved_with_locations(self):
+        for child_newline in ('\n', '\r\n'):
+            for parent_newline in ('\n', '\r\n'):
+                with self.subTest(child=repr(child_newline), parent=repr(parent_newline)):
+                    self.child.write_bytes(('CHAPTER' + child_newline).encode())
+                    text = 'Intro' + parent_newline + '\\' * 3 + 'input{chapter}' + parent_newline + 'Tail'
+                    result = self.closure(text)
+                    self.assertEqual(result.text, 'Intro' + parent_newline + '\\\\CHAPTER'
+                                     + child_newline + parent_newline + 'Tail')
+                    self.assertEqual(result.location(result.text.index('CHAPTER')), (self.child, 1))
+                    self.assertEqual(result.location(result.text.index('Tail')), (self.source, 3))
+
     def test_real_tex_linebreak_then_input_agrees_with_closure(self):
-        self.child.write_text('IncludedUniqueMarker', encoding='utf-8')
+        ready = shutil.which('xelatex') and shutil.which('pdftotext')
+        if not ready:
+            if os.environ.get('SCIENTIFIC_REQUIRE_TEX_BOUNDARY') == '1':
+                self.fail('required TeX boundary test needs XeLaTeX and Poppler')
+            self.skipTest('requires real XeLaTeX and Poppler')
+        self.child.write_bytes(b'IncludedUniqueMarker')
         text = (r'\documentclass{article}\begin{document}First'
                 + '\\' * 3 + r'input{chapter}\end{document}')
         result = self.closure(text)
