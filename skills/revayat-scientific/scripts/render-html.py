@@ -118,6 +118,15 @@ def main(argv=None):
                     data = handle.read(MAX_RESOURCE_BYTES + 1)
                 if len(data) > MAX_RESOURCE_BYTES or hashlib.sha256(data).hexdigest() != digest:
                     raise ValueError('document resource changed before publication')
+            # Reject obviously truncated output before handing an incomplete file
+            # to MuPDF, whose failed open can retain a Windows file handle.
+            with stage.open('rb') as handle:
+                size = stage.stat().st_size
+                prefix = handle.read(8)
+                handle.seek(max(0, size - 2048))
+                trailer = handle.read(2048)
+            if size < 32 or not prefix.startswith(b'%PDF-') or not trailer.rstrip().endswith(b'%%EOF'):
+                raise ValueError('renderer did not produce a complete PDF')
             import pymupdf
             with pymupdf.open(stage) as document:
                 if not document.is_pdf or document.needs_pass or document.page_count < 1 or document.is_repaired:

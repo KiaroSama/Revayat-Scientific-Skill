@@ -8,6 +8,6 @@ mkdir -p /tmp/tex-home /tmp/tex-var /tmp/tex-config
 find /input -mindepth 1 -type d -exec sh -c 'for directory do mkdir -p "/output/${directory#/input/}"; done' sh {} +
 for pass in 1 2; do
     xelatex -no-shell-escape -interaction=nonstopmode -halt-on-error \
-        -file-line-error -jobname=document -output-directory=/output "$1" > /output/console.log 2>&1
+        -file-line-error -jobname=document -output-directory=/output "$1" > "/output/console-pass-${pass}.log" 2>&1
 done
 test -s /output/document.pdf

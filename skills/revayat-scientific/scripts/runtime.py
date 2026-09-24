@@ -50,6 +50,44 @@ def operation_log(name: str, directory: Path, *, level=None):
         logger.removeHandler(handler)
 
 
+def _kill_owned_group(group_id: int) -> None:
+    try:
+        os.killpg(group_id, signal.SIGKILL)
+        return
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        if sys.platform != 'darwin':
+            raise
+    # macOS can return EPERM for a group with an exited launcher. Inspect the
+    # exact session-created PGID and user before signaling any surviving member.
+    for _ in range(3):
+        listed = subprocess.run(['ps', '-A', '-o', 'pid=', '-o', 'pgid=',
+                                 '-o', 'uid=', '-o', 'state='],
+                                capture_output=True, text=True, encoding='utf-8',
+                                timeout=5, check=True)
+        members = []
+        for line in listed.stdout.splitlines():
+            fields = line.split()
+            if len(fields) != 4:
+                raise RuntimeError('cannot verify owned process group from ps')
+            pid, pgid, uid = map(int, fields[:3])
+            if pgid != group_id:
+                continue
+            if uid != os.getuid():
+                raise PermissionError('owned process group contains a different user')
+            if not fields[3].startswith('Z'):
+                members.append(pid)
+        if not members:
+            return
+        for pid in members:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    raise RuntimeError('owned process group still has live members')
+
+
 def run_command(command: list[str], timeout: int, logger: logging.Logger, *, cwd=None,
                 env=None, idle_timeout=None, supervise_containers=False) -> int:
     if timeout <= 0 or (idle_timeout is not None and idle_timeout <= 0):
@@ -125,10 +163,7 @@ def run_command(command: list[str], timeout: int, logger: logging.Logger, *, cwd
             if job:
                 job.close()
             else:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                _kill_owned_group(process.pid)
             process.wait(timeout=15)
             logger.error('process_tree_terminated pid=%d', process.pid)
             raise
@@ -144,10 +179,7 @@ def run_command(command: list[str], timeout: int, logger: logging.Logger, *, cwd
             job.close()
         if process is not None:
             if os.name != 'nt':
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                _kill_owned_group(process.pid)
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=15)
