@@ -19,6 +19,7 @@ import tempfile
 
 from publication import publish_files, validate_destination
 from runtime import operation_log
+from image_review import reviewed_dark_original
 
 IMAGE_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
 DARK_MEAN = 120.0
@@ -209,9 +210,13 @@ def main(argv):
             mean, black, mode = stats_pil(source)
             with Image.open(source) as image:
                 alpha = 'A' in image.getbands() or 'transparency' in image.info
-            problem = alpha or is_dark(mean, black)
+            dark = is_dark(mean, black)
+            reviewed = reviewed_dark_original(source) if dark else False
+            problem = alpha or (dark and not reviewed)
             findings += bool(problem)
-            print(f'prepare-figures: {"review" if problem else "ok"} mode={mode} alpha={alpha} dark={is_dark(mean, black)}')
+            print(f'prepare-figures: {"review" if problem else "ok"} mode={mode} alpha={alpha} dark={dark} reviewed={reviewed}')
+            if dark and not reviewed:
+                print('prepare-figures: compare with the source; preserve legitimate darkness using a hash-bound .review.json', file=sys.stderr)
         return int(findings > 0)
     plan = prepare_plan(files, args.invert_dark)
     entries = []
