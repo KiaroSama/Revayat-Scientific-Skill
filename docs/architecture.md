@@ -9,8 +9,11 @@ shares source selection, required-asset checks and delivery across native adapte
 browser requests and WeasyPrint fetching to approved local resources.
 
 `document-docx.py` and `docx_package.py` provide native creation and targeted OOXML
-edits. `document-pdf.py` and `pdf_forms.py` reuse PyMuPDF for extraction, forms,
-merging and optional Tesseract OCR. `font-fetch.py` validates font identity, weight
+edits. `document-pdf.py`, `pdf_forms.py` and `pdf_outlines.py` reuse PyMuPDF for
+extraction, forms, merging with supported precise outline targets and optional
+Tesseract OCR. `image_review.py` validates exact-asset records only for
+legitimate darkness; other image safety checks remain mandatory.
+`font-fetch.py` validates font identity, weight
 and licensing before delivering the pair and provenance together. Structural
 validation does not certify rendered layout or scientific translation accuracy.
 `term-brief.py` reads reviewed source text and the job's approved ledger to emit
