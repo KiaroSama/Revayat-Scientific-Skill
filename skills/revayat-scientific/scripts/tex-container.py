@@ -272,6 +272,29 @@ def failure_class(outgoing):
     return 'unclassified'
 
 
+def retain_ci_fixture_console(source, outgoing, run_id, logger):
+    """Keep bounded raw TeX evidence only for generated, public CI fixtures."""
+    target = os.environ.get('SCIENTIFIC_EVIDENCE_DIR')
+    if (os.environ.get('SCIENTIFIC_RENDER') != '1' or not target
+            or not source.is_relative_to(Path(__file__).resolve().parents[3] / '.scratch')):
+        return
+    try:
+        evidence = Path(target).resolve()
+        if not evidence.is_dir():
+            raise ValueError('scientific fixture evidence directory is missing')
+        for name in ('console-pass-1.log', 'console-pass-2.log'):
+            log = outgoing / name
+            if log.is_symlink() or not log.is_file():
+                continue
+            with log.open('rb') as handle:
+                handle.seek(max(0, log.stat().st_size - 256 * 1024))
+                tail = handle.read(256 * 1024)
+            (evidence / f'fixture-tex-{run_id}-{name}').write_bytes(tail)
+        logger.info('fixture_tex_diagnostic_retained')
+    except (OSError, ValueError):
+        logger.warning('fixture_tex_diagnostic_unavailable')
+
+
 def compile_document(source, output, logger):
     # Endpoint/image readiness precedes even reading the document.
     config = runtime_config(logger)
@@ -299,6 +322,7 @@ def compile_document(source, output, logger):
             receipt = register(config, directory, run_id)
             code, _ = call(run_arguments(config, directory, source.name, run_id), logger, timeout=INNER_TIMEOUT + 30)
             if code:
+                retain_ci_fixture_console(source, outgoing, run_id, logger)
                 reason = failure_class(outgoing)
                 logger.error('isolated_tex_failed exit_code=%d category=%s', code, reason)
                 raise RuntimeError(f'isolated XeLaTeX failed or exceeded its deadline (exit_code={code}, category={reason})')
