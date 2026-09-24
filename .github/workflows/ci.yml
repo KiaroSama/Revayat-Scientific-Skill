@@ -1,9 +1,11 @@
 name: CI
 on:
   push:
-    branches: [main, 'feature/**', 'fix/**']
+    branches: [main, 'codex/**', 'feature/**', 'fix/**']
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '13 6 * * 1'
 permissions:
   contents: read
 concurrency:
@@ -11,6 +13,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   portable:
+    env:
+      SCIENTIFIC_REQUIRE_BROWSER: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -24,12 +28,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python }}
       - name: Public command and package contracts
         run: python -m pip install -r skills/revayat-scientific/requirements.txt
+      - name: Install controlled browser
+        run: python -m playwright install --with-deps chromium
+      - name: Select available sandboxed browser
+        shell: python
+        run: |
+          import os, shutil
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          candidates = [shutil.which(name) for name in ('google-chrome', 'msedge', 'chrome')]
+          if os.name == 'nt':
+              for key in ('ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA'):
+                  for name in ('Microsoft/Edge/Application/msedge.exe', 'Google/Chrome/Application/chrome.exe'):
+                      candidate = Path(os.environ.get(key, '')) / name
+                      if candidate.is_file():
+                          candidates.append(str(candidate))
+          with sync_playwright() as playwright:
+              selected = next((path for path in candidates if path), playwright.chromium.executable_path)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
+              environment.write('REVAYAT_CHROMIUM=' + selected + '\n')
+      - name: Linux OCR prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-fas
+          echo 'SCIENTIFIC_REQUIRE_OCR=1' >> "$GITHUB_ENV"
       - name: Windows PDF verification tools
         if: runner.os == 'Windows'
         shell: pwsh
@@ -42,9 +73,9 @@ jobs:
             $tool.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
       - name: Run public contracts
-        run: python -m unittest discover -s tests -p 'test_*.py' -v
+        run: python tools/run-check.py --timeout 480 --idle-timeout 120 -- python -B -m unittest discover -s tests -p 'test_*.py' -v
       - name: Syntax and UTF-8
-        run: python tools/validate.py
+        run: python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/validate.py
       - name: PowerShell 5.1 syntax
         if: runner.os == 'Windows'
         shell: powershell
@@ -57,12 +88,16 @@ jobs:
             if ($errors) { $errors | Write-Output; $failed = $true }
           }
           if ($failed) { exit 1 }
+      - name: Package the complete installed workflow
+        run: python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/package.py
   scientific:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
       - name: Install shell checker
@@ -70,16 +105,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
       - name: Lint shell scripts
-        run: shellcheck -S warning $(git ls-files '*.sh')
+        run: git ls-files -z '*.sh' | xargs -0 -r shellcheck -S warning
       - name: Install real document toolchain
         run: |
           python -m pip install -r skills/revayat-scientific/requirements.txt
-          sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn
+          python -m pip install WeasyPrint==70.0
+          sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn libpango-1.0-0 libcairo2
+      - name: Build isolated TeX toolchain
+        run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 skills/revayat-scientific/assets
+      - name: Isolated renderer contracts
+        id: isolated
+        env:
+          SCIENTIFIC_RENDER: '1'
+          SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
+        run: python tools/run-check.py --timeout 480 --idle-timeout 150 -- python -B -m unittest discover -s tests -p 'test_scientific_render.py' -v
       - name: Upstream mechanical and rendering regressions
         id: regressions
         env:
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: timeout 180 bash tests/upstream.sh
+        run: python tools/run-check.py --timeout 240 --idle-timeout 90 -- bash tests/upstream.sh
       - name: Verified TeX delivery through portable command
         run: |
           work="$RUNNER_TEMP/scientific render"
@@ -98,8 +142,8 @@ jobs:
           test -s "$work/output/article.pdf"
           test -s "$work/verify-article-first.png"
       - name: Preserve rendered verification samples
-        if: ${{ always() && (steps.regressions.outcome == 'success' || steps.regressions.outcome == 'failure') }}
-        uses: actions/upload-artifact@v7
+        if: ${{ always() && (steps.isolated.outcome == 'success' || steps.isolated.outcome == 'failure') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: scientific-render
           path: |
@@ -107,3 +151,29 @@ jobs:
             ${{ runner.temp }}/scientific render/verify-article-*.png
             ${{ runner.temp }}/scientific-evidence/*
           if-no-files-found: error
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+      - name: Install quality tools
+        run: python -m pip install -r requirements-dev.txt
+      - name: Verify and install actionlint
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          curl -fsSLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt
+          grep ' actionlint_1.7.12_linux_amd64.tar.gz$' actionlint_1.7.12_checksums.txt | sha256sum --check
+          tar -xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Workflow syntax and security
+        run: |
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- actionlint
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- zizmor --offline .github/workflows
+      - name: Runtime and development dependency audit
+        run: python tools/run-check.py --timeout 300 --idle-timeout 90 -- python -m pip_audit --strict --progress-spinner off -r skills/revayat-scientific/requirements.txt -r requirements-dev.txt

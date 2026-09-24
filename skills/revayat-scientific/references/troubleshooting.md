@@ -39,6 +39,12 @@ previous delivered PDF intact. Correct a failed stage before continuing.
 | Crop exceeds 50 million pixels | Extract the original/vector asset or choose a smaller faithful crop; do not silently downsample |
 | Output page size differs from source | Set measured geometry in the editable template and verify again; see [layout-and-images.md](layout-and-images.md) |
 | Correct source quote triggers Persian lint | Verify the original and use only its documented rule-specific exception; see [source-languages.md](source-languages.md) |
+| Figure batch/backup collision | Preserve both originals; assign distinct reviewed output names instead of overwriting |
+| High-depth or multi-frame image refused | Keep original samples/frames and use a reviewed specialist conversion; do not force RGB8 |
+| Ambiguous crop boundaries | Inspect the source and supply explicit rectangle columns; the helper no longer guesses the largest region |
+| Renderer resource denied | Place authorized assets inside the document job; remove active content or unapproved network/attachment references |
+| Font pair lacks OFL/provenance | Fetch a validated complete bundle; offline mode needs a complete approved local/cache source |
+| Publication rollback needs recovery | Preserve the named recovery manifest/backups and current files; reconcile them before retrying |
 
 ## Resumption
 

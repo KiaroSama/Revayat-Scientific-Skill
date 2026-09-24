@@ -14,12 +14,16 @@ PYTHON_COMMANDS = {
     'lint': 'check-fa.py', 'text-order': 'check-pdf-text-order.py',
     'figures': 'prepare-figures.py', 'crop': 'crop-source-figures.py',
     'pages': 'extract-pdf-pages.py',
+    'docx': 'document-docx.py',
+    'pdf': 'document-pdf.py',
+    'term-brief': 'term-brief.py',
 }
 SHELL_COMMANDS = {'doctor': 'preflight', 'build': 'build-pdf', 'fonts': 'fetch-vazirmatn'}
 POWERSHELL_OPTIONS = {
     '--verify': '-Verify', '--level': '-Level', '--terms': '-Terms',
     '--manifest': '-Manifest', '--engine': '-Engine',
     '--output-dir': '-OutputDirectory', '--require-tex': '-RequireTex',
+    '--version': '-Version',
 }
 HELP = {
     'build': 'build SOURCE [SLUG] [--verify] [--level journal|system-docs] '
@@ -60,7 +64,8 @@ def main(argv=None):
             print(HELP[args.command])
             return 0
         try:
-            return run_command(command_line(args.command, args.arguments), args.timeout, logger)
+            return run_command(command_line(args.command, args.arguments), args.timeout, logger,
+                               supervise_containers=args.command == 'build')
         except (OSError, RuntimeError) as error:
             logger.error('command_unavailable type=%s', type(error).__name__)
             print(f'revayat-scientific: {error}', file=sys.stderr)

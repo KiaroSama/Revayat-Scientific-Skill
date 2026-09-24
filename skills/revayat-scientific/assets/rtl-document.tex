@@ -20,31 +20,12 @@
 \usepackage{bookmark}
 \usepackage{xurl}        % let long URLs break instead of overflowing
 
-\usepackage{xepersian}
+\usepackage[mathdigits=default]{xepersian}
 
-% Font resolution without hand-editing: first face that exists wins.
-%
-% Every chain must cover Windows as well as Linux, and the LAST entry is
-% unguarded — if it is missing too, fontspec aborts the build. So the
-% guarded middle of each chain carries the Windows faces (Times New Roman,
-% Courier New, Tahoma all ship with the OS) and the unguarded tail is the
-% Linux-typical DejaVu, which those Windows guards never fall through to.
-% Do not leave a Linux-only face as the last entry.
-%
-% Persian text face.
-%
-% A local fonts/ directory beside this file wins over every system name,
-% and that is not a preference - it is the only way a *variable* font can
-% be used at all. Asked for a family name, XeTeX hands the driver a named
-% instance of the variable font, and xdvipdfmx cannot embed one: it warns
-% "Invalid TTC index (not TTC font)" and dies with
-% "dvipdfmx:fatal: Invalid font: -1 (4)". The identical file loaded by
-% *path* carries no instance index and embeds fine. Vazirmatn now installs
-% as Vazirmatn-VariableFont_wght.ttf from Google Fonts, so this is the
-% common case on Windows, not an edge case.
-%
-% Put the files there with scripts/fetch-vazirmatn.sh (or .ps1) run in the
-% document's own directory - the same fonts/ the HTML template embeds.
+% Automatic builds run in the isolated Linux toolchain on every host OS.
+% Prefer the verified static Regular/Bold pair in the job's fonts/ directory;
+% fetch-vazirmatn supplies both faces, their license and version provenance.
+% Otherwise use installed container fonts, then verify the actual PDF fonts.
 \IfFontExistsTF{fonts/Vazirmatn-Regular.ttf}{%
   \settextfont[Path=fonts/,BoldFont=Vazirmatn-Bold.ttf,
                Ligatures=TeX]{Vazirmatn-Regular.ttf}}{%
@@ -58,13 +39,7 @@
             \settextfont[Ligatures=TeX]{DejaVu Sans}}}}}}}}
 % Latin text face for isolated English and Western digits.
 %
-% OS-native faces come FIRST, and that ordering is not cosmetic. On MiKTeX
-% \IfFontExistsTF answers "yes" for a face that is not installed: MiKTeX
-% tries to manufacture a METAFONT font for it, the name gets truncated
-% ("TeX Gyre Term.cfg", "Liberation Ser.cfg"), makemf fails, and the run
-% dies later in the driver with "dvipdfmx:fatal: Invalid font: -1 (4)".
-% Testing a real system font first never reaches that path. On Linux,
-% fontconfig answers honestly, so the TeX Gyre / DejaVu tail still wins.
+% Named alternatives support user-built images; the bundled image has TeX Gyre.
 \IfFontExistsTF{Times New Roman}{%
   \setlatintextfont{Times New Roman}}{%
   \IfFontExistsTF{TeX Gyre Termes}{%
@@ -72,7 +47,7 @@
     \IfFontExistsTF{Liberation Serif}{%
       \setlatintextfont{Liberation Serif}}{%
       \setlatintextfont{DejaVu Serif}}}}
-% Monospace for listings. Same ordering rule.
+% Monospace for listings.
 \IfFontExistsTF{Consolas}{\setmonofont[Scale=0.92]{Consolas}}{%
   \IfFontExistsTF{Courier New}{\setmonofont[Scale=0.92]{Courier New}}{%
     \IfFontExistsTF{TeX Gyre Cursor}{\setmonofont[Scale=0.92]{TeX Gyre Cursor}}{%
@@ -80,7 +55,7 @@
         \setmonofont[Scale=0.90]{DejaVu Sans Mono}}}}}
 
 % xepersian requires U+06F0 in the digit font. Keep numeric runs in \en.
-% Resolve the local file first to avoid variable-font named instances on MiKTeX.
+% Local verified static files take precedence over container family lookup.
 \IfFontExistsTF{fonts/Vazirmatn-Regular.ttf}{%
   \setdigitfont[Path=fonts/]{Vazirmatn-Regular.ttf}}{%
   \IfFontExistsTF{Vazirmatn}{\setdigitfont{Vazirmatn}}{%

@@ -1,5 +1,6 @@
 """Real Windows renderer plus strict-gate and extraction compatibility checks."""
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -15,6 +16,10 @@ FIXTURES = ROOT / 'tests/fixtures'
 
 
 class NativeBuildTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        (ROOT / '.scratch').mkdir(exist_ok=True)
+
     def test_presentation_forms_preserve_logical_order(self):
         # Captured from the real Vazirmatn/XeLaTeX fixture, not reversed to fit the check.
         result = owned_run([sys.executable, str(SKILL / 'scripts/check-pdf-text-order.py'),
@@ -25,8 +30,7 @@ class NativeBuildTest(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == 'win32', 'PowerShell font verification')
     def test_unicode_font_flag_is_not_embedding(self):
-        shell = shutil.which('pwsh') or shutil.which('powershell')
-        with tempfile.TemporaryDirectory(prefix='font verification ') as directory:
+        with tempfile.TemporaryDirectory(prefix='font verification ', dir=ROOT / '.scratch') as directory:
             script = Path(directory) / 'check.ps1'
             script.write_text('''param([string]$Verifier)
 . $Verifier
@@ -46,10 +50,40 @@ function Invoke-Tool {
 if (Test-OutputPdf 'unused.pdf' $PSScriptRoot 'unused') { exit 1 }
 exit 0
 ''', encoding='utf-8')
-            result = owned_run([shell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy',
-                'Bypass', '-File', str(script), str(SKILL / 'scripts/verify-pdf.ps1')], timeout=15)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('no embedded font', result.stderr)
+            for name in ('pwsh', 'powershell'):
+                with self.subTest(shell=name):
+                    shell = shutil.which(name)
+                    self.assertIsNotNone(shell, f'{name} is required by the Windows compatibility matrix')
+                    result = owned_run([shell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy',
+                        'Bypass', '-File', str(script), str(SKILL / 'scripts/verify-pdf.ps1')], timeout=15)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('no embedded font', result.stderr)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'native Windows PowerShell compatibility')
+    def test_windows_shells_refuse_missing_container_without_changing_delivery(self):
+        with tempfile.TemporaryDirectory(prefix='shell compatibility فارسی ', dir=ROOT / '.scratch') as directory:
+            work = Path(directory)
+            source = work / 'document.tex'
+            shutil.copyfile(SKILL / 'assets/rtl-document.tex', source)
+            shutil.copyfile(FIXTURES / 'terms-empty.tsv', work / 'terms.tsv')
+            shutil.copyfile(FIXTURES / 'manifest-empty.txt', work / 'manifest.txt')
+            delivery = work / 'delivery'
+            delivery.mkdir()
+            output = delivery / 'article.pdf'
+            output.write_bytes(b'previous approved delivery')
+            for name in ('pwsh', 'powershell'):
+                with self.subTest(shell=name):
+                    shell = shutil.which(name)
+                    self.assertIsNotNone(shell, f'{name} is required by the Windows compatibility matrix')
+                    result = owned_run([shell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy',
+                        'Bypass', '-File', str(SKILL / 'scripts/build-pdf.ps1'), str(source),
+                        'article', '-Engine', 'tex', '-Level', 'journal',
+                        '-OutputDirectory', str(delivery)], timeout=20,
+                        env={'REVAYAT_CONTAINER_RUNTIME': str(work / 'missing-container.exe')})
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn('explicit PDF engine is unavailable: tex', result.stderr)
+                    self.assertEqual(output.read_bytes(), b'previous approved delivery')
+                    self.assertFalse((work / 'document.pdf').exists())
 
     def test_extraction_uses_utf8(self):
         result = owned_run(
@@ -64,9 +98,8 @@ exit 0
 
     @unittest.skipUnless(sys.platform == 'win32', 'native Windows build; Linux covers POSIX')
     def test_windows_build_preserves_destination_on_failure(self):
-        shell = shutil.which('pwsh') or shutil.which('powershell')
-        self.assertIsNotNone(shell, 'PowerShell is required on the Windows runner')
-        with tempfile.TemporaryDirectory(prefix='scientific build ') as directory:
+        self.assertIsNotNone(shutil.which('pwsh'), 'PowerShell 7 is required for the real Windows render')
+        with tempfile.TemporaryDirectory(prefix='scientific build فارسی ', dir=ROOT / '.scratch') as directory:
             work = Path(directory)
             for source, name in [('build-smoke.html', 'doc.html'),
                                  ('terms-empty.tsv', 'terms.tsv'),
@@ -89,22 +122,27 @@ exit 0
             built = owned_run(command, capture_output=True, text=True,
                                    encoding='utf-8', timeout=90)
             self.assertEqual(built.returncode, 0, built.stderr)
-            self.assertTrue(destination.read_bytes().startswith(b'%PDF-'))
-            self.assertIn(b'%%EOF', destination.read_bytes()[-2048:])
+            import pymupdf
+            with pymupdf.open(destination) as document:
+                self.assertFalse(document.is_repaired)
+                self.assertEqual(document.page_count, 3)
+            previous = destination.read_bytes()
+            ordered = owned_run([sys.executable, str(SKILL / 'scripts/check-pdf-text-order.py'),
+                str(destination), '--source', str(work / 'doc.html'), '--json'], timeout=20)
+            self.assertIn(ordered.returncode, (0, 2, 3), ordered.stderr)
+            order = json.loads(ordered.stdout)
             self.assertIsNotNone(shutil.which('pdftoppm'), 'Windows CI must install Poppler')
             verified = owned_run(command + ['--verify'], capture_output=True, text=True,
                                       encoding='utf-8', timeout=90)
-            self.assertEqual(verified.returncode, 0, verified.stderr)
+            if order['status'] == 'passed':
+                self.assertEqual(verified.returncode, 0, verified.stderr)
+            else:
+                self.assertNotEqual(verified.returncode, 0, verified.stderr)
+                self.assertIn('text extraction order', verified.stderr)
+                self.assertEqual(destination.read_bytes(), previous)
             for sample in ['first', 'mid', 'last']:
                 self.assertTrue((work / f'verify-article-{sample}.png').is_file(), sample)
-            # This probes the actual PDF, not an ASCII stand-in for extraction.
-            if shutil.which('pdftotext'):
-                ordered = owned_run(
-                    [sys.executable, str(SKILL / 'scripts/check-pdf-text-order.py'),
-                     str(destination), '--source', str(work / 'doc.html')],
-                    capture_output=True, text=True, encoding='utf-8', timeout=20)
-                self.assertIn(ordered.returncode, (0, 2), ordered.stderr)
-                self.assertNotIn('UnicodeDecodeError', ordered.stderr)
+            self.assertNotIn('UnicodeDecodeError', ordered.stderr)
 
 
 if __name__ == '__main__':

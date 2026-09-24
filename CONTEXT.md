@@ -18,3 +18,6 @@
 | Page geometry | Physical page or book dimensions, orientation and applicable print boxes |
 | Image fidelity | Preserved scientific information, pixel detail, aspect ratio and intended printed appearance |
 | Image enhancement | A recorded derivative that improves legibility without inventing or changing source evidence |
+| Parallel work choice | The user's recorded permission to use translation or editing subagents for one job |
+| Work unit | A bounded source section with one owner, draft revision and acceptance state |
+| Coordinator | Agent responsible for canonical output, shared terminology and integration of worker submissions |

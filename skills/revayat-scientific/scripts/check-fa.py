@@ -32,7 +32,6 @@ Suppress one finding by putting `fa-lint: allow <check-id>` (or
 from __future__ import annotations
 
 import argparse
-import bisect
 import os
 import re
 import sys
@@ -40,7 +39,8 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-from terminology_data import load_pairs, load_terms_pairs
+from document_context import DocumentContext
+from runtime import operation_log
 
 # Every finding this tool prints quotes Persian, and on Windows an
 # unredirected stdout defaults to the console ANSI code page (cp1252), which
@@ -146,193 +146,10 @@ class Finding:
     line: int
     message: str
     excerpt: str = ""
+    path: Path | None = None
 
 
-class Source:
-    """A translation file plus the regions where prose rules do not apply."""
-
-    def __init__(self, path: Path):
-        self.path = path
-        self.text = path.read_text(encoding="utf-8")
-        self.kind = "tex" if path.suffix.lower() == ".tex" else "html"
-        self.line_starts = [0] + [
-            m.end() for m in re.finditer(r"\n", self.text)
-        ]
-        self.lines = self.text.splitlines()
-        self.protected: list[tuple[int, int]] = []
-        self.comments: list[tuple[int, int]] = []
-        self.isolates: list[tuple[int, int, str]] = []
-        self.preamble_end = 0
-        self._scan()
-
-    def line_of(self, pos: int) -> int:
-        return bisect.bisect_right(self.line_starts, pos)
-
-    def in_preamble(self, pos: int) -> bool:
-        return pos < self.preamble_end
-
-    def inert(self, pos: int) -> bool:
-        """Preamble or comment: structural checks must not fire here.
-
-        Templates and real documents both carry commented-out examples and
-        `% TODO(ambiguity)` markers; those are not output.
-        """
-        if pos < self.preamble_end:
-            return True
-        return any(start <= pos < end for start, end in self.comments)
-
-    def excerpt(self, pos: int, width: int = 60) -> str:
-        start = max(0, pos - width // 3)
-        return self.text[start:start + width].replace("\n", " ").strip()
-
-    def is_protected(self, pos: int) -> bool:
-        for start, end in self.protected:
-            if start <= pos < end:
-                return True
-        return False
-
-    def suppressed(self, pos: int, check: str) -> bool:
-        line = self.line_of(pos)
-        for candidate in (line, line - 1):
-            if 1 <= candidate <= len(self.lines):
-                text = self.lines[candidate - 1]
-                for m in re.finditer(r"fa-lint:\s*allow\s+([\w-]+)", text):
-                    if m.group(1) in (check, "all"):
-                        return True
-        return False
-
-    # -- region scanning ---------------------------------------------------
-
-    def _protect(self, start: int, end: int) -> None:
-        if end > start:
-            self.protected.append((start, end))
-
-    def _match_brace(self, open_pos: int) -> int:
-        depth = 0
-        i = open_pos
-        while i < len(self.text):
-            ch = self.text[i]
-            if ch == "\\":
-                i += 2
-                continue
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return i
-            i += 1
-        return len(self.text)
-
-    def _scan(self) -> None:
-        if self.kind == "tex":
-            self._scan_tex()
-        else:
-            self._scan_html()
-        self.protected.sort()
-
-    def _scan_tex(self) -> None:
-        body = re.search(r"\\begin\{document\}", self.text)
-        if body:
-            self.preamble_end = body.end()
-            self._protect(0, body.end())
-
-        for m in re.finditer(r"(?<!\\)%.*$", self.text, re.M):
-            self._protect(m.start(), m.end())
-            self.comments.append((m.start(), m.end()))
-
-        for env in ("verbatim", "Verbatim", "lstlisting", "latin",
-                    "equation", "equation*", "align", "align*", "minted"):
-            pattern = re.compile(
-                r"\\begin\{" + re.escape(env) + r"\}.*?\\end\{"
-                + re.escape(env) + r"\}", re.S)
-            for m in pattern.finditer(self.text):
-                self._protect(m.start(), m.end())
-
-        for m in re.finditer(r"\$\$.*?\$\$|(?<!\\)\$.*?(?<!\\)\$"
-                             r"|\\\[.*?\\\]|\\\(.*?\\\)", self.text, re.S):
-            self._protect(m.start(), m.end())
-
-        arg_only = ("begin", "end", "label", "ref", "eqref", "cite", "url",
-                    "href", "input", "include", "includegraphics", "bibitem",
-                    "bibliography", "usepackage", "documentclass",
-                    "settextfont", "setlatintextfont", "setmonofont",
-                    "setdigitfont", "hypersetup", "setlength", "hspace",
-                    "vspace", "rule", "newcommand", "renewcommand",
-                    "definecolor", "geometry", "addcontentsline",
-                    "pdfstringdefDisableCommands", "IfFontExistsTF")
-        # Optional arguments (`[width=0.92\linewidth]`) are plumbing, not
-        # prose; otherwise unisolated-number fires on every includegraphics.
-        for m in re.finditer(r"\\[A-Za-z@]+\*?\s*\[", self.text):
-            start = m.end() - 1
-            depth = 0
-            i = start
-            while i < len(self.text):
-                ch = self.text[i]
-                if ch == "[":
-                    depth += 1
-                elif ch == "]":
-                    depth -= 1
-                    if depth == 0:
-                        self._protect(start, i + 1)
-                        break
-                i += 1
-        for m in re.finditer(r"\\([A-Za-z@]+)\s*(\[[^\]]*\])?\s*\{",
-                             self.text):
-            name = m.group(1)
-            open_pos = m.end() - 1
-            close = self._match_brace(open_pos)
-            if name in ("lr", "en", "textenglish", "lasttext"):
-                self._protect(open_pos + 1, close)
-                if any(s <= m.start() < e for s, e in self.comments):
-                    continue
-                # Whole `\en{…}` so the gap between two isolates is only
-                # the characters *between* the constructs, not `\en{`.
-                self.isolates.append((m.start(), close + 1,
-                                      self.text[open_pos + 1:close]))
-            elif name in arg_only:
-                self._protect(m.start(), close + 1)
-            else:
-                # Protect only the macro name, never its Persian argument.
-                self._protect(m.start(), m.end() - 1)
-
-        for m in re.finditer(r"\\[A-Za-z@]+\*?", self.text):
-            self._protect(m.start(), m.end())
-
-    def _scan_html(self) -> None:
-        for m in re.finditer(r"<!--.*?-->", self.text, re.S):
-            self._protect(m.start(), m.end())
-            self.comments.append((m.start(), m.end()))
-        for tag in ("style", "script", "pre", "code", "kbd", "samp", "math",
-                    "title"):
-            pattern = re.compile(r"<" + tag + r"\b.*?</" + tag + r"\s*>", re.S)
-            for m in pattern.finditer(self.text):
-                self._protect(m.start(), m.end())
-        # An LTR region is marked either by dir="ltr" or by one of the
-        # template's LTR classes (.ltr, .en, .num, .refs), which set
-        # `direction` in CSS. Both isolate; treat both as protected.
-        container = (r"span|a|bdi|div|section|article|p|td|th|table|tbody"
-                     r"|thead|tr|ol|ul|li|dl|figcaption|caption|blockquote"
-                     r"|h[1-6]")
-        marker = (r"(?:\bdir\s*=\s*[\"']ltr[\"']"
-                  r"|\bclass\s*=\s*[\"'][^\"']*\b(?:ltr|en|num|refs)\b)")
-        for m in re.finditer(rf"<({container})\b[^>]*{marker}[^>]*>"
-                             r"(.*?)</\1\s*>", self.text, re.S):
-            if any(s <= m.start() < e for s, e in self.comments):
-                continue
-            self._protect(m.start(2), m.end(2))
-            self.isolates.append((m.start(), m.end(), m.group(2)))
-        for m in re.finditer(r"<[^>]+>", self.text):
-            self._protect(m.start(), m.end())
-        for m in re.finditer(r"&[#\w]+;", self.text):
-            self._protect(m.start(), m.end())
-
-
-def _sidecar(files: list[Path], name: str) -> Path | None:
-    if not files:
-        return None
-    candidate = files[0].resolve().parent / name
-    return candidate if candidate.is_file() else None
+from source_model import Source
 
 
 def fa_pattern(word: str) -> str:
@@ -352,15 +169,16 @@ def _joiner_gap(gap: str) -> bool:
 
 
 def check(src: Source, pairs: list[tuple[str, str, str]],
-          manifest: list[str] | None) -> list[Finding]:
+          manifest: list[str] | None, *, level='system-docs') -> list[Finding]:
     out: list[Finding] = []
     text = src.text
 
     def add(level: str, check_id: str, pos: int, message: str) -> None:
         if src.suppressed(pos, check_id):
             return
-        out.append(Finding(level, check_id, src.line_of(pos), message,
-                           src.excerpt(pos)))
+        source_path, source_line = src.location(pos)
+        out.append(Finding(level, check_id, source_line, message,
+                           src.excerpt(pos), source_path))
 
     def prose_finditer(pattern: str, flags: int = 0):
         for m in re.finditer(pattern, text, flags):
@@ -418,7 +236,7 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
     heads = "|".join(fa_pattern(h) for h in HALF_TRANSLATION_HEADS)
     latin_start = (r"(?:\\(?:lr|en|textenglish)\s*\{|<span[^>]*>|<bdi>|)"
                    r"\s*[A-Za-z]")
-    for m in prose_finditer(rf"(?:{heads})\s*{latin_start}"):
+    for m in (prose_finditer(rf"(?:{heads})\s*{latin_start}") if level == 'system-docs' else []):
         add(ERROR, "half-translation", m.start(),
             "Persian head noun in front of an English name; keep the whole "
             "source noun phrase English in one isolate")
@@ -432,6 +250,8 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
             "(serviceها, platformها, APIها)")
 
     for pos, _end, body in src.isolates:
+        if any(start <= pos < end for start, end in src.identity):
+            continue
         if "/" in body or "://" in body or "@" in body or "->" in body:
             continue
         for token in re.finditer(r"[A-Za-z]+", body):
@@ -474,6 +294,8 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
 
     seen: dict[str, str] = {}
     for pos, _end, body in src.isolates:
+        if any(start <= pos < end for start, end in src.identity):
+            continue
         term = " ".join(body.split())
         if not term or not re.search(r"[A-Za-z]", term):
             continue
@@ -486,45 +308,32 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
 
     # 4. Code, images, structure -----------------------------------------
     if src.kind == "html":
-        for m in live_finditer(r"<pre\b[^>]*>"):
-            if not re.search(r"\bdir\s*=\s*[\"']ltr[\"']", m.group(0)):
-                add(ERROR, "code-direction", m.start(),
-                    "<pre> without dir=\"ltr\"; listings are never RTL")
-        for m in live_finditer(r"<(?:pre|code)\b[^>]*"
-                               r"(?:dir\s*=\s*[\"']rtl[\"']"
-                               r"|text-align\s*:\s*right)"):
-            add(ERROR, "code-direction", m.start(),
-                "listing forced RTL or right-aligned")
-        if not re.search(r"<html[^>]*\blang\s*=\s*[\"']fa[\"'][^>]*"
-                         r"\bdir\s*=\s*[\"']rtl[\"']", text):
-            add(ERROR, "html-root", 0,
-                "root element must be <html lang=\"fa\" dir=\"rtl\">")
-        if "<style" in text and "pre-wrap" not in text:
-            add(WARN, "print-css", text.find("<style"),
-                "no white-space: pre-wrap on pre; long code lines are "
-                "clipped on paper (overflow-x does nothing in print)")
-        # CSS mirroring lives inside <style>, which prose checks protect, so
-        # scan the raw text here and only skip comments.
+        nodes = src.html.nodes
+        for node in nodes:
+            attrs, pos = node['attrs'], node['start']
+            direction = (attrs.get('dir') or '').lower()
+            if node['tag'] == 'pre' and direction != 'ltr':
+                add(ERROR, 'code-direction', pos, '<pre> requires dir="ltr"')
+            if node['tag'] in ('pre', 'code') and (direction == 'rtl' or
+                    re.search(r'text-align\s*:\s*right', attrs.get('style') or '', re.I)):
+                add(ERROR, 'code-direction', pos, 'listing forced RTL or right-aligned')
+        roots = [node for node in nodes if node['tag'] == 'html']
+        if (len(roots) != 1 or (roots[0]['attrs'].get('lang') or '').lower() != 'fa'
+                or (roots[0]['attrs'].get('dir') or '').lower() != 'rtl'):
+            add(ERROR, 'html-root', 0, 'root element must be <html lang="fa" dir="rtl">')
+        code_nodes = [node for node in nodes if node['tag'] in ('pre', 'code')]
+        if code_nodes and 'pre-wrap' not in text:
+            add(WARN, 'print-css', code_nodes[0]['start'],
+                'no white-space: pre-wrap on pre; long code lines are clipped on paper')
         for m in live_finditer(r"scaleX\(\s*-1\s*\)"):
-            add(ERROR, "mirrored-image", m.start(),
-                "horizontal flip on artwork is forbidden")
-        images = []
-        for m in live_finditer(r"<img\b[^>]*>"):
-            tag = m.group(0)
-            srcm = re.search(r"\bsrc\s*=\s*[\"']([^\"']+)[\"']", tag)
-            if srcm:
-                images.append((m.start(), srcm.group(1)))
-                ref = srcm.group(1)
-                base = os.path.basename(ref)
-                if re.match(r"(?:srcpage|page)-\d+\.(?:png|jpe?g|webp)$",
-                            base, re.I):
-                    add(ERROR, "full-page-figure", m.start(),
-                        f"image {base!r} is a full source-page raster; "
-                        "crop to the artwork (scripts/crop-source-figures.py)")
-            if not re.search(r"\bdir\s*=\s*[\"']ltr[\"']", tag):
-                add(ERROR, "figure-direction", m.start(),
-                    "<img> without dir=\"ltr\"; RTL layout can recell or "
-                    "paint the figure black")
+            add(ERROR, 'mirrored-image', m.start(), 'horizontal flip on artwork is forbidden')
+        images = src.image_references()
+        for node in nodes:
+            if node['tag'] != 'img':
+                continue
+            attrs, pos = node['attrs'], node['start']
+            if (attrs.get('dir') or '').lower() != 'ltr':
+                add(ERROR, 'figure-direction', pos, '<img> requires dir="ltr"')
     else:
         for env in ("verbatim", "Verbatim", "lstlisting"):
             for m in live_finditer(r"\\begin\{" + env + r"\}"):
@@ -540,16 +349,8 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                 "\\lr/\\en used in a heading or caption without "
                 "\\pdfstringdefDisableCommands; hyperref bookmarks will "
                 "break")
-        images = [(m.start(), m.group(1)) for m in
-                  live_finditer(
-                      r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}")]
+        images = src.image_references()
         for pos, ref in images:
-            base = os.path.basename(ref)
-            if re.match(r"(?:srcpage|page)-\d+\.(?:png|jpe?g|webp)$",
-                        base, re.I):
-                add(ERROR, "full-page-figure", pos,
-                    f"image {base!r} is a full source-page raster; "
-                    "crop to the artwork (scripts/crop-source-figures.py)")
             before = text[:pos]
             last_begin = max(
                 before.rfind("\\begin{LTR}"),
@@ -565,19 +366,19 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                     "\\includegraphics is not inside LTR/latin; xepersian "
                     "can paint the figure black or mirrored")
 
-    base = src.path.parent
+    context = DocumentContext(src.path.resolve(), src.path.resolve().parent, [], None)
     found: list[str] = []
     for pos, ref in images:
-        if re.match(r"^(?:https?:|data:)", ref):
-            continue
-        candidates = [base / ref]
-        if not os.path.splitext(ref)[1]:
-            candidates += [base / (ref + ext) for ext in
-                           (".pdf", ".png", ".jpg", ".jpeg", ".eps")]
-        if not any(c.exists() for c in candidates):
-            add(ERROR, "missing-image", pos,
-                f"image {ref!r} does not exist next to the source")
-        found.append(os.path.basename(ref))
+        name = os.path.basename(ref)
+        try:
+            asset = context.asset(ref)
+            name = asset.name
+            found.append(name)
+        except (OSError, ValueError) as error:
+            add(ERROR, 'missing-image', pos, str(error))
+        if re.match(r'(?:srcpage|page)-\d+\.(?:png|jpe?g|webp)$', name, re.I):
+            add(ERROR, 'full-page-figure', pos,
+                f'image {name!r} is a full source-page raster; crop to the artwork')
 
     if manifest is not None:
         missing = [n for n in manifest if n not in found]
@@ -612,57 +413,16 @@ def main(argv: list[str]) -> int:
                     help="findings printed per check (default 40)")
     args = ap.parse_args(argv)
 
-    pair_paths = [house]
-    if args.pairs is not None:
-        pair_paths.append(args.pairs)
-    pairs = load_pairs(pair_paths, args.level)
-    if args.terms is None:
-        args.terms = _sidecar(args.files, "terms.tsv")
-    if args.manifest is None:
-        args.manifest = _sidecar(args.files, "manifest.txt")
-    if args.strict and args.terms is None:
-        print("check-fa: --strict requires --terms FILE "
-              "(or terms.tsv next to the source)", file=sys.stderr)
-        return 2
-    if args.strict and args.manifest is None:
-        print("check-fa: --strict requires --manifest FILE "
-              "(or manifest.txt next to the source)", file=sys.stderr)
-        return 2
-    if args.terms is not None:
-        if not args.terms.is_file():
-            print(f"check-fa: no such file: {args.terms}", file=sys.stderr)
-            return 2
-        extra_pairs, terms_errors = load_terms_pairs(args.terms)
-        if terms_errors:
-            for err in terms_errors:
-                print(f"check-fa: terms-calque: {err}", file=sys.stderr)
-            return 2
-        seen = {(en, fa) for en, fa, _ in pairs}
-        for row in extra_pairs:
-            key = (row[0], row[1])
-            if key not in seen:
-                pairs.append(row)
-                seen.add(key)
-    manifest = None
-    if args.manifest is not None:
-        if not args.manifest.is_file():
-            print(f"check-fa: no such file: {args.manifest}", file=sys.stderr)
-            return 2
-        manifest = [l.strip() for l in
-                    args.manifest.read_text(encoding="utf-8").splitlines()
-                    if l.strip() and not l.startswith("#")]
-
     errors = warnings = 0
     for path in args.files:
-        if not path.exists():
-            print(f"check-fa: no such file: {path}", file=sys.stderr)
+        try:
+            context = DocumentContext.load(path, house=house, level=args.level,
+                pairs=args.pairs, terms=args.terms, manifest=args.manifest, strict=args.strict)
+            src = Source(context.source)
+            findings = check(src, context.pairs, context.manifest, level=args.level)
+        except (OSError, UnicodeError, ValueError) as error:
+            print(f"check-fa: {error}", file=sys.stderr)
             return 2
-        if path.suffix.lower() not in (".tex", ".html", ".htm"):
-            print(f"check-fa: skipping {path} (expected .tex or .html)",
-                  file=sys.stderr)
-            continue
-        src = Source(path)
-        findings = check(src, pairs, manifest)
         errors += sum(1 for f in findings if f.level == ERROR)
         warnings += sum(1 for f in findings if f.level == WARN)
 
@@ -680,7 +440,7 @@ def main(argv: list[str]) -> int:
             head = group[0]
             print(f"   [{head.level}] {check_id} ({len(group)})")
             for f in group[:args.max]:
-                print(f"     {path}:{f.line}: {f.message}")
+                print(f"     {f.path or path}:{f.line}: {f.message}")
                 if f.excerpt:
                     print(f"       … {f.excerpt}")
             if len(group) > args.max:
@@ -693,4 +453,7 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    with operation_log('check-fa', Path(__file__).resolve().parent / 'logs') as logger:
+        result = main(sys.argv[1:])
+        logger.info('exit_code=%d', result)
+    sys.exit(result)

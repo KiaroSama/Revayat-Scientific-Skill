@@ -2,6 +2,35 @@
 
 # روایت علمی — Revayat Scientific
 
+[![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
+[![Plugin version 1.0.0](https://img.shields.io/badge/Plugin-1.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
+[![Python 3.10 or newer](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python)](skills/revayat-scientific/requirements.txt)
+[![One integrated skill](https://img.shields.io/badge/Skills-1-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
+[![Agent Skills format](https://img.shields.io/badge/Format-Agent%20Skills-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
+[![Installable skill ZIP](https://img.shields.io/badge/Package-.skill%20ZIP-6f42c1?style=flat-square)](docs/installation.md)
+[![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.md)
+<br>
+[![CI status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
+[![CodeQL status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml)
+[![Weekly security scans configured](https://img.shields.io/badge/Security-Weekly%20scans-167f71?style=flat-square)](.github/workflows/codeql.yml)
+[![Shell and workflow lint configured](https://img.shields.io/badge/Lint-ShellCheck%20%2B%20actionlint-167f71?style=flat-square)](.github/workflows/ci.yml)
+[![Dependency and workflow audits configured](https://img.shields.io/badge/Audit-pip--audit%20%2B%20zizmor-167f71?style=flat-square)](.github/workflows/ci.yml)
+[![PR dependency review configured](https://img.shields.io/badge/PR%20review-Dependency%20review-167f71?style=flat-square)](.github/workflows/dependency-review.yml)
+[![Weekly Dependabot updates configured](https://img.shields.io/badge/Dependencies-Dependabot%20weekly-167f71?style=flat-square)](.github/dependabot.yml)
+<br>
+[![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
+[![Any source language to Persian](https://img.shields.io/badge/Languages-Any%20source%20to%20Persian-287c91?style=flat-square)](skills/revayat-scientific/references/source-languages.md)
+[![Native DOCX and PDF tools](https://img.shields.io/badge/Documents-DOCX%20%7C%20PDF-287c91?style=flat-square)](docs/architecture.md)
+[![Isolated Docker or Podman TeX](https://img.shields.io/badge/TeX-Docker%20%7C%20Podman-287c91?style=flat-square)](skills/revayat-scientific/references/pdf-output.md)
+[![Codex, Claude Code and Cursor support](https://img.shields.io/badge/Agents-Codex%20%7C%20Claude%20Code%20%7C%20Cursor-287c91?style=flat-square)](docs/installation.md)
+[![Optional parallel translation and editing](https://img.shields.io/badge/Parallel-Opt--in-287c91?style=flat-square)](skills/revayat-scientific/references/parallel-work.md)
+<br>
+[![GitHub stars](https://img.shields.io/github/stars/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/stargazers)
+[![Open GitHub issues](https://img.shields.io/github/issues/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/issues)
+[![Open pull requests](https://img.shields.io/github/issues-pr/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/pulls)
+[![Last main commit](https://img.shields.io/github/last-commit/KiaroSama/Revayat-Scientific-Skill/main?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/commits/main/)
+[![Support the project](https://img.shields.io/badge/Support-Donate-ef9b20?style=flat-square)](#حمایت-مالی)
+
 **منبع علمی را از هر زبان به فارسی دقیق ترجمه کنید؛ با حفظ قطع صفحه و کیفیت تصاویر، متن قابل‌ویرایش و PDF بررسی‌شده تحویل بگیرید.**
 
 اسکیلی برای Claude Code، Claude Desktop، Codex، Kiro، Cursor، Cline،
@@ -25,9 +54,12 @@ Hermes، OpenCode، Antigravity و هر ایجنتی که بتواند فایل 
 | **صفحه‌آرایی واقعی راست‌به‌چپ** | فارسی به ترتیب منطقی نوشته می‌شود؛ متن اصلیِ حفظ‌شده جهت خط خودش را دارد و فرمول‌ها و عددها در محدودهٔ کامل چپ‌به‌راست قرار می‌گیرند. |
 | **ترجمه از زبان‌های مختلف** | زبان و خط مبدأ تشخیص داده می‌شود؛ اصطلاحات مبهم پژوهش و معنا از روی اصل سند بازبینی می‌شود. مفاهیم علمی جاافتاده در سطح مقاله فارسی می‌شوند. |
 | **حفظ قطع کتاب و کیفیت تصاویر** | ابعاد فیزیکی صفحه، پیکسل‌های اصلی و نسبت تصویر حفظ می‌شود؛ بهبود تصویر باید وفادارانه باشد. برش تصویری وضوح بالاتر منبع را پایین نمی‌آورد. |
+| **خلاصهٔ اصطلاحات مرتبط با متن** | ابزار داخلی و آفلاین اصطلاحات تأییدشده را در متن مبدأ با هر خطی پیدا می‌کند و محل، نسخهٔ فایل و ابهام‌ها را ثبت می‌کند. |
 | **کنترل‌های مکانیکی** | نویسه‌ها، اصطلاحات، جهت متن، تصویرهای مفقود، فونت‌ها، تعداد صفحات و تصویر نمونهٔ صفحات بررسی می‌شوند. |
 | **سنجش استخراج متن** | عبارت‌های فارسیِ نرمال‌شده با استخراج PyMuPDF مقایسه می‌شوند؛ محدودیت هر بررسی اعلام می‌شود. |
 | **یک فرمان چندسکویی** | فرمان Python در Windows از PowerShell و در Linux/macOS از Bash استفاده می‌کند؛ ترجمه کار مدل همان ایجنت است. |
+| **ابزارهای داخلی DOCX و PDF** | بررسی، ساخت و ویرایش هدفمند Word؛ استخراج متن، جدول و تصویر PDF، بررسی و پرکردن فرم، ادغام صفحات و OCR اختیاری با حفظ فایل اصلی. |
+| **ترجمه و ویرایش موازی اختیاری** | پس از رضایت کاربر، بخش‌های مستقل با واژه‌نامهٔ مشترک و لاگ جداگانه به ساب‌ایجنت‌ها سپرده می‌شوند؛ ادغام و بازبینی نهایی با هماهنگ‌کننده است. |
 
 ## نصب
 
@@ -97,7 +129,7 @@ python skills/revayat-scientific/scripts/revayat-scientific.py doctor
 
 | مورد گزارش | کاربرد |
 | --- | --- |
-| XeLaTeX / xepersian | مسیر ترجیحی ساخت از TeX |
+| Docker/Podman + XeLaTeX / xepersian | ساخت ایزولهٔ TeX؛ مراحل نصب در راهنمای PDF آمده است |
 | Edge، Chrome یا WeasyPrint | مسیر ساخت از HTML |
 | فونت فارسی | نمایش خوانای فارسی؛ فونت ترجیحی Vazirmatn است |
 | Poppler و PyMuPDF | بررسی صفحات، فونت‌ها، تصاویر نمونه و متن استخراج‌شده |
@@ -107,6 +139,13 @@ python skills/revayat-scientific/scripts/revayat-scientific.py doctor
 کاربر انجام می‌شود؛ نصب‌کننده و doctor آن‌ها را خودکار نصب نمی‌کنند.
 
 ## استفاده
+
+ایجنت در شروع کار می‌پرسد آیا **ترجمه و ویرایش با چند ساب‌ایجنت به‌صورت موازی**
+انجام شود. این قابلیت اختیاری است و فقط با پاسخ مثبت فعال می‌شود؛ پاسخ منفی یا
+بی‌پاسخ‌ماندن یعنی ادامهٔ ترتیبی. هر عامل بخش یا اصلاحات مشخصی را با لاگ جداگانه
+آماده می‌کند؛ عامل هماهنگ‌کننده خروجی‌ها را با واژه‌نامهٔ مشترک ادغام و بازبینی
+می‌کند. کار موازی ممکن است توکن بیشتری مصرف کند.
+[قواعد و محدودیت‌های کار موازی](skills/revayat-scientific/references/parallel-work.md).
 
 به ایجنت بگویید:
 
@@ -208,6 +247,7 @@ PDF تحویل‌شدهٔ قبلی را حفظ می‌کند. مسیر پیش‌
 - [زبان‌های مبدأ](skills/revayat-scientific/references/source-languages.md) — ترجمهٔ مستقیم، راهنمای زبان و پژوهش
 - [ابعاد و کیفیت تصاویر](skills/revayat-scientific/references/layout-and-images.md) — حفظ قطع کتاب، وضوح و بهبود وفادارانهٔ تصاویر
 - [اصطلاحات](skills/revayat-scientific/references/terminology.md) — تصمیم‌های مفهومی و سطح واژگان
+- [شواهد و اصطلاحات](skills/revayat-scientific/references/evidence-and-terminology.md) — واژه‌های مرتبط و بازبینی ادعاها با ارجاع به متن مبدأ
 - [سبک علمی](skills/revayat-scientific/references/scientific-style.md) — فارسی علمی روشن
 - [راست‌به‌چپ](skills/revayat-scientific/references/rtl-bidi.md) — محدوده‌های کامل چپ‌به‌راست
 - [بازبینی](skills/revayat-scientific/references/review.md) — دقت، روانی و کامل‌بودن
@@ -231,8 +271,9 @@ python tools/package.py
 [CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
 روی Python 3.10 در Linux، نسخهٔ 3.14 در macOS و نسخهٔ 3.13 در Windows
 اجرا می‌شود؛ ساخت واقعی Windows، تست‌های بررسی متن و ساخت واقعی XeLaTeX در
-Linux را پوشش می‌دهد. CodeQL و بازبینی وابستگی‌ها فعال‌اند؛ Dependabot
-پکیج‌های Python و Actions را دنبال می‌کند. بستهٔ
+محیط ایزوله، WeasyPrint و OCR را پوشش می‌دهد. بررسی امنیت گردش‌کار و ممیزی
+وابستگی‌های Python نیز در CI اجرا می‌شود. CodeQL و بازبینی وابستگی‌ها فعال‌اند؛
+Dependabot پکیج‌های Python، Actions و تصویر پایهٔ کانتینر را دنبال می‌کند. بستهٔ
 `dist/revayat-scientific.skill` اعلان‌های مجوز را همراه دارد و وابستگی‌های
 اجرایی در آن کپی نمی‌شوند.
 
@@ -251,8 +292,13 @@ Linux را پوشش می‌دهد. CodeQL و بازبینی وابستگی‌ه�
 `<command>_YYYY-MM-DD_HH-mm-ss_UTC.log` است و برخورد نام با پسوند حل می‌شود.
 گزارش UTF-8 شامل زمان UTC، سطح، عملیات، مدت و کد خروج است؛ متن سند،
 آرگومان‌ها و خروجی ابزارها در آن کپی نمی‌شوند. اگر ایجاد فایل ممکن نباشد،
-پیام در stderr نمایش داده می‌شود. گزارش‌ها محلی می‌مانند تا حذف شوند؛ TeX
-گزارش مستقل خود را کنار سند می‌نویسد.
+پیام در stderr نمایش داده می‌شود. گزارش‌ها محلی می‌مانند تا حذف شوند.
+فایل‌های موقت TeX پس از تأیید پاک‌سازی کانتینر حذف می‌شوند؛ اگر پاک‌سازی
+تأیید نشود، شواهد بازیابی حفظ و انتشار خروجی متوقف می‌شود.
+
+ابزارهای سند، شکل، فونت و رندر در `scripts/logs/` گزارش می‌نویسند.
+متغیر `REVAYAT_LOG_LEVEL` سطح `DEBUG`، `INFO` (پیش‌فرض)، `WARNING` یا `ERROR`
+را انتخاب می‌کند. این گزارش‌های فنی جایگزین لاگ کنار فایل ترجمه نیستند.
 
 ## حمایت مالی
 
