@@ -18,6 +18,14 @@ CONTROLLER = SCRIPTS / 'tex-container.py'
 
 
 class TexContainerTest(unittest.TestCase):
+    def setUp(self):
+        # Mocked controller failures deliberately remove their own staging;
+        # they must not register fake containers with the surrounding real owner.
+        inherited = patch.dict(os.environ, {'REVAYAT_TEX_OWNER_DIR': '',
+                                           'REVAYAT_TEX_OWNER_TOKEN': ''})
+        inherited.start()
+        self.addCleanup(inherited.stop)
+
     @classmethod
     def setUpClass(cls):
         (ROOT / '.scratch').mkdir(exist_ok=True)

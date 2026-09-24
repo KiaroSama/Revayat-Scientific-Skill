@@ -117,10 +117,12 @@ class ImageIntegrityTest(unittest.TestCase):
                     PREP.main([str(source)])
                 self.assertEqual(snapshot(work), before)
             source = work / 'plain-xmp.png'
-            Image.new('RGBA', (8, 4), (20, 30, 40, 100)).save(source, pnginfo=xmp)
+            plain_xmp = PngImagePlugin.PngInfo()
+            plain_xmp.add_itxt('XML:com.adobe.xmp', '<xmp:Label>Reviewed</xmp:Label>')
+            Image.new('RGBA', (8, 4), (20, 30, 40, 100)).save(source, pnginfo=plain_xmp)
             self.assertEqual(PREP.main([str(source)]), 0)
             with Image.open(source) as image:
-                self.assertEqual(image.info['xmp'], b'<tiff:Orientation>6</tiff:Orientation>')
+                self.assertEqual(image.info['xmp'], b'<xmp:Label>Reviewed</xmp:Label>')
 
     def test_metadata_orientation_and_source_preservation(self):
         from PIL import Image, ImageCms, ImageOps
