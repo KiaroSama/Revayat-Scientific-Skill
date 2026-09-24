@@ -2,9 +2,34 @@
 
 # روایت علمی — Revayat Scientific
 
-[![CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](skills/revayat-scientific/requirements.txt)
+[![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
+[![Plugin version 1.0.0](https://img.shields.io/badge/Plugin-1.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
+[![Python 3.10 or newer](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python)](skills/revayat-scientific/requirements.txt)
+[![One integrated skill](https://img.shields.io/badge/Skills-1-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
+[![Agent Skills format](https://img.shields.io/badge/Format-Agent%20Skills-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
+[![Installable skill ZIP](https://img.shields.io/badge/Package-.skill%20ZIP-6f42c1?style=flat-square)](docs/installation.md)
+[![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.md)
+<br>
+[![CI status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
+[![CodeQL status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml)
+[![Weekly security scans configured](https://img.shields.io/badge/Security-Weekly%20scans-167f71?style=flat-square)](.github/workflows/codeql.yml)
+[![Shell and workflow lint configured](https://img.shields.io/badge/Lint-ShellCheck%20%2B%20actionlint-167f71?style=flat-square)](.github/workflows/ci.yml)
+[![Dependency and workflow audits configured](https://img.shields.io/badge/Audit-pip--audit%20%2B%20zizmor-167f71?style=flat-square)](.github/workflows/ci.yml)
+[![PR dependency review configured](https://img.shields.io/badge/PR%20review-Dependency%20review-167f71?style=flat-square)](.github/workflows/dependency-review.yml)
+[![Weekly Dependabot updates configured](https://img.shields.io/badge/Dependencies-Dependabot%20weekly-167f71?style=flat-square)](.github/dependabot.yml)
+<br>
+[![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
+[![Any source language to Persian](https://img.shields.io/badge/Languages-Any%20source%20to%20Persian-287c91?style=flat-square)](skills/revayat-scientific/references/source-languages.md)
+[![Native DOCX and PDF tools](https://img.shields.io/badge/Documents-DOCX%20%7C%20PDF-287c91?style=flat-square)](docs/architecture.md)
+[![Isolated Docker or Podman TeX](https://img.shields.io/badge/TeX-Docker%20%7C%20Podman-287c91?style=flat-square)](skills/revayat-scientific/references/pdf-output.md)
+[![Codex, Claude Code and Cursor support](https://img.shields.io/badge/Agents-Codex%20%7C%20Claude%20Code%20%7C%20Cursor-287c91?style=flat-square)](docs/installation.md)
+[![Optional parallel translation and editing](https://img.shields.io/badge/Parallel-Opt--in-287c91?style=flat-square)](skills/revayat-scientific/references/parallel-work.md)
+<br>
+[![GitHub stars](https://img.shields.io/github/stars/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/stargazers)
+[![Open GitHub issues](https://img.shields.io/github/issues/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/issues)
+[![Open pull requests](https://img.shields.io/github/issues-pr/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/pulls)
+[![Last main commit](https://img.shields.io/github/last-commit/KiaroSama/Revayat-Scientific-Skill/main?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/commits/main/)
+[![Support the project](https://img.shields.io/badge/Support-Donate-ef9b20?style=flat-square)](#حمایت-مالی)
 
 **منبع علمی را از هر زبان به فارسی دقیق ترجمه کنید؛ با حفظ قطع صفحه و کیفیت تصاویر، متن قابل‌ویرایش و PDF بررسی‌شده تحویل بگیرید.**
 
