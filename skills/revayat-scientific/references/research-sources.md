@@ -1,6 +1,25 @@
 # Research evidence and adoption boundaries
 
-Reviewed: 2026-09-14. These primary sources informed the skill's translation,
+## Further skill review — 2026-09-24
+
+The following public repositories were inspected for reusable procedures. Their
+code, examples, corpora, prompts, models and templates were not copied into this
+package. The bundled `term-brief` and source-evidence guidance are independently
+written for this project's existing ledger and any original source language.
+
+| Primary source | Useful method | Boundary and decision |
+| --- | --- | --- |
+| [Persian skill](https://github.com/Mojtaba-Alehosseini/persian-skill) | Select only glossary entries that occur in a source; review Persian register, typography and idioms separately from source fidelity. | MIT repository, English–Persian focus. Adopt the source-filtered *method* through native `term-brief`; do not import its banks or automatic digit normalization, which could alter equations and original quotations. |
+| [Scientific writing](https://github.com/K-Dense-AI/scientific-agent-skills/blob/main/skills/scientific-writing/SKILL.md), [library paper](https://arxiv.org/abs/2609.00065) | Locate claims and numbers in the original, distinguish verified evidence from search leads and missing details, and check confidentiality. | MIT skill; its manuscript drafting and optional Python 3.11 tools are outside this Python 3.10+ translation package. Adapt source-bound review guidance, not scripts or a claim of human verification. |
+| [Academic paper engineering](https://github.com/Hongyuan-Lu/academic-paper-engineering) | Maintain section-specific translation/style memory and never silently change scientific numbers, formulas or references. | MIT repository; published translation direction is Chinese→English, not Chinese→Persian. Adopt section-role checks for any source language; do not bundle its publisher templates or pdflatex workflow. |
+| [PARME](https://github.com/DOLMA-NLP/PARME), [license](https://github.com/DOLMA-NLP/PARME/blob/main/LICENSE) | English–Persian–regional-language alignment covers seven named low-resource languages; the Zazaki material instead pairs with English/Kurmanji. | MIT repository, general-domain sentences. Verify the exact variety, direction, corpus provenance and reuse terms for each job; no sentence is bundled or treated as reviewed Persian scientific gold. |
+
+Kassis, T., Agarwal, V., He, Y., Patel, D., and Brueckner, A. M. (2026).
+*Scientific Agent Skills: A Library of Procedural Knowledge for Research Agents*.
+arXiv:2609.00065. [DOI](https://doi.org/10.48550/arXiv.2609.00065).
+
+Initial review: 2026-09-14. The added skill review above is dated 2026-09-24.
+These primary sources informed the skill's translation,
 review and document-preservation rules. Lessons below are independently written;
 no external model, library implementation, corpus or evaluation examples were
 imported by this research. Repository and dataset licenses are separate checks.

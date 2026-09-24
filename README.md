@@ -1,5 +1,34 @@
 # Revayat Scientific — روایت علمی
 
+[![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
+[![Plugin version 1.0.0](https://img.shields.io/badge/Plugin-1.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
+[![Python 3.10 or newer](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python)](skills/revayat-scientific/requirements.txt)
+[![One integrated skill](https://img.shields.io/badge/Skills-1-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
+[![Agent Skills format](https://img.shields.io/badge/Format-Agent%20Skills-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
+[![Installable skill ZIP](https://img.shields.io/badge/Package-.skill%20ZIP-6f42c1?style=flat-square)](docs/installation.md)
+[![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.fa.md)
+<br>
+[![CI status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
+[![CodeQL status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml)
+[![Weekly security scans configured](https://img.shields.io/badge/Security-Weekly%20scans-167f71?style=flat-square)](.github/workflows/codeql.yml)
+[![Shell and workflow lint configured](https://img.shields.io/badge/Lint-ShellCheck%20%2B%20actionlint-167f71?style=flat-square)](.github/workflows/ci.yml)
+[![Dependency and workflow audits configured](https://img.shields.io/badge/Audit-pip--audit%20%2B%20zizmor-167f71?style=flat-square)](.github/workflows/ci.yml)
+[![PR dependency review configured](https://img.shields.io/badge/PR%20review-Dependency%20review-167f71?style=flat-square)](.github/workflows/dependency-review.yml)
+[![Weekly Dependabot updates configured](https://img.shields.io/badge/Dependencies-Dependabot%20weekly-167f71?style=flat-square)](.github/dependabot.yml)
+<br>
+[![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
+[![Any source language to Persian](https://img.shields.io/badge/Languages-Any%20source%20to%20Persian-287c91?style=flat-square)](skills/revayat-scientific/references/source-languages.md)
+[![Native DOCX and PDF tools](https://img.shields.io/badge/Documents-DOCX%20%7C%20PDF-287c91?style=flat-square)](docs/architecture.md)
+[![Isolated Docker or Podman TeX](https://img.shields.io/badge/TeX-Docker%20%7C%20Podman-287c91?style=flat-square)](skills/revayat-scientific/references/pdf-output.md)
+[![Codex, Claude Code and Cursor support](https://img.shields.io/badge/Agents-Codex%20%7C%20Claude%20Code%20%7C%20Cursor-287c91?style=flat-square)](docs/installation.md)
+[![Optional parallel translation and editing](https://img.shields.io/badge/Parallel-Opt--in-287c91?style=flat-square)](skills/revayat-scientific/references/parallel-work.md)
+<br>
+[![GitHub stars](https://img.shields.io/github/stars/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/stargazers)
+[![Open GitHub issues](https://img.shields.io/github/issues/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/issues)
+[![Open pull requests](https://img.shields.io/github/issues-pr/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/pulls)
+[![Last main commit](https://img.shields.io/github/last-commit/KiaroSama/Revayat-Scientific-Skill/main?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/commits/main/)
+[![Support the project](https://img.shields.io/badge/Support-Donate-ef9b20?style=flat-square)](#donate)
+
 **Translate scientific sources from any language into accurate Persian, preserving page dimensions and image fidelity, with editable output and a verified PDF.**
 
 An agent skill for Claude Code, Claude Desktop, Codex, Kiro, Cursor, Cline,
@@ -20,6 +49,7 @@ remain accounted for, and Persian pages whose output is actually checked.
 | **A source inventory before drafting** | Record sections, figures, tables, equations, notes and references so a missing object cannot be dismissed as a layout choice. |
 | **Scientific claims keep their force** | The workflow reviews negation, hedges, quantities and units against the source; fluency edits must preserve their meaning. |
 | **One form per concept** | A job-local terms ledger keeps preferred terms consistent. Papers use `journal`; operational guides use `system-docs`. |
+| **Source-located term briefs** | A bundled offline command finds approved terms in reviewed text from any source script, records source and glossary hashes, and flags ambiguous choices. |
 | **Figures remain source artwork** | Crop and prepare original figures, compare them with source pages, and check the figure manifest before delivery. |
 | **Real right-to-left typesetting** | Persian stays in logical order; retained source spans follow their own script direction, with complete formula and number isolates. |
 | **Source-aware language and style** | Identify language/script and research uncertain terms. Journal prose uses familiar Persian scientific concepts, with source-language fidelity review. |
@@ -27,6 +57,8 @@ remain accounted for, and Persian pages whose output is actually checked.
 | **Mechanical quality gates** | Check orthography, terminology, isolates, missing images, embedded fonts, page count and sampled rasters. |
 | **Text extraction is measured** | Compare normalized Persian source phrases with PyMuPDF extraction; record limits instead of promising every viewer's clipboard behavior. |
 | **One portable entry point** | The same Python command chooses PowerShell on Windows and Bash on Linux/macOS, using the current host model for translation. |
+| **Built-in DOCX and PDF tools** | Inspect/create/edit DOCX; extract PDF text, tables and images, inspect/fill forms, merge pages and run optional OCR. Preserve originals and untouched document structures. |
+| **Optional parallel translation/editing** | Ask before using subagents; separate section ownership, shared terminology, worker logs and coordinator review keep the document consistent. |
 
 ## Install
 
@@ -78,7 +110,7 @@ Read the report before promising a PDF:
 
 | Report item | What it controls |
 | --- | --- |
-| XeLaTeX / xepersian | Preferred TeX build path |
+| Docker/Podman + XeLaTeX / xepersian image | Isolated TeX build; see the PDF output setup |
 | Edge, Chrome or WeasyPrint | HTML build path when selected |
 | Persian font | A readable Persian page; Vazirmatn is the preferred face |
 | Poppler and PyMuPDF | PDF page/font/raster inspection and extraction checks |
@@ -88,6 +120,13 @@ Missing optional tools affect only their stages. Install prerequisites with the
 user's approval; the installer and doctor do not install them automatically.
 
 ## Use
+
+The agent asks whether to use **parallel subagents for translation and editing**.
+This is optional: affirmative consent enables available workers; declining or
+leaving it unanswered keeps sequential work. Workers handle separate sections or
+review patches, keep their own logs, and the coordinator integrates the document
+against one glossary before final checks. Parallel work may use more tokens.
+[Parallel workflow and limits](skills/revayat-scientific/references/parallel-work.md).
 
 Tell the agent:
 
@@ -186,6 +225,7 @@ to `$HOME/Documents/books`; `--output-dir` selects another directory.
 - [Source languages](skills/revayat-scientific/references/source-languages.md) — direct translation, language profiles and research
 - [Page and image fidelity](skills/revayat-scientific/references/layout-and-images.md) — source dimensions, resolution and faithful enhancement
 - [Terminology](skills/revayat-scientific/references/terminology.md) — concept decisions and terminology levels
+- [Evidence and terminology](skills/revayat-scientific/references/evidence-and-terminology.md) — local term briefs and source-bound scientific review
 - [Scientific style](skills/revayat-scientific/references/scientific-style.md) — clear scholarly Persian
 - [RTL and bidi](skills/revayat-scientific/references/rtl-bidi.md) — complete LTR isolates
 - [Review](skills/revayat-scientific/references/review.md) — fidelity, fluency and completeness
@@ -204,9 +244,10 @@ python tools/package.py
 
 [CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
 covers Python 3.10/Linux, 3.14/macOS and 3.13/Windows, native Windows
-rendering, inherited checker regressions and a real Linux XeLaTeX build.
-CodeQL and dependency review are configured; Dependabot covers Python packages
-and Actions. The generated `dist/revayat-scientific.skill` is an uploadable ZIP
+rendering, inherited checker regressions, isolated TeX, WeasyPrint and OCR.
+Workflow lint/security and Python audits run in CI. CodeQL and dependency review
+are configured; Dependabot covers Python packages, Actions and the container base.
+The generated `dist/revayat-scientific.skill` is an uploadable ZIP
 with its license notices; runtime dependencies stay outside the package.
 
 ### Logs
@@ -224,8 +265,14 @@ packaging use the repository's `logs/`. Each run has a new
 `<command>_YYYY-MM-DD_HH-mm-ss_UTC.log`, with a unique suffix on collision.
 Entries contain UTC time, level, operation, duration and exit code. Document
 text, arguments and tool output are not copied into these logs. Initialization
-failure falls back to stderr. Logs remain local until removed. TeX also keeps
-its document log beside the source.
+failure falls back to stderr. Logs remain local until removed. Container TeX
+scratch files are removed after confirmed cleanup; unresolved cleanup retains
+its local recovery evidence and blocks publication.
+
+Native document, figure, font and render helpers write diagnostics under
+`scripts/logs/`. `REVAYAT_LOG_LEVEL` selects `DEBUG`, `INFO` (default), `WARNING`
+or `ERROR`. Diagnostic decoding tolerates malformed tool output; source documents
+and structured reports retain strict format/encoding validation.
 
 ## Donate
 

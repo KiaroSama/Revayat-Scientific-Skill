@@ -1,5 +1,26 @@
 # Architecture
 
+`document_context.py`, `tex_source.py`, `html_source.py` and `source_model.py`
+bind checks to the actual job and included source locations. `publication.py`
+validates staged destination sets and rolls back failed publication; if recovery
+fails, it retains previous bytes and names a recovery manifest. `build-support.py`
+shares source selection, required-asset checks and delivery across native adapters.
+`render-html.py` owns bounded renderer workers; `resource_policy.py` restricts
+browser requests and WeasyPrint fetching to approved local resources.
+
+`document-docx.py` and `docx_package.py` provide native creation and targeted OOXML
+edits. `document-pdf.py` and `pdf_forms.py` reuse PyMuPDF for extraction, forms,
+merging and optional Tesseract OCR. `font-fetch.py` validates font identity, weight
+and licensing before delivering the pair and provenance together. Structural
+validation does not certify rendered layout or scientific translation accuracy.
+`term-brief.py` reads reviewed source text and the job's approved ledger to emit
+source-located terminology candidates with input hashes. It cannot infer a concept,
+translate or verify a scholarly claim; the agent applies the evidence reference.
+
+Optional parallel translation/editing requires explicit job consent. Workers own
+separate drafts/patches and logs; the coordinator owns canonical documents,
+glossary updates, integration and final quality gates.
+
 `skills/revayat-scientific/` is the entire distributable payload. Its entrypoint routes an agent through source inventory, concept decisions, translation, review and verification; references own their detailed policies.
 
 `scripts/revayat-scientific.py` maps portable commands to the existing Python helpers or OS-native build scripts. `runtime.py` owns per-run logging, subprocess deadlines and termination. The scientific checker remains the owner of mechanical rules. The agent owns translation, semantic review and visual inspection; no script simulates these decisions.

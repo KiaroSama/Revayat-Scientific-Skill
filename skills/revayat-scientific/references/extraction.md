@@ -79,8 +79,10 @@ figure**, not the whole source page around it.
    ```
 
    `figures-map.tsv` is `figure_id`, optional printed page, then **PDF page**.
-   Two figures on one page become two rows with the same PDF page; crops
-   are top-to-bottom. Cover art is the plate only (no English title
+   Two figures on one page become two rows with the same PDF page; unambiguous crops
+   are top-to-bottom. Duplicate IDs, invalid/empty rows and out-of-range pages fail
+   before publication. For ambiguous boundaries, provide reviewed rectangle columns
+   using [layout-and-images.md](layout-and-images.md). Cover art is the plate only (no English title
    spine). An author portrait is the headshot, not the “about the author”
    page.
 5. **Flatten before the print build:**

@@ -72,6 +72,23 @@ derivative, not a lossless copy or an image-enhancement model. Vector line art m
 need a higher selected minimum. Oversized crops fail rather than silently reducing
 quality; extract an original/vector asset or make a smaller faithful crop instead.
 
+The full crop map is validated before any output is replaced. Use unique IDs and
+positive one-based PDF page numbers. Ambiguous clusters, covers or portraits require
+reviewed coordinates: a CSV/TSV header `figure_id,pdf_page,x0,y0,x1,y1` defines exact
+rectangles in the normalized displayed page coordinate system, in PDF points.
+The helper reports ambiguity instead of choosing the largest candidate.
+
+Figure preparation requires Pillow. It checks the whole destination plan and stages
+all conversions before publication. Non-PNG originals remain in place; an in-place
+PNG conversion preserves a byte-exact `.orig`. Existing conflicting originals or
+case/name collisions fail without replacement. Single-frame supported 8-bit images
+retain compatible ICC/DPI metadata and displayed EXIF orientation. Unsupported
+high-depth, multi-frame or incompatible-profile conversions are refused. PNG
+gamma/chromaticity/sRGB metadata and combined transformed EXIF/XMP orientation
+also require a reviewed specialist workflow rather than silently dropping metadata; preserve
+the original and choose an explicitly reviewed specialist workflow. `--check` is
+read-only and cannot pass when faithful inspection is unavailable.
+
 ## Improve poor images without inventing evidence
 
 Act when a figure is blurred, pixelated or unreadable at its intended print size:

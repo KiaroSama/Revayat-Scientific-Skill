@@ -14,6 +14,9 @@ skill="$here/../skills/revayat-scientific"
 lint="$skill/scripts/check-fa.py"
 fixtures="$here/fixtures"
 fail=0
+mkdir -p "$here/../.scratch"
+test_root=$(mktemp -d "$here/../.scratch/upstream.XXXXXX")
+trap 'rm -rf -- "$test_root"' EXIT
 
 expect_clean() {
   local file=$1
@@ -104,7 +107,7 @@ else
 fi
 
 # --pairs must merge, not replace, the house list.
-extra=$(mktemp)
+extra=$(mktemp "$test_root/pairs.XXXXXX")
 printf 'english\tforbidden_fa\tscope\tlevels\nfoo\tبار\tuniversal\tall\n' >"$extra"
 merge_out=$(python3 "$lint" "$fixtures/journal.tex" --pairs "$extra" 2>&1) || true
 rm -f "$extra"
@@ -201,8 +204,7 @@ fi
 
 # prepare-figures.py: flatten alpha onto white so the print PDF matches the source.
 if python3 -c "import PIL.Image" 2>/dev/null; then
-  mkdir -p "$fixtures/figures"
-  alpha="$fixtures/figures/alpha.png"
+  alpha="$test_root/alpha.png"
   python3 - "$alpha" <<'PY'
 import struct, zlib, sys
 from pathlib import Path
@@ -238,8 +240,8 @@ PY
     echo "$check_out" | sed 's/^/    /'
     fail=1
   fi
-  python3 "$prep" "$alpha" >/tmp/prep.out 2>&1 || true
-  mode=$(python3 -c "from PIL import Image; print(Image.open('$alpha').mode)")
+  python3 "$prep" "$alpha" >"$test_root/prep.out" 2>&1 || true
+  mode=$(python3 -c 'from PIL import Image; import sys; print(Image.open(sys.argv[1]).mode)' "$alpha")
   if [[ $mode == RGB ]]; then
     echo "ok   prepare-figures flattened alpha to RGB"
   else
@@ -251,21 +253,8 @@ else
   echo "skip prepare-figures (no Pillow)"
 fi
 
-# build-pdf.sh must not copy a PDF when lint fails.
+# Missing sidecars must fail before engine selection.
 build="$skill/scripts/build-pdf.sh"
-build_rc=0
-build_out=$("$build" "$fixtures/nginx-calque.tex" lint-gate-must-not-write \
-  --terms "$fixtures/terms-nginx.tsv" \
-  --manifest "$empty_manifest" 2>&1) || build_rc=$?
-if [[ $build_rc -ne 0 ]] && grep -q forbidden-fa <<<"$build_out" \
-    && grep -q 'lint failed' <<<"$build_out" \
-    && [[ ! -f ${HOME}/Documents/books/lint-gate-must-not-write.pdf ]]; then
-  echo "ok   build-pdf refuses a document that fails lint"
-else
-  echo "FAIL build-pdf lint gate"
-  echo "$build_out" | sed 's/^/    /'
-  fail=1
-fi
 missing_terms_rc=0
 missing_terms_out=$("$build" "$fixtures/nginx-calque.tex" \
   --manifest "$empty_manifest" 2>&1) || missing_terms_rc=$?
@@ -295,118 +284,90 @@ else
   fail=1
 fi
 
-# build-pdf.sh diagnostics. A build that fails must always say WHY: when a
-# .log exists show the TeX error, and when none exists show the engine's own
-# output instead of claiming an error was printed. Stubs stand in for the
-# toolchain so this runs anywhere.
-stub=$(mktemp -d)
-work=$(mktemp -d)
-trap 'rm -rf "$stub" "$work"' EXIT
-
-cat >"$stub/kpsewhich" <<'STUB'
-#!/bin/sh
-echo "/usr/share/texmf/tex/xelatex/xepersian/xepersian.sty"
+# Exercise the shell adapter at the isolated-controller boundary. Actual Docker
+# resource isolation and real XeLaTeX rendering are covered by scientific CI.
+stub_skill="$test_root/payload"
+work="$test_root/build"
+mkdir -p "$work/delivered"
+python3 - "$skill" "$stub_skill" <<'PY'
+from pathlib import Path
+import shutil, sys
+source, target = map(Path, sys.argv[1:])
+shutil.copytree(source, target, ignore=shutil.ignore_patterns('logs', '__pycache__'))
+PY
+cat >"$stub_skill/scripts/tex-container.py" <<'STUB'
+import os
+from pathlib import Path
+import sys
+import pymupdf
+mode = os.environ.get('CONTAINER_FIXTURE_MODE', 'ok')
+if '--probe' in sys.argv:
+    raise SystemExit(2 if mode == 'unavailable' else 0)
+marker = os.environ.get('REVAYAT_TEST_ENGINE_MARKER')
+if marker:
+    Path(marker).write_text('compiler invoked', encoding='utf-8')
+output = Path(sys.argv[2])
+if mode == 'error':
+    print('fixture container failed', file=sys.stderr)
+    raise SystemExit(1)
+if mode == 'truncated':
+    output.write_bytes(b'%PDF-1.7\ntruncated fixture')
+else:
+    with pymupdf.open() as document:
+        document.new_page(width=230, height=340)
+        document.save(output)
+raise SystemExit(42 if mode == 'failed-valid' else 0)
 STUB
-# latexmk is a Perl script; on a broken Perl it dies before writing a .log.
-cat >"$stub/latexmk" <<'STUB'
-#!/bin/sh
-echo "Can't locate strict.pm in @INC" >&2
-exit 2
-STUB
-complete_pdf() { printf '%%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n%%%%EOF\n' >"$1"; }
-cat >"$stub/xelatex" <<'STUB'
-#!/bin/sh
-for a; do case "$a" in *.tex) s=$(basename "$a" .tex);; esac; done
-case "$XELATEX_MODE" in
-  ok)       echo "log line" > "$s.log"
-            printf '%%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n%%%%EOF\n' > "$s.pdf"
-            exit 0 ;;
-  logfail)  printf '! Undefined control sequence.\nl.42 \\bogus\n' > "$s.log"; exit 1 ;;
-  # Exit 0, but the xdvipdfmx driver died: log says so and the PDF is
-  # truncated. This is the MiKTeX failure that reported a broken build as a
-  # success.
-  driver)   printf 'Error 1 (driver return code) generating output;\nfile %s.pdf may not be valid.\n' "$s" > "$s.log"
-            printf '%%PDF-1.7\n1 0 obj\n<</Filter/FlateD' > "$s.pdf"
-            exit 0 ;;
-  # Exit 0, no driver line, but still a truncated PDF.
-  truncated) echo "log line" > "$s.log"
-            printf '%%PDF-1.7\n1 0 obj\n<</Filter/FlateD' > "$s.pdf"
-            exit 0 ;;
-  # The driver refusing a variable font. Its own words say nothing about
-  # fonts, so build-pdf has to translate them.
-  varfont)  printf 'Error 1 (driver return code) generating output;\n' > "$s.log"
-            echo "xdvipdfmx:warning: Invalid TTC index (not TTC font): Vazirmatn-VariableFont_wght.ttf"
-            echo "xdvipdfmx:fatal: Invalid font: -1 (4)"
-            printf '%%PDF-1.7\n1 0 obj\n<</Filter/FlateD' > "$s.pdf"
-            exit 0 ;;
-  *)        echo "xelatex: cannot execute" >&2; exit 127 ;;
-esac
-STUB
-chmod +x "$stub"/*
 
 expect_build() {
   local label=$1 mode=$2 want_rc=$3
   shift 3
-  # The optional 4th word is the literal "stale"; anything else is already
-  # the first expected phrase. Testing "is there a 4th argument" instead
-  # would shift the first phrase away and never check it.
-  local stale=
-  if [[ ${1:-} == stale ]]; then stale=stale; shift; fi
-  local out rc
-  rm -f "$work"/*.log "$work"/*.pdf
+  local out rc=0 missing=() phrase
   cp "$skill/assets/rtl-document.tex" "$work/probe.tex"
   cp "$empty_terms" "$work/terms.tsv"
   cp "$empty_manifest" "$work/manifest.txt"
-  # Leave junk from an imaginary earlier run behind.
-  if [[ $stale == stale ]]; then
-    printf 'stale log from a previous run\n' >"$work/probe.log"
-    printf '%%PDF-1.4 stale\n' >"$work/probe.pdf"
-  fi
-  out=$(HOME="$work/home" PATH="$stub:$PATH" XELATEX_MODE="$mode" \
-        bash "$skill/scripts/build-pdf.sh" "$work/probe.tex" "fa-selftest" 2>&1)
-  rc=$?
-  local missing=() phrase
+  printf 'previous approved delivery\n' >"$work/delivered/fa-selftest.pdf"
+  cp "$work/delivered/fa-selftest.pdf" "$work/previous.pdf"
+  # A failed controller must not make this stale working PDF deliverable.
+  printf '%%PDF-1.7 stale working output\n%%%%EOF\n' >"$work/probe.pdf"
+  out=$(CONTAINER_FIXTURE_MODE="$mode" bash "$stub_skill/scripts/build-pdf.sh" \
+        "$work/probe.tex" fa-selftest --engine tex --output-dir "$work/delivered" 2>&1) || rc=$?
   for phrase in "$@"; do
     grep -qF -- "$phrase" <<<"$out" || missing+=("$phrase")
   done
-  if [[ $rc -ne $want_rc ]]; then
-    echo "FAIL build-pdf $label: exit $rc, wanted $want_rc"
+  if [[ $rc -ne $want_rc || ${#missing[@]} -gt 0 ]]; then
+    echo "FAIL build-pdf $label: exit=$rc expected=$want_rc missing=${missing[*]}"
     echo "$out" | sed 's/^/    /'
     fail=1
-  elif [[ ${#missing[@]} -gt 0 ]]; then
-    echo "FAIL build-pdf $label: missing from output: ${missing[*]}"
-    echo "$out" | sed 's/^/    /'
+  elif [[ $want_rc -ne 0 ]] && ! cmp -s "$work/previous.pdf" "$work/delivered/fa-selftest.pdf"; then
+    echo "FAIL build-pdf $label changed the approved delivery"
     fail=1
   else
     echo "ok   build-pdf $label"
   fi
 }
+expect_build "uses isolated controller" ok 0 "fa-selftest.pdf"
+expect_build "refuses unavailable explicit container" unavailable 1 "unavailable"
+expect_build "rejects failed controller despite stale PDF" error 1 "selected TeX engine failed"
+expect_build "rejects failed controller despite valid PDF" failed-valid 1 "selected TeX engine failed"
+expect_build "rejects truncated controller output" truncated 1 "expected complete PDF missing"
 
-# latexmk dies without a .log: report its output, then fall back to xelatex.
-# Falling back is safe precisely because a real TeX error writes a .log.
-expect_build "falls back when latexmk never reaches the compiler" ok 0 \
-  "latexmk wrote no .log" "Can't locate strict.pm" "retrying with xelatex"
-# A .log exists: the TeX error itself must be surfaced.
-expect_build "prints the TeX error when a .log exists" logfail 1 \
-  "Undefined control sequence" "first TeX errors"
-# No .log anywhere: never claim an error was printed when none was.
-expect_build "prints engine output when no .log exists" dead 1 \
-  "no probe.log was written" "xelatex: cannot execute"
-# A leftover .log from an earlier run must not be mistaken for this run's
-# output, or the latexmk fallback silently stops working.
-expect_build "is not fooled by a stale .log" ok 0 stale \
-  "latexmk wrote no .log" "retrying with xelatex"
-# xelatex exits 0, the PDF driver does not. A build that ships a truncated
-# PDF as a success is worse than one that fails.
-expect_build "fails when the PDF driver dies behind a zero exit code" driver 1 \
-  "the PDF driver failed even though xelatex exited 0" "driver return code"
-expect_build "fails on a truncated PDF with no %%EOF" truncated 1 \
-  "is truncated (no %%EOF)"
-# "Invalid font: -1 (4)" is unactionable on its own. The driver is refusing
-# a named instance of a variable font, and the fix is to load the file by
-# path instead - say that, and name the command that puts it there.
-expect_build "explains a variable-font driver failure" varfont 1 \
-  "that is a variable font" "fetch-vazirmatn.sh"
+# The real strict gate runs before the selected controller can compile anything.
+cp "$fixtures/nginx-calque.tex" "$work/probe.tex"
+build_rc=0
+build_out=$(REVAYAT_TEST_ENGINE_MARKER="$work/engine-invoked" \
+  bash "$stub_skill/scripts/build-pdf.sh" "$work/probe.tex" fa-selftest \
+  --engine tex --output-dir "$work/delivered" --terms "$fixtures/terms-nginx.tsv" \
+  --manifest "$empty_manifest" 2>&1) || build_rc=$?
+if [[ $build_rc -ne 0 ]] && grep -q forbidden-fa <<<"$build_out" \
+    && grep -q 'lint failed' <<<"$build_out" && [[ ! -e $work/engine-invoked ]] \
+    && cmp -s "$work/previous.pdf" "$work/delivered/fa-selftest.pdf"; then
+  echo "ok   build-pdf lint gate prevents compiler execution and delivery"
+else
+  echo "FAIL build-pdf lint gate"
+  echo "$build_out" | sed 's/^/    /'
+  fail=1
+fi
 
 # The .tex template resolves fonts with \IfFontExistsTF chains whose last
 # entry is unguarded: if that face is missing, fontspec aborts the build.
@@ -478,19 +439,8 @@ else
   fail=1
 fi
 
-# build-pdf.ps1: the browser must not go through Invoke-Tool. Chromium is a
-# GUI-subsystem binary, and PowerShell does not wait for those - `& msedge`
-# returns before the PDF exists and never sets $LASTEXITCODE, which
-# Invoke-Tool reports as exit 127. Only Start-Process -Wait blocks.
-ps1="$skill/scripts/build-pdf.ps1"
-if grep -q 'Invoke-Browser \$browser' "$ps1" &&
-   grep -q 'Start-Process' "$ps1" && grep -q -- '-Wait' "$ps1"; then
-  echo "ok   build-pdf.ps1 waits for the browser"
-else
-  echo "FAIL build-pdf.ps1 must launch the browser with Start-Process -Wait;"
-  echo "     & msedge.exe returns before the PDF is written"
-  fail=1
-fi
+# Browser ownership and exit/resource-denial consequences are exercised by
+# test_native_build.py and test_build_integrity.py through render-html.py.
 
 # check-fa.py prints Persian, so it must not depend on the console encoding.
 # On Windows an unredirected stdout is cp1252 and the first finding dies
@@ -541,97 +491,10 @@ else
   fail=1
 fi
 
-# Template must compile: digit font is a Persian face, not TeX Gyre Termes.
-if command -v xelatex >/dev/null 2>&1 \
-    && command -v kpsewhich >/dev/null 2>&1 \
-    && kpsewhich xepersian.sty >/dev/null 2>&1; then
-  smoke=$(mktemp -d)
-  # Fill the template: its empty body/English colophon is not a text-order specimen.
-  python3 - "$skill/assets/rtl-document.tex" "$fixtures/build-smoke-body.tex" "$smoke/smoke.tex" <<'PY'
-from pathlib import Path
-import sys
-template, body, destination = map(Path, sys.argv[1:])
-text = template.read_text(encoding="utf-8")
-text = text.replace(r"\maketitle", r"\maketitle" + "\n" + body.read_text(encoding="utf-8"))
-destination.write_text(text, encoding="utf-8")
-PY
-  if (cd "$smoke" && xelatex -interaction=nonstopmode -halt-on-error \
-        smoke.tex >/dev/null 2>&1); then
-    echo "ok   rtl-document.tex compiles with XeLaTeX"
-    if [[ -n ${SCIENTIFIC_EVIDENCE_DIR:-} ]]; then
-      mkdir -p "$SCIENTIFIC_EVIDENCE_DIR"
-      cp "$smoke/smoke.pdf" "$smoke/smoke.tex" "$SCIENTIFIC_EVIDENCE_DIR/"
-    fi
-    if command -v pdftotext >/dev/null 2>&1; then
-      order_rc=0
-      order_out=$(python3 "$order" "$smoke/smoke.pdf" \
-        --source "$smoke/smoke.tex" 2>&1) || order_rc=$?
-      if [[ $order_rc -eq 0 ]] \
-          && grep -q 'check-pdf-text-order: logical' <<<"$order_out"; then
-        echo "ok   XeLaTeX PDF text stream is logical order"
-      else
-        echo "FAIL XeLaTeX PDF was not logical order (rc=$order_rc)"
-        echo "$order_out" | sed 's/^/    /'
-        pdftotext -raw "$smoke/smoke.pdf" - | python3 -c 'import sys; print(ascii(sys.stdin.read()))'
-        fail=1
-      fi
-    else
-      echo "skip XeLaTeX text-order check (no pdftotext)"
-    fi
-  else
-    echo "FAIL rtl-document.tex did not compile"
-    if [[ -f $smoke/smoke.log ]]; then
-      grep -E '^!|U\+06F0' "$smoke/smoke.log" | head -20 | sed 's/^/    /'
-    fi
-    fail=1
-  fi
-  rm -rf "$smoke"
-else
-  echo "skip rtl-document.tex compile (no xelatex/xepersian)"
-fi
-
-# Observe this Chromium build's extraction, without assuming all versions reverse RTL.
-chrome=""
-for c in google-chrome google-chrome-stable chromium chromium-browser; do
-  if command -v "$c" >/dev/null 2>&1; then chrome=$c; break; fi
-done
-if [[ -n $chrome ]] && command -v pdftotext >/dev/null 2>&1; then
-  cdir=$(mktemp -d)
-  cat > "$cdir/t.html" <<'HTML'
-<!doctype html>
-<html lang="fa" dir="rtl"><meta charset="utf-8"><title>t</title>
-<p>این کنگره سالانه برگزار شد.</p>
-<p>در این روش برای کمینه کردن تابع هزینه استفاده می‌شود.</p>
-</html>
-HTML
-  chrome_rc=0
-  timeout 25 "$chrome" --headless=new --no-sandbox --disable-dev-shm-usage \
-    --user-data-dir="$cdir/profile" \
-    --no-pdf-header-footer --virtual-time-budget=10000 \
-    --run-all-compositor-stages-before-draw \
-    --print-to-pdf="$cdir/t.pdf" "file://${cdir}/t.html" \
-    >"$cdir/chromium.log" 2>&1 || chrome_rc=$?
-  if [[ -s $cdir/t.pdf ]]; then
-    order_rc=0
-    order_out=$(python3 "$order" "$cdir/t.pdf" \
-      --source "$fixtures/good.tex" 2>&1) || order_rc=$?
-    if [[ $order_rc -eq 0 || $order_rc -eq 2 ]] \
-        && grep -qE 'check-pdf-text-order: (logical|visual)' <<<"$order_out"; then
-      echo "ok   Chromium PDF extraction order was measured"
-    else
-      echo "FAIL Chromium PDF extraction order was inconclusive (rc=$order_rc)"
-      echo "$order_out" | sed 's/^/    /'
-      fail=1
-    fi
-  else
-    echo "FAIL Chromium text-order ($chrome exit $chrome_rc, print-to-pdf failed)"
-    tail -20 "$cdir/chromium.log"
-    fail=1
-  fi
-  rm -rf "$cdir"
-else
-  echo "skip Chromium text-order (no chrome/pdftotext)"
-fi
+# Real Docker XeLaTeX and restricted Chromium rendering are owned by
+# test_scientific_render.py and test_native_build.py, not duplicated here.
+# These suites require their configured CI backends; no unrestricted TeX or
+# raw --no-sandbox browser invocation is an accepted test substitute.
 
 if [[ $fail -eq 0 ]]; then
   echo "all tests passed"

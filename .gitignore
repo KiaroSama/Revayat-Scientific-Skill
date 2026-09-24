@@ -39,3 +39,8 @@ Thumbs.db
 !/.env.sample
 !/.env.template
 !/.env.dist
+
+/.specify/
+/specs/
+/plans/
+/.revayat-tex-owner-*/
