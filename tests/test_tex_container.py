@@ -164,11 +164,16 @@ class TexContainerTest(unittest.TestCase):
                     './chapters/body.tex:9: Undefined control sequence.\n'
                     'l.9 CONFIDENTIAL_FIGURE_LABEL\n', encoding='utf-8')
                 return 42, ''
-            with patch.object(controller, 'runtime_config', return_value=config), patch.object(controller, 'call', side_effect=renderer), patch.object(controller, 'cleanup') as clean:
+            evidence = root / 'ci-evidence'
+            evidence.mkdir()
+            with patch.dict(os.environ, {'SCIENTIFIC_RENDER': '1', 'SCIENTIFIC_EVIDENCE_DIR': str(evidence)}), patch.object(controller, 'runtime_config', return_value=config), patch.object(controller, 'call', side_effect=renderer), patch.object(controller, 'cleanup') as clean:
                 with self.assertRaisesRegex(RuntimeError, 'undefined-control-sequence') as caught:
                     controller.compile_document(source, output, self.logger)
                 self.assertNotIn('CONFIDENTIAL_FIGURE_LABEL', str(caught.exception))
                 clean.assert_called_once()
+            retained = list(evidence.glob('fixture-tex-*-console-pass-1.log'))
+            self.assertEqual(len(retained), 1)
+            self.assertIn(b'Undefined control sequence', retained[0].read_bytes())
             self.assertEqual(output.read_bytes(), b'previous approved PDF')
             with patch.object(controller, 'runtime_config', return_value=config), patch.object(controller, 'call', side_effect=subprocess.TimeoutExpired('docker', 150)), patch.object(controller, 'cleanup') as clean:
                 with self.assertRaises(subprocess.TimeoutExpired):
