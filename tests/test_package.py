@@ -98,7 +98,7 @@ class PackageTest(unittest.TestCase):
         self.assertIn('name: revayat-scientific\n', text)
         self.assertLess(len(text.splitlines()), 500)
         for reference in re.findall(r'\]\(((?:references|scripts|assets)/[^)]+)\)', text):
-            self.assertTrue((SKILL / reference).is_file(), reference)
+            self.assertTrue((SKILL / reference.split('#', 1)[0]).is_file(), reference)
         for folder in ['.claude-plugin', '.cursor-plugin', '.codex-plugin']:
             manifest = json.loads((ROOT / folder / 'plugin.json').read_text(encoding='utf-8'))
             self.assertEqual(manifest['name'], 'revayat-scientific')
