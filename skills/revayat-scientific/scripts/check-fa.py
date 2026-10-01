@@ -172,6 +172,7 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
           manifest: list[str] | None, *, level='system-docs') -> list[Finding]:
     out: list[Finding] = []
     text = src.text
+    structural = src.structural_text if src.kind == 'tex' else text
 
     def add(level: str, check_id: str, pos: int, message: str) -> None:
         if src.suppressed(pos, check_id):
@@ -186,8 +187,8 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                 yield m
 
     def live_finditer(pattern: str, flags: int = 0):
-        """Structural scan of the raw text, skipping preamble and comments."""
-        for m in re.finditer(pattern, text, flags):
+        """Structural scan shares the source model's live-token interpretation."""
+        for m in re.finditer(pattern, structural, flags):
             if not src.inert(m.start()):
                 yield m
 
@@ -337,21 +338,21 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
     else:
         for env in ("verbatim", "Verbatim", "lstlisting"):
             for m in live_finditer(r"\\begin\{" + env + r"\}"):
-                window = text[max(0, m.start() - 400):m.start()]
+                window = structural[max(0, m.start() - 400):m.start()]
                 if "\\begin{latin}" not in window:
                     add(ERROR, "code-direction", m.start(),
                         f"{env} is not wrapped in \\begin{{latin}}; "
                         "listings are never RTL")
         guard = re.search(r"\\(?:section|subsection|subsubsection|chapter"
-                          r"|caption)\*?\{[^}]*\\(?:lr|en)\b", text)
-        if guard and "pdfstringdefDisableCommands" not in text:
+                          r"|caption)\*?\{[^}]*\\(?:lr|en)\b", structural)
+        if guard and not re.search(r'\\pdfstringdefDisableCommands\b', structural):
             add(WARN, "bookmark-guard", guard.start(),
                 "\\lr/\\en used in a heading or caption without "
                 "\\pdfstringdefDisableCommands; hyperref bookmarks will "
                 "break")
         images = src.image_references()
         for pos, ref in images:
-            before = text[:pos]
+            before = structural[:pos]
             last_begin = max(
                 before.rfind("\\begin{LTR}"),
                 before.rfind("\\begin{latin}"),

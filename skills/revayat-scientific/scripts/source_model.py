@@ -3,7 +3,7 @@ import bisect
 from pathlib import Path
 import re
 from html_source import ParsedHTML
-from tex_source import source_closure, masked_tex, tex_ignored_regions, MAX_BYTES
+from tex_source import source_closure, live_tex, tex_ignored_regions, MAX_BYTES
 
 class Source:
     """A translation file plus the regions where prose rules do not apply."""
@@ -118,7 +118,13 @@ class Source:
             (self.comments if kind == 'comment' else self.literals).append((start, end))
         # A paired backslash is a control symbol, not the start of the next word.
         # Keep offsets stable while preventing escaped commands from becoming live.
-        self.tex_live = re.sub(r"\\\\", "  ", masked_tex(self.text))
+        self.tex_live = live_tex(self.text)
+        structural = list(self.tex_live)
+        for start, _end in self.literals:
+            if self.text.startswith(r'\begin{', start):
+                opener_end = self.text.index('}', start) + 1
+                structural[start:opener_end] = self.text[start:opener_end]
+        self.structural_text = ''.join(structural)
         body = re.search(r"\\begin\{document\}", self.tex_live)
         if body:
             self.preamble_end = body.end()

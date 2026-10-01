@@ -47,6 +47,11 @@ unknown parts, control characters and malformed inputs fail before publication.
 Use multiple existing runs when a sentence crosses formatting boundaries. Do not
 replace paragraphs wholesale or round-trip an existing document through Markdown.
 
+Submit related edits in one batch. Each addressed story is indexed once, edits
+are ordered by original byte offsets and each edited part is assembled once.
+Sorting costs E log E; XML size limits and full validation still apply before
+publication. This avoids per-edit whole-story scans without a timing guarantee.
+
 The editor replaces only addressed `w:t` text. Untouched XML bytes, archive member
 contents, media, fields, revisions and section geometry stay intact; the ZIP
 container itself may have different compressed bytes. Whitespace at a text-node

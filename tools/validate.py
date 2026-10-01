@@ -25,6 +25,16 @@ def validate_family_layout():
             raise ValueError(f'{name}: Revayat section order changed')
         if text.count('<div ') != text.count('</div>'):
             raise ValueError(f'{name}: unbalanced direction/alignment containers')
+        header = text.split('## ', 1)[0]
+        badges = re.findall(r'\[!\[([^]]+)\]\(([^)]+)\)\]\(([^)]+)\)', header)
+        centered = re.search(r'<div align="center">\n\n(.*?)\n\n</div>', header, re.S)
+        if (not 12 <= len(badges) <= 16 or len({url for _, url, _ in badges}) != len(badges)
+                or centered is None or len(re.findall(r'\[!\[', centered[1])) != len(badges)):
+            raise ValueError(f'{name}: requires 12-16 distinct centered badges')
+        donation_target = '#donate' if name == 'README.md' else 'README.md#donate'
+        if ('Support donations', 'https://img.shields.io/badge/Support-donations-d04a9a',
+                donation_target) not in badges:
+            raise ValueError(f'{name}: missing canonical donation badge')
     persian = (ROOT / 'README.fa.md').read_text(encoding='utf-8')
     if not persian.startswith('<div dir="rtl">') or '<div dir="ltr">' not in persian:
         raise ValueError('Persian README requires RTL prose and LTR command blocks')

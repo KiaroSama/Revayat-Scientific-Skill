@@ -10,6 +10,7 @@
 | Part | Bounded source section with translation and review status |
 | Mechanical check | Deterministic validation of spelling, terminology and structure |
 | Fidelity review | Comparison of meaning, quantities, uncertainty and references |
+| Citation evidence crosswalk | Separate source-reference preservation, local key match, verified bibliographic record and actually read claim support, each with its own outcome |
 | Fluency review | Reading Persian for natural scholarly expression while preserving meaning |
 | Verified PDF | Built artifact whose required checks and visual inspection actually ran |
 | Source-language profile | The source's language, script, variety and meaning risks used when translating into Persian |

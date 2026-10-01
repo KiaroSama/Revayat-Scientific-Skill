@@ -8,8 +8,17 @@ shares source selection, required-asset checks and delivery across native adapte
 `render-html.py` owns bounded renderer workers; `resource_policy.py` restricts
 browser requests and WeasyPrint fetching to approved local resources.
 
+`tex_ignored_regions()` supplies the shared, escape-aware comment/literal subset
+for source closure and lint. Offsets and CR/LF survive masking; an included file's
+final logical line boundary is mapped to its EOF, leaving resumed parent locations
+intact. Literal examples cannot grant waivers or become assets; genuine listing
+openers remain available to direction checks. This does not interpret arbitrary
+macro expansion or category-code programs.
+
 `document-docx.py` and `docx_package.py` provide native creation and targeted OOXML
-edits. `document-pdf.py`, `pdf_forms.py` and `pdf_outlines.py` reuse PyMuPDF for
+edits. Batch edits index each addressed story once, sort original byte offsets and
+join edited slices once after checking output size. Untouched member bytes and
+archive comments survive; staged packages are reopened before publication. `document-pdf.py`, `pdf_forms.py` and `pdf_outlines.py` reuse PyMuPDF for
 extraction, forms, merging with supported precise outline targets and optional
 Tesseract OCR. `image_review.py` validates exact-asset records only for
 legitimate darkness; other image safety checks remain mandatory.

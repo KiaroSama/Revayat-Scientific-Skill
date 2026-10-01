@@ -49,12 +49,11 @@ report findings and discussion interprets limits; keep each section's role and
 register without adding certainty or invented conclusions. A fluent sentence or
 a model's agreement with itself is not evidence of source fidelity.
 
-Verify DOI, title, author and publication metadata against the cited original or
-an authoritative record when available. If the source bibliography is the only
-record, preserve its entries and mark unverified metadata. Search results and
-other articles' reference lists are leads, not proof. Never complete missing
-citations, results, approvals or disclosures with plausible details. Missing,
-failed and inconclusive checks remain visible until the owner resolves them.
+For citations, use the [citation evidence crosswalk](review.md#citation-evidence-crosswalk):
+reference preservation, local key matching, bibliographic verification and actually
+read claim support are separate outcomes. Preserve original reference identities
+and report proposed corrections separately. Search leads, missing records and
+failed access cannot supply invented metadata or certify claim support.
 
 The workflow applies to any source language. External examples and corpora are
 not bundled; research direction, license, domain and register are checked per

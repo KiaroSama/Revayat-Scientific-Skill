@@ -2,7 +2,6 @@
 from pathlib import Path
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,11 +11,14 @@ SCRIPTS = ROOT / 'skills/revayat-scientific/scripts'
 sys.path.insert(0, str(SCRIPTS))
 from runtime import operation_log
 from tex_source import source_closure
+from processes import run
 
 
 class TexCommandBoundaryTest(unittest.TestCase):
     def setUp(self):
-        self.work = tempfile.TemporaryDirectory(prefix='scientific tex boundary ')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.work = tempfile.TemporaryDirectory(prefix='scientific tex boundary ', dir=scratch)
         self.addCleanup(self.work.cleanup)
         self.root = Path(self.work.name).resolve()
         self.log = operation_log('test-tex-command-boundaries', self.root / 'logs')
@@ -74,7 +76,7 @@ class TexCommandBoundaryTest(unittest.TestCase):
     def test_nested_and_unbraced_include_location_mapping(self):
         nested = self.root / 'nested.tex'
         nested.write_bytes(b'NESTED\n')
-        self.child.write_bytes(('Chapter\n' + '\\' * 3 + 'input nested\nEnd').encode())
+        self.child.write_bytes(('Chapter\n' + '\\' * 3 + 'input nested\nEnd').encode('utf-8'))
         result = self.closure('Start\n' + '\\' * 3 + 'input{chapter}\nFinish')
         self.assertEqual(result.sources, (self.source, self.child, nested))
         self.assertIn('\\\\NESTED', result.text)
@@ -86,7 +88,7 @@ class TexCommandBoundaryTest(unittest.TestCase):
         for child_newline in ('\n', '\r\n'):
             for parent_newline in ('\n', '\r\n'):
                 with self.subTest(child=repr(child_newline), parent=repr(parent_newline)):
-                    self.child.write_bytes(('CHAPTER' + child_newline).encode())
+                    self.child.write_bytes(('CHAPTER' + child_newline).encode('utf-8'))
                     text = 'Intro' + parent_newline + '\\' * 3 + 'input{chapter}' + parent_newline + 'Tail'
                     result = self.closure(text)
                     self.assertEqual(result.text, 'Intro' + parent_newline + '\\\\CHAPTER'
@@ -104,14 +106,11 @@ class TexCommandBoundaryTest(unittest.TestCase):
         text = (r'\documentclass{article}\begin{document}First'
                 + '\\' * 3 + r'input{chapter}\end{document}')
         result = self.closure(text)
-        compiled = subprocess.run(
+        compiled = run(
             ['xelatex', '-no-shell-escape', '-interaction=nonstopmode',
-             '-halt-on-error', self.source.name], cwd=self.root,
-            stdin=subprocess.DEVNULL, capture_output=True, timeout=45)
-        self.assertEqual(compiled.returncode, 0, compiled.stdout.decode(errors='replace'))
-        extracted = subprocess.run(
-            ['pdftotext', str(self.source.with_suffix('.pdf')), '-'],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
+             '-halt-on-error', self.source.name], cwd=self.root, timeout=45)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout)
+        extracted = run(['pdftotext', str(self.source.with_suffix('.pdf')), '-'], timeout=15)
         self.assertEqual(extracted.returncode, 0, extracted.stderr)
         self.assertIn('IncludedUniqueMarker', extracted.stdout)
         self.assertIn('IncludedUniqueMarker', result.text)

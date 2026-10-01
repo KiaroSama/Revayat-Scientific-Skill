@@ -243,8 +243,10 @@ approved parts when resuming.
 
 Follow [review.md](references/review.md): compare every selected source part and target for omissions,
 added claims, changed certainty, wrong quantities and incorrect references.
-Apply the source-location claim and citation checks in
-[evidence-and-terminology.md](references/evidence-and-terminology.md).
+Apply source-location claim checks in
+[evidence-and-terminology.md](references/evidence-and-terminology.md), and record
+citation preservation, key matches, metadata and read claim support separately
+through the [citation crosswalk](references/review.md#citation-evidence-crosswalk).
 Back-translate a small sample into its original language as an additional check,
 not a substitute for source comparison. Use the same terminology revision and
 neighbor context for drafting and review; label actual coverage and error severity.

@@ -29,6 +29,25 @@ that pair, discipline or document format. Published scores belong to the systems
 and evaluation sets in their papers. A reported issue is evidence to investigate,
 not a reproduced defect in every version or renderer.
 
+## Citation-review methods — 2026-10-02
+
+The independently written [citation crosswalk](review.md#citation-evidence-crosswalk)
+separates source preservation, key matching, verified metadata and read claim support.
+Inspected MIT references: K-Dense's [peer review](https://github.com/K-Dense-AI/scientific-agent-skills/blob/ed4cea6cb24b0588f144264125e255ce8ce43f66/skills/peer-review/SKILL.md)
+and [citation management](https://github.com/K-Dense-AI/scientific-agent-skills/blob/ed4cea6cb24b0588f144264125e255ce8ce43f66/skills/citation-management/SKILL.md).
+Only bounded evidence distinctions are adopted; the peer-review Python 3.11+
+tools, citation network clients, editorial decisions and bibliography rewriting
+are not bundled.
+Proprietary document skills were not copied or used to derive this implementation.
+
+The shared TeX scanner remains a bounded literal/comment analysis, not a full
+engine or macro expander. Stable [pylatexenc](https://github.com/phfaist/pylatexenc)
+was assessed rather than added: broader syntax needs equivalent offsets,
+include attribution and native compiler controls before replacing this subset.
+Batch DOCX acceptance uses deterministic traversal/byte-preservation assertions,
+not a cross-machine timing promise. Existing CI logs and artifacts provide evidence;
+no generic evidence service or manuscript upload was added.
+
 ## Persian scientific prose and terminology
 
 | Source | Verified lesson | Scope or license caveat | Adoption in this skill |
