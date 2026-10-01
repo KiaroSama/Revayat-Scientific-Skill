@@ -45,6 +45,30 @@ original language** as an additional diagnostic, then compare with the actual
 original. English pivot agreement or the same model agreeing with itself is not
 independent evidence. Unreadable source material remains unresolved.
 
+### Citation evidence crosswalk
+
+For each reviewed citation, record its original location/key and target location
+in the job's local review ledger. Report these states independently:
+
+| State | Evidence required |
+| --- | --- |
+| Source reference preserved | Compare the original key, identifier, cited target and bibliography entry with the translation |
+| Local key matched | Resolve that key in the supplied bibliography; syntax or a matching key does not verify a publication |
+| Bibliographic record verified | Compare title, authors, identifier and version with the original publication or an authoritative record |
+| Claim support reviewed | Read the cited source and compare its actual evidence and qualifiers with the cited claim |
+
+Mark each state `verified`, `mismatch`, `inconclusive` or `not-performed`, naming
+the material actually read. A resolving DOI alone establishes neither matching
+metadata nor claim support. Failed access is not evidence that a reference is
+invalid. Keep unavailable checks and contradictory evidence visible.
+
+Preserve original keys, ordering and entries. Record any proposed source correction
+as a separate located finding; do not silently rekey, deduplicate, replace a
+preprint or repair the author's bibliography. External checks use public identifiers
+only through an authorized route; unpublished passages and review notes stay local.
+Continue only when required preservation checks are resolved and the remaining
+metadata/support limits are explicitly reported.
+
 ## L2 — Terms and document context
 
 Use the same `terms.tsv` revision used for the draft. Prefer the approved form

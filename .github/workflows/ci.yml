@@ -109,7 +109,7 @@ jobs:
       - name: Install real document toolchain
         run: |
           python -m pip install -r skills/revayat-scientific/requirements.txt
-          python -m pip install WeasyPrint==70.0
+          python -m pip install -r requirements-dev.txt
           sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn libpango-1.0-0 libcairo2
       - name: Literal TeX source-closure regression
         env:

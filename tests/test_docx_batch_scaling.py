@@ -1,6 +1,5 @@
 """Batch DOCX editing must preserve bytes without per-edit whole-story scans."""
 import hashlib
-import logging
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +10,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'skills/revayat-scientific/scripts'))
 import docx_package as package
+from runtime import operation_log
 
 
 def make_package(path, count=10):
@@ -27,7 +27,7 @@ def make_package(path, count=10):
         archive.comment = b'unchanged archive comment'
         for name, value in members.items():
             archive.writestr(name, value)
-    return {name: value.encode() if isinstance(value, str) else value for name,value in members.items()}
+    return {name: value.encode('utf-8') if isinstance(value, str) else value for name,value in members.items()}
 
 
 def edits(count):
@@ -37,18 +37,16 @@ def edits(count):
 
 class DocxBatchScalingTest(unittest.TestCase):
     def setUp(self):
-        self.work = tempfile.TemporaryDirectory(prefix='docx batch ')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.work = tempfile.TemporaryDirectory(prefix='docx batch ', dir=scratch)
         self.addCleanup(self.work.cleanup)
         self.root = Path(self.work.name).resolve()
         self.source, self.output = self.root/'source.docx', self.root/'output.docx'
-        self.log = logging.getLogger(self.id())
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-        self.log.addHandler(handler)
-        self.log.setLevel(logging.INFO)
-        self.addCleanup(self.log.removeHandler, handler)
-        self.addCleanup(handler.close)
-        self.log.info('running synthetic DOCX batch regression')
+        self.logging = operation_log('test-docx-batch', self.root / 'logs')
+        self.logger = self.logging.__enter__()
+        self.addCleanup(self.logging.__exit__, None, None, None)
+        self.logger.info('running test=%s', self._testMethodName)
 
     def test_story_tree_is_walked_once_not_once_per_patch(self):
         make_package(self.source, 300)
@@ -83,9 +81,13 @@ class DocxBatchScalingTest(unittest.TestCase):
             {'part':'word/header1.xml','index':1,'expected':'','text':'Empty filled'},
         ]
         package.edit_package(self.source, self.output, changes)
-        expected = members['word/document.xml']
-        for i in range(1500):
-            expected = expected.replace(f'>Original {i}<'.encode(), f'>ترجمه {i}<'.encode())
+        original_nodes = b''.join(
+            f'<w:p><w:r><w:t>Original {i}</w:t></w:r></w:p>'.encode('utf-8')
+            for i in range(1500))
+        translated_nodes = b''.join(
+            f'<w:p><w:r><w:t>ترجمه {i}</w:t></w:r></w:p>'.encode('utf-8')
+            for i in range(1500))
+        expected = members['word/document.xml'].replace(original_nodes, translated_nodes)
         with zipfile.ZipFile(self.output) as archive:
             self.assertEqual(archive.read('word/document.xml'), expected)
             self.assertEqual(archive.read('word/header1.xml'), members['word/header1.xml'].replace(
@@ -138,7 +140,7 @@ class DocxBatchScalingTest(unittest.TestCase):
     def test_adjacent_empty_and_nonempty_text_nodes(self):
         data = ('<w:document xmlns:w="'+package.W+'"><w:body><w:p><w:r>'
                 '<w:t/><w:t>A &amp; B</w:t><w:t>C</w:t>'
-                '</w:r></w:p></w:body></w:document>').encode()
+                '</w:r></w:p></w:body></w:document>').encode('utf-8')
         parts = make_package(self.source,1)
         parts['word/document.xml'] = data
         with zipfile.ZipFile(self.source,'w') as archive:

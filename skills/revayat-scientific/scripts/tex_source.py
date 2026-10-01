@@ -37,6 +37,11 @@ def masked_tex(text):
     return ''.join(chars)
 
 
+def live_tex(text):
+    """Mask ignored regions and paired control symbols without moving offsets."""
+    return re.sub(r'\\\\', '  ', masked_tex(text))
+
+
 @dataclass
 class SourceClosure:
     text: str
@@ -123,7 +128,7 @@ def source_closure(source, *, root=None):
 
 def plain_tex(text):
     """Keep nested formatted prose; discard mathematical and literal code spans."""
-    text = masked_tex(text)
+    text = live_tex(text)
     body = re.search(r'\\begin\{document\}', text)
     if body:
         text = text[body.end():]

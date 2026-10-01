@@ -1,9 +1,7 @@
 """Protect literal TeX while keeping real prose, assets and waivers visible."""
-import logging
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,26 +9,26 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'skills/revayat-scientific/scripts'))
 from source_model import Source
-from tex_source import source_closure, masked_tex
+from tex_source import masked_tex, plain_tex
+from runtime import operation_log
+from processes import run
 
 
 class TexLexicalRegionsTest(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix='tex lexical ')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.directory = tempfile.TemporaryDirectory(prefix='tex lexical ', dir=scratch)
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
         self.path = self.root / 'main.tex'
-        self.log = logging.getLogger(self.id())
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-        self.log.addHandler(handler)
-        self.log.setLevel(logging.INFO)
-        self.addCleanup(self.log.removeHandler, handler)
-        self.addCleanup(handler.close)
-        self.log.info('running synthetic TeX boundary regression')
+        self.logging = operation_log('test-tex-lexical', self.root / 'logs')
+        self.logger = self.logging.__enter__()
+        self.addCleanup(self.logging.__exit__, None, None, None)
+        self.logger.info('running test=%s', self._testMethodName)
 
     def source(self, body):
-        self.path.write_bytes(('\\begin{document}\n' + body + '\n\\end{document}').encode())
+        self.path.write_bytes(('\\begin{document}\n' + body + '\n\\end{document}').encode('utf-8'))
         return Source(self.path)
 
     def test_inline_literal_is_protected(self):
@@ -131,7 +129,7 @@ class TexLexicalRegionsTest(unittest.TestCase):
 
     def test_fake_document_begin_does_not_end_preamble(self):
         text = '% \\begin{document}\n\\newcommand{\\sample}{كي}\n\\begin{document}\nمتن\n\\end{document}'
-        self.path.write_bytes(text.encode())
+        self.path.write_bytes(text.encode('utf-8'))
         model = Source(self.path)
         self.assertEqual(model.preamble_end, text.rindex(r'\begin{document}') + len(r'\begin{document}'))
         self.assertTrue(model.in_preamble(text.index('كي')))
@@ -160,7 +158,7 @@ class TexLexicalRegionsTest(unittest.TestCase):
     def test_region_offsets_and_newline_styles(self):
         for newline in ('\n', '\r\n'):
             text = ('\\begin{document}' + newline + r'\verb|%|' + ' متن' + newline + r'\end{document}')
-            self.path.write_bytes(text.encode())
+            self.path.write_bytes(text.encode('utf-8'))
             model = Source(self.path)
             pos = model.text.index('متن')
             self.assertFalse(model.is_protected(pos))
@@ -168,6 +166,18 @@ class TexLexicalRegionsTest(unittest.TestCase):
             self.assertEqual(len(masked_tex(text)), len(text))
             self.assertEqual([i for i,c in enumerate(masked_tex(text)) if c == '\n'],
                              [i for i,c in enumerate(text) if c == '\n'])
+
+    def test_plain_prose_respects_backslash_command_parity(self):
+        for count in (2, 4, 6):
+            with self.subTest(count=count):
+                self.assertIn('ParentVisibleMarker', plain_tex('Text' + '\\' * count
+                    + 'en{ParentVisibleMarker} Tail'))
+        for count in (1, 3, 5):
+            with self.subTest(count=count):
+                self.assertNotIn('ParentVisibleMarker', plain_tex('Text' + '\\' * count
+                    + 'en{ParentVisibleMarker} Tail'))
+        self.assertIn('VisibleMarker', plain_tex(r'\verb|%| VisibleMarker'))
+        self.assertNotIn('HiddenMarker', plain_tex(r'\verb|HiddenMarker|'))
 
     def test_real_tex_accepts_literal_graphics_and_keeps_parent_after_eof_comment(self):
         if not (shutil.which('xelatex') and shutil.which('pdftotext')):
@@ -178,13 +188,11 @@ class TexLexicalRegionsTest(unittest.TestCase):
         text = (r'\documentclass{article}\begin{document}' + '\n'
                 + r'\verb|\includegraphics{missing.png}|' + '\n'
                 + r'\input{child} ParentVisibleMarker\end{document}')
-        self.path.write_bytes(text.encode())
-        compiled = subprocess.run(['xelatex', '-no-shell-escape', '-halt-on-error',
-            '-interaction=nonstopmode', self.path.name], cwd=self.root,
-            stdin=subprocess.DEVNULL, capture_output=True, timeout=45)
-        self.assertEqual(compiled.returncode, 0, compiled.stdout.decode(errors='replace'))
-        result = subprocess.run(['pdftotext', str(self.path.with_suffix('.pdf')), '-'],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
+        self.path.write_bytes(text.encode('utf-8'))
+        compiled = run(['xelatex', '-no-shell-escape', '-halt-on-error',
+            '-interaction=nonstopmode', self.path.name], cwd=self.root, timeout=45)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout)
+        result = run(['pdftotext', str(self.path.with_suffix('.pdf')), '-'], timeout=15)
         self.assertEqual(result.returncode, 0)
         self.assertIn('ParentVisibleMarker', result.stdout)
         model = Source(self.path)
