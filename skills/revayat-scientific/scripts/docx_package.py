@@ -22,6 +22,47 @@ R = 'http://schemas.openxmlformats.org/package/2006/relationships'
 C = 'http://schemas.openxmlformats.org/package/2006/content-types'
 MAIN_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'
 STORY = re.compile(r'word/(document|header[0-9]+|footer[0-9]+|footnotes|endnotes|comments)\.xml\Z')
+# OPC assigns secondary story identity by content type, not a conventional name.
+STORY_TYPES = {
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.' + name + '+xml': root
+    for name, root in (('header', 'hdr'), ('footer', 'ftr'), ('footnotes', 'footnotes'),
+                       ('endnotes', 'endnotes'), ('comments', 'comments'))
+}
+
+
+def content_types(root):
+    """Read unambiguous OPC declarations; overrides take precedence over defaults."""
+    overrides, defaults = {}, {}
+    for node in root:
+        if node.tag not in ('{' + C + '}Override', '{' + C + '}Default'):
+            continue
+        override = node.tag == '{' + C + '}Override'
+        key = node.get('PartName' if override else 'Extension')
+        value = node.get('ContentType')
+        destination = overrides if override else defaults
+        if not key or not value or key in destination:
+            raise ValueError('missing or duplicate package content type declaration')
+        destination[key] = value
+    return overrides, defaults
+
+
+def story_parts(roots):
+    """Resolve exactly the supported story subset for both inspection and editing."""
+    overrides, defaults = content_types(roots['[Content_Types].xml'])
+    parts = set()
+    for part, root in roots.items():
+        declared = overrides.get('/' + part, defaults.get(part.rsplit('.', 1)[-1]))
+        expected = STORY_TYPES.get(declared)
+        if expected is not None:
+            if root.tag != '{' + W + '}' + expected:
+                raise ValueError('story root disagrees with its declared content type')
+            parts.add(part)
+        elif STORY.fullmatch(part):
+            # Keep the existing canonical-name subset for legacy/generic XML parts.
+            parts.add(part)
+    return parts
+
+
 MAX_TOTAL = 256 * 1024 * 1024
 MAX_MEMBER = 64 * 1024 * 1024
 MAX_XML = 16 * 1024 * 1024
@@ -80,14 +121,18 @@ def read_package(path):
     document = roots['word/document.xml']
     if document.tag != '{' + W + '}document' or document.find('{' + W + '}body') is None:
         raise ValueError('unsupported WordprocessingML; convert Strict OOXML to a Transitional copy')
-    types = {node.get('PartName'): node.get('ContentType')
-             for node in roots['[Content_Types].xml'] if node.tag == '{' + C + '}Override'}
-    defaults = {node.get('Extension'): node.get('ContentType')
-                for node in roots['[Content_Types].xml'] if node.tag == '{' + C + '}Default'}
-    for name in members:
-        if (name != '[Content_Types].xml' and not name.endswith('/')
-                and not types.get('/' + name) and not defaults.get(name.rsplit('.', 1)[-1])):
+    types, defaults = content_types(roots['[Content_Types].xml'])
+    for name, data in members.items():
+        if name == '[Content_Types].xml' or name.endswith('/'):
+            continue
+        declared = types.get('/' + name, defaults.get(name.rsplit('.', 1)[-1]))
+        if not declared:
             raise ValueError('archive member has no declared content type')
+        if declared in STORY_TYPES and name not in roots:
+            # A valid story may use a non-.xml suffix. Apply the same bounded,
+            # UTF-8, no-DTD parser instead of silently omitting that part.
+            roots[name] = _xml(data)
+    story_parts(roots)
     main_type = types.get('/word/document.xml', '')
     if main_type not in (MAIN_TYPE, 'application/vnd.ms-word.document.macroEnabled.main+xml'):
         raise ValueError('unsupported main document content type')
@@ -135,11 +180,12 @@ def read_package(path):
 
 def inspect_package(path):
     _, members, roots, relationships, unsupported, _ = read_package(path)
+    supported_stories = story_parts(roots)
     nodes, sections, structures = [], [], {}
     counted = ('tbl', 'drawing', 'fldSimple', 'fldChar', 'ins', 'del', 'commentReference',
                'footnoteReference', 'endnoteReference', 'hyperlink', 'oMath')
     for part, root in roots.items():
-        if STORY.fullmatch(part):
+        if part in supported_stories:
             for index, node in enumerate(root.iter('{' + W + '}t')):
                 nodes.append({'part': part, 'index': index, 'text': node.text or ''})
         for node in root.iter():
@@ -230,6 +276,7 @@ def edit_package(source, destination, patches, protected_sources=()):
     destination = validate_destination(destination, protected_sources)
     entries, members, roots, _, unsupported, comment = read_package(source)
     require_editable(unsupported)
+    supported_stories = story_parts(roots)
     if not isinstance(patches, list) or not patches or len(patches) > 100000:
         raise ValueError('patch must be a nonempty array of at most 100000 edits')
     edits, seen, node_index = {}, set(), {}
@@ -237,7 +284,7 @@ def edit_package(source, destination, patches, protected_sources=()):
         if not isinstance(patch, dict) or set(patch) != {'part', 'index', 'expected', 'text'}:
             raise ValueError('patch needs exactly part, index, expected and text')
         part, index, expected, text = (patch[key] for key in ('part', 'index', 'expected', 'text'))
-        if (not isinstance(part, str) or not STORY.fullmatch(part) or part not in roots
+        if (not isinstance(part, str) or part not in supported_stories or part not in roots
                 or type(index) is not int or index < 0
                 or not isinstance(expected, str) or not isinstance(text, str)):
             raise ValueError('invalid patch address or text type')

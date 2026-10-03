@@ -13,12 +13,18 @@ for source closure and lint. Offsets and CR/LF survive masking; an included file
 final logical line boundary is mapped to its EOF, leaving resumed parent locations
 intact. Literal examples cannot grant waivers or become assets; genuine listing
 openers remain available to direction checks. This does not interpret arbitrary
-macro expansion or category-code programs.
+macro expansion or category-code programs. Completed source closures also preindex
+segment starts and each original text snapshot's line breaks for binary-search
+location queries. Compact numeric arrays keep the newline index bounded without
+repeated prefix scans; original source bytes and EOF attribution do not change.
 
 `document-docx.py` and `docx_package.py` provide native creation and targeted OOXML
 edits. Batch edits index each addressed story once, sort original byte offsets and
 join edited slices once after checking output size. Untouched member bytes and
-archive comments survive; staged packages are reopened before publication. `document-pdf.py`, `pdf_forms.py` and `pdf_outlines.py` reuse PyMuPDF for
+archive comments survive; staged packages are reopened before publication. Secondary
+DOCX story discovery and edit authorization share declared-content-type resolution,
+including valid noncanonical part names and suffixes. OCR layers are checked for
+all painting operations before overlay, not only for image or visible-text objects. `document-pdf.py`, `pdf_forms.py` and `pdf_outlines.py` reuse PyMuPDF for
 extraction, forms, merging with supported precise outline targets and optional
 Tesseract OCR. `image_review.py` validates exact-asset records only for
 legitimate darkness; other image safety checks remain mandatory.
@@ -49,3 +55,9 @@ build verification does not perform those comparisons automatically. Raster crop
 use a requested minimum DPI and preserve higher embedded-image sampling, with a
 pixel-allocation limit instead of silent downsampling. Research references record
 adopted lessons without bundling third-party code, corpora or model weights.
+
+`tools/check-commit-identity.py` verifies stored author and committer emails. PR CI
+checks only commits introduced relative to its base; this cannot certify excluded
+history. Run the tool without `--base` to check all history reachable from `--head`
+when performing the owner-required, backed-up identity normalization. A mailmap
+display change does not satisfy the stored-identity policy.

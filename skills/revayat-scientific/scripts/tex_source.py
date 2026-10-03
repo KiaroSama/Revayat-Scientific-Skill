@@ -1,6 +1,7 @@
 """Bounded literal TeX closure and prose extraction, without executing TeX."""
-from bisect import bisect_right
-from dataclasses import dataclass
+from array import array
+from bisect import bisect_left, bisect_right
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 
@@ -48,12 +49,30 @@ class SourceClosure:
     segments: list
     sources: tuple
 
+    _segment_starts: tuple = field(init=False, repr=False)
+    _line_breaks: dict = field(init=False, repr=False)
+
+    def __post_init__(self):
+        # A closure is a completed snapshot. Index each original text object once;
+        # the same path can occur with a different snapshot in a constructed closure.
+        self._segment_starts = tuple(segment[0] for segment in self.segments)
+        self._line_breaks = {}
+        for _, _, _, original in self.segments:
+            identity = id(original)
+            if identity not in self._line_breaks:
+                self._line_breaks[identity] = array(
+                    'I' if len(original) <= 0xFFFFFFFF else 'Q',
+                    (match.start() for match in re.finditer('\n', original)))
+
     def location(self, offset):
         if not self.segments:
             return self.sources[0], 1
-        starts = [segment[0] for segment in self.segments]
-        start, path, original_offset, original = self.segments[max(0, bisect_right(starts, offset) - 1)]
-        return path, original.count('\n', 0, original_offset + offset - start) + 1
+        index = max(0, bisect_right(self._segment_starts, offset) - 1)
+        start, path, original_offset, original = self.segments[index]
+        position = original_offset + offset - start
+        # Match str.count's slice endpoint, including its negative/clamped bounds.
+        position = max(0, len(original) + position) if position < 0 else min(position, len(original))
+        return path, bisect_left(self._line_breaks[id(original)], position) + 1
 
 
 def source_closure(source, *, root=None):

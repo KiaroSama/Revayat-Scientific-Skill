@@ -127,7 +127,11 @@ derivative. Temporary OCR rasters are not replacement figures. `--dpi` accepts
 timeout bounds the complete operation and owns descendant processes.
 
 The text layer must be a fresh, valid, single-page invisible-text PDF with matching
-dimensions. Nonzero backend exit, missing output, visible text or a mismatched
+dimensions. The ordered painting-operation log may contain only invisible text;
+filled/stroked paths, shading, images and visible text are refused, including
+painting inside nested PDF form objects. Absence of image objects alone is not
+proof that the layer is nonpainting. These checks run before each overlay, and a
+bad later layer cannot replace a previously approved destination. Nonzero backend exit, missing output, visible text or a mismatched
 page fails without replacing the destination. No recognized text on any candidate
 page fails; individual unrecognized pages produce explicit review warnings.
 OCR success does not verify language accuracy or scientific notation. Review

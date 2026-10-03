@@ -105,3 +105,23 @@ direction, scientific domain and license of the specific material. Add only a
 verified lesson that changes a real translation decision. Keep unresolved resource
 gaps explicit. Source fidelity, original scientific figures and complete coverage
 remain required even when a draft reads smoothly or passes mechanical checks.
+
+
+## Format-identity and nonpainting-layer audit (2026-10-03)
+
+These are adopted format/API lessons, not third-party code or model imports.
+
+| Primary source | Decision applied here | Boundary |
+| --- | --- | --- |
+| [PyMuPDF operation log](https://pymupdf.readthedocs.io/en/latest/functions.html#Page.get_bboxlog), [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF) | Verify that an OCR overlay contains only invisible text; add path/shading/nested-form refusal and unchanged-render controls. | OCR confidence and semantic correctness still need source comparison. No second OCR engine is made mandatory. |
+| [Open XML header relationships](https://learn.microsoft.com/en-us/office/open-xml/word/how-to-replace-the-header-in-a-word-processing-document), [Open XML SDK](https://github.com/dotnet/Open-XML-SDK), [python-docx](https://github.com/python-openxml/python-docx) | Resolve supported secondary stories by declared package type rather than conventional generated filenames; verify identical untouched package members and actual Writer rendering. | This remains a bounded Transitional OOXML subset, not full-schema or all-viewer certification. |
+| [Python bisect performance notes](https://docs.python.org/3.10/library/bisect.html#performance-notes), [Hypothesis](https://github.com/HypothesisWorks/hypothesis) | Precompute location keys and compact newline indexes; use exhaustive-offset differential fixtures and deterministic traversal assertions. | Tests use the existing standard-library unittest harness; no timing threshold or new property-test dependency is required. |
+| [Spec Kit](https://github.com/github/spec-kit) | Keep maintenance research, requirements, task evidence and final convergence in the owner's selected local feature and configured chain. | Local Rules, hooks and installed commands govern the actual sequence; this reference does not replace or publish them. |
+
+Larger layout pipelines such as [Docling](https://github.com/docling-project/docling),
+[BabelDOC](https://github.com/funstory-ai/BabelDOC) and
+[PDFMathTranslate-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next)
+remain optional comparison candidates, not substitutes for byte-preserving edits
+or verified Persian rendering. Evaluate them on the same source-located corpus,
+including equations, captions, units, RTL and figure fidelity; record runtime,
+model-weight licensing and hardware costs separately before choosing an adapter.

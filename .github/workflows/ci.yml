@@ -110,7 +110,7 @@ jobs:
         run: |
           python -m pip install -r skills/revayat-scientific/requirements.txt
           python -m pip install -r requirements-dev.txt
-          sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn libpango-1.0-0 libcairo2
+          sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn libpango-1.0-0 libcairo2 libreoffice-writer
       - name: Literal TeX source-closure regression
         env:
           SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
@@ -123,6 +123,11 @@ jobs:
           SCIENTIFIC_RENDER: '1'
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
         run: python tools/run-check.py --timeout 480 --idle-timeout 150 -- python -B -m unittest discover -s tests -p 'test_scientific_render.py' -v
+      - name: Secondary DOCX story rendering
+        env:
+          SCIENTIFIC_REQUIRE_DOCX_RENDER: '1'
+          SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
+        run: python tools/run-check.py --timeout 180 --idle-timeout 90 -- python -B -m unittest discover -s tests -p 'test_docx_story_render.py' -v
       - name: Upstream mechanical and rendering regressions
         id: regressions
         env:
@@ -162,9 +167,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
+      - name: Check introduced commit identities
+        if: github.event_name == 'pull_request'
+        env:
+          IDENTITY_BASE: ${{ github.event.pull_request.base.sha }}
+          IDENTITY_HEAD: ${{ github.event.pull_request.head.sha }}
+        shell: python
+        run: |
+          import os, subprocess, sys
+          raise SystemExit(subprocess.call([
+              sys.executable, 'tools/check-commit-identity.py',
+              '--base', os.environ['IDENTITY_BASE'], '--head', os.environ['IDENTITY_HEAD']]))
       - name: Install quality tools
         run: python -m pip install -r requirements-dev.txt
       - name: Verify and install actionlint

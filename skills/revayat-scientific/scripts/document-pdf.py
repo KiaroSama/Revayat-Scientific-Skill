@@ -293,6 +293,10 @@ def ocr_pdf(source, destination, language, dpi, timeout, logger):
                         if (abs(layer[0].rect.width - page.rect.width) > 1
                                 or abs(layer[0].rect.height - page.rect.height) > 1):
                             raise ValueError('OCR text layer does not match source page dimensions')
+                        # Invisible text does not make a mixed-content layer safe:
+                        # paths, shadings and nested form painting can overwrite data.
+                        if any(kind != 'ignore-text' for kind, _ in layer[0].get_bboxlog()):
+                            raise ValueError('OCR text layer contains visible painting operations')
                         traces = layer[0].get_texttrace()
                         if any(span['type'] != 3 for span in traces):
                             raise ValueError('OCR text layer contains visible text')
