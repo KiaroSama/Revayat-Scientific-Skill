@@ -36,8 +36,8 @@ and macro-enabled-main guards. Content-type comparison for this restriction is
 ASCII case-insensitive; overrides still take precedence over defaults.
 
 The known set covers package signature origin, XML signature and certificate
-parts, and VBA project, legacy project signature and agile project signature
-metadata. It is not an exhaustive malware detector. Unknown custom XML is not
+parts, and VBA project, legacy, agile and V3 project signature
+metadata, including their version-specific relationship identifiers. It is not an exhaustive malware detector. Unknown custom XML is not
 classified as a restricted feature merely because it contains similar words.
 Restricted external relationships are never permission to fetch their targets.
 
@@ -53,7 +53,7 @@ packages exercise classification/refusal, not cryptographic authentication.
 The packaging output is forbidden from the checkout's `.git` control path, the
 actual Git directory, a worktree's shared directory, and Git-resolved index,
 object-store and split-index paths. This includes relocated metadata outside the
-checkout. Missing or ambiguous Git path resolution is a failed preflight, not an
+checkout and an explicitly selected `GIT_DIR` even without a local gitfile. Missing or ambiguous Git path resolution is a failed preflight, not an
 empty protection list. Exported source trees also reserve their `.git` path.
 No history or repository metadata is rewritten by the package command. Existing
 source-alias checks, staged ZIP validation and recoverable publication remain in
@@ -70,6 +70,10 @@ place. Ordinary `dist/` and independent output paths remain supported.
   [VBA project identity](https://github.com/dotnet/Open-XML-SDK/blob/main/data/parts/VbaProjectPart.json),
   and [Microsoft's agile VBA signature definition](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/301bfe6b-5acc-4223-81e6-4ee2cc3fc09b):
   treat declared package types/relationships as identities, not default filenames.
+- [OfficeIMO signature profile identities](https://github.com/EvotecIT/OfficeIMO/blob/master/OfficeIMO.Word/Internal/MacroSignatures/WordMacroProjectSignatureInspector.cs):
+  include the documented canonical Agile/V3 relationship identifiers rather than
+  assuming every VBA relation uses the legacy 2006 namespace. No signature
+  verification implementation is copied or claimed here.
 - [Git path resolution](https://git-scm.com/docs/git-rev-parse): query active
   private/common and relocated metadata paths instead of assuming `.git/` is a
   directory beside the source. Tests use disposable local repositories only.

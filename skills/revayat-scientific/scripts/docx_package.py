@@ -90,9 +90,13 @@ SIGNATURE_RELATIONSHIPS = {
     for suffix in ('origin', 'signature', 'certificate')
 }
 VBA_TYPES = {'application/vnd.ms-office.' + name
-             for name in ('vbaProject', 'vbaProjectSignature', 'vbaProjectSignatureAgile')}
+             for name in ('vbaProject', 'vbaProjectSignature', 'vbaProjectSignatureAgile', 'vbaProjectSignatureV3')}
 VBA_RELATIONSHIPS = {'http://schemas.microsoft.com/office/2006/relationships/' + name
                      for name in ('vbaProject', 'vbaProjectSignature', 'vbaProjectSignatureAgile')}
+VBA_RELATIONSHIPS.update({
+    'http://schemas.microsoft.com/office/2014/relationships/vbaProjectSignatureAgile',
+    'http://schemas.microsoft.com/office/2020/07/relationships/vbaProjectSignatureV3',
+})
 
 
 MAX_TOTAL = 256 * 1024 * 1024

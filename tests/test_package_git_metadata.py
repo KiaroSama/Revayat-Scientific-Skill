@@ -130,5 +130,23 @@ class PackageGitMetadataTest(unittest.TestCase):
             self.assert_refused([external_index, external_objects / 'new.skill'])
 
 
+    def test_explicit_git_dir_without_gitfile_is_protected(self):
+        metadata = self.root / 'explicit-metadata'
+        self.git('init', '--quiet', '--separate-git-dir', str(metadata))
+        (self.checkout / '.git').unlink()
+        with mock.patch.dict(os.environ, {'GIT_DIR': str(metadata),
+                                         'GIT_WORK_TREE': str(self.checkout)}):
+            self.assert_refused([metadata / 'config', metadata / 'HEAD', metadata / 'objects' / 'new.skill'])
+            self.assertEqual(self.package(self.checkout / 'dist' / 'result.skill'), 0)
+
+    def test_invalid_explicit_git_dir_is_not_treated_as_an_export(self):
+        target = self.checkout / 'previous.skill'
+        target.write_bytes(b'previous approved delivery')
+        with mock.patch.dict(os.environ, {'GIT_DIR': str(self.root / 'missing-metadata')}):
+            with self.assertRaises(ValueError):
+                self.package(target)
+        self.assertEqual(target.read_bytes(), b'previous approved delivery')
+
+
 if __name__ == '__main__':
     unittest.main()

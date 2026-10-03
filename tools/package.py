@@ -2,6 +2,7 @@
 """Create an installable .skill ZIP without replacing any package input."""
 import argparse
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -19,7 +20,7 @@ def protected_inputs(payload):
     """Protect checkout sources and the known build inputs in exported archives."""
     sources = [path for path, _ in payload]
     sources.extend((Path(__file__), Path(installer.__file__)))
-    if (ROOT / '.git').exists():
+    if (ROOT / '.git').exists() or os.environ.get('GIT_DIR'):
         # This also protects tracked documentation/configuration outside the payload.
         result = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT,
                                 stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
@@ -33,7 +34,7 @@ def git_metadata_roots():
     """Protect the gitfile plus real private/common metadata, including worktrees."""
     reserved = ROOT / '.git'
     roots = [reserved.resolve()]
-    if not reserved.exists():
+    if not reserved.exists() and not os.environ.get('GIT_DIR'):
         return roots
     result = subprocess.run(['git', 'rev-parse', '--absolute-git-dir', '--git-common-dir',
                              '--git-path', 'index', '--git-path', 'objects', '--shared-index-path'],

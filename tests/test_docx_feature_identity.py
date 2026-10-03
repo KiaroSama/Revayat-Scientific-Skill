@@ -27,6 +27,10 @@ FEATURES = (
      VBA_REL + 'Signature', b'opaque synthetic VBA signature fixture'),
     ('agile-signature', 'application/vnd.ms-office.vbaProjectSignatureAgile',
      VBA_REL + 'SignatureAgile', b'opaque synthetic agile signature fixture'),
+    ('agile-canonical', 'application/vnd.ms-office.vbaProjectSignatureAgile',
+     'http://schemas.microsoft.com/office/2014/relationships/vbaProjectSignatureAgile', b'synthetic agile metadata'),
+    ('v3-signature', 'application/vnd.ms-office.vbaProjectSignatureV3',
+     'http://schemas.microsoft.com/office/2020/07/relationships/vbaProjectSignatureV3', b'synthetic V3 metadata'),
 )
 
 
