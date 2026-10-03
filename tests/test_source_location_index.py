@@ -1,15 +1,14 @@
 """Repeated source attribution must use indexes, preserving exact old locations."""
 from bisect import bisect_right
-import logging
 from pathlib import Path
 import sys
 import tempfile
-import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'skills/revayat-scientific/scripts'))
 from tex_source import SourceClosure, source_closure
+from runtime import operation_log
 
 
 def reference(closure,offset):
@@ -22,18 +21,14 @@ def reference(closure,offset):
 
 class SourceLocationIndexTest(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory(prefix='source index audit ')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix='source index audit ', dir=scratch)
         self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name).resolve()
-        self.log=logging.getLogger(self.id())
-        handler=logging.StreamHandler()
-        formatter=logging.Formatter('%(asctime)s UTC [%(levelname)s] %(message)s')
-        formatter.converter=time.gmtime
-        handler.setFormatter(formatter)
-        self.log.addHandler(handler)
-        self.log.setLevel(logging.DEBUG)
-        self.addCleanup(self.log.removeHandler,handler)
-        self.addCleanup(handler.close)
+        self.scope = operation_log('test-source-location-index', self.root / 'logs')
+        self.log = self.scope.__enter__()
+        self.addCleanup(self.scope.__exit__, None, None, None)
         self.log.info('running test=%s',self._testMethodName)
 
     def test_repeated_queries_do_not_rescan_source_prefixes(self):
@@ -65,8 +60,8 @@ class SourceLocationIndexTest(unittest.TestCase):
         for a in ('\n','\r\n'):
             for b in ('\n','\r\n'):
                 with self.subTest(parent=repr(a),child=repr(b)):
-                    source.write_bytes(('Intro'+a+r'\input{child}'+a+r'\input{child} Tail').encode())
-                    (self.root/'child.tex').write_bytes(('Child'+b+r'\input{nested} End').encode())
+                    source.write_bytes(('Intro'+a+r'\input{child}'+a+r'\input{child} Tail').encode('utf-8'))
+                    (self.root/'child.tex').write_bytes(('Child'+b+r'\input{nested} End').encode('utf-8'))
                     (self.root/'nested.tex').write_bytes(b'% EOF comment')
                     closure=source_closure(source)
                     for offset in range(len(closure.text)+1):
@@ -80,7 +75,7 @@ class SourceLocationIndexTest(unittest.TestCase):
         empty=source_closure(path)
         self.assertEqual(empty.location(0),(path,1))
         for text in ('x\ny','\n','\r\n','no newline','\n\n\n'):
-            path.write_bytes(text.encode())
+            path.write_bytes(text.encode('utf-8'))
             closure=source_closure(path)
             for offset in range(-len(text)-2,len(text)+3):
                 self.assertEqual(closure.location(offset),reference(closure,offset))

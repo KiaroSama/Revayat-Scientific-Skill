@@ -25,7 +25,9 @@ class DocxStoryRenderTest(unittest.TestCase):
     def test_two_page_renamed_header_footer_matches_independent_expected_render(self):
         office=shutil.which('libreoffice') or shutil.which('soffice')
         self.assertIsNotNone(office,'the required DOCX rendering tier needs LibreOffice Writer')
-        with tempfile.TemporaryDirectory(prefix='docx story render ') as directory:
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='docx story render ', dir=scratch) as directory:
             root=Path(directory).resolve()
             with operation_log('test-docx-story-render',root/'logs') as logger:
                 logger.info('creating synthetic two-page source and independent expected bytes')
@@ -47,9 +49,9 @@ class DocxStoryRenderTest(unittest.TestCase):
                 for old,new in aliases.items():
                     members[new]=members.pop(old)
                     members['[Content_Types].xml']=members['[Content_Types].xml'].replace(
-                        ('/'+old).encode(),('/'+new).encode())
+                        ('/'+old).encode('utf-8'),('/'+new).encode('utf-8'))
                     members['word/_rels/document.xml.rels']=members['word/_rels/document.xml.rels'].replace(
-                        ('Target="'+old[5:]+'"').encode(),('Target="'+new[5:]+'"').encode())
+                        ('Target="'+old[5:]+'"').encode('utf-8'),('Target="'+new[5:]+'"').encode('utf-8'))
                 source,expected,actual=root/'source.docx',root/'expected.docx',root/'actual.docx'
                 def write(path,values):
                     with zipfile.ZipFile(path,'w') as archive:
@@ -61,7 +63,7 @@ class DocxStoryRenderTest(unittest.TestCase):
                 for part in aliases.values():
                     old='HeaderOriginal' if 'first' in part else 'FooterOriginal'
                     new=old.replace('Original','Updated')
-                    expected_members[part]=members[part].replace(old.encode(),new.encode())
+                    expected_members[part]=members[part].replace(old.encode('utf-8'),new.encode('utf-8'))
                     nodes=[n for n in inspect_package(source)['text_nodes'] if n['part']==part]
                     self.assertEqual(len(nodes),1)
                     patches.append({'part':part,'index':nodes[0]['index'],'expected':old,'text':new})

@@ -1,12 +1,9 @@
 """An OCR layer must never repaint scientific source content, even via forms."""
 import importlib.util
-import logging
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 from unittest import mock
 
@@ -15,6 +12,7 @@ import pymupdf
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT/'skills/revayat-scientific/scripts'
 sys.path.insert(0,str(SCRIPTS))
+from runtime import operation_log
 SPEC=importlib.util.spec_from_file_location('audit_ocr_pipeline',SCRIPTS/'document-pdf.py')
 PDF=importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PDF)
@@ -51,19 +49,15 @@ def make_layer(path,painting=None,width=144,height=144):
 
 class OcrPaintingIntegrityTest(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory(prefix='ocr painting audit ')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix='ocr painting audit ', dir=scratch)
         self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name).resolve()
         self.source,self.output=self.root/'source.pdf',self.root/'output.pdf'
-        self.log=logging.getLogger(self.id())
-        handler=logging.StreamHandler()
-        formatter=logging.Formatter('%(asctime)s UTC [%(levelname)s] %(message)s')
-        formatter.converter=time.gmtime
-        handler.setFormatter(formatter)
-        self.log.addHandler(handler)
-        self.log.setLevel(logging.DEBUG)
-        self.addCleanup(self.log.removeHandler,handler)
-        self.addCleanup(handler.close)
+        self.scope = operation_log('test-ocr-painting-integrity', self.root / 'logs')
+        self.log = self.scope.__enter__()
+        self.addCleanup(self.scope.__exit__, None, None, None)
         self.log.info('running test=%s',self._testMethodName)
         self.fixture()
 

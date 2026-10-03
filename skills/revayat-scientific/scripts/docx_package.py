@@ -30,6 +30,14 @@ STORY_TYPES = {
 }
 
 
+def _ascii_lower(value):
+    return value.translate(str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'))
+
+
+def declared_type(part, overrides, defaults):
+    return overrides.get(_ascii_lower('/' + part), defaults.get(_ascii_lower(part.rsplit('.', 1)[-1])))
+
+
 def content_types(root):
     """Read unambiguous OPC declarations; overrides take precedence over defaults."""
     overrides, defaults = {}, {}
@@ -40,7 +48,10 @@ def content_types(root):
         key = node.get('PartName' if override else 'Extension')
         value = node.get('ContentType')
         destination = overrides if override else defaults
-        if not key or not value or key in destination:
+        if not key or not value:
+            raise ValueError('missing or duplicate package content type declaration')
+        key = _ascii_lower(key)
+        if key in destination:
             raise ValueError('missing or duplicate package content type declaration')
         destination[key] = value
     return overrides, defaults
@@ -49,16 +60,22 @@ def content_types(root):
 def story_parts(roots):
     """Resolve exactly the supported story subset for both inspection and editing."""
     overrides, defaults = content_types(roots['[Content_Types].xml'])
-    parts = set()
+    parts = {'word/document.xml'}
     for part, root in roots.items():
-        declared = overrides.get('/' + part, defaults.get(part.rsplit('.', 1)[-1]))
+        declared = declared_type(part, overrides, defaults)
         expected = STORY_TYPES.get(declared)
         if expected is not None:
             if root.tag != '{' + W + '}' + expected:
                 raise ValueError('story root disagrees with its declared content type')
             parts.add(part)
-        elif STORY.fullmatch(part):
-            # Keep the existing canonical-name subset for legacy/generic XML parts.
+        elif declared in ('application/xml', 'text/xml') and STORY.fullmatch(part):
+            # Filename compatibility cannot override an explicit non-story type.
+            name = STORY.fullmatch(part)[1]
+            expected = ('document' if name == 'document' else
+                        'hdr' if name.startswith('header') else
+                        'ftr' if name.startswith('footer') else name)
+            if root.tag != '{' + W + '}' + expected:
+                raise ValueError('legacy story root disagrees with its canonical name')
             parts.add(part)
     return parts
 
@@ -125,7 +142,7 @@ def read_package(path):
     for name, data in members.items():
         if name == '[Content_Types].xml' or name.endswith('/'):
             continue
-        declared = types.get('/' + name, defaults.get(name.rsplit('.', 1)[-1]))
+        declared = declared_type(name, types, defaults)
         if not declared:
             raise ValueError('archive member has no declared content type')
         if declared in STORY_TYPES and name not in roots:
@@ -133,7 +150,7 @@ def read_package(path):
             # UTF-8, no-DTD parser instead of silently omitting that part.
             roots[name] = _xml(data)
     story_parts(roots)
-    main_type = types.get('/word/document.xml', '')
+    main_type = declared_type('word/document.xml', types, defaults)
     if main_type not in (MAIN_TYPE, 'application/vnd.ms-word.document.macroEnabled.main+xml'):
         raise ValueError('unsupported main document content type')
     relationships = []

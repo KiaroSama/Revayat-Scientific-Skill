@@ -18,7 +18,9 @@ SPEC.loader.exec_module(IDENTITY)
 
 class CommitIdentityTest(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory(prefix='identity fixture ')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.temp=tempfile.TemporaryDirectory(prefix='identity fixture ', dir=scratch)
         self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name).resolve()
         self.scope=operation_log('test-commit-identity',self.root/'logs')

@@ -1,9 +1,7 @@
 """Address secondary Word stories by declared type, not a generated filename."""
-import logging
 from pathlib import Path
 import sys
 import tempfile
-import time
 import unittest
 from unittest import mock
 import zipfile
@@ -11,6 +9,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'skills/revayat-scientific/scripts'))
 import docx_package as package
+from runtime import operation_log
 
 KINDS = {'header': 'hdr', 'footer': 'ftr', 'footnotes': 'footnotes',
          'endnotes': 'endnotes', 'comments': 'comments'}
@@ -19,19 +18,15 @@ TYPE_PREFIX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.'
 
 class DocxStoryPartsTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='docx story audit ')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix='docx story audit ', dir=scratch)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         self.source, self.output = self.root/'source.docx', self.root/'result.docx'
-        self.log = logging.getLogger(self.id())
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s UTC [%(levelname)s] %(message)s')
-        formatter.converter = time.gmtime
-        handler.setFormatter(formatter)
-        self.log.addHandler(handler)
-        self.log.setLevel(logging.DEBUG)
-        self.addCleanup(self.log.removeHandler, handler)
-        self.addCleanup(handler.close)
+        self.scope = operation_log('test-docx-story-parts', self.root / 'logs')
+        self.log = self.scope.__enter__()
+        self.addCleanup(self.scope.__exit__, None, None, None)
         self.log.info('running test=%s', self._testMethodName)
 
     def fixture(self, kind='header', part='word/stories/first.xml', *, generic=False,
@@ -39,7 +34,7 @@ class DocxStoryPartsTest(unittest.TestCase):
         mime = 'application/xml' if generic else TYPE_PREFIX + kind + '+xml'
         node = KINDS[kind] if root is None else root
         raw = ('<w:' + node + ' xmlns:w="' + package.W + '"><w:p><w:r>'
-               '<w:t>Original</w:t></w:r></w:p></w:' + node + '>').encode()
+               '<w:t>Original</w:t></w:r></w:p></w:' + node + '>').encode('utf-8')
         decl = ('<Default Extension="'+part.rsplit('.',1)[-1]+'" ContentType="'+mime+'"/>'
                 if default else '<Override PartName="/'+part+'" ContentType="'+mime+'"/>')
         types = ('<Types xmlns="'+package.C+'">'
@@ -48,15 +43,15 @@ class DocxStoryPartsTest(unittest.TestCase):
                  '<Override PartName="/word/document.xml" ContentType="'+package.MAIN_TYPE+'"/>'
                  +decl+extra_type+'</Types>')
         members = {
-            '[Content_Types].xml':types.encode(),
+            '[Content_Types].xml':types.encode('utf-8'),
             '_rels/.rels': ('<Relationships xmlns="'+package.R+'"><Relationship Id="r1" '
                 'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
-                'Target="word/document.xml"/></Relationships>').encode(),
+                'Target="word/document.xml"/></Relationships>').encode('utf-8'),
             'word/document.xml': ('<w:document xmlns:w="'+package.W+'"><w:body><w:p><w:r>'
-                '<w:t>Body</w:t></w:r></w:p></w:body></w:document>').encode(),
+                '<w:t>Body</w:t></w:r></w:p></w:body></w:document>').encode('utf-8'),
             'word/_rels/document.xml.rels': ('<Relationships xmlns="'+package.R+'"><Relationship Id="s1" '
                 'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'+kind+'" '
-                'Target="/'+part+'"/></Relationships>').encode(),
+                'Target="/'+part+'"/></Relationships>').encode('utf-8'),
             part: raw if story is None else story,
         }
         self.write(members)
@@ -90,7 +85,7 @@ class DocxStoryPartsTest(unittest.TestCase):
                     self.assertEqual(archive.comment,b'untouched package comment')
                     for name,data in before.items():
                         expected=(data.replace(b'<w:t>Original</w:t>',
-                            '<w:t xml:space="preserve"> متن &amp; &lt;x&gt; </w:t>'.encode())
+                            '<w:t xml:space="preserve"> متن &amp; &lt;x&gt; </w:t>'.encode('utf-8'))
                             if name==part else data)
                         self.assertEqual(archive.read(name),expected)
                 self.assertEqual(self.source.read_bytes(),source_bytes)
@@ -102,6 +97,38 @@ class DocxStoryPartsTest(unittest.TestCase):
         self.fixture(part=part,default=True,
             extra_type='<Override PartName="/'+part+'" ContentType="application/xml"/>')
         self.assertNotIn(part,{n['part'] for n in package.inspect_package(self.source)['text_nodes']})
+
+    def test_content_type_keys_are_ascii_insensitive_and_unique(self):
+        part = 'word/stories/first.hdr'
+        variants = ('override', 'default', 'duplicate-override', 'duplicate-default', 'main-default')
+        for variant in variants:
+            with self.subTest(variant=variant):
+                members = self.fixture(part=part, default=variant in ('default', 'duplicate-default'))
+                types = members['[Content_Types].xml']
+                if variant == 'override':
+                    types = types.replace(b'PartName="/word/stories/first.hdr"',
+                                          b'PartName="/WORD/STORIES/FIRST.HDR"')
+                    types = types.replace(b'PartName="/word/document.xml"', b'PartName="/WORD/DOCUMENT.XML"')
+                elif variant == 'default':
+                    types = types.replace(b'Extension="hdr"', b'Extension="HDR"')
+                elif variant.startswith('duplicate'):
+                    declaration = ('<Override PartName="/WORD/STORIES/FIRST.HDR" ContentType="application/xml"/>'
+                                   if variant == 'duplicate-override' else
+                                   '<Default Extension="HDR" ContentType="application/xml"/>')
+                    types = types.replace(b'</Types>', declaration.encode('utf-8') + b'</Types>')
+                else:
+                    types = types.replace(b'ContentType="application/xml"',
+                                          ('ContentType="' + package.MAIN_TYPE + '"').encode('utf-8'))
+                    types = types.replace(('<Override PartName="/word/document.xml" ContentType="'
+                                           + package.MAIN_TYPE + '"/>').encode('utf-8'), b'')
+                members['[Content_Types].xml'] = types
+                self.write(members)
+                if variant.startswith('duplicate'):
+                    with self.assertRaises(ValueError):
+                        package.read_package(self.source)
+                else:
+                    self.assertIn({'part': part, 'index': 0, 'text': 'Original'},
+                                  package.inspect_package(self.source)['text_nodes'])
 
     def test_generic_custom_xml_is_not_authorized_by_a_text_node(self):
         part='customXml/item.xml'
@@ -120,6 +147,39 @@ class DocxStoryPartsTest(unittest.TestCase):
         self.assertIn({'part':part,'index':0,'text':'Changed'},
             package.inspect_package(self.output)['text_nodes'])
 
+    def test_primary_document_stays_editable_with_authoritative_main_type(self):
+        before = self.fixture()
+        self.assertIn({'part': 'word/document.xml', 'index': 0, 'text': 'Body'},
+                      package.inspect_package(self.source)['text_nodes'])
+        package.edit_package(self.source, self.output, [{'part': 'word/document.xml',
+            'index': 0, 'expected': 'Body', 'text': 'Changed body'}])
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read('word/document.xml'),
+                             before['word/document.xml'].replace(b'Body', b'Changed body'))
+            self.assertEqual(archive.read('word/stories/first.xml'), before['word/stories/first.xml'])
+
+    def test_canonical_names_do_not_override_custom_types_or_wrong_roots(self):
+        part = 'word/header1.xml'
+        for declaration, root, excluded in (('application/custom+xml', 'hdr', True),
+                                             ('application/xml', 'ftr', False),
+                                             ('text/xml', 'custom', False)):
+            with self.subTest(declaration=declaration, root=root):
+                members = self.fixture(part=part, generic=True, root=root)
+                members['[Content_Types].xml'] = members['[Content_Types].xml'].replace(
+                    b'PartName="/word/header1.xml" ContentType="application/xml"',
+                    ('PartName="/word/header1.xml" ContentType="' + declaration + '"').encode('utf-8'))
+                self.write(members)
+                before = self.source.read_bytes()
+                self.output.write_bytes(b'previous delivery')
+                if excluded:
+                    self.assertNotIn(part, {node['part'] for node in
+                                           package.inspect_package(self.source)['text_nodes']})
+                with self.assertRaises(ValueError):
+                    package.edit_package(self.source, self.output, [{'part': part, 'index': 0,
+                        'expected': 'Original', 'text': 'Changed'}])
+                self.assertEqual(self.source.read_bytes(), before)
+                self.assertEqual(self.output.read_bytes(), b'previous delivery')
+
     def test_wrong_declared_story_root_fails_before_publication(self):
         for root in ('document','ftr','custom'):
             with self.subTest(root=root):
@@ -135,7 +195,7 @@ class DocxStoryPartsTest(unittest.TestCase):
         with self.assertRaises(ValueError): package.read_package(self.source)
 
     def test_typed_nonxml_suffix_cannot_bypass_xml_limits(self):
-        samples=(b'<!DOCTYPE hdr><w:hdr xmlns:w="'+package.W.encode()+b'"/>',
+        samples=(b'<!DOCTYPE hdr><w:hdr xmlns:w="'+package.W.encode('utf-8')+b'"/>',
                  b'\xff', b'<broken', b' '*(package.MAX_XML+1))
         for data in samples:
             with self.subTest(size=len(data)):
@@ -178,7 +238,7 @@ class DocxStoryPartsTest(unittest.TestCase):
         part='word/stories/first.xml'
         members[part]=members.pop('word/header1.xml')
         members['[Content_Types].xml']=members['[Content_Types].xml'].replace(
-            b'/word/header1.xml',('/'+part).encode())
+            b'/word/header1.xml',('/'+part).encode('utf-8'))
         members['word/_rels/document.xml.rels']=members['word/_rels/document.xml.rels'].replace(
             b'Target="header1.xml"',b'Target="stories/first.xml"')
         self.write(members)
