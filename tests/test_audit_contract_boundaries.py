@@ -263,7 +263,7 @@ class PackageOutputContractTest(ContractFixture):
         self.distribution.mkdir()
         (self.distribution / 'SKILL.md').write_text('Original instructions', encoding='utf-8')
         (self.distribution / 'scripts').mkdir()
-        (self.distribution / 'scripts' / 'helper.py').write_text('pass\n', encoding='utf-8')
+        (self.distribution / 'scripts' / 'helper.py').write_bytes(b'pass\n')
         self.addCleanup(mock.patch.stopall)
         mock.patch.object(PACKAGE.installer, 'SOURCE', self.distribution).start()
 
@@ -320,12 +320,17 @@ class PackageOutputContractTest(ContractFixture):
 
     def test_valid_archive_and_repeat_build_preserve_payload(self):
         output = self.root / 'dist' / 'result.skill'
-        for _ in range(2):
-            self.assertEqual(self.package(output), 0)
-            with zipfile.ZipFile(output) as archive:
-                self.assertIsNone(archive.testzip())
-                self.assertEqual(archive.read('revayat-scientific/SKILL.md'), b'Original instructions')
-                self.assertEqual(archive.read('revayat-scientific/scripts/helper.py'), b'pass\n')
+        helper = self.distribution / 'scripts' / 'helper.py'
+        # Define exact fixture bytes; packaging must preserve both newline forms.
+        for payload in (b'pass\n', b'pass\r\n'):
+            helper.write_bytes(payload)
+            for _ in range(2):
+                self.assertEqual(self.package(output), 0)
+                with zipfile.ZipFile(output) as archive:
+                    self.assertIsNone(archive.testzip())
+                    self.assertEqual(archive.read('revayat-scientific/SKILL.md'), b'Original instructions')
+                    self.assertEqual(archive.read('revayat-scientific/scripts/helper.py'), payload)
+                self.assertEqual(helper.read_bytes(), payload)
         self.assertEqual((self.distribution / 'SKILL.md').read_bytes(), b'Original instructions')
 
 
