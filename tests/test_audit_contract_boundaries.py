@@ -178,10 +178,19 @@ class ExtractionAdmissionTest(ContractFixture):
     def test_valid_contiguous_range_keeps_geometry_pixels_and_shared_resources(self):
         source = self.fixture()
         target = self.root / 'output.pdf'
+        with pymupdf.open(source) as document:
+            document[1].insert_link({'kind': pymupdf.LINK_GOTO,
+                                     'from': pymupdf.Rect(20, 70, 100, 90),
+                                     'page': 2, 'to': pymupdf.Point(30, 50)})
+            document.saveIncr()
         before = source.read_bytes()
         self.assertEqual(PAGES.main([str(source), str(target), '2-3']), 0)
         with pymupdf.open(source) as original, pymupdf.open(target) as selected:
             self.assertEqual(selected.page_count, 2)
+            links = selected[0].get_links()
+            self.assertEqual(len(links), 1)
+            self.assertEqual((links[0]['kind'], links[0]['page']), (pymupdf.LINK_GOTO, 1))
+            self.assertEqual(links[0]['to'], pymupdf.Point(30, 50))
             for index in range(2):
                 self.assertEqual(selected[index].rect, original[index + 1].rect)
                 self.assertEqual(selected[index].get_pixmap().samples,
@@ -208,6 +217,9 @@ class ExtractionAdmissionTest(ContractFixture):
             with self.subTest(limit=name), mock.patch.object(pdf_input, name, value):
                 with self.assertRaises(ValueError):
                     PAGES.main([str(source), str(target), '1'])
+                with self.assertRaises(ValueError):
+                    with PDF.open_pdf(source, transform=True):
+                        pass
             self.assertEqual(target.read_bytes(), b'previous approved delivery')
         self.assertFalse(list(self.root.glob('.revayat-*')))
 

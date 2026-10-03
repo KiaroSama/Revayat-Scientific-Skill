@@ -65,7 +65,7 @@ display change does not satisfy the stored-identity policy.
 
 ## Cross-entry-point admission and publication
 
-`pdf_input.py` gives contiguous page extraction the same admission contract as
+`pdf_input.py` supplies the shared admission implementation for contiguous page extraction and
 the existing document operations. It retains the existing byte/page/object limits,
 encryption and parser-repair refusals, and transformation-only signature/XFA
 checks. Extraction must not silently bypass the policies enforced for merge, fill

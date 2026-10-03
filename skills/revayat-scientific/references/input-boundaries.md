@@ -2,8 +2,8 @@
 
 ## PDF admission
 
-The `scripts/pdf_input.py` context manager gives contiguous page extraction the
-existing PDF-operation admission contract. Parity tests bind both entry points.
+The `scripts/pdf_input.py` context manager supplies shared admission for contiguous
+page extraction and existing PDF operations. Parity tests bind both entry points.
 Read-only inspection can report signature-bearing
 inputs; transformations refuse signatures and XFA. All paths retain the existing
 512 MiB, 10000-page and 200000-object bounds, reject encrypted inputs (including
@@ -41,7 +41,10 @@ nonletter, not at a Unicode regular-expression word boundary. Thus `\input2` and
 Comments, literal examples and paired backslashes stay inert. The same closure
 limits, missing-file checks, cycle checks and source-location mapping apply.
 Arbitrary macro expansion and changed category codes remain unsupported, not
-silently interpreted as fully validated TeX.
+silently interpreted as fully validated TeX. Recognizing a nonletter filename
+boundary does not certify every spelling on every engine: unbraced underscore
+filenames depend on filename/category-code handling; native numeric input has
+an explicit compiler control.
 
 ## Stored Git identity
 

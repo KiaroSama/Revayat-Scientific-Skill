@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native PDF inspection, extraction, forms, merging and OCR derivatives."""
 import argparse
-from contextlib import contextmanager, ExitStack, redirect_stdout, redirect_stderr
+from contextlib import ExitStack, redirect_stdout, redirect_stderr
 import hashlib
 import io
 import json
@@ -14,31 +14,11 @@ import subprocess
 import sys
 import tempfile
 
-from pdf_forms import inventory, ensure_transformable, signature_present, plan_fill, apply_fill, verify_fill
+from pdf_forms import inventory, signature_present, plan_fill, apply_fill, verify_fill
+from pdf_input import open_pdf
 from publication import publish_files, validate_destination
 from pdf_outlines import outline_plan, apply_outlines, verify_outlines
 from runtime import operation_log, run_command
-
-
-@contextmanager
-def open_pdf(path, *, transform=False, memory=False):
-    import pymupdf
-    path = Path(path)
-    if not path.is_file() or path.stat().st_size > 512 * 1024 * 1024:
-        raise ValueError('PDF input must be a file no larger than 512 MiB')
-    opened = pymupdf.open(stream=path.read_bytes(), filetype='pdf') if memory else pymupdf.open(path)
-    with opened as document:
-        if not document.is_pdf or document.needs_pass or document.is_encrypted:
-            raise ValueError('input must be an unencrypted PDF; decrypt an authorized separate copy first')
-        if document.metadata.get('encryption'):
-            raise ValueError('encrypted PDFs, including empty user passwords, require an authorized decrypted copy')
-        if not 1 <= document.page_count <= 10000 or document.xref_length() > 200000:
-            raise ValueError('PDF exceeds page/object limits or has no pages')
-        if document.is_repaired:
-            raise ValueError('PDF required parser repair; validate a separately repaired copy first')
-        if transform:
-            ensure_transformable(document)
-        yield document
 
 
 def geometry(document):
