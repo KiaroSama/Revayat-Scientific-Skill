@@ -52,9 +52,11 @@ packages exercise classification/refusal, not cryptographic authentication.
 
 The packaging output is forbidden from the checkout's `.git` control path, the
 actual Git directory, a worktree's shared directory, and Git-resolved index,
-object-store and split-index paths. This includes relocated metadata outside the
-checkout and an explicitly selected `GIT_DIR` even without a local gitfile. Missing or ambiguous Git path resolution is a failed preflight, not an
-empty protection list. Exported source trees also reserve their `.git` path.
+object-store, configured hooks and split-index paths, including critical-file
+aliases. Parent repositories and relocated metadata outside the checkout are
+covered, as is an explicitly selected `GIT_DIR` without a local gitfile. Discovery
+is repeated after staging. Missing or ambiguous Git path resolution is a failed
+preflight, not an empty protection list. Exported source trees also reserve `.git`.
 No history or repository metadata is rewritten by the package command. Existing
 source-alias checks, staged ZIP validation and recoverable publication remain in
 place. Ordinary `dist/` and independent output paths remain supported.

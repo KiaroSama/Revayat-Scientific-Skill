@@ -48,7 +48,7 @@ class Source:
             return True
         for start, end in self.literals:
             if start <= pos < end:
-                return not (pos == start and self.text.startswith(r'\begin{', start))
+                return not (self.kind == 'tex' and pos == start and self.text.startswith(r'\begin{', start))
         return False
 
     def excerpt(self, pos: int, width: int = 60) -> str:
@@ -195,5 +195,6 @@ class Source:
         self.text = self.html.text
         self.protected.extend(self.html.protected)
         self.comments.extend(self.html.comments)
+        self.literals.extend(self.html.literals)
         self.isolates.extend(self.html.isolates)
         self.identity.extend(self.html.identity)

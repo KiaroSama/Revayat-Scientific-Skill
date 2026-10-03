@@ -93,3 +93,12 @@ feature detection uses effective content types and relationships as well as lega
 filename guards. Package publication protects actual private/shared/relocated Git
 metadata, not only tracked worktree files. Supported subsets and research decisions
 are in [format identity and preservation boundaries](../skills/revayat-scientific/references/format-identity.md).
+
+`html_source.py` distinguishes actual markup from literal raw/RCDATA content,
+retaining once-decoded entity locations and printed isolate text. Supported foreign
+breakout and integration-point handling do not turn HTML nonvoid slashes into
+closures. Unsupported templates/plaintext and unterminated literal contexts fail
+before validation or rendering. The package destination plan also protects parent,
+configured-hook and split-index metadata, then resolves it again after staging.
+See [literal contexts and protected metadata](../skills/revayat-scientific/references/context-and-metadata-integrity.md)
+for the bounded input policy; this is not a universal HTML DOM or trust verifier.

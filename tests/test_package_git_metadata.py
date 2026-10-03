@@ -6,8 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,9 +47,9 @@ class PackageGitMetadataTest(unittest.TestCase):
         return result.stdout.strip()
 
     def package(self, target, checkout=None):
-        with mock.patch.object(PACKAGE, 'ROOT', checkout or self.checkout), \
-                mock.patch.object(PACKAGE.installer, 'SOURCE', self.source), \
-                mock.patch.object(sys, 'argv', ['package.py', '--output', str(target)]):
+        with unittest.mock.patch.object(PACKAGE, 'ROOT', checkout or self.checkout), \
+                unittest.mock.patch.object(PACKAGE.installer, 'SOURCE', self.source), \
+                unittest.mock.patch.object(sys, 'argv', ['package.py', '--output', str(target)]):
             return PACKAGE.main()
 
     def assert_refused(self, targets, checkout=None):
@@ -111,7 +110,7 @@ class PackageGitMetadataTest(unittest.TestCase):
             return original_run(command, **kwargs)
         target = self.checkout / 'previous.skill'
         target.write_bytes(b'previous approved delivery')
-        with mock.patch.object(PACKAGE.subprocess, 'run', side_effect=controlled):
+        with unittest.mock.patch.object(PACKAGE.subprocess, 'run', side_effect=controlled):
             with self.assertRaises(ValueError):
                 self.package(target)
         self.assertEqual(target.read_bytes(), b'previous approved delivery')
@@ -125,7 +124,7 @@ class PackageGitMetadataTest(unittest.TestCase):
         shutil.copy2(self.checkout / '.git' / 'index', external_index)
         external_objects = self.root / 'external-objects'
         external_objects.mkdir()
-        with mock.patch.dict(os.environ, {'GIT_INDEX_FILE': str(external_index),
+        with unittest.mock.patch.dict(os.environ, {'GIT_INDEX_FILE': str(external_index),
                                          'GIT_OBJECT_DIRECTORY': str(external_objects)}):
             self.assert_refused([external_index, external_objects / 'new.skill'])
 
@@ -134,7 +133,7 @@ class PackageGitMetadataTest(unittest.TestCase):
         metadata = self.root / 'explicit-metadata'
         self.git('init', '--quiet', '--separate-git-dir', str(metadata))
         (self.checkout / '.git').unlink()
-        with mock.patch.dict(os.environ, {'GIT_DIR': str(metadata),
+        with unittest.mock.patch.dict(os.environ, {'GIT_DIR': str(metadata),
                                          'GIT_WORK_TREE': str(self.checkout)}):
             self.assert_refused([metadata / 'config', metadata / 'HEAD', metadata / 'objects' / 'new.skill'])
             self.assertEqual(self.package(self.checkout / 'dist' / 'result.skill'), 0)
@@ -142,7 +141,7 @@ class PackageGitMetadataTest(unittest.TestCase):
     def test_invalid_explicit_git_dir_is_not_treated_as_an_export(self):
         target = self.checkout / 'previous.skill'
         target.write_bytes(b'previous approved delivery')
-        with mock.patch.dict(os.environ, {'GIT_DIR': str(self.root / 'missing-metadata')}):
+        with unittest.mock.patch.dict(os.environ, {'GIT_DIR': str(self.root / 'missing-metadata')}):
             with self.assertRaises(ValueError):
                 self.package(target)
         self.assertEqual(target.read_bytes(), b'previous approved delivery')

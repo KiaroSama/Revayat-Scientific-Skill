@@ -3,8 +3,7 @@ from pathlib import Path
 import json
 import sys
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,7 +76,7 @@ class DocxFeatureIdentityTest(unittest.TestCase):
         self.output.write_bytes(b'previous approved delivery')
         report = package.inspect_package(self.source)
         self.assertIn(expected, report['unsupported'])
-        with mock.patch.object(package, 'publish_files') as publish:
+        with unittest.mock.patch.object(package, 'publish_files') as publish:
             with self.assertRaises(ValueError):
                 package.edit_package(self.source, self.output, [
                     {'part': 'word/document.xml', 'index': 0,

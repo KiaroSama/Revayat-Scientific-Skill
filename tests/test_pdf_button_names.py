@@ -2,11 +2,9 @@
 from pathlib import Path
 import importlib.util
 import json
-import re
 import sys
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 
 import pymupdf
 
@@ -221,7 +219,7 @@ class PdfButtonNamesTest(unittest.TestCase):
 
     def test_native_serialized_names_do_not_depend_on_widget_parser(self):
         doc, _ = self.document('A#20B')
-        with doc, mock.patch.object(pymupdf.Widget, 'button_states', side_effect=AssertionError('old parser used')):
+        with doc, unittest.mock.patch.object(pymupdf.Widget, 'button_states', side_effect=AssertionError('old parser used')):
             record = forms.inventory(doc)[0]
             self.assertEqual(record['on_state'], 'A#20B')
             plan = forms.plan_fill(doc, {'consent': 'A#20B'})
@@ -259,7 +257,7 @@ class PdfButtonNamesTest(unittest.TestCase):
             doc.save(source)
         original = source.read_bytes()
         target.write_bytes(b'previous approved delivery')
-        with mock.patch.object(helper, 'verify_fill', side_effect=ValueError('injected mismatch')):
+        with unittest.mock.patch.object(helper, 'verify_fill', side_effect=ValueError('injected mismatch')):
             with self.assertRaises(ValueError):
                 helper.fill_pdf(source, target, {'consent': True})
         self.assertEqual(target.read_bytes(), b'previous approved delivery')
@@ -269,7 +267,7 @@ class PdfButtonNamesTest(unittest.TestCase):
     def test_state_reader_limits_and_non_utf8_names_fail_without_mutation(self):
         for limit, value in (('MAX_APPEARANCE_BYTES', 1), ('MAX_STATES', 1)):
             doc, _ = self.document('Yes')
-            with doc, mock.patch.object(state_reader, limit, value), self.assertRaises(ValueError):
+            with doc, unittest.mock.patch.object(state_reader, limit, value), self.assertRaises(ValueError):
                 forms.plan_fill(doc, {'consent': True})
         for raw in ('#FF', '#E9', '#0A'):
             doc, xref = self.document('Yes')
