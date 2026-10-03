@@ -29,6 +29,26 @@ def protected_inputs(payload):
     return sources
 
 
+def git_metadata_roots():
+    """Protect the gitfile plus real private/common metadata, including worktrees."""
+    reserved = ROOT / '.git'
+    roots = [reserved.resolve()]
+    if not reserved.exists():
+        return roots
+    result = subprocess.run(['git', 'rev-parse', '--absolute-git-dir', '--git-common-dir',
+                             '--git-path', 'index', '--git-path', 'objects', '--shared-index-path'],
+                            cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+    if result.returncode:
+        raise ValueError('cannot resolve repository metadata before package publication')
+    paths = result.stdout.decode('utf-8').splitlines()
+    if not 4 <= len(paths) <= 5 or any(not value for value in paths[:4]):
+        raise ValueError('repository metadata paths are ambiguous or unavailable')
+    for value in filter(None, paths):
+        path = Path(value)
+        roots.append((path if path.is_absolute() else ROOT / path).resolve())
+    return roots
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/revayat-scientific.skill')
@@ -38,9 +58,10 @@ def main():
         sources = protected_inputs(payload)
         output = validate_destination(args.output, sources)
         resolved = output.resolve()
-        for source_root in (installer.SOURCE.resolve(), ROOT / 'tools', ROOT / 'install'):
+        for source_root in (installer.SOURCE.resolve(), ROOT / 'tools', ROOT / 'install',
+                            *git_metadata_roots()):
             if resolved == source_root or resolved.is_relative_to(source_root):
-                raise ValueError('package output must not be inside an implementation or skill source directory')
+                raise ValueError('package output must not be inside implementation, skill source or Git metadata paths')
         logger.debug('planned_payload_files=%d protected_inputs=%d', len(payload), len(sources))
         output.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.revayat-package-', dir=output.parent) as directory:

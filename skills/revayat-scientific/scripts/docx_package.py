@@ -80,6 +80,21 @@ def story_parts(roots):
     return parts
 
 
+# Restricted package features retain their identity when a part is renamed.
+SIGNATURE_TYPES = {
+    'application/vnd.openxmlformats-package.digital-signature-' + suffix
+    for suffix in ('origin', 'xmlsignature+xml', 'certificate')
+}
+SIGNATURE_RELATIONSHIPS = {
+    'http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/' + suffix
+    for suffix in ('origin', 'signature', 'certificate')
+}
+VBA_TYPES = {'application/vnd.ms-office.' + name
+             for name in ('vbaProject', 'vbaProjectSignature', 'vbaProjectSignatureAgile')}
+VBA_RELATIONSHIPS = {'http://schemas.microsoft.com/office/2006/relationships/' + name
+                     for name in ('vbaProject', 'vbaProjectSignature', 'vbaProjectSignatureAgile')}
+
+
 MAX_TOTAL = 256 * 1024 * 1024
 MAX_MEMBER = 64 * 1024 * 1024
 MAX_XML = 16 * 1024 * 1024
@@ -186,9 +201,15 @@ def read_package(path):
                and rel['type'].endswith('/officeDocument') for rel in relationships):
         raise ValueError('DOCX has no main document relationship')
     unsupported = []
-    if any('vba' in name.lower() for name in members) or 'macroEnabled' in main_type:
+    declared = {_ascii_lower(declared_type(name, types, defaults)) for name in members
+                if name != '[Content_Types].xml' and not name.endswith('/')}
+    relation_types = {rel['type'] for rel in relationships}
+    if (any('vba' in name.lower() for name in members) or 'macroEnabled' in main_type
+            or declared.intersection(map(_ascii_lower, VBA_TYPES)) or relation_types.intersection(VBA_RELATIONSHIPS)):
         unsupported.append('macros')
-    if any(name.lower().startswith('_xmlsignatures/') for name in members):
+    if (any(name.lower().startswith('_xmlsignatures/') for name in members)
+            or declared.intersection(SIGNATURE_TYPES)
+            or relation_types.intersection(SIGNATURE_RELATIONSHIPS)):
         unsupported.append('digital-signatures')
     if any(rel['type'].endswith(('/oleObject', '/package', '/aFChunk')) for rel in relationships):
         unsupported.append('embedded-or-alternate-content')

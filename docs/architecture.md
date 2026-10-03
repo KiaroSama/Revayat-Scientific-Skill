@@ -84,3 +84,12 @@ that range; obtain a complete, ungrafted clone before claiming full-history
 compliance. This is a metadata check, not cryptographic signature verification.
 
 Detailed supported inputs and limits: [input and publication contracts](../skills/revayat-scientific/references/input-boundaries.md).
+
+## Semantic identities and internal metadata
+
+`pdf_button_states.py` separates serialized PDF appearance keys from decoded form
+labels and resolves stored/inherited field values for verification. DOCX restricted
+feature detection uses effective content types and relationships as well as legacy
+filename guards. Package publication protects actual private/shared/relocated Git
+metadata, not only tracked worktree files. Supported subsets and research decisions
+are in [format identity and preservation boundaries](../skills/revayat-scientific/references/format-identity.md).

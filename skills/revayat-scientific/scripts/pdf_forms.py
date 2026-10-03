@@ -1,6 +1,8 @@
 """Typed PDF form plans: validate every requested value before changing widgets."""
 import math
 
+from pdf_button_states import button_states, on_state, stored_value
+
 
 def widgets(document):
     for page in document:
@@ -11,11 +13,12 @@ def widgets(document):
 def inventory(document):
     result = []
     for page, field in widgets(document):
+        states = button_states(document, field)
         result.append({'page': page.number + 1, 'xref': field.xref,
                        'name': field.field_name, 'type': field.field_type_string,
                        'value': field.field_value, 'flags': field.field_flags,
                        'rect': list(field.rect), 'choices': field.choice_values,
-                       'on_state': field.on_state(), 'button_states': field.button_states(),
+                       'on_state': on_state(states, strict=False) if states else None, 'button_states': states,
                        'signed': field.is_signed})
     return result
 
@@ -84,24 +87,23 @@ def plan_fill(document, values):
                 planned.append((page.number, field.xref, normalized, normalized, False))
         elif kind == fitz.PDF_WIDGET_TYPE_CHECKBOX:
             for page, field in fields:
-                states = (field.button_states() or {}).get('normal', [])
-                on = [state for state in states if state != 'Off']
-                if len(on) != 1:
-                    raise ValueError('checkbox must expose one unambiguous on-state')
+                appearances = button_states(document, field)
+                states = appearances['normal'] or []
+                selected = on_state(appearances)
                 if type(value) is bool:
-                    normalized = on[0] if value else 'Off'
+                    normalized = selected if value else 'Off'
                 elif isinstance(value, str) and value in states:
                     normalized = value
                 else:
                     raise ValueError('checkbox accepts a boolean or its exact documented state')
-                planned.append((page.number, field.xref, normalized, normalized, True))
+                planned.append((page.number, field.xref, normalized != 'Off', normalized, True))
         elif kind == fitz.PDF_WIDGET_TYPE_RADIOBUTTON:
-            states = [field.on_state() for _, field in fields]
+            states = [on_state(button_states(document, field)) for _, field in fields]
             if not isinstance(value, str) or value not in states or states.count(value) != 1:
                 raise ValueError('radio value must select one exact unique on-state')
-            for page, field in fields:
-                selected = value if field.on_state() == value else 'Off'
-                planned.append((page.number, field.xref, False if selected == 'Off' else selected, selected, True))
+            for (page, field), state in zip(fields, states):
+                selected = value if state == value else 'Off'
+                planned.append((page.number, field.xref, selected != 'Off', selected, True))
         elif kind in (fitz.PDF_WIDGET_TYPE_COMBOBOX, fitz.PDF_WIDGET_TYPE_LISTBOX):
             if not isinstance(value, str):
                 raise ValueError('choice fields require one string selection')
@@ -129,9 +131,34 @@ def apply_fill(document, plan):
 
 
 def verify_fill(document, plan):
+    import pymupdf
+    radio_values = {}
+    for page_number, xref, _, expected, button in plan:
+        if button:
+            kind, appearance = document.xref_get_key(xref, 'AS')
+            if kind != 'name' or appearance[1:] != expected:
+                raise ValueError('saved form value or button appearance failed verification')
+        if button and expected != 'Off':
+            page = document[page_number]
+            field = page.load_widget(xref)
+            if field.field_type == pymupdf.PDF_WIDGET_TYPE_RADIOBUTTON:
+                radio_values.setdefault(field.field_name, set()).add(expected)
     for page_number, xref, _, expected, button in plan:
         page = document[page_number]
         field = page.load_widget(xref)
-        actual = document.xref_get_key(xref, 'AS')[1].lstrip('/') if button else field.field_value
-        if actual != expected:
+        if button:
+            kind, appearance = document.xref_get_key(xref, 'AS')
+            # xref_get_key already decodes PDF names; remove exactly one slash.
+            if kind != 'name' or appearance[1:] != expected:
+                raise ValueError('saved form value or button appearance failed verification')
+            states = button_states(document, field)
+            if expected not in (states['normal'] or []):
+                raise ValueError('saved button appearance has no matching state')
+            allowed = {expected}
+            if field.field_type == pymupdf.PDF_WIDGET_TYPE_RADIOBUTTON and expected == 'Off':
+                # An unselected child may inherit its parent's selected group value.
+                allowed.update(radio_values.get(field.field_name, ()))
+            if field.field_value not in allowed or stored_value(document, xref) not in allowed:
+                raise ValueError('saved button field value disagrees with its appearance')
+        elif field.field_value != expected:
             raise ValueError('saved form value or button appearance failed verification')
