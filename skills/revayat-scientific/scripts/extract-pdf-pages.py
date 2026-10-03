@@ -20,6 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from pdf_input import open_pdf
 from publication import publish_files, validate_destination
 from runtime import operation_log
 
@@ -64,9 +65,7 @@ def main(argv=None) -> int:
         return 1
 
     validate_destination(args.dest, [args.src])
-    with pymupdf.open(args.src) as src:
-        if not src.is_pdf or src.needs_pass:
-            raise ValueError('source must be an unlocked PDF')
+    with open_pdf(args.src, transform=True) as src:
         if last > src.page_count:
             raise ValueError('requested page range exceeds source page count')
         expected = [tuple(src[number].rect) for number in range(first - 1, last)]

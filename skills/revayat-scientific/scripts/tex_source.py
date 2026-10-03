@@ -112,7 +112,8 @@ def source_closure(source, *, root=None):
         text = raw.decode('utf-8')
         sources.append(path)
         masked = masked_tex(text)
-        pattern = re.compile(r'(?<!\\)(?:\\\\)*\\(input|include|includeonly)\b')
+        # TeX control words end before any nonletter, including a digit or underscore.
+        pattern = re.compile(r'(?<!\\)(?:\\\\)*\\(input|include|includeonly)(?![A-Za-z])')
         cursor = 0
         for match in pattern.finditer(masked):
             # Paired backslashes are TeX linebreaks, not escapes of the next command.

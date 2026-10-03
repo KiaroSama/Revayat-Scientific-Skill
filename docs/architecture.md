@@ -61,3 +61,26 @@ checks only commits introduced relative to its base; this cannot certify exclude
 history. Run the tool without `--base` to check all history reachable from `--head`
 when performing the owner-required, backed-up identity normalization. A mailmap
 display change does not satisfy the stored-identity policy.
+
+
+## Cross-entry-point admission and publication
+
+`pdf_input.py` gives contiguous page extraction the same admission contract as
+the existing document operations. It retains the existing byte/page/object limits,
+encryption and parser-repair refusals, and transformation-only signature/XFA
+checks. Extraction must not silently bypass the policies enforced for merge, fill
+or OCR. Inspection is not signature authentication, and extraction still copies
+one contiguous range rather than rasterizing or duplicating shared resources.
+
+Package builds stage the entire allowlisted payload and publish through
+`publication.py`. The packager protects payload files, known build inputs and
+tracked checkout paths, rejects linked/aliased/case-colliding outputs and refuses
+outputs inside implementation directories. A custom output is not permission to
+replace the skill's source, installer or repository documentation.
+
+The commit-identity checker disables replacement-object interpretation and rejects
+shallow or nonempty legacy-graft history views. A range check still covers only
+that range; obtain a complete, ungrafted clone before claiming full-history
+compliance. This is a metadata check, not cryptographic signature verification.
+
+Detailed supported inputs and limits: [input and publication contracts](../skills/revayat-scientific/references/input-boundaries.md).

@@ -115,6 +115,10 @@ jobs:
         env:
           SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
         run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_tex_command_boundaries.py' -v
+      - name: Shared input and publication contract regressions
+        env:
+          SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
+        run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_audit_contract_boundaries.py' -v
       - name: Build isolated TeX toolchain
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 skills/revayat-scientific/assets
       - name: Isolated renderer contracts

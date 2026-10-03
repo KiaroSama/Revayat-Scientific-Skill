@@ -14,7 +14,7 @@ APPROVED_EMAIL = 'Kiaro.Sama.Dev@gmail.com'
 
 
 def _git(repository, arguments):
-    result = subprocess.run(['git', *arguments], cwd=repository, stdin=subprocess.DEVNULL,
+    result = subprocess.run(['git', '--no-replace-objects', *arguments], cwd=repository, stdin=subprocess.DEVNULL,
                             capture_output=True, text=True, encoding='utf-8', timeout=30)
     if result.returncode:
         raise ValueError('Git identity inspection failed; check repository and revision availability')
@@ -29,6 +29,13 @@ def _resolve(repository, revision):
 
 
 def inspect_identities(repository, head='HEAD', base=None):
+    if _git(repository, ['rev-parse', '--is-shallow-repository']).strip() != 'false':
+        raise ValueError('shallow repository cannot establish complete commit identities; fetch full history first')
+    grafts = Path(_git(repository, ['rev-parse', '--git-path', 'info/grafts']).strip())
+    if not grafts.is_absolute():
+        grafts = Path(repository) / grafts
+    if grafts.exists() and grafts.stat().st_size:
+        raise ValueError('legacy grafts can hide ancestry; inspect an ungrafted complete history')
     head = _resolve(repository, head)
     revision = _resolve(repository, base) + '..' + head if base is not None else head
     # Lowercase %ae/%ce expose stored emails, not mailmap-normalized display names.
