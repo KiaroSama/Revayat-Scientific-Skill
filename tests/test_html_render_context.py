@@ -67,6 +67,20 @@ class HtmlRenderContextTest(unittest.TestCase):
                     pos = model.text.index('125')
                     self.assertTrue(any(start <= pos < end for start, end in model.protected))
 
+    def test_comment_terminators_match_html5_including_unclosed_tail(self):
+        import tinyhtml5
+        namespace = '{http://www.w3.org/1999/xhtml}'
+        for ending, visible in (('-->', True), ('--!>', True), ('>', True),
+                                ('->', True), ('comment -- >', False)):
+            with self.subTest(ending=ending):
+                source = '<!doctype html><body><!--' + ending + 'كي<img src="real.png">'
+                tree = tinyhtml5.parse(source)
+                model = ParsedHTML(source)
+                self.assertEqual(len(list(tree.iter(namespace + 'img'))), int(visible))
+                self.assertEqual(len([node for node in model.nodes if node['tag'] == 'img']), int(visible))
+                pos = model.text.rindex('كي')
+                self.assertEqual(any(start <= pos < end for start, end in model.protected), not visible)
+
     def test_two_page_render_matches_explicit_equivalent_markup(self):
         import pymupdf
         from weasyprint import HTML

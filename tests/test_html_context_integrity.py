@@ -132,10 +132,15 @@ class HtmlContextIntegrityTest(unittest.TestCase):
         self.assertFalse(model.is_protected(pos))
 
     def test_comment_terminator_width_does_not_protect_following_prose(self):
-        for comment in ('<!-- comment -->', '<!-- comment -- >', '<!-->'):
+        for comment in ('<!-- comment -->', '<!-- comment --!>', '<!-->', '<!--->'):
             with self.subTest(comment=comment):
                 model = self.source(comment + 'كي')
                 self.assertFalse(model.is_protected(model.text.rindex('كي')))
+
+    def test_whitespace_comment_end_does_not_expose_a_renderer_hidden_tail(self):
+        model = self.source('<!-- comment -- >كي<img src="fake.png">')
+        self.assertTrue(model.is_protected(model.text.rindex('كي')))
+        self.assertEqual(model.image_references(), [])
 
     def test_live_active_content_remains_denied(self):
         for markup in ('<script>active</script>', '<iframe></iframe>', '<object/>',

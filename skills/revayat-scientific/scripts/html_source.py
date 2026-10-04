@@ -235,6 +235,18 @@ class ParsedHTML(HTMLParser):
                 del self.stack[index:]
                 break
 
+    def parse_comment(self, index, report=True):
+        # Older stdlib patches accepted whitespace inside a comment terminator.
+        # Own this small boundary so renderer-hidden tails cannot become prose.
+        start = index + 4
+        abrupt = re.match(r'>|->', self.rawdata[start:])
+        closing = abrupt or re.search(r'--!?>', self.rawdata[start:])
+        content_end = start + closing.start() if closing else len(self.rawdata)
+        end = start + closing.end() if closing else len(self.rawdata)
+        if report:
+            self.handle_comment(self.rawdata[start:content_end])
+        return end
+
     def handle_comment(self, data):
         start = self.position()
         normal = self.raw.startswith('<!--', start)

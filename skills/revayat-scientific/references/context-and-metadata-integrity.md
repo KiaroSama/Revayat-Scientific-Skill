@@ -25,6 +25,10 @@ checks still apply; parsing is not a sandbox.
 
 Only actual `<!-- ... -->` comments may grant the documented narrowly scoped
 lint exception. Comment-like text inside a literal context cannot grant it.
+Standard `-->` and `--!>` endings and abrupt empty-comment endings are recognized
+consistently across supported Python patches. Whitespace in `-- >` is not a
+terminator: the remaining input stays comment content until a genuine ending or
+EOF, rather than exposing text the renderer hides.
 
 ## Git administrative destinations
 
