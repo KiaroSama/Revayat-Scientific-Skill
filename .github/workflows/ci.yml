@@ -136,7 +136,10 @@ jobs:
         env:
           SCIENTIFIC_REQUIRE_HTML_CONTEXT: '1'
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_html_render_context.py' -v
+        run: |
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_html_render_context.py' -v
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_html_scope_boundaries.py' -v
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_text_order_sources.py' -v
       - name: Upstream mechanical and rendering regressions
         id: regressions
         env:

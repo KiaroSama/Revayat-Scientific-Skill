@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from term_ledger import read_ledger, approved
+
 
 DEFAULT_PAIRS = [
     ("node", "گره"),
@@ -25,16 +27,21 @@ def load_pairs(paths: list[Path], level: str
         if not path.exists():
             continue
         loaded = True
-        for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        record_seen = False
+        for lineno, raw in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
             parts = [p.strip() for p in line.split("\t")]
-            if parts[0] == "english":
+            if parts[:2] == ["english", "forbidden_fa"]:
+                if record_seen:
+                    raise ValueError(f'{path}:{lineno}: duplicate terminology header')
+                record_seen = True
                 if parts not in (['english', 'forbidden_fa', 'scope'],
                                  ['english', 'forbidden_fa', 'scope', 'levels']):
                     raise ValueError(f'{path}:{lineno}: invalid terminology header')
                 continue
+            record_seen = True
             if len(parts) not in (3, 4) or not all(parts[:3]):
                 raise ValueError(f'{path}:{lineno}: expected english, forbidden_fa, scope and optional levels')
             en, fa, scope = parts[0], parts[1], parts[2]
@@ -55,58 +62,27 @@ def load_pairs(paths: list[Path], level: str
     return [(en, fa, "universal") for en, fa in DEFAULT_PAIRS]
 
 def load_terms_pairs(path: Path) -> tuple[list[tuple[str, str, str]], list[str]]:
-    """Keep-English rows from a job terms.tsv.
+    """Build job bans only from a complete valid ledger and eligible decisions.
 
-    Required columns: source, output, step, count, forbidden_fa.
-    Optional trailing columns (ignored when absent): concept, status,
-    admitted, deprecated. A keep-English row (Latin in *output*) must
-    set *forbidden_fa*; otherwise this is a contract error, not a silent
-    skip. Forms listed in *deprecated* (pipe-separated) are also
-    forbidden. Persian-output rows (prose / chrome) are not calque pairs.
+    Required columns: source, output, step, count, forbidden_fa. Optional status
+    restricts decisions to approved/preferred; legacy ledgers omit this column.
+    Keep-original Latin outputs require a counterform; deprecated forms add bans.
     """
-    rows: list[tuple[str, str, str]] = []
-    errors: list[str] = []
-    if not path.is_file():
-        return rows, [f"no such file: {path}"]
-    seen: set[tuple[str, str]] = set()
-    header_cols: list[str] | None = None
-    for lineno, raw in enumerate(
-            path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
+    rows, errors, seen = [], [], set()
+    try:
+        records = read_ledger(path, ('source', 'output', 'step', 'count', 'forbidden_fa'))
+    except (OSError, UnicodeError, ValueError) as error:
+        message = str(error) if type(error) is ValueError else 'terms.tsv cannot be read as bounded UTF-8'
+        return [], [message]
+    for record in records:
+        if not approved(record) or not re.search(r'[A-Za-z]', record['output']):
             continue
-        parts = [p.strip() for p in line.split("\t")]
-        if not parts:
-            continue
-        if parts[0] in ("source", "english"):
-            header_cols = [c.lower() for c in parts]
-            continue
-        if len(parts) < 2:
-            errors.append(f"{path}:{lineno}: need source and output columns")
-            continue
-        en, output = parts[0], parts[1]
-        if not re.search(r"[A-Za-z]", output):
-            continue
-
-        def col(name: str, index: int) -> str:
-            if header_cols and name in header_cols:
-                i = header_cols.index(name)
-                return parts[i] if i < len(parts) else ""
-            return parts[index] if len(parts) > index else ""
-
-        forbidden = col("forbidden_fa", 4)
+        source, forbidden = record['source'], record['forbidden_fa']
         if not forbidden:
-            errors.append(
-                f"{path}:{lineno}: keep-English {en!r} has empty "
-                "forbidden_fa (terms-calque)")
+            errors.append(f"terms.tsv row {record['ledger_line']}: keep-English output has empty forbidden_fa (terms-calque)")
             continue
-        deprecated = col("deprecated", 8)
-        forms = [forbidden] + [
-            f.strip() for f in deprecated.split("|") if f.strip()]
-        for form in forms:
-            key = (en, form)
-            if key in seen:
-                continue
-            seen.add(key)
-            rows.append((en, form, "job"))
-    return rows, errors
+        for form in [forbidden] + [value.strip() for value in record.get('deprecated', '').split('|') if value.strip()]:
+            if (source, form) not in seen:
+                seen.add((source, form))
+                rows.append((source, form, 'job'))
+    return ([] if errors else rows), errors

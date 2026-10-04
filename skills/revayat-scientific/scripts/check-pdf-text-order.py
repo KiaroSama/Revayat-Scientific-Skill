@@ -17,16 +17,18 @@ Exit 2: source phrases are reversed in this extractor's output.
 from __future__ import annotations
 
 import argparse
-import html as html_mod
 import importlib.util
 import json
 from tex_source import source_closure, plain_tex
+from html_source import ParsedHTML
 from runtime import operation_log
 import re
 import subprocess
 import sys
 import unicodedata
 from pathlib import Path
+
+MAX_PROBE_STEPS = 2_000_000
 
 ARABIC_WORD = re.compile(
     r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF"
@@ -54,10 +56,7 @@ def strip_tex(text: str) -> str:
 
 
 def strip_html(text: str) -> str:
-    text = re.sub(r"(?is)<script\b.*?</script>", " ", text)
-    text = re.sub(r"(?is)<style\b.*?</style>", " ", text)
-    text = re.sub(r"(?s)<[^>]+>", " ", text)
-    return html_mod.unescape(text)
+    return ParsedHTML(text).text_content()
 
 
 def source_plain(path: Path, text: str | None = None) -> str:
@@ -72,23 +71,29 @@ def source_plain(path: Path, text: str | None = None) -> str:
 
 
 def persian_windows(plain: str, min_letters: int = 12) -> list[list[str]]:
-    words = [fold(w) for w in ARABIC_WORD.findall(plain)]
-    windows: list[list[str]] = []
-    seen: set[tuple[str, ...]] = set()
-    for i in range(len(words)):
-        letters = 0
-        acc: list[str] = []
-        for w in words[i:]:
-            if not w:
-                continue
-            acc.append(w)
-            letters += len(w)
-            if letters >= min_letters:
-                key = tuple(acc)
-                if key not in seen:
-                    seen.add(key)
-                    windows.append(acc)
-                break
+    if type(min_letters) is not int or not 1 <= min_letters <= 4096:
+        raise ValueError('minimum probe length must be an integer from 1 to 4096')
+    # Empty folded tokens only duplicate the next legacy window. Filtering them
+    # lets a monotonic end cursor replace repeated full-suffix copies and scans.
+    words = [word for raw in ARABIC_WORD.findall(plain) if (word := fold(raw))]
+    windows, seen = [], set()
+    end = letters = steps = 0
+    for start in range(len(words)):
+        while letters < min_letters and end < len(words):
+            letters += len(words[end])
+            end += 1
+            steps += 1
+        if letters < min_letters:
+            break
+        steps += end - start
+        if steps > MAX_PROBE_STEPS:
+            raise ValueError('text-order probe work limit exceeded; check bounded document parts')
+        acc = words[start:end]
+        key = tuple(acc)
+        if key not in seen:
+            seen.add(key)
+            windows.append(acc)
+        letters -= len(words[start])
     return windows
 
 
@@ -175,10 +180,10 @@ def main() -> int:
 
     try:
         plain = source_plain(args.source)
+        windows = persian_windows(plain, min_letters=args.min_letters)
     except (OSError, UnicodeError, ValueError) as error:
         print(f"check-pdf-text-order: source closure failed: {error}", file=sys.stderr)
         return 1
-    windows = persian_windows(plain, min_letters=args.min_letters)
     if args.extracted is not None:
         extracted = args.extracted.read_text(encoding="utf-8")
     else:

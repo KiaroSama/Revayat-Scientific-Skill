@@ -118,3 +118,9 @@ A clean result proves only the implemented string/structure checks. Verify prefe
 Persian outputs, context, definitions and source-language meaning by reading.
 Do not modify the shipped glossary during a translation job; capture job-specific
 knowledge with that job so later agents can resume it.
+
+
+Implementation boundaries for source-text evidence, implicit HTML scopes and
+validated job ledgers are defined in [source validation contracts](source-validation-contracts.md).
+Required checks use those shared contracts; visual review and semantic approval
+remain separate from successful mechanical execution.

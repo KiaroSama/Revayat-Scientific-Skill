@@ -225,3 +225,9 @@ verified delivery or paste the complete article into chat.
 References: [Playwright browsers](https://playwright.dev/python/docs/browsers),
 [WeasyPrint URL fetchers](https://doc.courtbouillon.org/weasyprint/stable/api_reference.html#url-fetchers),
 [PyMuPDF text extraction](https://pymupdf.readthedocs.io/en/latest/recipes-text.html).
+
+
+Implementation boundaries for source-text evidence, implicit HTML scopes and
+validated job ledgers are defined in [source validation contracts](source-validation-contracts.md).
+Required checks use those shared contracts; visual review and semantic approval
+remain separate from successful mechanical execution.

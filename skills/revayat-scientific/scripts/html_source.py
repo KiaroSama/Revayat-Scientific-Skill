@@ -3,10 +3,17 @@ from html import unescape
 from html.parser import HTMLParser
 from bisect import bisect_right
 import re
+from html_scopes import before_start, before_text, close_from, end_index, FORMATTING
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
         'param', 'source', 'track', 'wbr'}
 INERT = {'script', 'style', 'head', 'title', 'pre', 'code', 'kbd', 'samp', 'math'}
+TEXT_EXCLUDED = {'head', 'title', 'script', 'style'}
+TEXT_BREAKS = {'address', 'article', 'aside', 'blockquote', 'br', 'caption', 'dd',
+               'div', 'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer',
+               'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hr', 'li',
+               'main', 'nav', 'ol', 'option', 'p', 'pre', 'section', 'table',
+               'tbody', 'td', 'textarea', 'tfoot', 'th', 'thead', 'tr', 'ul', 'xmp'}
 RCDATA = {'textarea', 'title'}
 RAWTEXT = {'script', 'style', 'xmp', 'iframe', 'noembed', 'noframes'}
 CHARREF = re.compile(r'&(?:\#[xX][0-9A-Fa-f]+;?|\#[0-9]+;?|[A-Za-z][A-Za-z0-9]{0,31};?)')
@@ -31,6 +38,7 @@ class ParsedHTML(HTMLParser):
         self.identity = []
         self.literals, self.markup, self.markup_starts = [], [], []
         self.stack = []
+        self.text_tokens = []
         self.feed(text)
         self.close()
         if self.cdata_elem is not None:
@@ -145,7 +153,19 @@ class ParsedHTML(HTMLParser):
                 state = 'name'
         return -1
 
+    def record_text(self, start, end):
+        if not self.stack or not self.stack[-1]['text_excluded']:
+            self.text_tokens.append((start, end))
+
+    def text_content(self):
+        """Located text tokens, not markup. This does not evaluate external CSS layout."""
+        chunks = [self.text[self.normalized_offset(a):self.normalized_offset(b)] if a != b else ' '
+                  for a, b in self.text_tokens]
+        return re.sub(r'\s+', ' ', ''.join(chunks)).strip()
+
     def handle_data(self, data):
+        before_text(self, data, self.position())
+        self.record_text(self.position(), self.position() + len(data))
         if self.cdata_elem in RCDATA:
             start = self.position()
             for match in CHARREF.finditer(data):
@@ -168,6 +188,7 @@ class ParsedHTML(HTMLParser):
                      (tag == 'font' and any(name in attributes for name in ('color', 'face', 'size'))))):
             while self.stack and self.namespace_for(tag) != 'html':
                 self.finish(self.stack.pop(), start, start)
+        before_start(self, tag, start)
         parent = self.stack[-1] if self.stack else None
         language = attributes.get('lang', parent['language'] if parent else 'fa') or 'fa'
         classes = set((attributes.get('class') or '').split())
@@ -183,10 +204,14 @@ class ParsedHTML(HTMLParser):
             raise ValueError('HTML template/plaintext requires an explicitly reviewed static document')
         node = {'namespace': namespace, 'tag': tag, 'attrs': attributes, 'start': start, 'content': end,
                 'language': language.lower(), 'isolate': isolate, 'identity': identity,
+                'text_excluded': tag in TEXT_EXCLUDED or 'hidden' in attributes
+                                 or (parent is not None and parent['text_excluded']),
                 'protected': tag in INERT or isolate or language.lower() not in ('fa', 'fa-ir')
                              or 'hidden' in attributes
                              or (parent is not None and parent['protected'])}
         self.nodes.append(node)
+        if tag in TEXT_BREAKS and not node['text_excluded']:
+            self.text_tokens.append((start, start))
         self.record_markup(start, end)
         if namespace != 'html' or tag not in VOID:
             self.stack.append(node)
@@ -202,6 +227,8 @@ class ParsedHTML(HTMLParser):
             self.set_cdata_mode(tag)
 
     def finish(self, node, content_end, end):
+        if node['tag'] in TEXT_BREAKS and not node['text_excluded']:
+            self.text_tokens.append((end, end))
         if node['namespace'] == 'html' and node['tag'] in RCDATA:
             self.literals.append((node['content'], content_end))
         if node['protected']:
@@ -228,12 +255,11 @@ class ParsedHTML(HTMLParser):
         close = self.raw.find('>', start)
         end = token_end if token_end is not None else (len(self.raw) if close < 0 else close + 1)
         self.record_markup(start, end)
-        for index in range(len(self.stack) - 1, -1, -1):
-            if self.stack[index]['tag'] == tag:
-                for node in reversed(self.stack[index:]):
-                    self.finish(node, start, end)
-                del self.stack[index:]
-                break
+        index = end_index(self, tag)
+        if index is not None:
+            if tag in FORMATTING and index != len(self.stack) - 1:
+                raise ValueError('HTML formatting adoption requires explicitly nested markup')
+            close_from(self, index, start, end)
 
     def parse_comment(self, index, report=True):
         # Older stdlib patches accepted whitespace inside a comment terminator.
@@ -264,7 +290,9 @@ class ParsedHTML(HTMLParser):
     def decode_entity(self, token):
         start = self.position()
         decoded = unescape(token)
+        before_text(self, decoded, start)
         self.entities.append((start, start + len(token), decoded))
+        self.record_text(start, start + len(token))
 
     def handle_entityref(self, name):
         self.decode_entity('&' + name + (';' if self.raw[self.position() + len(name) + 1:self.position() + len(name) + 2] == ';' else ''))

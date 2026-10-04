@@ -2,15 +2,14 @@
 """Select document-approved terminology found in one extracted source text."""
 import argparse
 from bisect import bisect_right
-import csv
 import hashlib
-import io
 import json
 from pathlib import Path
 import re
 import sys
 
 from runtime import operation_log
+from term_ledger import ledger_records, approved
 
 MAX_SOURCE = 4 * 1024 * 1024
 MAX_TERMS = 1024 * 1024
@@ -30,28 +29,12 @@ def bounded_text(path, limit):
 
 
 def approved_rows(text):
-    reader = csv.reader(io.StringIO(text), delimiter='\t', strict=True)
-    header = next(reader, None)
-    if not header or len(header) != len(set(header)) or not {'source', 'output'} <= set(header):
-        raise ValueError('terms.tsv requires unique source and output columns')
-    index = {name: position for position, name in enumerate(header)}
     rows = []
-    for line, values in enumerate(reader, 2):
-        if not values or values[0].startswith('#'):
+    for record in ledger_records(text):
+        if not approved(record):
             continue
-        if len(values) != len(header):
-            raise ValueError(f'terms.tsv row {line} does not match the header')
-        source, output = values[index['source']].strip(), values[index['output']].strip()
-        if not source or len(source) > 256 or len(output) > 256:
-            raise ValueError(f'terms.tsv row {line} has an invalid source or output')
-        if any(ord(char) < 32 for char in source + output):
-            raise ValueError(f'terms.tsv row {line} contains a control character')
-        status = values[index['status']].strip().lower() if 'status' in index else ''
-        if not output or ('status' in index and status not in ('preferred', 'approved')):
-            continue
-        rows.append({'source': source, 'output': output,
-                     'concept': values[index['concept']].strip() if 'concept' in index else '',
-                     'ledger_line': line})
+        rows.append({name: record[name] for name in ('source', 'output', 'ledger_line')}
+                    | {'concept': record.get('concept', '')})
         if len(rows) > MAX_ROWS:
             raise ValueError('term brief exceeds 512 approved rows')
     return rows
@@ -117,6 +100,6 @@ def main(argv=None):
 if __name__ == '__main__':
     try:
         raise SystemExit(main())
-    except (OSError, UnicodeError, ValueError, csv.Error) as error:
+    except (OSError, UnicodeError, ValueError) as error:
         print(f'term-brief: {error}', file=sys.stderr)
         raise SystemExit(2)

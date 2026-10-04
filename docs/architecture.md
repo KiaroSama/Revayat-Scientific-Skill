@@ -102,3 +102,11 @@ before validation or rendering. The package destination plan also protects paren
 configured-hook and split-index metadata, then resolves it again after staging.
 See [literal contexts and protected metadata](../skills/revayat-scientific/references/context-and-metadata-integrity.md)
 for the bounded input policy; this is not a universal HTML DOM or trust verifier.
+
+
+`html_scopes.py` closes supported optional HTML scopes and refuses ambiguous DOM
+repair. `ParsedHTML.text_content()` supplies actual source text tokens to order
+verification; serialized metadata and comments are not evidence. `term_ledger.py`
+shares bounded, located TSV admission and approval semantics across job lint and
+the term brief. See [source validation contracts](../skills/revayat-scientific/references/source-validation-contracts.md)
+for compatibility boundaries, limits, research and independent renderer tests.
