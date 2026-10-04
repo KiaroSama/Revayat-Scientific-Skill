@@ -15,7 +15,9 @@ from runtime import operation_log
 
 class HtmlScopeBoundaryTest(unittest.TestCase):
     def setUp(self):
-        self.work = tempfile.TemporaryDirectory(prefix='html-scopes-')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.work = tempfile.TemporaryDirectory(dir=scratch, prefix='html-scopes-')
         self.addCleanup(self.work.cleanup)
         self.root = Path(self.work.name).resolve()
         self.path = self.root / 'document.html'
@@ -25,7 +27,7 @@ class HtmlScopeBoundaryTest(unittest.TestCase):
         self.log.info('running test=%s', self._testMethodName)
 
     def source(self, body):
-        self.path.write_bytes(('<!doctype html><html lang="fa" dir="rtl">' + body + '</html>').encode())
+        self.path.write_bytes(('<!doctype html><html lang="fa" dir="rtl">' + body + '</html>').encode('utf-8'))
         return Source(self.path)
 
     def unprotected(self, body):
@@ -90,6 +92,25 @@ class HtmlScopeBoundaryTest(unittest.TestCase):
                      '<body><select><span lang="en">كي</span></select></body>'):
             with self.subTest(body=body), self.assertRaises(ValueError):
                 self.source(body)
+
+    def test_formatting_end_across_special_node_still_refuses_adoption(self):
+        with self.assertRaises(ValueError):
+            self.source('<body><b lang="en"><p>A</b></p><p>كي</p></body>')
+        self.unprotected('<body><p><b lang="en">A</b></p><p>كي</p></body>')
+
+    def test_special_start_and_end_barriers_preserve_inherited_state(self):
+        for body in ('<ul><li lang="en"><section>A<li>كي</section></ul>',
+                     '<dl><dt lang="en"><section>A<dd>كي</section></dl>',
+                     '<span lang="en"><p>A</span><p>كي</p>',
+                     '<div lang="en"><table><tr><td>A</div>كي</td></tr></table>'):
+            with self.subTest(body=body):
+                model = self.source('<body>' + body + '</body>')
+                self.assertTrue(model.is_protected(model.text.index('كي')))
+        for body in ('<form hidden><div>A</form>كي</div>',
+                     '<form><div lang="en">A</form>كي</div>'):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                self.source('<body>' + body + '</body>')
+        self.unprotected('<body><form lang="en">English</form><p>كي</p></body>')
 
     def test_explicit_well_nested_equivalent_has_same_live_scopes(self):
         implicit = self.unprotected('<body><p lang="en">English<p>كي</body>')
@@ -171,6 +192,34 @@ class HtmlScopeBoundaryTest(unittest.TestCase):
                     self.assertEqual(actual, expected)
                     accepted += 1
         self.assertEqual((accepted, refused), (176, 64))
+
+    @unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'HTML5 oracle tier')
+    def test_special_barriers_match_independent_html5_tree(self):
+        import tinyhtml5
+        bodies = ('<ul><li lang="en"><section>A<li id="target">كي</section></ul>',
+                  '<dl><dt lang="en"><section>A<dd id="target">كي</section></dl>',
+                  '<span lang="en"><p>A</span><p id="target">كي</p>',
+                  '<div lang="en"><table><tr><td>A</div><span id="target">كي</span></table>')
+        def language(element, inherited='fa'):
+            inherited = element.get('lang', inherited)
+            if element.get('id') == 'target':
+                return inherited
+            for child in element:
+                result = language(child, inherited)
+                if result is not None:
+                    return result
+            return None
+        for body in bodies:
+            with self.subTest(body=body):
+                model = self.source('<body>' + body + '</body>')
+                expected = language(tinyhtml5.parse(self.path.read_text(encoding='utf-8')))
+                actual = next(n['language'] for n in model.html.nodes if n['attrs'].get('id') == 'target')
+                self.assertEqual(expected, 'en')
+                self.assertEqual(actual, expected)
+        for body in ('<form hidden><div>A</form>كي</div>',
+                     '<form><div lang="en">A</form>كي</div>'):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                self.source('<body>' + body + '</body>')
 
     @unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'HTML5 oracle tier')
     def test_implicit_scope_vectors_match_independent_html5_tree(self):

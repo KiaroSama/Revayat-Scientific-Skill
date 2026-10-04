@@ -6,7 +6,7 @@ import random
 import sys
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock
 
 from processes import run
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +22,9 @@ HIDDEN = 'داده آزمایشی غیر قابل نمایش در سند'
 
 class TextOrderSourceTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='order-source-')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(dir=scratch, prefix='order-source-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         scope = operation_log('test-order-sources', self.root / 'logs')
@@ -35,6 +37,19 @@ class TextOrderSourceTest(unittest.TestCase):
         self.assertIn(VISIBLE, plain)
         self.assertNotIn(HIDDEN, plain)
         self.assertEqual(ORDER.classify(ORDER.persian_windows(plain), HIDDEN), 'inconclusive')
+
+    def test_ignored_end_tags_cannot_expose_hidden_source_evidence(self):
+        source, extracted = self.root / 'source.html', self.root / 'extracted.txt'
+        body = f'<span hidden><p>A</span><p>{VISIBLE}</p>'
+        self.assertNotIn(VISIBLE, ORDER.strip_html(body))
+        source.write_text('<html lang="fa"><body>' + body + '</body></html>', encoding='utf-8')
+        extracted.write_text(VISIBLE, encoding='utf-8')
+        before = source.read_bytes(), extracted.read_bytes()
+        result = run([sys.executable, str(SCRIPTS / 'check-pdf-text-order.py'), '--source', str(source),
+                      '--extracted', str(extracted), '--json'], timeout=15)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertIn('inconclusive', result.stdout)
+        self.assertEqual((source.read_bytes(), extracted.read_bytes()), before)
 
     def test_comment_tail_with_angle_bracket_is_not_evidence(self):
         for comment in (f'<!-- <span>{HIDDEN}</span> -->', f'<!-- a > {HIDDEN} --!>'):
@@ -99,15 +114,15 @@ class TextOrderSourceTest(unittest.TestCase):
         class Words(list):
             def __getitem__(self, key):
                 if isinstance(key, slice) and key.stop is None:
-                    raise AssertionError('quadratic suffix copying')
+                    raise IndexError('quadratic suffix copying')
                 return super().__getitem__(key)
         # Keep folded input as the instrumented sequence at its construction site.
-        with mock.patch.object(ORDER, 'fold', side_effect=lambda word: word):
+        with unittest.mock.patch.object(ORDER, 'fold', side_effect=lambda word: word):
             words = Words(['آزمایش', 'علمی'] * 1000)
             class WordPattern:
                 def findall(self, text):
                     return words
-            with mock.patch.object(ORDER, 'ARABIC_WORD', WordPattern()):
+            with unittest.mock.patch.object(ORDER, 'ARABIC_WORD', WordPattern()):
                 # The exact legacy suffix allocation is independently checked below.
                 result = ORDER.persian_windows('ignored')
         self.assertTrue(result)
@@ -120,7 +135,7 @@ class TextOrderSourceTest(unittest.TestCase):
         for threshold in (0, -1, 4097):
             with self.subTest(threshold=threshold), self.assertRaises(ValueError):
                 ORDER.persian_windows(VISIBLE, threshold)
-        with mock.patch.object(ORDER, 'MAX_PROBE_STEPS', 10), self.assertRaises(ValueError):
+        with unittest.mock.patch.object(ORDER, 'MAX_PROBE_STEPS', 10), self.assertRaises(ValueError):
             ORDER.persian_windows(VISIBLE * 10)
 
     def test_cli_cannot_pass_using_attribute_only_evidence(self):

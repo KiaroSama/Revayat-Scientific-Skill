@@ -17,6 +17,13 @@ SCOPE = {'applet', 'caption', 'html', 'table', 'td', 'th', 'marquee', 'object', 
 TABLE_PARTS = {'caption', 'colgroup', 'col', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th'}
 TABLE_CONTEXT = {'table', 'thead', 'tbody', 'tfoot', 'tr', 'colgroup'}
 HEADINGS = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
+SPECIAL = P_CLOSERS | TABLE_PARTS | HEADINGS | SCOPE | {
+    'area', 'base', 'basefont', 'bgsound', 'body', 'br', 'button', 'embed', 'head',
+    'iframe', 'img', 'input', 'keygen', 'link', 'meta', 'noembed', 'noframes',
+    'noscript', 'object', 'optgroup', 'option', 'param', 'plaintext', 'script',
+    'select', 'source', 'style', 'textarea', 'title', 'track', 'wbr'}
+CONTAINER_ENDS = (P_CLOSERS - {'p', 'li', 'dt', 'dd', 'hr', 'table', 'xmp'}
+                  - HEADINGS) | {'button'}
 
 
 def scoped_index(stack, targets, fences):
@@ -59,9 +66,9 @@ def before_start(parser, tag, start):
     if tag in P_CLOSERS:
         close_from(parser, scoped_index(stack, {'p'}, SCOPE | {'button'}), start)
     if tag == 'li':
-        close_from(parser, scoped_index(stack, {'li'}, SCOPE | {'ul', 'ol', 'menu'}), start)
+        close_from(parser, scoped_index(stack, {'li'}, SPECIAL - {'address', 'div', 'p'}), start)
     elif tag in {'dt', 'dd'}:
-        close_from(parser, scoped_index(stack, {'dt', 'dd'}, SCOPE | {'dl', 'ul', 'ol'}), start)
+        close_from(parser, scoped_index(stack, {'dt', 'dd'}, SPECIAL - {'address', 'div', 'p'}), start)
     elif tag in HEADINGS:
         heading = scoped_index(stack, HEADINGS, SCOPE)
         if heading is not None:
@@ -125,8 +132,13 @@ def end_index(parser, tag):
         index = scoped_index(parser.stack, HEADINGS, SCOPE)
         if index is not None and parser.stack[index]['tag'] != tag:
             raise ValueError('mismatched HTML heading end tag requires normalization')
+    if tag in FORMATTING:
+        return scoped_index(parser.stack, {tag}, set())
     fences = (SCOPE | {'ul', 'ol', 'menu'} if tag == 'li' else
               SCOPE | {'button'} if tag == 'p' else
-              {'html', 'table'} if tag in TABLE_PARTS else
-              SCOPE if tag in {'dt', 'dd'} else set())
-    return scoped_index(parser.stack, {tag}, fences)
+              {'html', 'table'} if tag in TABLE_PARTS | {'table', 'select'} else
+              SCOPE if tag in {'dt', 'dd', 'form'} | HEADINGS | CONTAINER_ENDS else SPECIAL)
+    index = scoped_index(parser.stack, {tag}, fences)
+    if tag == 'form' and index is not None and index != len(parser.stack) - 1:
+        raise ValueError('HTML form removal requires explicitly nested markup')
+    return index

@@ -17,6 +17,12 @@ They fail before a lint or resource decision instead of silently borrowing a
 renderer-inconsistent tree. Existing raw-text/RCDATA, comment, foreign-namespace
 and self-closing-token rules remain in force. The independent HTML5 integration
 matrix checks accepted cases and explicit refusals, not universal conformance.
+Item-start scans stop at special-element barriers, while container endings use
+scope and generic endings stop at special elements. Ignored end tags cannot
+expose text from a hidden ancestor. Non-top form endings require normalization:
+removing a form pointer while retaining descendants is not ordinary stack popping.
+The provisioned tinyhtml5 renderer oracle and the current HTML standard can differ
+(for example, customizable selects); the admitted contract is engine-bounded.
 
 Text-order evidence uses actual text tokens from that same model. Attributes,
 comments, script/style/head/title contents and explicitly hidden subtrees do not
@@ -39,7 +45,11 @@ and inconclusive. A logical-order result is not translation-completeness evidenc
 quoted fields (including multiline evidence notes). Headers are case-normalized,
 unique and authoritative; `source` or `english` after the header is ordinary data.
 Every non-comment record must have exactly the header's width, including empty
-trailing cells. Invalid late records do not yield a partial ban list.
+trailing cells. Comments begin with `#` in the raw record after optional spaces;
+a quoted source such as `"#node"` is data. Only actual space-only empty lines are
+blank, not records containing tabs or quoted empty fields. Source/output controls
+are rejected before trimming, including C0, DEL and C1 characters; multiline
+evidence notes remain allowed. Invalid late records do not yield a partial ban list.
 
 The brief keeps its minimal `source, output` schema and 512-approved-row limit.
 Lint requires `source, output, step, count, forbidden_fa`. Additional columns

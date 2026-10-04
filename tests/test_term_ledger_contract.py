@@ -19,7 +19,9 @@ HEADER = 'source\toutput\tstep\tcount\tforbidden_fa'
 
 class TermLedgerContractTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='ledger-contract-')
+        scratch = ROOT / '.scratch'
+        scratch.mkdir(exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(dir=scratch, prefix='ledger-contract-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         self.path = self.root / 'terms.tsv'
@@ -38,6 +40,24 @@ class TermLedgerContractTest(unittest.TestCase):
                 pairs, errors = self.lint(HEADER + f'\n{source}\tOriginal\t1\t1\tمنبع\n')
                 self.assertEqual(errors, [])
                 self.assertEqual(pairs, [(source, 'منبع', 'job')])
+
+    def test_raw_record_boundaries_are_validated_before_decision_selection(self):
+        quoted = HEADER + '\n"#node"\tNode\t1\t1\tگره\n'
+        with self.subTest(kind='quoted source'):
+            self.assertEqual(self.lint(quoted), ([('#node', 'گره', 'job')], []))
+            self.assertEqual(BRIEF.approved_rows(quoted)[0]['source'], '#node')
+        valid = HEADER + '\nnode\tNode\t1\t1\tگره\n'
+        for row in ('\t\t\n', '\t\t\t\t\n',
+                    'node\t"Node\n"\t1\t1\tگره\n',
+                    '"\t node"\tNode\t1\t1\tگره\n',
+                    'node\t"Node\x7f"\t1\t1\tگره\n'):
+            with self.subTest(row=row):
+                self.assertEqual(self.lint(valid + row)[0], [])
+                self.assertTrue(self.lint(valid + row)[1])
+                with self.assertRaises(ValueError):
+                    BRIEF.approved_rows(valid + row)
+        self.assertEqual(self.lint(valid + '  \n# retained comment\n'),
+                         ([('node', 'گره', 'job')], []))
 
     def test_reordered_columns_resolve_by_header_not_position(self):
         text = 'output\tcount\tforbidden_fa\tsource\tstep\nOriginal\t1\tمنبع\tsource\t1\n'
@@ -115,7 +135,7 @@ class TermLedgerContractTest(unittest.TestCase):
     def test_house_pairs_allow_english_as_a_real_data_term(self):
         for header in ('', 'english\tforbidden_fa\tscope\tlevels\n'):
             with self.subTest(header=header):
-                self.path.write_bytes(('\ufeff' + header + 'english\tانگلیسی\tuniversal\tall\n').encode())
+                self.path.write_bytes(('\ufeff' + header + 'english\tانگلیسی\tuniversal\tall\n').encode('utf-8'))
                 self.assertEqual(load_pairs([self.path], 'journal'), [('english', 'انگلیسی', 'universal')])
 
     def test_duplicate_house_header_is_not_a_term_or_silent_reset(self):
