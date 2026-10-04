@@ -119,6 +119,14 @@ jobs:
         env:
           SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
         run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_audit_contract_boundaries.py' -k test_real_compiler_and_source_closure_agree_on_numeric_input -v
+      - name: Guarded build and input-revision regressions
+        env:
+          SCIENTIFIC_REQUIRE_BUILD_GUARD: '1'
+          SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
+        run: |
+          python tools/run-check.py --timeout 240 --idle-timeout 90 -- python -B -m unittest discover -s tests -p 'test_build_delivery.py' -v
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_build_guard.py' -v
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_tex_input_snapshot.py' -v
       - name: Build isolated TeX toolchain
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 skills/revayat-scientific/assets
       - name: Isolated renderer contracts

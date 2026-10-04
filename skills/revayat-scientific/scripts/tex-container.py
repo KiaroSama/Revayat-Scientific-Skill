@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import uuid
 
 from document_context import DocumentContext
+from build_guard import check_guard, file_hash, seal_rendered
 from publication import publish_files, validate_destination
 from runtime import operation_log, run_command
 from tex_source import masked_tex, source_closure
@@ -296,11 +297,15 @@ def retain_ci_fixture_console(source, outgoing, run_id, logger):
         logger.warning('fixture_tex_diagnostic_unavailable')
 
 
-def compile_document(source, output, logger):
+def compile_document(source, output, logger, *, build_guard=None):
     # Endpoint/image readiness precedes even reading the document.
     config = runtime_config(logger)
     logger.info('container_runtime=%s image=%s', config['kind'], config['image'])
     source, output = Path(source).resolve(), Path(output).absolute()
+    if build_guard:
+        record = check_guard(build_guard)
+        if str(output) != record['outputs'][0]:
+            raise ValueError('TeX build guard belongs to another renderer output')
     inputs = approved_files(source)
     validate_destination(output, [path for path, _ in inputs])
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -313,12 +318,19 @@ def compile_document(source, output, logger):
         incoming.mkdir(mode=0o755)
         outgoing.mkdir(mode=0o777)
         outgoing.chmod(0o777)
+        snapshots = {}
         for original, relative in inputs:
             target = incoming / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(original, target)
             # The mount enforces RO. Windows read-only attributes prevent cleanup.
             target.chmod(0o644)
+            snapshots[str(original)] = file_hash(target)
+        for original, digest in snapshots.items():
+            if file_hash(original) != digest:
+                raise ValueError('TeX input changed while preparing its checked copy')
+        if build_guard:
+            check_guard(build_guard, snapshots)
         try:
             receipt = register(config, directory, run_id)
             code, _ = call(run_arguments(config, directory, source.name, run_id), logger, timeout=INNER_TIMEOUT + 30)
@@ -347,7 +359,17 @@ def compile_document(source, output, logger):
             for page in document:
                 if page.rect.is_empty or page.rect.is_infinite:
                     raise ValueError('isolated renderer produced invalid page geometry')
-        publish_files([(pdf, output)], protected_sources=[path for path, _ in inputs])
+        for original, digest in snapshots.items():
+            if file_hash(original) != digest:
+                raise ValueError('TeX input changed during rendering; rerun all build checks')
+        protected = [path for path, _ in inputs]
+        if build_guard:
+            record = check_guard(build_guard)
+            protected.extend([build_guard, *map(Path, record['inputs'])])
+        digest = file_hash(pdf)
+        publish_files([(pdf, output)], protected_sources=protected)
+        if build_guard:
+            seal_rendered(build_guard, output, digest)
         logger.info('isolated_tex_published input_files=%d', len(inputs))
     finally:
         if not keep:
@@ -357,6 +379,7 @@ def compile_document(source, output, logger):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe', action='store_true')
+    parser.add_argument('--build-guard', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--cleanup-receipts', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--owner-token', help=argparse.SUPPRESS)
     parser.add_argument('source', nargs='?', type=Path)
@@ -376,7 +399,7 @@ def main(argv=None):
                 return 2
         if args.source is None or args.output is None:
             parser.error('SOURCE and OUTPUT are required')
-        compile_document(args.source, args.output, logger)
+        compile_document(args.source, args.output, logger, build_guard=args.build_guard)
     print(args.output)
     return 0
 

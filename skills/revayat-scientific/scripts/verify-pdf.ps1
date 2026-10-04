@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 # Shared verification for the Windows build entry point; functions run in its scope.
 function Test-OutputPdf {
-    param([string]$Pdf, [string]$WorkDir, [string]$Stem)
+    param([string]$Pdf, [string]$WorkDir, [string]$Stem, [string]$Guard, [string]$StagingDirectory)
     if (-not (Test-PdfStructure $Pdf)) {
         Write-Log "VERIFY FAIL: $Pdf is empty or truncated (no %%EOF trailer)"
         return $false
@@ -31,12 +31,19 @@ function Test-OutputPdf {
         Write-Log 'VERIFY FAIL: no embedded font; Persian may render as boxes'
         return $false
     }
+    if (-not $Guard -or -not $StagingDirectory) {
+        Write-Log 'VERIFY FAIL: a guarded private sample directory is required'
+        return $false
+    }
+    $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'guard-check', $Guard)
+    if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; return $false }
+    $stages = @()
     $samples = ,@('first', 1)
-    if ($pages -gt 1) { $samples += ,@('last', $pages) }
-    if ($pages -gt 2) { $samples += ,@('mid', [int][Math]::Ceiling($pages / 2)) }
+    # Refresh all roles so a shorter rebuild cannot leave stale tail previews.
+    $samples += ,@('last', $pages)
+    $samples += ,@('mid', [int][Math]::Ceiling($pages / 2))
     foreach ($sample in $samples) {
-        $prefix = Join-Path $WorkDir "verify-$Stem-$($sample[0])"
-        Remove-Item -LiteralPath "$prefix.png" -Force -ErrorAction SilentlyContinue
+        $prefix = Join-Path $StagingDirectory "verify-$Stem-$($sample[0])"
         $page = [string]$sample[1]
         $r = Invoke-Tool (Get-Tool 'pdftoppm') @(
             '-singlefile', '-png', '-r', '110', '-f', $page, '-l', $page, $Pdf, $prefix)
@@ -45,7 +52,10 @@ function Test-OutputPdf {
             Write-Log "VERIFY FAIL: $($sample[0])-page raster was not written"
             return $false
         }
+        $stages += "$prefix.png"
     }
+    $r = Invoke-Tool $python (@((Join-Path $PSScriptRoot 'build-support.py'), 'samples', $Guard) + $stages)
+    if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; return $false }
     Write-Log 'rasterised first/middle/last samples; inspect their display visually'
     $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'check-pdf-text-order.py'),
         $Pdf, '--source', $srcItem.FullName, '--json')
