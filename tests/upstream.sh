@@ -316,6 +316,10 @@ else:
     with pymupdf.open() as document:
         document.new_page(width=230, height=340)
         document.save(output)
+# The successful controller fixture must honor the real build stage protocol.
+if mode == 'ok' and '--build-guard' in sys.argv:
+    from build_guard import file_hash, seal_rendered
+    seal_rendered(Path(sys.argv[sys.argv.index('--build-guard') + 1]), output, file_hash(output))
 raise SystemExit(42 if mode == 'failed-valid' else 0)
 STUB
 

@@ -24,3 +24,8 @@
 | Parallel work choice | The user's recorded permission to use translation or editing subagents for one job |
 | Work unit | A bounded source section with one owner, draft revision and acceptance state |
 | Coordinator | Agent responsible for canonical output, shared terminology and integration of worker submissions |
+| Checked input snapshot | The source and resource revisions accepted for one document build |
+| Sealed working edition | Exact rendered document bytes associated with a checked input snapshot, not visual approval |
+| Preview batch | First, middle and last diagnostic images of one candidate edition |
+| Installation target plan | Complete set of selected supported host destinations for one installation |
+| Recovery record | Identity and location evidence used to resolve an incomplete operation while preserving foreign or concurrent data |

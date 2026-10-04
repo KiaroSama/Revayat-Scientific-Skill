@@ -216,7 +216,7 @@ function Find-Chromium {
 
 function Invoke-TexBuild {
     param([string]$SourceName, [string]$Stem, [string]$Destination)
-    $result = Invoke-Tool $python @((Join-Path $PSScriptRoot 'tex-container.py'), $srcItem.FullName, $Destination)
+    $result = Invoke-Tool $python @((Join-Path $PSScriptRoot 'tex-container.py'), $srcItem.FullName, $Destination, '--build-guard', $buildGuard)
     Write-ToolOutput $result.Output
     if ($result.ExitCode -ne 0) { return 2 }
     return 0
@@ -244,7 +244,7 @@ function Test-PdfStructure {
 
 function Invoke-HtmlBuild {
     param([string]$Html, [string]$Destination)
-    $arguments = @((Join-Path $PSScriptRoot 'render-html.py'), $Html, $Destination, '--engine', $Engine)
+    $arguments = @((Join-Path $PSScriptRoot 'render-html.py'), $Html, $Destination, '--engine', $Engine, '--build-guard', $buildGuard)
     if ($Engine -eq 'chromium') {
         $browser = Find-Chromium
         if (-not $browser) { Write-Log 'selected Chromium became unavailable'; return 2 }
@@ -266,6 +266,7 @@ if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
 }
 
 $srcItem = Get-Item -LiteralPath $Path
+$requestedSource = $srcItem.FullName
 $srcDir = $srcItem.DirectoryName
 $srcName = $srcItem.Name
 $srcStem = [IO.Path]::GetFileNameWithoutExtension($srcName)
@@ -312,53 +313,76 @@ $Engine = $plan.engine
 $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'destination',
     $dest, $srcItem.FullName, $localPdf)
 if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; exit 1 }
-$r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'check-fa.py'), $srcItem.FullName,
-    '--level', $Level, '--terms', $Terms, '--manifest', $Manifest, '--strict')
-Write-ToolOutput $r.Output
-if ($r.ExitCode -ne 0) { Write-Log 'lint failed; destination was not changed'; exit 1 }
-$r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'assets', $srcItem.FullName)
-Write-ToolOutput $r.Output
-if ($r.ExitCode -ne 0) { Write-Log 'figure check failed'; exit 1 }
-
-$rc = 1
-Push-Location -LiteralPath $srcDir
+# One private record binds checked inputs and all reserved artifact paths.
+$buildStage = Join-Path $srcDir ('.revayat-build-' + [Guid]::NewGuid().ToString('N'))
+[IO.Directory]::CreateDirectory($buildStage) | Out-Null
+$buildGuard = Join-Path $buildStage 'build.json'
 try {
-    switch ($ext) {
-        'tex' {
-            $rc = Invoke-TexBuild $srcName $srcStem $localPdf
-            if ($rc -ne 0) {
-                Write-Log 'selected TeX engine failed or became unavailable; no fallback after source checks'
-                exit 1
+    $guardArguments = @((Join-Path $PSScriptRoot 'build-support.py'), 'guard', $buildGuard,
+        '--source', $srcItem.FullName, '--requested', $requestedSource,
+        '--terms', $Terms, '--manifest', $Manifest, '--working', $localPdf, '--output', $dest)
+    if ($Verify) {
+        foreach ($sample in @('first', 'last', 'mid')) {
+            $guardArguments += @('--sample', (Join-Path $srcDir "verify-$Slug-$sample.png"))
+        }
+    }
+    $r = Invoke-Tool $python $guardArguments
+    if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; exit 1 }
+    $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'check-fa.py'), $srcItem.FullName,
+        '--level', $Level, '--terms', $Terms, '--manifest', $Manifest, '--strict')
+    Write-ToolOutput $r.Output
+    if ($r.ExitCode -ne 0) { Write-Log 'lint failed; destination was not changed'; exit 1 }
+    $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'assets', $srcItem.FullName)
+    Write-ToolOutput $r.Output
+    if ($r.ExitCode -ne 0) { Write-Log 'figure check failed'; exit 1 }
+
+    $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'guard-check', $buildGuard)
+    if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; exit 1 }
+    $rc = 1
+    Push-Location -LiteralPath $srcDir
+    try {
+        switch ($ext) {
+            'tex' {
+                $rc = Invoke-TexBuild $srcName $srcStem $localPdf
+                if ($rc -ne 0) {
+                    Write-Log 'selected TeX engine failed or became unavailable; no fallback after source checks'
+                    exit 1
+                }
+            }
+            { $_ -in 'html', 'htm' } {
+                $rc = Invoke-HtmlBuild $srcName $localPdf
+            }
+            default {
+                Write-Log "expected .tex or .html, got: $srcName"
+                exit 2
             }
         }
-        { $_ -in 'html', 'htm' } {
-            $rc = Invoke-HtmlBuild $srcName $localPdf
+
+        if ($rc -ne 0) {
+            Write-Log 'build failed'
+            exit 1
         }
-        default {
-            Write-Log "expected .tex or .html, got: $srcName"
-            exit 2
+
+        # Verification that cannot fail the build is decoration. If -Verify was
+        # asked for and it fails, do not print the destination path as though
+        # the document were usable.
+        if ($Verify -and -not (Test-OutputPdf $localPdf $srcDir $Slug $buildGuard $buildStage)) {
+            Write-Log 'verification failed; this PDF is not usable'
+            exit 1
         }
+    }
+    finally {
+        Pop-Location
     }
 
-    if ($rc -ne 0) {
-        Write-Log 'build failed'
-        exit 1
-    }
-
-    # Verification that cannot fail the build is decoration. If -Verify was
-    # asked for and it fails, do not print the destination path as though
-    # the document were usable.
-    if ($Verify -and -not (Test-OutputPdf $localPdf $srcDir $Slug)) {
-        Write-Log 'verification failed; this PDF is not usable'
-        exit 1
-    }
+    if (-not (Test-PdfStructure $localPdf)) { Write-Log 'build produced an invalid PDF'; exit 1 }
+    $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'publish', $localPdf, $dest, '--guard', $buildGuard)
+    if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; Write-Log 'delivery failed; previous destination was preserved'; exit 1 }
+    Write-Output $dest
+    exit 0
 }
 finally {
-    Pop-Location
+    if (Test-Path -LiteralPath $buildStage) {
+        Remove-Item -LiteralPath $buildStage -Recurse -Force
+    }
 }
-
-if (-not (Test-PdfStructure $localPdf)) { Write-Log 'build produced an invalid PDF'; exit 1 }
-$r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'publish', $localPdf, $dest)
-if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; Write-Log 'delivery failed; previous destination was preserved'; exit 1 }
-Write-Output $dest
-exit 0

@@ -13,7 +13,10 @@ frontmatter identifies exactly `name: revayat-scientific`; `--force` is addition
 required. An existing empty directory is replaceable with `--force`. A missing,
 ambiguous or different skill identity requires a separately reviewed manual
 migration, not a forced overwrite. This identity is a safety marker, not proof of
-trust or authentication of downloaded code.
+trust or authentication of downloaded code. Admission accepts simple unquoted
+frontmatter keys and a plain or matching single/double-quoted name scalar; UTF-8
+BOM and ordinary multiline descriptions remain supported. Explicit/escaped keys,
+duplicate names, malformed quotes and non-scalar names require manual review.
 
 Source/destination overlap, implementation folders, filesystem root, `.git`
 components, detected repository administration, links/junctions/reparse points,
@@ -60,8 +63,12 @@ has succeeded, the installer prints completion and retained-backup paths.
 
 Before replacing anything, the installer writes `recovery.json` beneath a private
 `.revayat-install-recovery-<run>` directory. The prepared record identifies every
-destination, stage, previous-backup path and directory identity. It contains
-operational paths, not document contents or credentials.
+destination, stage, previous-backup path and directory identity, plus each owned
+lock path/identity. All empty stages are identified in the initial journal before
+copying or journal refresh, so a partial-copy or refresh failure followed by failed
+stage cleanup still retains accountable stage and lock
+evidence. Those locks are not released while owned stage cleanup remains unresolved.
+The journal contains operational paths, not document contents or credentials.
 
 On an ordinary copy/admission failure, existing installations remain unchanged.
 On a later publication failure or interrupt, newly installed directories are
@@ -87,6 +94,10 @@ This is recoverable multi-target publication with cooperative concurrency checks
 adversarial filesystem sandbox or protection against arbitrary same-user mutation
 between OS calls. A machine crash, lost volume or hostile parent-directory swap
 requires operator recovery; no automatic deletion is justified by a missing path.
+If even the initial journal write fails and stage removal also fails, no complete
+journal identity is guaranteed: stop competing installers and treat retained paths
+as unverified until independently inspected. A reported recovery location is not
+proof that the storage device accepted every journal write.
 
 ## Research and acceptance
 

@@ -8,6 +8,7 @@ import sys
 import tempfile
 from urllib.parse import quote, urlsplit
 
+from build_guard import check_guard, file_hash, seal_rendered
 from publication import publish_files, validate_destination
 from resource_policy import MAX_RESOURCE_BYTES, ORIGIN, ResourcePolicy
 from runtime import operation_log, run_command
@@ -82,10 +83,15 @@ def main(argv=None):
     parser.add_argument('output', type=Path)
     parser.add_argument('--engine', required=True, choices=('chromium', 'weasyprint'))
     parser.add_argument('--browser')
+    parser.add_argument('--build-guard', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     with operation_log('render-html', HERE / 'logs') as logger:
         validate_destination(args.output, [args.source])
+        if args.build_guard:
+            record = check_guard(args.build_guard)
+            if args.worker or str(args.output.absolute()) != record['outputs'][0]:
+                raise ValueError('HTML build guard belongs to another renderer output')
         args.output.parent.mkdir(parents=True, exist_ok=True)
         if args.worker:
             policy = ResourcePolicy(args.source)
@@ -131,7 +137,15 @@ def main(argv=None):
             with pymupdf.open(stage) as document:
                 if not document.is_pdf or document.needs_pass or document.page_count < 1 or document.is_repaired:
                     raise ValueError('renderer did not produce a complete valid PDF')
-            publish_files([(stage, args.output)], protected_sources=[args.source, *map(Path, resources)])
+            if args.build_guard:
+                record = check_guard(args.build_guard, resources)
+            digest = file_hash(stage)
+            protected = [args.source, *map(Path, resources)]
+            if args.build_guard:
+                protected.extend([args.build_guard, *map(Path, record['inputs'])])
+            publish_files([(stage, args.output)], protected_sources=protected)
+            if args.build_guard:
+                seal_rendered(args.build_guard, args.output, digest)
         return 0
 
 

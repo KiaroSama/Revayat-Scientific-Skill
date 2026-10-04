@@ -118,3 +118,18 @@ verification; serialized metadata and comments are not evidence. `term_ledger.py
 shares bounded, located TSV admission and approval semantics across job lint and
 the term brief. See [source validation contracts](../skills/revayat-scientific/references/source-validation-contracts.md)
 for compatibility boundaries, limits, research and independent renderer tests.
+
+`build_guard.py` binds each build's pre-lint inputs and reserved artifact paths
+through both native adapters, actual renderer resources, verified preview batches
+and final PDF bytes. TeX binds originals before copying and checks original/staged
+revisions after execution; HTML contributes its
+existing resource manifest. A sealed working-PDF digest prevents a different
+revision being delivered under the same filename. Verification stages samples
+before common recoverable publication rather than deleting predictable paths.
+See [build integrity](../skills/revayat-scientific/references/build-integrity.md)
+for output names, failure preservation, repeated-page preview roles and the
+explicit distinction between coordination, source locking and multi-file atomicity.
+Shared file publication tracks attempted replacements before the OS call and
+verifies backup contents before activation/restoration. Installer admission uses a
+bounded unambiguous identity subset; partial-copy cleanup failures retain owned
+stage/lock identities and the recovery record rather than releasing coordination.

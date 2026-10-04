@@ -204,6 +204,10 @@ A translation job keeps its own source, `inventory.md`, `terms.tsv`,
 requested verification preserves the previous delivered PDF. The output defaults
 to `$HOME/Documents/books`; `--output-dir` selects another directory.
 [Architecture and responsibilities](docs/architecture.md).
+Builds protect source/assets/sidecars from output aliases, bind input revisions
+and exact rendered bytes, and publish complete first/middle/last preview batches.
+A changed input or failed verification is not a new approved edition. See
+[checked input and delivery integrity](skills/revayat-scientific/references/build-integrity.md).
 
 ## What it is honest about
 

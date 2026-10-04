@@ -87,8 +87,22 @@ def _existing_skill(path, old):
         raise ValueError('--force can replace only an identified revayat-scientific installation or empty directory')
     text = marker.read_text(encoding='utf-8-sig')
     front = re.match(r'\A---\r?\n(.*?)\r?\n---(?:\r?\n|\Z)', text, re.S)
-    names = re.findall(r'^name:\s*[\'\"]?([\w-]+)[\'\"]?\s*$', front[1], re.M) if front else []
-    if names != ['revayat-scientific']:
+    lines = front[1].splitlines() if front else []
+    continuation = False
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        if line[0].isspace():
+            if not continuation:
+                raise ValueError('installation identity has an unexpected indented continuation')
+            continue
+        key = re.fullmatch(r'([A-Za-z][A-Za-z0-9_-]*)[ \t]*:(.*)', line)
+        if key is None:
+            raise ValueError('installation identity requires simple unambiguous frontmatter keys')
+        continuation = key[1] != 'name' and key[2].strip() in {'', '|', '>', '|-', '>-', '|+', '>+'}
+    names = re.findall(r'^name[ \t]*:(.*)$', front[1], re.M) if front else []
+    if (len(names) != 1 or names[0].strip() not in
+            {'revayat-scientific', "'revayat-scientific'", '"revayat-scientific"'}):
         raise ValueError('--force destination does not identify the revayat-scientific skill')
 
 
@@ -145,6 +159,8 @@ class Target:
     stage: Path
     backup: Path
     prepared: object = None
+    lock: Path | None = None
+    lock_identity: object = None
 
 
 def _journal(path, targets):
@@ -153,7 +169,9 @@ def _journal(path, targets):
             'targets': [{'destination': str(t.destination), 'stage': str(t.stage),
                          'backup': str(t.backup), 'previous_exists': t.old is not None,
                          'previous_identity': t.old[0] if t.old else None,
-                         'staged_identity': t.prepared[0] if t.prepared else None}
+                         'staged_identity': t.prepared[0] if t.prepared else None,
+                         'lock': str(t.lock) if t.lock else None,
+                         'lock_identity': t.lock_identity}
                         for t in targets]}
     with path.open('x', encoding='utf-8', newline='\n') as handle:
         json.dump(data, handle, ensure_ascii=False, indent=2)
@@ -231,12 +249,17 @@ def install_targets(destinations, force, logger, *, source, repository, payload_
             name = hashlib.sha256(str(item.destination).casefold().encode('utf-8')).hexdigest()[:24]
             lock = item.destination.parent / ('.revayat-install-' + name + '.lock')
             handle = lock.open('x', encoding='utf-8')
-            locks.append((lock, handle, _identity(lock)))
+            item.lock, item.lock_identity = lock, _identity(lock)
+            locks.append((lock, handle, item.lock_identity))
             handle.write(str(journal_path) + '\n')
             handle.flush()
         directory_path(journal_dir)
         journal_dir.mkdir(mode=0o700)
         journal_identity = _identity(journal_dir)
+        for item in targets:
+            # Final stages keep normal Windows ACL inheritance, unlike the private journal.
+            item.stage.mkdir()
+            item.prepared = snapshot(item.stage)
         _journal(journal_path, targets)
         for item in targets:
             validate_location(item.destination, source, repository)
@@ -246,9 +269,9 @@ def install_targets(destinations, force, logger, *, source, repository, payload_
                 _mkdirs(item.backup.parent, created)
                 if item.backup.parent.stat().st_dev != item.destination.parent.stat().st_dev:
                     raise ValueError('backup and installation must be on the same filesystem')
-            # mkdir deliberately keeps normal Windows ACL inheritance for final installs.
-            item.stage.mkdir()
-            item.prepared = snapshot(item.stage)
+            ready = journal_dir / 'prepared.json'
+            _journal(ready, targets)
+            os.replace(ready, journal_path)
             for path, relative, size, digest in rows:
                 target = item.stage / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -298,6 +321,11 @@ def install_targets(destinations, force, logger, *, source, repository, payload_
                         shutil.rmtree(item.stage)
                     except (OSError, ValueError):
                         cleanup.append(str(item.stage))
+            if cleanup:
+                for _, handle, _ in locks:
+                    handle.close()
+                logger.error('installation_cleanup_unresolved count=%d', len(cleanup))
+                raise RuntimeError('installation cleanup needs recovery: ' + str(journal_path))
             for lock, handle, identity in reversed(locks):
                 handle.close()
                 try:

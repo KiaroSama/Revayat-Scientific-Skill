@@ -88,8 +88,8 @@ def publish_files(entries, protected_sources=()):
                 backup = directory / 'previous'
                 if original is not None:
                     shutil.copy2(dest, backup)
-                    if _fingerprint(dest) != original:
-                        raise RuntimeError('destination changed during backup')
+                    if _fingerprint(dest) != original or _fingerprint(backup)[2:] != original[2:]:
+                        raise RuntimeError('destination changed or copied backup differs')
                 (directory / 'recovery.json').write_text(json.dumps({
                     'destination': str(dest), 'previous_exists': original is not None,
                     'backup': str(backup), 'stage': str(stage),
@@ -100,18 +100,24 @@ def publish_files(entries, protected_sources=()):
                 if _fingerprint(dest) != original:
                     raise RuntimeError('destination changed before publication')
                 published = _fingerprint(stage)
-                os.replace(stage, dest)
                 committed.append((dest, backup, original, published))
+                os.replace(stage, dest)
         except BaseException:
             failures = []
             for dest, backup, original, published in reversed(committed):
                 try:
                     validate_destination(dest, protected_sources)
-                    if _fingerprint(dest) != published:
+                    current = _fingerprint(dest)
+                    if current == original:
+                        continue
+                    if current != published:
                         raise ValueError('published destination changed before rollback')
                     if original is None:
                         dest.unlink()
                     else:
+                        retained = _fingerprint(backup)
+                        if _linked(backup) or retained is None or retained[2:] != original[2:]:
+                            raise ValueError('previous backup changed before rollback')
                         os.replace(backup, dest)
                 except OSError:
                     failures.append(str(backup.parent / 'recovery.json'))

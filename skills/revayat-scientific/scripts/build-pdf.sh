@@ -73,6 +73,7 @@ fi
 src_dir=$(cd "$(dirname "$src")" && pwd)
 src_base=$(basename "$src")
 ext=${src_base##*.}
+requested_source="${src_dir}/${src_base}"
 stem_src=${src_base%.*}
 stem=${slug:-$stem_src}
 case "$stem" in
@@ -134,6 +135,20 @@ ext=${src_base##*.}
 ext=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
 python3 "$here/build-support.py" destination "$dest" "$src" "$local_pdf" || exit 1
 
+# Reserve every artifact and bind the pre-lint source revision to later stages.
+guard_dir=$(mktemp -d "$src_dir/.revayat-build-XXXXXXXX") || exit 1
+trap 'rm -rf -- "$guard_dir"' EXIT
+guard="$guard_dir/build.json"
+guard_args=("$here/build-support.py" guard "$guard" --source "$src"
+            --requested "$requested_source" --terms "$terms" --manifest "$manifest"
+            --working "$local_pdf" --output "$dest")
+if [[ $verify -eq 1 ]]; then
+  for sample in first last mid; do
+    guard_args+=(--sample "$src_dir/verify-$stem-$sample.png")
+  done
+fi
+python3 "${guard_args[@]}" || exit 1
+
 python3 "$here/check-fa.py" "${src_dir}/${src_base}" \
   --level "$level" --terms "$terms" --manifest "$manifest" --strict || {
   log "lint failed; not writing ${dest}"
@@ -144,6 +159,8 @@ python3 "$here/build-support.py" assets "$src" || {
   log "figure check failed; inspect the required source assets"
   exit 1
 }
+
+python3 "$here/build-support.py" guard-check "$guard" || exit 1
 
 cd "$src_dir" || exit 1
 
@@ -164,13 +181,13 @@ warn_html_copy_order() {
 
 # Selection already established container readiness; never execute native TeX.
 compile_tex() {
-  python3 "$here/tex-container.py" "$src" "$local_pdf" >&2 || return 2
+  python3 "$here/tex-container.py" "$src" "$local_pdf" --build-guard "$guard" >&2 || return 2
   return 0
 }
 
 html_to_pdf() {
   local html=$1 out=$2 chrome
-  local arguments=("$here/render-html.py" "$html" "$out" --engine "$engine")
+  local arguments=("$here/render-html.py" "$html" "$out" --engine "$engine" --build-guard "$guard")
   if [[ $engine == chromium ]]; then
     chrome=$(find_chrome) || { log "selected Chromium became unavailable"; return 2; }
     arguments+=(--browser "$chrome")
@@ -184,7 +201,6 @@ _first_glob() {
   local f
   for f in "$@"; do
     if [[ -e "$f" && -s "$f" ]]; then
-      printf '%s\n' "$f"
       return 0
     fi
   done
@@ -224,10 +240,10 @@ verify_pdf() {
     return 1
   fi
 
-  local out_prefix="${src_dir}/verify-${stem}"
-  rm -f -- "${out_prefix}-first.png" \
-           "${out_prefix}-last.png" \
-           "${out_prefix}-mid.png"
+  # Render diagnostics privately; never unlink a user file to create a sample.
+  local out_prefix="${guard_dir}/verify-${stem}"
+  local samples=("${out_prefix}-first.png")
+  python3 "$here/build-support.py" guard-check "$guard" || return 1
   pdftoppm -singlefile -png -r 110 -f 1 -l 1 "$pdf" "${out_prefix}-first" || {
     log "VERIFY FAIL: pdftoppm first page failed"
     return 1
@@ -236,30 +252,25 @@ verify_pdf() {
     log "VERIFY FAIL: first-page raster was not written"
     return 1
   fi
-  if [[ $pages -gt 1 ]]; then
-    pdftoppm -singlefile -png -r 110 -f "$pages" -l "$pages" "$pdf" \
-      "${out_prefix}-last" || {
-      log "VERIFY FAIL: pdftoppm last page failed"
-      return 1
-    }
-    if ! _first_glob "${out_prefix}-last.png"; then
-      log "VERIFY FAIL: last-page raster was not written"
+  # All three roles are refreshed even when their page numbers coincide.
+  local mid=$(( (pages + 1) / 2 )) role number
+  for role in last mid; do
+    number=$pages
+    [[ $role != mid ]] || number=$mid
+    samples+=("${out_prefix}-${role}.png")
+    if [[ $number -eq 1 ]]; then
+      cp -- "${out_prefix}-first.png" "${out_prefix}-${role}.png" || return 1
+    else
+      pdftoppm -singlefile -png -r 110 -f "$number" -l "$number" "$pdf" \
+        "${out_prefix}-${role}" || { log "VERIFY FAIL: $role page failed"; return 1; }
+    fi
+    if ! _first_glob "${out_prefix}-${role}.png"; then
+      log "VERIFY FAIL: $role-page raster was not written"
       return 1
     fi
-  fi
-  if [[ $pages -gt 2 ]]; then
-    local mid=$(( (pages + 1) / 2 ))
-    pdftoppm -singlefile -png -r 110 -f "$mid" -l "$mid" "$pdf" \
-      "${out_prefix}-mid" || {
-      log "VERIFY FAIL: pdftoppm middle page failed"
-      return 1
-    }
-    if ! _first_glob "${out_prefix}-mid.png"; then
-      log "VERIFY FAIL: middle-page raster was not written"
-      return 1
-    fi
-  fi
-  log "rasterised samples: ${out_prefix}-*.png — look at them, do not"
+  done
+  python3 "$here/build-support.py" samples "$guard" "${samples[@]}" || return 1
+  log "rasterised samples: ${src_dir}/verify-${stem}-*.png — look at them, do not"
   log "  judge *display* RTL from pdftotext"
 
   local order_rc=0 order_out=""
@@ -302,7 +313,7 @@ if [[ $verify -eq 1 ]]; then
   verify_pdf "$local_pdf" || exit 1
 fi
 
-python3 "$here/build-support.py" publish "$local_pdf" "$dest" || {
+python3 "$here/build-support.py" publish "$local_pdf" "$dest" --guard "$guard" || {
   log "delivery failed; previous destination was preserved"
   exit 1
 }

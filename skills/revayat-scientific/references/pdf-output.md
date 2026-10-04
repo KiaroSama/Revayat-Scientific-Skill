@@ -231,3 +231,13 @@ Implementation boundaries for source-text evidence, implicit HTML scopes and
 validated job ledgers are defined in [source validation contracts](source-validation-contracts.md).
 Required checks use those shared contracts; visual review and semantic approval
 remain separate from successful mechanical execution.
+
+### Preserve build inputs and verification artifacts
+
+The native build refuses output paths that alias checked inputs, including
+explicit sidecars and renderer-discovered resources. With `--verify`, reserve the
+first/last/middle preview names and publish all three from validated private
+staging; the roles may refer to the same page in short PDFs. Do not manually
+remove an input to satisfy a preview name collision. Follow the
+[build-integrity contract](build-integrity.md) for input revisions, sealed working
+PDFs, diagnostics after failed verification and preserved final delivery.
