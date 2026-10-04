@@ -111,9 +111,10 @@ class InstallTransactionTest(unittest.TestCase):
         self.assertEqual(self.snapshot(self.first), previous)
 
     def test_git_metadata_and_case_variant_are_never_install_targets(self):
-        for name in ('.git', '.GIT'):
+        for index, name in enumerate(('.git', '.GIT')):
             with self.subTest(name=name):
-                target = self.root / name
+                # Separate parents keep both cases executable on case-insensitive volumes.
+                target = self.root / ('case-' + str(index)) / name
                 self.old(target)
                 before = self.snapshot(target)
                 with self.assertRaises(ValueError):
