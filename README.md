@@ -77,8 +77,9 @@ By default this installs into every agent it detects — Claude Code, Codex,
 Kiro, Cursor, Cline, Hermes, OpenCode and Antigravity. Use `--agent claude`
 for one, or `--scope project --path <dir>` for a project. Both installers
 accept the same options and create real copies. Existing installations require
-`--force`; a complete replacement is staged first and the previous copy is
-retained outside skill discovery. [Host paths and installation details](docs/installation.md).
+`--force` and must identify this skill. All selected targets are staged and
+verified before replacement; previous copies are retained outside normal skill
+discovery. A failed batch rolls back, or retains explicit recovery evidence. [Host paths and installation details](docs/installation.md).
 
 ### As a Claude Code plugin
 

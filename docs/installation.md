@@ -17,7 +17,7 @@ No separate DOCX or PDF Processing Pro skill installation is required. Parallel
 translation/editing uses available host subagents only after affirmative user
 consent; a host without subagents follows the same workflow sequentially.
 
-Installers make real copies. `--agent all` installs only for detected configuration directories; an explicit agent can create its skill directory. `--scope project` requires `--path`. `--dest` names an explicit final skill directory for other hosts. Existing installations are refused unless `--force` is given; replacements are staged completely, with the old copy retained in a backup outside the skill discovery directory. Installation does not modify agent configuration or install dependencies.
+Installers make real copies. `--agent all` installs only for detected configuration directories; an explicit agent can create its skill directory. `--scope project` requires `--path`. `--dest` names an explicit final skill directory for other hosts. Existing installations are refused unless `--force` is given; the complete target set is validated and staged before replacement, with old copies retained outside normal skill discovery. Nonempty targets must identify this skill; arbitrary directories cannot be forced. A later failure rolls back earlier targets, or retains a located recovery journal if safe restoration is impossible. See [installation integrity and recovery](installation-integrity.md). Installation does not modify agent configuration or install dependencies.
 
 | Agent | User skill parent | Project skill parent |
 | --- | --- | --- |

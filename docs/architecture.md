@@ -110,3 +110,10 @@ verification; serialized metadata and comments are not evidence. `term_ledger.py
 shares bounded, located TSV admission and approval semantics across job lint and
 the term brief. See [source validation contracts](../skills/revayat-scientific/references/source-validation-contracts.md)
 for compatibility boundaries, limits, research and independent renderer tests.
+
+
+Installation uses a whole-invocation directory transaction in
+`install/install_transaction.py`, with path admission in `install/install_paths.py`.
+Source and staged hashes, old-tree snapshots and owned locks protect the selected
+copy plan; failed restoration retains its journal and backups instead of deleting
+recovery evidence. See [installation integrity](installation-integrity.md).

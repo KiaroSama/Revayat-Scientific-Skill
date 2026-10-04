@@ -2,14 +2,15 @@
 """Install a real, self-contained skill copy for detected or selected agents."""
 import argparse
 from pathlib import Path
-import shutil
 import sys
-import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'skills/revayat-scientific'
 sys.path.insert(0, str(SOURCE / 'scripts'))
 from runtime import operation_log
+sys.path.insert(0, str(ROOT / 'install'))
+from install_paths import directory_path, linked
+from install_transaction import install_targets
 
 AGENTS = {
     'claude': ('.claude/skills', '.claude/skills'),
@@ -29,9 +30,10 @@ EXCLUDED = {'__pycache__', 'logs', 'fonts', '.git', '.ai', '.ignoreme',
 
 
 def payload_files():
+    directory_path(SOURCE)
     for path in sorted(SOURCE.rglob('*')):
         relative = path.relative_to(SOURCE)
-        if path.is_symlink():
+        if linked(path):
             raise ValueError('the distributable skill must not contain symbolic links')
         if (not path.is_file() or any(part in EXCLUDED or part.startswith('.') for part in relative.parts)
                 or path.suffix in ('.pyc', '.log') or path.name.startswith('.env')):
@@ -41,44 +43,8 @@ def payload_files():
 
 
 def install(destination: Path, force: bool, logger):
-    if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
-        raise ValueError('installation destination must be a real directory')
-    destination = destination.resolve()
-    source = SOURCE.resolve()
-    if destination == source or source in destination.parents or destination in source.parents:
-        raise ValueError('installation destination overlaps the source skill')
-    if destination.exists() and not force:
-        raise FileExistsError('skill already exists; use --force to replace it and retain a backup')
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    # mkdtemp's 0700 creates an owner-only Windows ACL that survives the final rename.
-    staging = destination.parent / ('.revayat-scientific-stage-' + uuid.uuid4().hex)
-    staging.mkdir()
-    backup = None
-    try:
-        for path, relative in payload_files():
-            target = staging / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, target)
-        if not (staging / 'SKILL.md').is_file():
-            raise ValueError('source SKILL.md is missing')
-        if destination.exists():
-            backup_root = destination.parent.parent / 'skill-backups'
-            backup_root.mkdir(parents=True, exist_ok=True)
-            backup = backup_root / ('revayat-scientific-' + uuid.uuid4().hex[:12])
-            destination.rename(backup)
-        try:
-            staging.rename(destination)
-        except BaseException:
-            if backup is not None:
-                backup.rename(destination)
-            raise
-        logger.info('installation_completed backup_retained=%s', backup is not None)
-        print(f'Installed revayat-scientific: {destination}')
-        if backup:
-            print(f'Previous installation retained: {backup}')
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+    return install_targets([destination], force, logger, source=SOURCE, repository=ROOT,
+                           payload_factory=payload_files)
 
 
 def main(argv=None):
@@ -96,7 +62,7 @@ def main(argv=None):
             if args.dest is not None:
                 destinations = [args.dest]
             else:
-                base = (args.path if args.scope == 'project' else Path.home()).resolve()
+                base = directory_path(args.path if args.scope == 'project' else Path.home())
                 if not base.is_dir():
                     raise ValueError('project or user root does not exist')
                 index = 1 if args.scope == 'project' else 0
@@ -112,10 +78,10 @@ def main(argv=None):
                 destinations = list(dict.fromkeys(destinations))
             if not destinations:
                 raise ValueError('no agents detected; select --agent or an explicit --dest')
-            for destination in destinations:
-                install(destination, args.force, logger)
+            install_targets(destinations, args.force, logger, source=SOURCE, repository=ROOT,
+                            payload_factory=payload_files)
             return 0
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, RuntimeError) as error:
             logger.error('installation_failed type=%s', type(error).__name__)
             print(f'install: {error}', file=sys.stderr)
             return 1

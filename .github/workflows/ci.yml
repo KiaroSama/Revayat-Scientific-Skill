@@ -72,6 +72,8 @@ jobs:
             if (-not $tool) { throw 'Poppler installation did not provide pdftoppm' }
             $tool.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
+      - name: Installer admission and rollback contracts
+        run: python tools/run-check.py --timeout 180 --idle-timeout 90 -- python -B -m unittest discover -s tests -p 'test_install_transaction.py' -v
       - name: Run public contracts
         run: python tools/run-check.py --timeout 480 --idle-timeout 120 -- python -B -m unittest discover -s tests -p 'test_*.py' -v
       - name: Syntax and UTF-8
