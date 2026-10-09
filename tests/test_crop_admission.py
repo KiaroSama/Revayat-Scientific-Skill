@@ -3,8 +3,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 
 import pymupdf
 
@@ -54,7 +53,7 @@ class CropAdmissionTest(unittest.TestCase):
     def test_selected_crop_admission_preserves_source(self):
         original = self.fixture()
         for limit, maximum in (('MAX_PDF_BYTES', 1), ('MAX_PDF_PAGES', 0), ('MAX_PDF_OBJECTS', 1)):
-            with self.subTest(limit=limit), mock.patch.object(pdf_input, limit, maximum):
+            with self.subTest(limit=limit), unittest.mock.patch.object(pdf_input, limit, maximum):
                 with self.assertRaisesRegex(ValueError, '512 MiB|page/object'):
                     CROP.main(self.argv)
             self.assertEqual(self.crop.read_bytes(), self.previous)

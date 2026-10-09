@@ -1,5 +1,4 @@
 """POSIX browser discovery transports an actual executable, not its command name."""
-import os
 from pathlib import Path
 import shutil
 import tempfile

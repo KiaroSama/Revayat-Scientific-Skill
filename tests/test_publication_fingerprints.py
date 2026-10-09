@@ -5,8 +5,7 @@ from pathlib import Path
 import sys
 import shutil
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'skills/revayat-scientific/scripts'))
@@ -63,7 +62,7 @@ class PublicationFingerprintTest(unittest.TestCase):
                     handle = opening(path, *args, **kwargs)
                     return Reader(handle) if path == dest and args[:1] == ('rb',) and not changed else handle
 
-                with mock.patch.object(Path, 'open', opening_with_change):
+                with unittest.mock.patch.object(Path, 'open', opening_with_change):
                     with self.assertRaisesRegex(ValueError, 'grew|changed'):
                         publish_files([(stage, dest)])
                 self.assertTrue(changed, 'the actual OS read seam must execute')
@@ -106,7 +105,7 @@ class PublicationFingerprintTest(unittest.TestCase):
                 return opening(foreign, *args, **kwargs)
             return opening(path, *args, **kwargs)
 
-        with mock.patch.object(Path, 'open', open_other):
+        with unittest.mock.patch.object(Path, 'open', open_other):
             with self.assertRaisesRegex(ValueError, 'changed'):
                 publish_files([(stage, dest)])
         self.assertTrue(substituted)
@@ -150,7 +149,7 @@ class PublicationFingerprintTest(unittest.TestCase):
             handle = opening(path, *args, **kwargs)
             return Reader(handle) if path == dest and args[:1] == ('rb',) and not replaced else handle
 
-        with mock.patch.object(Path, 'open', replacing_close):
+        with unittest.mock.patch.object(Path, 'open', replacing_close):
             with self.assertRaisesRegex(ValueError, 'changed'):
                 publish_files([(stage, dest)])
         self.assertTrue(replaced)
@@ -197,8 +196,8 @@ class PublicationFingerprintTest(unittest.TestCase):
                             substitute(temps[0])
                     return result
 
-                with mock.patch('publication.shutil.copyfile', side_effect=copied), \
-                        mock.patch('publication.os.close', side_effect=closed):
+                with unittest.mock.patch('publication.shutil.copyfile', side_effect=copied), \
+                        unittest.mock.patch('publication.os.close', side_effect=closed):
                     with self.assertRaisesRegex(ValueError, 'ownership'):
                         publish_files([(stage, dest)])
                 self.assertEqual(len(changed), 1)
@@ -228,8 +227,8 @@ class PublicationFingerprintTest(unittest.TestCase):
                 raise OSError('controlled activation failure')
             return replace(source, destination)
 
-        with mock.patch('publication.shutil.copy2', side_effect=copied), \
-                mock.patch('publication.os.replace', side_effect=fail_late):
+        with unittest.mock.patch('publication.shutil.copy2', side_effect=copied), \
+                unittest.mock.patch('publication.os.replace', side_effect=fail_late):
             with self.assertRaises(OSError):
                 publish_files([(a, first), (b, second)], max_file_bytes=9)
         self.assertEqual(first.read_bytes(), b'approved')

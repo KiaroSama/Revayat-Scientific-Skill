@@ -5,11 +5,9 @@ import io
 import json
 import os
 from pathlib import Path
-import shutil
 import sys
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'skills/revayat-scientific/scripts'))
@@ -51,7 +49,7 @@ class RecoveryInterruptTest(unittest.TestCase):
                             raise cancellation('controlled second cancellation')
                         return replace(source, destination)
 
-                    with mock.patch('publication.os.replace', side_effect=fault):
+                    with unittest.mock.patch('publication.os.replace', side_effect=fault):
                         with self.assertRaises(cancellation):
                             publish_files([(a, first), (b, second)])
                     self.assertEqual(second.read_bytes(), b'approved second')
@@ -94,8 +92,8 @@ class RecoveryInterruptTest(unittest.TestCase):
                         return rename(path, destination)
 
                     with operation_log('test-recovery-interrupt', root / 'logs') as logger, \
-                            mock.patch.object(INSTALLER, 'SOURCE', source), \
-                            mock.patch.object(Path, 'rename', fault), contextlib.redirect_stdout(output):
+                            unittest.mock.patch.object(INSTALLER, 'SOURCE', source), \
+                            unittest.mock.patch.object(Path, 'rename', fault), contextlib.redirect_stdout(output):
                         with self.assertRaises(cancellation):
                             INSTALLER.install(target, True, logger)
                     self.assertNotIn('Installed revayat-scientific:', output.getvalue())
@@ -130,8 +128,8 @@ class RecoveryInterruptTest(unittest.TestCase):
 
         output = io.StringIO()
         with operation_log('test-recovery-interrupt', self.root / 'logs') as logger, \
-                mock.patch.object(INSTALLER, 'SOURCE', source), \
-                mock.patch.object(Path, 'rename', fault), contextlib.redirect_stdout(output):
+                unittest.mock.patch.object(INSTALLER, 'SOURCE', source), \
+                unittest.mock.patch.object(Path, 'rename', fault), contextlib.redirect_stdout(output):
             with self.assertRaisesRegex(OSError, 'activation failure'):
                 INSTALLER.install(target, True, logger)
         self.assertEqual((target / 'retained').read_bytes(), b'approved owner bytes')
@@ -159,9 +157,9 @@ class RecoveryInterruptTest(unittest.TestCase):
 
         agents = {name: (name + '/skills', name + '/skills') for name in ('first', 'second')}
         output = io.StringIO()
-        with mock.patch.object(INSTALLER, 'SOURCE', source), \
-                mock.patch.object(INSTALLER, 'AGENTS', agents), \
-                mock.patch.object(Path, 'rename', fault), contextlib.redirect_stdout(output):
+        with unittest.mock.patch.object(INSTALLER, 'SOURCE', source), \
+                unittest.mock.patch.object(INSTALLER, 'AGENTS', agents), \
+                unittest.mock.patch.object(Path, 'rename', fault), contextlib.redirect_stdout(output):
             with self.assertRaises(SystemExit):
                 INSTALLER.main(['--scope', 'project', '--path', str(self.root), '--force'])
         self.assertNotIn('Installed revayat-scientific:', output.getvalue())
@@ -187,7 +185,7 @@ class RecoveryInterruptTest(unittest.TestCase):
                 raise OSError('restoration completed before reporting failure')
             return result
 
-        with mock.patch('publication.os.replace', side_effect=fault):
+        with unittest.mock.patch('publication.os.replace', side_effect=fault):
             with self.assertRaisesRegex(OSError, 'activation failure'):
                 publish_files([(a, first), (b, second)])
         self.assertEqual(first.read_bytes(), b'approved first')
@@ -210,7 +208,7 @@ class RecoveryInterruptTest(unittest.TestCase):
                 raise OSError('controlled later restore failure')
             return replace(source, destination)
 
-        with mock.patch('publication.os.replace', side_effect=fault):
+        with unittest.mock.patch('publication.os.replace', side_effect=fault):
             with self.assertRaisesRegex(RuntimeError, 'rollback needs recovery'):
                 publish_files([(a, first), (b, second)])
         self.assertEqual(first.read_bytes(), b'foreign writer bytes')
@@ -253,8 +251,8 @@ class RecoveryInterruptTest(unittest.TestCase):
                 raise OSError('unlink completed before reporting failure')
             return result
 
-        with mock.patch('publication.os.replace', side_effect=fault), \
-                mock.patch.object(Path, 'unlink', completed_unlink):
+        with unittest.mock.patch('publication.os.replace', side_effect=fault), \
+                unittest.mock.patch.object(Path, 'unlink', completed_unlink):
             with self.assertRaisesRegex(OSError, 'activation failure'):
                 publish_files([(a, first), (b, second)])
         self.assertFalse(first.exists())
@@ -272,7 +270,7 @@ class RecoveryInterruptTest(unittest.TestCase):
                 raise KeyboardInterrupt('controlled backup-disposal cancellation')
             return unlink(path, *args, **kwargs)
 
-        with mock.patch.object(Path, 'unlink', fault), self.assertRaises(KeyboardInterrupt):
+        with unittest.mock.patch.object(Path, 'unlink', fault), self.assertRaises(KeyboardInterrupt):
             publish_files([(stage, dest)])
         self.assertEqual(dest.read_bytes(), b'candidate bytes')
         journal = next(self.root.glob('.revayat-publish-*/recovery.json'))

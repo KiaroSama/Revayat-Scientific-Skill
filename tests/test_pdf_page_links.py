@@ -3,8 +3,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import tempfile
-import unittest
-from unittest import mock
+import unittest.mock
 
 import pymupdf
 
@@ -126,7 +125,7 @@ class PdfPageLinksTest(unittest.TestCase):
 
             with self.subTest(operation=operation):
                 self.output.write_bytes(self.previous)
-                with mock.patch.object(pymupdf.Document, 'save', lose_navigation):
+                with unittest.mock.patch.object(pymupdf.Document, 'save', lose_navigation):
                     with self.assertRaisesRegex(ValueError, 'link|navigation'):
                         invoke()
                 self.assertEqual(self.output.read_bytes(), self.previous)
