@@ -127,6 +127,10 @@ jobs:
           python tools/run-check.py --timeout 240 --idle-timeout 90 -- python -B -m unittest discover -s tests -p 'test_build_delivery.py' -v
       - name: Build isolated TeX toolchain
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 skills/revayat-scientific/assets
+      - name: Observe production sandbox enforcement
+        env:
+          SCIENTIFIC_REQUIRE_SANDBOX: '1'
+        run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_sandbox_enforcement.py' -v
       - name: Isolated renderer contracts
         id: isolated
         env:

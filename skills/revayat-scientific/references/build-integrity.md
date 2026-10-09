@@ -112,6 +112,16 @@ Synthetic TeX mutation tests exercise the actual controller with a controlled
 backend; real Docker/XeLaTeX remains the separate mandatory scientific tier.
 Visual inspection of the PDF is still required for scientific and RTL fidelity.
 
+The Linux scientific CI tier also runs a bounded, harmless probe through the
+production container launch options. It observes read-only input/root mounts,
+allowed output/temporary writes, absence of a dummy host-only environment value,
+non-root execution, dropped capabilities, no-new-privileges, effective CPU/memory/
+process/file limits, bounded temporary storage and an isolated network namespace.
+The required tier fails if its runtime or observations are unavailable, and checks
+owned container cleanup. These are specific enforcement regressions, not a complete
+security audit, proof against every container escape, or real-job translation
+approval. The test never inspects actual credentials or contacts a deployed endpoint.
+
 ## Primary research used for this design
 
 - [Python temporary directories](https://docs.python.org/3/library/tempfile.html):
