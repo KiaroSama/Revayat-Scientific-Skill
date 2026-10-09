@@ -25,6 +25,25 @@ Records have strict schema/duplicate-key validation, at most 8192 inputs and 4 M
 of metadata; a hashed file is limited to 512 MiB. Existing lower source, renderer
 and process deadlines still apply. Hashes are not semantic review or signatures.
 
+Delivery compares counted SHA-256 observations before and after copying and against
+the sealed rendered digest, without allocating two complete PDFs. Every read is
+at most 1 MiB and the observed initial file size plus one growth-detection byte
+bounds the complete read. Pre/post path and opened-descriptor observations
+(device, inode, size and modification time) must agree; each path/descriptor
+channel's own change time must also stay stable. Windows can report different
+change/creation times across those channels after a metadata-preserving copy, so
+they are not conflated. Truncation, growth, path substitution or ordinary revision
+changes refuse publication.
+
+The shared publisher uses that initial-size budget by default, preserving callers'
+existing admission policies rather than imposing a new universal artifact cap.
+An explicit `max_file_bytes` may tighten a caller's budget; build/delivery hashing
+still applies its 512 MiB limit. Crop/embedded-image pixel limits, image metadata,
+DOCX package limits and installation's 64 MiB payload limit remain separate.
+Copied backups have different device/inode identity: comparison deliberately uses
+size, modification time and exact byte digest for copy validation, then the
+recorded backup object for restoration. No hash is cached across mutable revisions.
+
 ## Verification samples
 
 `verify-SLUG-first.png`, `verify-SLUG-last.png` and `verify-SLUG-mid.png` are reserved
@@ -52,7 +71,31 @@ another filesystem. A published file's own staged replacement and rollback use
 reconciles observed state if a move completes before raising. Copied backup bytes
 are verified before activation and again before restoration; a changed backup is
 retained for recovery, never trusted to overwrite a current edition. Existing
-recovery-manifest behavior remains authoritative.
+recovery-manifest behavior remains authoritative. Recovery is marked unresolved
+before restoration starts: a second `KeyboardInterrupt` or `SystemExit` retains
+all remaining recovery records and owned locks and propagates with a location
+note. Do not erase this evidence even if the last interrupted move completed;
+the rest of the batch still needs reconciliation. Ordinary completed-then-raised
+restoration is recognized only by the recorded object and byte identity. A
+foreign changed destination is never deleted to force rollback.
+
+Each recovery record names its destination, copied backup, stage and owned lock
+identity; the lock contains that record's path. Successful restoration removes
+only this operation's temporary paths. Cleanup failure is non-success, even if
+the complete candidate is already published; retain the named evidence and inspect
+the actual locations before releasing locks. Stage paths owned by a caller can
+be removed by that caller's context manager, so a record names an intended
+location, not a guarantee that every unactivated candidate remains available.
+
+On Windows, a private caller staging directory can give its files a protected
+owner-only ACL that survives rename. Before activation, the publisher creates an
+exact-byte candidate with normal destination-parent inheritance and moves it back
+to the caller's staged path. Activation still uses that staged path; its file
+object identity may change while its verified bytes remain the same. Previous
+backups likewise start as destination-parent-inherited files before the checked
+metadata-preserving copy. No ACL is granted or edited, and arbitrary custom ACL
+preservation is not promised. Native inheritance tests require nonempty access
+rules and fail on inspection errors; empty failed queries are never equivalence.
 
 ## Limits and evidence
 

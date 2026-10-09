@@ -3,12 +3,12 @@
 This private per-run record is a coordination aid, not authentication or a lock
 against hostile filesystem writers. Renderer resource admission stays separate.
 """
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
 
+from bounded_file_identity import file_identity
 from document_context import DocumentContext
 from publication import validate_destination
 from source_model import Source
@@ -23,14 +23,7 @@ def file_hash(path):
     path = Path(path)
     if not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
         raise ValueError('build input or artifact is missing or exceeds 512 MiB')
-    digest, size = hashlib.sha256(), 0
-    with path.open('rb') as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-            size += len(chunk)
-            if size > MAX_FILE_BYTES:
-                raise ValueError('build input or artifact grew beyond 512 MiB')
-            digest.update(chunk)
-    return digest.hexdigest()
+    return file_identity(path, max_bytes=MAX_FILE_BYTES)[-1]
 
 
 def document_inputs(source, sidecars=(), requested=None):

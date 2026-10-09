@@ -3,9 +3,9 @@
 ## PDF admission
 
 The `scripts/pdf_input.py` context manager supplies shared admission for contiguous
-page extraction and existing PDF operations. Parity tests bind both entry points.
-Read-only inspection can report signature-bearing
-inputs; transformations refuse signatures and XFA. All paths retain the existing
+page extraction, existing PDF operations and raster cropping. Parity tests bind
+these public entry points. Read-only inspection and raster cropping can admit
+signature-bearing inputs; PDF transformations refuse signatures and XFA. All paths retain the existing
 512 MiB, 10000-page and 200000-object bounds, reject encrypted inputs (including
 an empty user password), and refuse parser-repaired documents. Use a separately
 authorized, reviewed derivative when a source needs decryption or repair. A
@@ -14,8 +14,15 @@ cryptographic signature or certify scientific meaning.
 
 Page extraction still uses one contiguous `insert_pdf` call, preserving shared
 resources rather than copying every page separately. The staged output is
-reopened before recoverable publication. Sources and previous approved outputs
-remain unchanged when admission, saving or publication fails.
+reopened before recoverable publication. Named/remote page links, chained actions,
+unresolved annotations and local targets outside the copied range are refused
+before publication. Supported
+numeric destinations are remapped with their exact PDF-space coordinates/zoom;
+staged page-link rectangles and URI/file data are checked separately from outlines.
+Sources and previous approved outputs remain unchanged on admission or staged
+validation failure; publication uses the shared accountable recovery contract.
+Raster crop admission does not authenticate signatures or rewrite source bytes.
+Its separate 50-million-pixel allocation ceiling is unchanged.
 
 ## Safe package destinations
 

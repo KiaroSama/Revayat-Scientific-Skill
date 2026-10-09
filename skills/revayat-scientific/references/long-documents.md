@@ -75,11 +75,14 @@ because “the PDF outline is enough”; the printed page is the deliverable.
 Lint each part as it is finished, not at the end:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint parts/03-*.tex --level <selected-level> --terms terms.tsv --manifest manifest.txt --strict
+"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint parts/03-networking.tex --level <selected-level> --terms terms.tsv --manifest manifests/03-networking.txt --strict
 ```
 
-A part that lints clean stays clean. A 174-page document linted once at the
-end produces a finding list nobody works through.
+Use a manifest containing only the figures expected in that part; keep paths
+relative to the checked source resolvable. The complete `manifest.txt` belongs to
+the assembled document, not each separate part. Recheck a part after its source,
+terms or translated text changes. A 174-page document linted only at the end
+produces a finding list nobody works through.
 
 ## Coverage map
 

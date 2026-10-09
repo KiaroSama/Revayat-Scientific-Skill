@@ -3,7 +3,7 @@ import bisect
 from pathlib import Path
 import re
 from html_source import ParsedHTML
-from tex_source import source_closure, live_tex, tex_ignored_regions, MAX_BYTES
+from tex_source import source_closure, live_tex, tex_ignored_regions, document_extent, MAX_BYTES
 
 class Source:
     """A translation file plus the regions where prose rules do not apply."""
@@ -25,6 +25,7 @@ class Source:
         self.isolates: list[tuple[int, int, str]] = []
         self.identity = []
         self.preamble_end = 0
+        self.body_end = len(self.text)
         self._scan()
 
     def line_of(self, pos: int) -> int:
@@ -42,7 +43,7 @@ class Source:
         A fake opener inside an inline or block literal remains inert, while
         prose checks protect the entire literal through is_protected().
         """
-        if pos < self.preamble_end:
+        if pos < self.preamble_end or pos >= self.body_end:
             return True
         if any(start <= pos < end for start, end in self.comments):
             return True
@@ -56,22 +57,31 @@ class Source:
         return self.text[start:start + width].replace("\n", " ").strip()
 
     def is_protected(self, pos: int) -> bool:
-        for start, end in self.protected:
-            if start <= pos < end:
-                return True
-        return False
+        index = bisect.bisect_right(self.protected_starts, pos) - 1
+        return index >= 0 and pos < self.protected_ranges[index][1]
+
+    def prose_matches(self, pattern, flags=0):
+        if self.kind == 'html':
+            for match in re.finditer(pattern, self.prose_text, flags):
+                index = bisect.bisect_right(self.prose_starts, match.start()) - 1
+                start, original = self.prose_segments[index]
+                yield match, original + match.start() - start
+        else:
+            for match in re.finditer(pattern, self.text, flags):
+                if not self.is_protected(match.start()):
+                    yield match, match.start()
 
     def suppressed(self, pos: int, check: str) -> bool:
         path, line = self.location(pos)
-        for start, end in self.comments:
-            for m in re.finditer(r"fa-lint:\s*allow\s+([\w-]+)", self.text[start:end]):
-                comment_path, comment_line = self.location(start + m.start())
-                if comment_path == path and comment_line in (line, line - 1) and m.group(1) in (check, 'all'):
-                    return True
-        return False
+        allowed = self.waivers.get((path, line), set()) | self.waivers.get((path, line - 1), set())
+        return check in allowed or 'all' in allowed
 
     def location(self, pos):
         return self.closure.location(pos) if self.closure else (self.path, self.line_of(pos))
+
+    def in_direction_scope(self, pos, *names):
+        return any(start <= pos < end for name in names
+                   for start, end in self.direction_scopes[name])
 
     def image_references(self):
         """Return located graphics references using the checked document syntax."""
@@ -111,6 +121,19 @@ class Source:
         else:
             self._scan_html()
         self.protected.sort()
+        self.protected_ranges = []
+        for start, end in self.protected:
+            if self.protected_ranges and start <= self.protected_ranges[-1][1]:
+                previous, stop = self.protected_ranges[-1]
+                self.protected_ranges[-1] = previous, max(stop, end)
+            else:
+                self.protected_ranges.append((start, end))
+        self.protected_starts = [start for start, _ in self.protected_ranges]
+        self.waivers = {}
+        for start, end in self.comments:
+            for match in re.finditer(r'fa-lint:\s*allow\s+([\w-]+)', self.text[start:end]):
+                key = self.location(start + match.start())
+                self.waivers.setdefault(key, set()).add(match.group(1))
 
     def _scan_tex(self) -> None:
         for start, end, kind in tex_ignored_regions(self.text):
@@ -125,10 +148,24 @@ class Source:
                 opener_end = self.text.index('}', start) + 1
                 structural[start:opener_end] = self.text[start:opener_end]
         self.structural_text = ''.join(structural)
-        body = re.search(r"\\begin\{document\}", self.tex_live)
-        if body:
-            self.preamble_end = body.end()
-            self._protect(0, body.end())
+        self.direction_scopes = {'latin': [], 'LTR': [], 'LR': []}
+        stack = []
+        for match in re.finditer(r'\\(begin|end)\{([^{}]+)\}', self.tex_live):
+            action, env = match.groups()
+            if action == 'begin':
+                stack.append((env, match.end()))
+            elif stack and stack[-1][0] == env:
+                _env, start = stack.pop()
+                if env in self.direction_scopes:
+                    self.direction_scopes[env].append((start, match.start()))
+        for match in re.finditer(r'\\LR(?![A-Za-z])\s*\{', self.tex_live):
+            opening = match.end() - 1
+            closing = self._match_brace(opening)
+            if closing < len(self.tex_live):
+                self.direction_scopes['LR'].append((opening + 1, closing))
+        self.preamble_end, self.body_end = document_extent(self.tex_live)
+        self._protect(0, self.preamble_end)
+        self._protect(self.body_end, len(self.text))
 
         for env in ("verbatim", "Verbatim", "lstlisting", "latin",
                     "equation", "equation*", "align", "align*", "minted"):
@@ -170,6 +207,8 @@ class Source:
                 i += 1
         for m in re.finditer(r"\\([A-Za-z@]+)\*?\s*(\[[^\]]*\])?\s*\{",
                              self.tex_live):
+            if self.inert(m.start()):
+                continue
             name = m.group(1)
             open_pos = m.end() - 1
             close = self._match_brace(open_pos)
@@ -198,3 +237,5 @@ class Source:
         self.literals.extend(self.html.literals)
         self.isolates.extend(self.html.isolates)
         self.identity.extend(self.html.identity)
+        self.prose_text, self.prose_segments = self.html.lint_prose()
+        self.prose_starts = [start for start, _ in self.prose_segments]

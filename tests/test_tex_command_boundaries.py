@@ -117,11 +117,12 @@ class TexCommandBoundaryTest(unittest.TestCase):
 
 
 def load_tests(loader, tests, pattern):
-    # The scientific tier already invokes this module with a mandatory native
-    # toolchain. Include lexical contracts there without duplicating portable runs.
+    # Portable discovery owns pure lexical cases; this tier adds only real compiler controls.
     if os.environ.get('SCIENTIFIC_REQUIRE_TEX_BOUNDARY') == '1':
         from test_tex_lexical_regions import TexLexicalRegionsTest
-        tests.addTests(loader.loadTestsFromTestCase(TexLexicalRegionsTest))
+        for method in ('test_real_tex_accepts_literal_graphics_and_keeps_parent_after_eof_comment',
+                       'test_real_tex_ignores_post_document_tail'):
+            tests.addTest(TexLexicalRegionsTest(method))
     return tests
 
 

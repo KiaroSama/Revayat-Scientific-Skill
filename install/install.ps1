@@ -12,5 +12,5 @@ foreach ($name in @('python', 'python3', 'py')) {
         exit $LASTEXITCODE
     }
 }
-[Console]::Error.WriteLine('install: Python 3.10+ is required')
+[Console]::Error.WriteLine('install: Python 3.11+ is required')
 exit 1

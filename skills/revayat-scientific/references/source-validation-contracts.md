@@ -38,6 +38,23 @@ fail explicitly; use reviewed bounded parts rather than accepting a partial
 probe set as a complete check. JSON outcomes remain passed/logical, failed/visual
 and inconclusive. A logical-order result is not translation-completeness evidence.
 
+## Located lint prose and literal TeX extent
+
+HTML lint joins ordinary inline text tokens, including once-decoded character
+references, while retaining original source offsets for findings and waivers.
+Supported block, hidden, literal, identity and foreign-language boundaries prevent
+cross-boundary phrase matches. Markup is not prose; structural checks still use
+located structural evidence. This is not external CSS visibility evaluation.
+
+For complete TeX documents, lint and text-order evidence share the first supported
+live literal body ending after the live document beginning. Comments and literal
+regions cannot create that ending; post-document notes are inert. Standalone
+fragments retain their previous interpretation. Listing direction requires an
+actually containing live `latin` environment; figures require live `LTR`, `latin`
+or a balanced braced `LR` wrapper. Distance to a previous opener grants no
+exemption, and an inner closure does not erase a containing outer wrapper.
+Arbitrary macros/category codes remain outside this literal scanner.
+
 ## One located terminology ledger
 
 `term_ledger.py` is the standard-library TSV reader used by both job lint and

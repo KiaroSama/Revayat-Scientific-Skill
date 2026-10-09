@@ -3,7 +3,7 @@ name: revayat-scientific
 description: Translate scientific papers, theses, scholarly books and technical documentation from any source language into accurate Persian, with source-language review and natural scholarly register. Preserve claims, equations, citations, page dimensions and image fidelity; deliver editable sources and a verified PDF. Use for scientific Persian translation or review (فارسی).
 license: GPL-3.0-or-later
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, Agent, AskUserQuestion
-metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"Python 3.10+","dependencies":"See requirements.txt and the bundled document/renderer references"}
+metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"Python 3.11+","dependencies":"See requirements.txt and the bundled document/renderer references"}
 ---
 
 # Revayat Scientific — scientific documents into Persian
@@ -18,7 +18,7 @@ Resolve once:
   `${CLAUDE_PLUGIN_ROOT}/skills/revayat-scientific`.
 - `WORK` — this document's working directory. Keep original sources and review
   records there, outside the installed skill.
-- `PY` — a working Python 3.10+ interpreter. Prefer the project's virtual
+- `PY` — a working Python 3.11+ interpreter. Prefer the project's virtual
   environment; use `python3` on Unix or `python` / the resolved interpreter on Windows.
 - `LEVEL` — `journal` for papers and theses; `system-docs` for technical books,
   tutorials and operational references. Carry the same value through all checks.
@@ -105,9 +105,9 @@ The report uses `yes` / `NO` entries, not a JSON readiness field.
 
 | Report | Decision |
 | --- | --- |
-| Python does not run | Resolve a Python 3.10+ interpreter before continuing |
+| Python does not run | Resolve a Python 3.11+ interpreter before continuing |
 | Pillow or PyMuPDF missing | Install the required packages with user approval for stages that need them |
-| XeLaTeX and xepersian available | Prefer the TeX template for PDF output |
+| Local Linux Docker/Podman toolchain image and same-Python PyMuPDF ready | TeX output is available through the isolated toolchain; native XeLaTeX alone is not readiness |
 | Edge / Chrome / WeasyPrint available | HTML rendering is available when selected |
 | No PDF engine | Text work can continue; PDF delivery remains unperformed |
 | No Persian font | Obtain a suitable font before rendering |

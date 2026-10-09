@@ -7,7 +7,7 @@
 [![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Plugin version 1.0.0](https://img.shields.io/badge/Plugin-1.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
 <br>
-[![Python 3.10 or newer](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python)](skills/revayat-scientific/requirements.txt)
+[![Python 3.11 or newer](https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python)](skills/revayat-scientific/requirements.txt)
 [![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
 [![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.fa.md)
 [![Agent Skills format](https://img.shields.io/badge/Format-Agent%20Skills-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
@@ -94,7 +94,7 @@ In Codex the skill itself is invoked as `$revayat-scientific`.
 
 ### Check the install
 
-**Python 3.10 or newer**, on Linux, macOS or Windows. Prefer an existing
+**Python 3.11 or newer**, on Linux, macOS or Windows. Prefer an existing
 project virtual environment. The installer and text linter use the standard
 library; figure processing and PDF extraction checks need the pinned requirements.
 
@@ -235,15 +235,36 @@ A changed input or failed verification is not a new approved edition. See
 
 ## Development
 
+Use the same project interpreter for every command. The existing runner owns child
+processes and enforces wall/idle deadlines; it also reuses its interpreter for `python`.
+
 ```bash
-python -m unittest discover -s tests -p 'test_*.py' -v
-bash tests/upstream.sh
-python tools/validate.py
-python tools/package.py
+python tools/run-check.py --timeout 480 --idle-timeout 120 -- python -B -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
+```bash
+python tools/run-check.py --timeout 240 --idle-timeout 90 -- bash tests/upstream.sh
+```
+
+```bash
+python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/validate.py
+```
+
+```bash
+python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/package.py
+```
+
+During implementation run only the narrow next-edit check; final integrated suites
+run once in CI. Headless/captured execution preserves useful failed-run evidence.
+Portable discovery has explicit native/platform skips: it does not certify missing
+renderers. Equipped CI sets `SCIENTIFIC_REQUIRE_BROWSER`, `SCIENTIFIC_REQUIRE_OCR`,
+`SCIENTIFIC_REQUIRE_TEX_BOUNDARY`, `SCIENTIFIC_REQUIRE_BUILD_GUARD`,
+`SCIENTIFIC_REQUIRE_DOCX_RENDER`, `SCIENTIFIC_REQUIRE_HTML_CONTEXT` and
+`SCIENTIFIC_RENDER` for their respective tiers. Required missing prerequisites fail;
+follow the linked workflow for provisioning and exact native commands.
+
 [CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
-covers Python 3.10/Linux, 3.14/macOS and 3.13/Windows, native Windows
+covers Python 3.11/Linux, 3.14/macOS and 3.13/Windows, native Windows
 rendering, inherited checker regressions, isolated TeX, WeasyPrint and OCR.
 Workflow lint/security and Python audits run in CI. CodeQL and dependency review
 are configured; Dependabot covers Python packages, Actions and the container base.

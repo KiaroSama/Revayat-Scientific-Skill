@@ -106,13 +106,15 @@ def main(argv=None):
             args.output.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='.revayat-delivery-', dir=args.output.parent) as directory:
                 stage = Path(directory) / 'document.pdf'
+                source_digest = file_hash(args.source)
                 shutil.copyfile(args.source, stage)
-                # Byte equality binds publication to the PDF the caller verified.
-                if stage.read_bytes() != args.source.read_bytes():
+                # Counted hashes bind the staged copy to the pre-copy revision.
+                staged_digest = file_hash(stage)
+                if file_hash(args.source) != source_digest or staged_digest != source_digest:
                     raise ValueError('PDF changed during delivery staging')
                 if record:
                     check_guard(args.guard)
-                    if file_hash(stage) != record['rendered'][record['outputs'][0]]:
+                    if staged_digest != record['rendered'][record['outputs'][0]]:
                         raise ValueError('delivery bytes differ from the checked rendered PDF')
                 publish_files([(stage, args.output)], protected_sources=protected)
         return 0

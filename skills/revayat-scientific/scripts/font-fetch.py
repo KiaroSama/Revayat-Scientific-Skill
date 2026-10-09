@@ -87,7 +87,16 @@ def validate_bundle(directory, version, *, require_provenance=False):
         raise ValueError('font license is not the expected complete Vazirmatn OFL')
     records[LICENSE] = {'sha256': hashlib.sha256(license_path.read_bytes()).hexdigest()}
     if require_provenance:
-        metadata = json.loads((directory / PROVENANCE).read_text(encoding='utf-8'))
+        provenance = directory / PROVENANCE
+        if provenance.stat().st_size > 100_000:
+            raise ValueError('font provenance exceeds the size limit')
+        raw = provenance.read_bytes()
+        if len(raw) > 100_000:
+            raise ValueError('font provenance exceeds the size limit')
+        metadata = json.loads(raw.decode('utf-8'))
+        if (not isinstance(metadata, dict) or type(metadata.get('schema')) is not int
+                or metadata.get('schema') != 1):
+            raise ValueError('font provenance must be a schema 1 object')
         if metadata.get('version') != version or metadata.get('files') != records:
             raise ValueError('font provenance does not match the delivered files')
     return records

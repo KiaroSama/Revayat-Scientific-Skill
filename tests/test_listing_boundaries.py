@@ -71,6 +71,22 @@ class ListingBoundaryTest(unittest.TestCase):
         checks = {finding.check for finding in checker.check(model, [], None)}
         self.assertFalse({'code-direction', 'figure-direction', 'bookmark-guard'} & checks)
 
+    def test_listing_and_figure_require_live_containing_direction_scopes(self):
+        listing = '\\begin{verbatim}\nCodeMarker\n\\end{verbatim}'
+        image = r'\includegraphics{missing.png}'
+        cases = (
+            ('\\begin{latin}\n' + 'متن\n' * 200 + listing + '\n\\end{latin}', set()),
+            ('\\begin{latin}\n\\end{latin}\n' + listing, {'code-direction'}),
+            (r'\LR{earlier}' + '\n' + image, {'figure-direction'}),
+            ('\\begin{LTR}\n\\begin{latin}\n\\end{latin}\n' + image + '\n\\end{LTR}', set()),
+            (r'\LR{' + image + '}', set()),
+            ('\\begin{latin}\n' + listing + '\n\\end{latin}\n' + image, {'figure-direction'}),
+        )
+        for body, expected in cases:
+            with self.subTest(body=body):
+                checks = {finding.check for finding in checker.check(self.source(body), [], None)}
+                self.assertEqual(checks & {'code-direction', 'figure-direction'}, expected)
+
     def test_real_listing_inside_preamble_remains_inert(self):
         text = ('\\begin{verbatim}\nPreambleLiteral\n\\end{verbatim}\n'
                 '\\begin{document}\nBodyMarker\n\\end{document}')

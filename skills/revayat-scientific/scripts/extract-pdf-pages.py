@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 from pdf_input import open_pdf
+from pdf_links import page_link_plan, apply_page_destinations, verify_page_links
 from publication import publish_files, validate_destination
 from runtime import operation_log
 
@@ -68,6 +69,7 @@ def main(argv=None) -> int:
     with open_pdf(args.src, transform=True) as src:
         if last > src.page_count:
             raise ValueError('requested page range exceeds source page count')
+        links = page_link_plan(src, first - 1, last - 1)
         expected = [tuple(src[number].rect) for number in range(first - 1, last)]
         args.dest.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.revayat-pages-', dir=args.dest.parent) as directory:
@@ -75,12 +77,14 @@ def main(argv=None) -> int:
             with pymupdf.open() as out:
                 # One range keeps shared XObjects; never insert one page at a time.
                 out.insert_pdf(src, from_page=first - 1, to_page=last - 1)
+                apply_page_destinations(out, links)
                 out.save(stage, garbage=4, deflate=True, clean=True)
             with pymupdf.open(stage) as reopened:
                 if not reopened.is_pdf or reopened.needs_pass or reopened.page_count != last - first + 1:
                     raise ValueError('staged extraction failed PDF validation')
                 if [tuple(page.rect) for page in reopened] != expected:
                     raise ValueError('staged extraction changed page geometry')
+                verify_page_links(reopened, links)
             publish_files([(stage, args.dest)], protected_sources=[args.src])
     print(f"wrote {args.dest} pages {first}-{last}")
     return 0

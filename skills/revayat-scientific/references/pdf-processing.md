@@ -91,7 +91,15 @@ python scripts/revayat-scientific.py pages source.pdf selected.pdf 3-8
 ```
 
 Merge follows the explicit argument order and validates every input before writing.
-It preserves page geometry/rotation and copies page content, annotations and links.
+It preserves page geometry/rotation, page content and supported annotations.
+Page links are a separate contract from outlines: numeric local destinations and
+supported URI data links retain their mapped pages, rectangles and targets.
+Exact supported local PDF destinations, including zoom, are restored and verified
+from the staged file rather than inferred from a lossy parsed link dictionary.
+Named/remote page links, chained page actions, unresolved link annotations and
+local links targeting omitted pages are refused before output publication; keep
+the referenced pages or prepare
+a separately reviewed page-only copy. No URL, file link or action is followed.
 Supported outlines retain hierarchy, titles, precise local destinations, zoom,
 URI actions, emphasis, color and expansion state. Their semantics are checked
 again after saving the staged PDF. See [outline preservation](pdf-outlines.md)

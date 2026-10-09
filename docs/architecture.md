@@ -17,6 +17,11 @@ macro expansion or category-code programs. Completed source closures also preind
 segment starts and each original text snapshot's line breaks for binary-search
 location queries. Compact numeric arrays keep the newline index bounded without
 repeated prefix scans; original source bytes and EOF attribution do not change.
+`Source` also premerges boolean protection intervals and indexes waivers by
+original path, line and check, without merging scope-sensitive identity records.
+HTML lint uses a located inline-prose projection with explicit exemption/block
+barriers. Complete TeX lint/order consumers share the live literal document extent;
+post-document notes remain inert and standalone fragments retain their behavior.
 
 `document-docx.py` and `docx_package.py` provide native creation and targeted OOXML
 edits. Batch edits index each addressed story once, sort original byte offsets and

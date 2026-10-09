@@ -72,6 +72,12 @@ derivative, not a lossless copy or an image-enhancement model. Vector line art m
 need a higher selected minimum. Oversized crops fail rather than silently reducing
 quality; extract an original/vector asset or make a smaller faithful crop instead.
 
+Crop uses the shared bounded read-only PDF admission: at most 512 MiB,
+10000 pages and 200000 objects, with encrypted and parser-repaired inputs refused.
+An otherwise admitted signature-bearing source can produce a raster derivative;
+this does not authenticate its signature or rewrite its original bytes. The separate
+50-million-pixel crop ceiling and source-density preservation remain unchanged.
+
 The full crop map is validated before any output is replaced. Use unique IDs and
 positive one-based PDF page numbers. Ambiguous clusters, covers or portraits require
 reviewed coordinates: a CSV/TSV header `figure_id,pdf_page,x0,y0,x1,y1` defines exact

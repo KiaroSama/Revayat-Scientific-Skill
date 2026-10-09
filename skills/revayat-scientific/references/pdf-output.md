@@ -192,8 +192,10 @@ readable extracted text are separate requirements.
 results fail regardless of which TeX/HTML engines are installed.
 
 The gate checks a complete PDF, a positive page count, at least one reported font
-and embedding for **every reported font row**. It generates first/last sample
-PNGs and a middle sample when there are more than two pages. The source-bound
+and embedding for **every reported font row**. It always generates first, middle
+and last preview roles: page1, `ceil(page_count / 2)`, and the final page.
+One-page PDFs use page1 for all three roles; two-page PDFs use page1 for the
+middle role. The source-bound
 `check-pdf-text-order.py --json` result must be `passed`; `failed` or `inconclusive`
 is not successful verification. Only then is the PDF copied to the selected
 delivery path. A failed gate preserves the previous delivered edition.

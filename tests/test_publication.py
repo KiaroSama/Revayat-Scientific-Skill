@@ -67,13 +67,23 @@ class PublicationTest(unittest.TestCase):
                 publish_files([(stage, output)])
             script = work / 'acl.ps1'
             script.write_text('param($A,$B)\n'
-                '$aRules=@((Get-Acl -LiteralPath $A).Access.IdentityReference.Value | Sort-Object -Unique)\n'
-                '$bRules=@((Get-Acl -LiteralPath $B).Access.IdentityReference.Value | Sort-Object -Unique)\n'
-                '@{equivalent=(@(Compare-Object $aRules $bRules).Count -eq 0)} | ConvertTo-Json -Compress\n', encoding='utf-8')
+                '$ErrorActionPreference="Stop"\n'
+                'function Rules($path){\n'
+                '  $acl=[IO.File]::GetAccessControl($path)\n'
+                '  $entries=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))\n'
+                '  if($entries.Count -eq 0){throw "ACL inspection returned no access rules"}\n'
+                '  @($entries | ForEach-Object {$_.IdentityReference.Value} | Sort-Object -Unique)\n'
+                '}\n'
+                '$aRules=@(Rules $A);$bRules=@(Rules $B)\n'
+                '@{equivalent=(@(Compare-Object $aRules $bRules).Count -eq 0);'
+                'controlCount=$aRules.Count;outputCount=$bRules.Count} | ConvertTo-Json -Compress\n', encoding='utf-8')
             result = run([shutil.which('powershell'), '-NoProfile', '-NonInteractive',
                           '-File', str(script), str(control), str(output)], timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(json.loads(result.stdout)['equivalent'], 'publication lost destination access principals')
+            access = json.loads(result.stdout)
+            self.assertGreater(access['controlCount'], 0)
+            self.assertGreater(access['outputCount'], 0)
+            self.assertTrue(access['equivalent'], 'publication lost destination access principals')
             self.assertEqual(output.read_bytes(), b'delivered')
         finally:
             shutil.rmtree(work)

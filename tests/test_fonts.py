@@ -103,6 +103,25 @@ class FontDeliveryTest(unittest.TestCase):
                     FONTS.fetch(destination, '33.003', offline=True)
                 self.assertEqual({p.name: p.read_bytes() for p in destination.iterdir()}, before)
 
+    def test_nonobject_provenance_recovers_valid_offline_bundle(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.scratch') as directory:
+            work = Path(directory)
+            cache, destination = work / 'cache/33.003', work / 'delivery'
+            bundle(cache)
+            bundle(destination)
+            expected = {name: (destination / name).read_bytes() for name in (*FONTS.FONTS, FONTS.LICENSE)}
+            for payload in ('[]', 'null', 'false', '"metadata"', '{"schema":2}', '{broken'):
+                with self.subTest(payload=payload):
+                    (destination / FONTS.PROVENANCE).write_text(payload, encoding='utf-8')
+                    with patch.object(FONTS, 'cache_directory', return_value=cache), \
+                            patch.object(FONTS, 'font_identity', side_effect=fixture_identity), \
+                            patch.object(FONTS, 'download_bundle', side_effect=AssertionError('offline')):
+                        FONTS.fetch(destination, '33.003', offline=True)
+                        FONTS.validate_bundle(destination, '33.003', require_provenance=True)
+                    metadata = json.loads((destination / FONTS.PROVENANCE).read_text(encoding='utf-8'))
+                    self.assertEqual(metadata['schema'], 1)
+                    self.assertEqual({name: (destination / name).read_bytes() for name in expected}, expected)
+
     def test_identity_refuses_renamed_weight_fd_wrong_version_and_bad_font(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.scratch') as directory:
             font = Path(directory) / 'Vazirmatn-Bold.ttf'

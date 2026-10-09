@@ -39,6 +39,7 @@ class ParsedHTML(HTMLParser):
         self.literals, self.markup, self.markup_starts = [], [], []
         self.stack = []
         self.text_tokens = []
+        self.lint_tokens = []
         self.feed(text)
         self.close()
         if self.cdata_elem is not None:
@@ -154,8 +155,25 @@ class ParsedHTML(HTMLParser):
         return -1
 
     def record_text(self, start, end):
-        if not self.stack or not self.stack[-1]['text_excluded']:
+        node = self.stack[-1] if self.stack else None
+        if node is None or not node['text_excluded']:
             self.text_tokens.append((start, end))
+        if node is None or not (node['protected'] or node['identity']):
+            self.lint_tokens.append((start, end))
+        else:
+            self.lint_tokens.append((start, start))
+
+    def lint_prose(self):
+        """Join inline prose with original coordinates and hard exemption barriers."""
+        chunks, segments, length = [], [], 0
+        for start, end in self.lint_tokens:
+            start, end = self.normalized_offset(start), self.normalized_offset(end)
+            chunk = self.text[start:end] if start != end else '\x00'
+            if chunk:
+                segments.append((length, start))
+                chunks.append(chunk)
+                length += len(chunk)
+        return ''.join(chunks), segments
 
     def text_content(self):
         """Located text tokens, not markup. This does not evaluate external CSS layout."""
@@ -210,6 +228,8 @@ class ParsedHTML(HTMLParser):
                              or 'hidden' in attributes
                              or (parent is not None and parent['protected'])}
         self.nodes.append(node)
+        if tag in TEXT_BREAKS or node['protected'] or node['identity']:
+            self.lint_tokens.append((start, start))
         if tag in TEXT_BREAKS and not node['text_excluded']:
             self.text_tokens.append((start, start))
         self.record_markup(start, end)
@@ -227,6 +247,8 @@ class ParsedHTML(HTMLParser):
             self.set_cdata_mode(tag)
 
     def finish(self, node, content_end, end):
+        if node['tag'] in TEXT_BREAKS or node['protected'] or node['identity']:
+            self.lint_tokens.append((end, end))
         if node['tag'] in TEXT_BREAKS and not node['text_excluded']:
             self.text_tokens.append((end, end))
         if node['namespace'] == 'html' and node['tag'] in RCDATA:

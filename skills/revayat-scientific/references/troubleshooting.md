@@ -7,7 +7,7 @@ previous delivered PDF intact. Correct a failed stage before continuing.
 
 | Symptom | Check | Action |
 | --- | --- | --- |
-| Python command not found | Interpreter chosen for this job | Resolve Python 3.10+; use the same interpreter for dependencies and helpers |
+| Python command not found | Interpreter chosen for this job | Resolve Python 3.11+; use the same interpreter for dependencies and helpers |
 | Skill does not appear | Host's documented discovery path | Install the payload, refresh discovery, and confirm its `name` field |
 | Existing install refused | Current destination | Use `--force` only for an intended replacement; the old copy is retained |
 | Installed files unreadable | Destination access and inheritance | Use the current installer; it stages with inherited parent permissions |

@@ -107,14 +107,18 @@ have_xelatex() {
 }
 
 find_chrome() {
-  local c
+  local c resolved
   if [[ -n ${REVAYAT_CHROMIUM:-} ]]; then
     [[ -x $REVAYAT_CHROMIUM ]] || return 1
     printf '%s\n' "$REVAYAT_CHROMIUM"
     return 0
   fi
   for c in google-chrome google-chrome-stable chromium chromium-browser; do
-    if command -v "$c" >/dev/null 2>&1; then printf '%s\n' "$c"; return 0; fi
+    resolved=$(type -P "$c") || continue
+    [[ -f $resolved && -x $resolved ]] || continue
+    if [[ $resolved != /* ]]; then resolved="$PWD/$resolved"; fi
+    printf '%s\n' "$resolved"
+    return 0
   done
   c='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
   if [[ -x $c ]]; then printf '%s\n' "$c"; return 0; fi
@@ -123,7 +127,8 @@ find_chrome() {
 
 available=""
 have_xelatex && available="tex,"
-if find_chrome >/dev/null && python3 -c 'import playwright.sync_api, pymupdf' 2>/dev/null; then
+selected_chrome=""
+if selected_chrome=$(find_chrome) && python3 -c 'import playwright.sync_api, pymupdf' 2>/dev/null; then
   available="${available}chromium,"
 fi
 python3 -c 'from weasyprint import HTML; from weasyprint.urls import URLFetcher, URLFetcherResponse, FatalURLFetchingError; import pymupdf' 2>/dev/null && available="${available}weasyprint"
@@ -189,7 +194,8 @@ html_to_pdf() {
   local html=$1 out=$2 chrome
   local arguments=("$here/render-html.py" "$html" "$out" --engine "$engine" --build-guard "$guard")
   if [[ $engine == chromium ]]; then
-    chrome=$(find_chrome) || { log "selected Chromium became unavailable"; return 2; }
+    chrome=$selected_chrome
+    [[ -f $chrome && -x $chrome ]] || { log "selected Chromium became unavailable"; return 2; }
     arguments+=(--browser "$chrome")
   fi
   python3 "${arguments[@]}" || return 2

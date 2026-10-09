@@ -84,7 +84,13 @@ figure**, not the whole source page around it.
    before publication. For ambiguous boundaries, provide reviewed rectangle columns
    using [layout-and-images.md](layout-and-images.md). Cover art is the plate only (no English title
    spine). An author portrait is the headshot, not the “about the author”
-   page.
+   page. Crop inputs share the existing 512 MiB, 10000-page and 200000-object
+   PDF bounds; encrypted (including empty-user-password) and parser-repaired
+   sources require separately authorized/validated copies. Signature presence
+   alone does not prohibit a raster derivative. The source PDF stays unchanged,
+   failed admission preserves previous crops, and the 50-million-pixel crop
+   ceiling still fails rather than downsampling. These are admission checks,
+   not a parser sandbox or signature authentication.
 5. **Flatten before the print build:**
 
    ```bash

@@ -9,7 +9,7 @@
 [![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Plugin version 1.0.0](https://img.shields.io/badge/Plugin-1.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
 <br>
-[![Python 3.10 or newer](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python)](skills/revayat-scientific/requirements.txt)
+[![Python 3.11 or newer](https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python)](skills/revayat-scientific/requirements.txt)
 [![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
 [![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.md)
 [![Agent Skills format](https://img.shields.io/badge/Format-Agent%20Skills-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
@@ -108,7 +108,7 @@ Cursor و Codex هم موجودند. نام صریح خود اسکیل در Code
 
 ### بررسی نصب
 
-**Python 3.10 یا جدیدتر** روی Linux، macOS یا Windows لازم است.
+**Python 3.11 یا جدیدتر** روی Linux، macOS یا Windows لازم است.
 محیط مجازی موجودِ پروژه را ترجیح دهید. نصب‌کننده و بررسی متن از کتابخانهٔ
 استاندارد استفاده می‌کنند؛ آماده‌سازی تصویر و بررسی استخراج PDF به وابستگی‌های
 ثبت‌شده نیاز دارند.
@@ -257,19 +257,41 @@ PDF تحویل‌شدهٔ قبلی را حفظ می‌کند. مسیر پیش‌
 
 ## توسعه
 
+همهٔ فرمان‌ها را با همان مفسر پروژه اجرا کنید. اجراکنندهٔ موجود مالک پردازش‌های
+فرزند است، زمان کل و بی‌پیشرفتی را محدود می‌کند و برای `python` همان مفسر را به‌کار می‌گیرد.
+
 <div dir="ltr">
 
 ```bash
-python -m unittest discover -s tests -p 'test_*.py' -v
-bash tests/upstream.sh
-python tools/validate.py
-python tools/package.py
+python tools/run-check.py --timeout 480 --idle-timeout 120 -- python -B -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+```bash
+python tools/run-check.py --timeout 240 --idle-timeout 90 -- bash tests/upstream.sh
+```
+
+```bash
+python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/validate.py
+```
+
+```bash
+python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/package.py
 ```
 
 </div>
 
+هنگام پیاده‌سازی فقط بررسی محدودِ لازم برای ویرایش بعدی را اجرا کنید؛ مجموعهٔ
+نهایی یکپارچه یک‌بار در CI اجرا می‌شود. اجرا بدون پنجره و با خروجی ضبط‌شده است
+و شواهد شکست مفید حفظ می‌شوند. تست‌های چندسکویی، موارد بومیِ اجرا‌نشده را صریحاً
+رد می‌کنند؛ موفقیت آن‌ها تأیید رندررِ غایب نیست. CI مجهز، متغیرهای
+`SCIENTIFIC_REQUIRE_BROWSER`، `SCIENTIFIC_REQUIRE_OCR`،
+`SCIENTIFIC_REQUIRE_TEX_BOUNDARY`، `SCIENTIFIC_REQUIRE_BUILD_GUARD`،
+`SCIENTIFIC_REQUIRE_DOCX_RENDER`، `SCIENTIFIC_REQUIRE_HTML_CONTEXT` و
+`SCIENTIFIC_RENDER` را برای بخش‌های مربوط فعال می‌کند. نبود پیش‌نیازِ الزامی
+شکست محسوب می‌شود؛ فرمان‌های دقیق و آماده‌سازی هر بخش در گردش‌کار پیوند‌شده آمده‌اند.
+
 [CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
-روی Python 3.10 در Linux، نسخهٔ 3.14 در macOS و نسخهٔ 3.13 در Windows
+روی Python 3.11 در Linux، نسخهٔ 3.14 در macOS و نسخهٔ 3.13 در Windows
 اجرا می‌شود؛ ساخت واقعی Windows، تست‌های بررسی متن و ساخت واقعی XeLaTeX در
 محیط ایزوله، WeasyPrint و OCR را پوشش می‌دهد. بررسی امنیت گردش‌کار و ممیزی
 وابستگی‌های Python نیز در CI اجرا می‌شود. CodeQL و بازبینی وابستگی‌ها فعال‌اند؛

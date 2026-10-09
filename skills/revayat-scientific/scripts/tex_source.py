@@ -80,6 +80,7 @@ def source_closure(source, *, root=None):
     root = Path(root).resolve() if root is not None else source.parent
     chunks, segments, sources = [], [], []
     length = used_bytes = visits = 0
+    document_started = document_ended = False
 
     def append(text, path, original_offset, original):
         nonlocal length
@@ -89,7 +90,7 @@ def source_closure(source, *, root=None):
             length += len(text)
 
     def expand(path, stack):
-        nonlocal used_bytes, visits
+        nonlocal used_bytes, visits, document_started, document_ended
         path = path.resolve()
         if not path.is_relative_to(root):
             raise ValueError('TeX include leaves the approved job root')
@@ -113,9 +114,18 @@ def source_closure(source, *, root=None):
         sources.append(path)
         masked = masked_tex(text)
         # TeX control words end before any nonletter, including a digit or underscore.
-        pattern = re.compile(r'(?<!\\)(?:\\\\)*\\(input|include|includeonly)(?![A-Za-z])')
+        pattern = re.compile(r'(?<!\\)(?:\\\\)*\\(?:(input|include|includeonly)(?![A-Za-z])'
+                             r'|(begin|end)\{document\})')
         cursor = 0
         for match in pattern.finditer(masked):
+            if document_ended:
+                break
+            if match.group(2):
+                if match.group(2) == 'begin':
+                    document_started = True
+                elif document_started:
+                    document_ended = True
+                continue
             # Paired backslashes are TeX linebreaks, not escapes of the next command.
             command_start = match.end() - len(match.group(1)) - 1
             if command_start < cursor:
@@ -146,12 +156,20 @@ def source_closure(source, *, root=None):
     return SourceClosure(''.join(chunks), segments, tuple(dict.fromkeys(sources)))
 
 
+def document_extent(live):
+    """Return the literal live body extent; standalone fragments keep their tail."""
+    begin = re.search(r'\\begin\{document\}', live)
+    if begin is None:
+        return 0, len(live)
+    end = re.search(r'\\end\{document\}', live[begin.end():])
+    return begin.end(), begin.end() + end.start() if end else len(live)
+
+
 def plain_tex(text):
     """Keep nested formatted prose; discard mathematical and literal code spans."""
     text = live_tex(text)
-    body = re.search(r'\\begin\{document\}', text)
-    if body:
-        text = text[body.end():]
+    start, end = document_extent(text)
+    text = text[start:end]
     text = re.sub(r'\\begin\{(latin|equation\*?|align\*?|displaymath|math)\}'
                   r'.*?\\end\{\1\}', ' ', text, flags=re.S)
     text = re.sub(r'(?<!\\)\$\$.*?(?<!\\)\$\$|(?<!\\)\$.*?(?<!\\)\$'

@@ -76,6 +76,14 @@ withdrawn and all earlier installations are restored in reverse order. Rollback
 identifies its own directory objects; an unexpected concurrent directory is not
 deleted just to force a clean result.
 
+Recovery is marked unresolved **before** restoration begins. A second
+`KeyboardInterrupt` or `SystemExit` during restoration propagates as cancellation,
+with a note naming the recovery journal; it never becomes a successful return or
+ordinary cleanup. Even when the interrupted rename completed, keep the journal,
+remaining stages/backups and owned locks until every target is reconciled. An
+ordinary OS error after a completed restoration is checked against the recorded
+directory identity and exact snapshot before it is considered restored.
+
 When safe restoration fails, the operation reports **recovery required** and keeps
 the journal, original backups, owned stages and locks. Do not retry with `--force`
 or delete all `.revayat-*` paths. Under the owner's Rules, stop other installers,

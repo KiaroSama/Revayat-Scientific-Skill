@@ -182,9 +182,7 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                            src.excerpt(pos), source_path))
 
     def prose_finditer(pattern: str, flags: int = 0):
-        for m in re.finditer(pattern, text, flags):
-            if not src.is_protected(m.start()):
-                yield m
+        return src.prose_matches(pattern, flags)
 
     def live_finditer(pattern: str, flags: int = 0):
         """Structural scan shares the source model's live-token interpretation."""
@@ -193,32 +191,32 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                 yield m
 
     # 1. Orthography -----------------------------------------------------
-    for m in prose_finditer(r"[\u0643\u064a]"):
+    for m, pos in prose_finditer(r"[\u0643\u064a]"):
         name = unicodedata.name(m.group(0), "?")
-        add(ERROR, "arabic-letters", m.start(),
+        add(ERROR, "arabic-letters", pos,
             f"Arabic letter {m.group(0)!r} ({name}); use ک / ی")
 
-    for m in prose_finditer(r"[\u06f0-\u06f9\u0660-\u0669\u066B\u066C]"):
-        add(ERROR, "eastern-digits", m.start(),
+    for m, pos in prose_finditer(r"[\u06f0-\u06f9\u0660-\u0669\u066B\u066C]"):
+        add(ERROR, "eastern-digits", pos,
             f"eastern digit or Arabic decimal {m.group(0)!r}; "
             "digits stay Western (3.14)")
 
     for verb in ZWNJ_VERBS:
-        for m in prose_finditer(rf"(?<![{FA_RANGE}]){re.escape(verb)}"):
-            add(ERROR, "zwnj-verb", m.start(),
+        for m, pos in prose_finditer(rf"(?<![{FA_RANGE}]){re.escape(verb)}"):
+            add(ERROR, "zwnj-verb", pos,
                 f"missing ZWNJ in {verb!r}; write "
                 f"{verb[:2] + ZWNJ + verb[2:]!r}")
 
-    for m in prose_finditer(rf"[{FA_RANGE}]ه(ها|های|هایی)(?![{FA_RANGE}])"):
-        add(ERROR, "zwnj-plural", m.start(),
+    for m, pos in prose_finditer(rf"[{FA_RANGE}]ه(ها|های|هایی)(?![{FA_RANGE}])"):
+        add(ERROR, "zwnj-plural", pos,
             f"{m.group(0)!r} looks like a missing ZWNJ before the plural")
 
-    for m in prose_finditer(rf"[{FA_RANGE}]\s?[,;]|[,;]\s?[{FA_RANGE}]"):
-        add(ERROR, "latin-punct", m.start(),
+    for m, pos in prose_finditer(rf"[{FA_RANGE}]\s?[,;]|[,;]\s?[{FA_RANGE}]"):
+        add(ERROR, "latin-punct", pos,
             "Latin comma/semicolon in Persian prose; use ، or ؛")
 
-    for m in prose_finditer(rf"[{FA_RANGE}]\s?\?"):
-        add(ERROR, "latin-punct", m.start(),
+    for m, pos in prose_finditer(rf"[{FA_RANGE}]\s?\?"):
+        add(ERROR, "latin-punct", pos,
             "Latin question mark in Persian prose; use ؟")
 
     # 2. Terminology -----------------------------------------------------
@@ -226,18 +224,21 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
     # matching a shorter row that overlaps it.
     consumed: list[tuple[int, int]] = []
     for en, fa, scope in sorted(pairs, key=lambda r: -len(r[1])):
-        for m in prose_finditer(fa_pattern(fa)):
+        for m, pos in prose_finditer(fa_pattern(fa)):
             if any(s < m.end() and m.start() < e for s, e in consumed):
                 continue
             consumed.append((m.start(), m.end()))
-            add(ERROR, "forbidden-fa", m.start(),
+            add(ERROR, "forbidden-fa", pos,
                 f"{m.group(0)!r} is a calque of {en!r} ({scope}); "
                 f"keep {en!r} in an LTR isolate")
 
     heads = "|".join(fa_pattern(h) for h in HALF_TRANSLATION_HEADS)
-    latin_start = (r"(?:\\(?:lr|en|textenglish)\s*\{|<span[^>]*>|<bdi>|)"
+    latin_start = (r"(?:\\(?:lr|en|textenglish)\s*\{|<span[^>]*>|<bdi[^>]*>|)"
                    r"\s*[A-Za-z]")
-    for m in (prose_finditer(rf"(?:{heads})\s*{latin_start}") if level == 'system-docs' else []):
+    # This rule intentionally crosses into an isolate; prose barriers must not hide its opener.
+    for m in (re.finditer(rf"(?:{heads})\s*{latin_start}", text) if level == 'system-docs' else []):
+        if src.is_protected(m.start()):
+            continue
         add(ERROR, "half-translation", m.start(),
             "Persian head noun in front of an English name; keep the whole "
             "source noun phrase English in one isolate")
@@ -281,15 +282,15 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                 "(3.1 Title, OP_IF/OP_NOTIF, 1.0.1 (2026-08-09))")
 
     # 3. Isolation of Latin runs and number clusters ---------------------
-    for m in prose_finditer(r"[A-Za-z][A-Za-z0-9._/+-]{2,}"):
+    for m, pos in prose_finditer(r"[A-Za-z][A-Za-z0-9._/+-]{2,}"):
         run = m.group(0)
         if run in TEX_STOPWORDS or run.rstrip("0123456789") in TEX_STOPWORDS:
             continue
-        add(ERROR, "unisolated-latin", m.start(),
+        add(ERROR, "unisolated-latin", pos,
             f"Latin run {run!r} is not inside an LTR isolate")
 
-    for m in prose_finditer(r"\d+(?:[.\-–/:]\d+)*"):
-        add(ERROR, "unisolated-number", m.start(),
+    for m, pos in prose_finditer(r"\d+(?:[.\-–/:]\d+)*"):
+        add(ERROR, "unisolated-number", pos,
             f"number cluster {m.group(0)!r} is not inside an LTR isolate "
             "(ranges and dates reverse on an RTL page)")
 
@@ -338,8 +339,7 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
     else:
         for env in ("verbatim", "Verbatim", "lstlisting"):
             for m in live_finditer(r"\\begin\{" + env + r"\}"):
-                window = structural[max(0, m.start() - 400):m.start()]
-                if "\\begin{latin}" not in window:
+                if not src.in_direction_scope(m.start(), 'latin'):
                     add(ERROR, "code-direction", m.start(),
                         f"{env} is not wrapped in \\begin{{latin}}; "
                         "listings are never RTL")
@@ -352,17 +352,7 @@ def check(src: Source, pairs: list[tuple[str, str, str]],
                 "break")
         images = src.image_references()
         for pos, ref in images:
-            before = structural[:pos]
-            last_begin = max(
-                before.rfind("\\begin{LTR}"),
-                before.rfind("\\begin{latin}"),
-                before.rfind("\\LR{"),
-            )
-            last_end = max(
-                before.rfind("\\end{LTR}"),
-                before.rfind("\\end{latin}"),
-            )
-            if last_begin < 0 or last_begin < last_end:
+            if not src.in_direction_scope(pos, 'LTR', 'latin', 'LR'):
                 add(ERROR, "figure-direction", pos,
                     "\\includegraphics is not inside LTR/latin; xepersian "
                     "can paint the figure black or mirrored")

@@ -38,7 +38,7 @@ python install/install.py --dest /custom/skills/revayat-scientific
 python install/install.py --agent claude --force
 ```
 
-The Bash and PowerShell entry points forward these same options. Paths with spaces must be quoted. They never download dependencies; Python 3.10+ is required before installation.
+The Bash and PowerShell entry points forward these same options. Paths with spaces must be quoted. They never download dependencies; Python 3.11+ is required before installation.
 
 For a standalone upload, run `python tools/package.py` and use `dist/revayat-scientific.skill` in a host that accepts ZIP skill uploads. Extract it into the host skill parent otherwise. The package includes the required license notices.
 

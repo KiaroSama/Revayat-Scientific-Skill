@@ -11,7 +11,7 @@ try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
 try {
     $python = Get-Command python -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $python) { $python = Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 }
-    if (-not $python) { throw 'Python 3.10+ is required' }
+    if (-not $python) { throw 'Python 3.11+ is required' }
     $PSNativeCommandUseErrorActionPreference = $false
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = $null

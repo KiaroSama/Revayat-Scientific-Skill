@@ -27,6 +27,7 @@ import tempfile
 from collections import defaultdict
 from pathlib import Path
 
+from pdf_input import open_pdf
 from publication import publish_files, validate_destination
 from runtime import operation_log
 
@@ -255,16 +256,11 @@ def main(argv: list[str]) -> int:
         return 2
 
     pymupdf = _pymupdf()
-    doc = pymupdf.open(args.pdf)
-    try:
+    with open_pdf(args.pdf) as doc:
         return crop_document(doc, args, pymupdf)
-    finally:
-        doc.close()
 
 
 def crop_document(doc, args, pymupdf) -> int:
-    if doc.needs_pass:
-        raise ValueError('encrypted PDF requires an unlocked source')
     by_page = load_map(args.map) if args.map else {}
     requested = ([args.cover_page] if args.cover else []) + ([args.author_page] if args.author_page else [])
     if any(page < 1 or page > doc.page_count for page in [*requested, *by_page]):

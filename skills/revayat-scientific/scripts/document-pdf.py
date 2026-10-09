@@ -16,6 +16,7 @@ import tempfile
 
 from pdf_forms import inventory, signature_present, plan_fill, apply_fill, verify_fill
 from pdf_input import open_pdf
+from pdf_links import page_link_plan, apply_page_destinations, verify_page_links
 from publication import publish_files, validate_destination
 from pdf_outlines import outline_plan, apply_outlines, verify_outlines
 from runtime import operation_log, run_command
@@ -164,6 +165,10 @@ def merge_pdfs(sources, destination):
         # operation preserves ordinary page content and refuses that ambiguity.
         if any(document.is_form_pdf or document.embfile_count() for document in documents):
             raise ValueError('merge does not support forms or attachments; prepare reviewed page-only copies')
+        links, offset = [], 0
+        for document in documents:
+            links.extend(page_link_plan(document, offset=offset))
+            offset += document.page_count
         expected = []
         with pymupdf.open() as result:
             toc = []
@@ -176,8 +181,13 @@ def merge_pdfs(sources, destination):
                 page['page'] = index + 1
             if toc:
                 apply_outlines(result, toc)
-            _save_document(result, destination, sources, expected,
-                           validator=lambda output: verify_outlines(output, toc))
+            apply_page_destinations(result, links)
+
+            def verify_navigation(output):
+                verify_outlines(output, toc)
+                verify_page_links(output, links)
+
+            _save_document(result, destination, sources, expected, validator=verify_navigation)
 
 
 def fill_pdf(source, destination, values, protected_sources=()):

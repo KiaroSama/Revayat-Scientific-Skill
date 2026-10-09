@@ -191,7 +191,11 @@ def _rollback(targets, logger):
             if item.prepared is not None and _identity(dest) == item.prepared[0]:
                 if snapshot(dest) != item.prepared or stage.exists():
                     raise ValueError('published installation changed before rollback')
-                dest.rename(stage)
+                try:
+                    dest.rename(stage)
+                except OSError:
+                    if dest.exists() or snapshot(stage) != item.prepared:
+                        raise
             if item.old is None:
                 if dest.exists():
                     raise ValueError('another directory now occupies a new installation target')
@@ -202,7 +206,13 @@ def _rollback(targets, logger):
             if item.old is not None and snapshot(dest) != item.old:
                 raise ValueError('previous installation changed before rollback')
         except (OSError, ValueError, RuntimeError):
-            failures.append(str(dest))
+            try:
+                directory_path(dest)
+                restored = snapshot(dest) == item.old
+            except (OSError, ValueError, RuntimeError):
+                restored = False
+            if not restored:
+                failures.append(str(dest))
     logger.log(logging.ERROR if failures else logging.WARNING, 'rollback_targets=%d unresolved=%d', len(targets), len(failures))
     return failures
 
@@ -305,9 +315,17 @@ def install_targets(destinations, force, logger, *, source, repository, payload_
             item.stage.rename(item.destination)
         complete = True
     except BaseException:
-        if publishing and _rollback(targets, logger):
+        if publishing:
+            # Keep intent before recovery: another cancellation must not enter cleanup.
             keep = True
-            raise RuntimeError('installation rollback needs recovery: ' + str(journal_path)) from None
+            try:
+                failures = _rollback(targets, logger)
+            except BaseException as error:
+                error.add_note('installation rollback needs recovery: ' + str(journal_path))
+                raise
+            if failures:
+                raise RuntimeError('installation rollback needs recovery: ' + str(journal_path)) from None
+            keep = False
         raise
     finally:
         cleanup = []

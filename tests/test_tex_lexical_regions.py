@@ -179,6 +179,63 @@ class TexLexicalRegionsTest(unittest.TestCase):
         self.assertIn('VisibleMarker', plain_tex(r'\verb|%| VisibleMarker'))
         self.assertNotIn('HiddenMarker', plain_tex(r'\verb|HiddenMarker|'))
 
+    def test_complete_document_tail_is_not_prose_or_live_assets(self):
+        body = ('\\begin{document}\nمتن اصلی\n'
+                + r'\verb|\end{document}|' + '\n% \\end{document}\n'
+                + 'متن پایانی\n\\end{document}\nكي 123 \\includegraphics{missing.png}')
+        self.path.write_text(body, encoding='utf-8')
+        model = Source(self.path)
+        plain = plain_tex(model.text)
+        self.assertIn('متن اصلی', plain)
+        self.assertIn('متن پایانی', plain)
+        self.assertNotIn('كي', plain)
+        self.assertTrue(model.is_protected(model.text.index('كي')))
+        self.assertTrue(model.inert(model.text.index('كي')))
+        self.assertEqual(model.image_references(), [])
+        self.assertIn('FragmentTail', plain_tex(r'Fragment \end{document} FragmentTail'))
+
+    def test_post_document_isolates_cannot_add_lint_findings(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('tail_checker', ROOT / 'skills/revayat-scientific/scripts/check-fa.py')
+        checker = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = checker
+        spec.loader.exec_module(checker)
+        text = r'\begin{document}متن \en{service}\end{document}\en{services} \en{other}'
+        self.path.write_text(text, encoding='utf-8')
+        model = Source(self.path)
+        self.assertEqual([body for _, _, body in model.isolates], ['service'])
+        checks = {finding.check for finding in checker.check(model, [], None)}
+        self.assertFalse(checks & {'en-plural', 'split-isolate', 'terminology-drift'})
+
+    def test_post_document_missing_include_is_not_a_dependency(self):
+        text = r'\begin{document}متن\end{document}\input{missing}'
+        self.path.write_text(text, encoding='utf-8')
+        model = Source(self.path)
+        self.assertEqual(model.closure.sources, (self.path,))
+        self.assertEqual(plain_tex(model.text), 'متن')
+        self.assertEqual(self.path.read_text(encoding='utf-8'), text)
+
+    def test_real_tex_ignores_post_document_tail(self):
+        if not (shutil.which('xelatex') and shutil.which('pdftotext')):
+            if os.environ.get('SCIENTIFIC_REQUIRE_TEX_BOUNDARY') == '1':
+                self.fail('required document-end regression needs XeLaTeX and Poppler')
+            self.skipTest('requires real XeLaTeX and Poppler')
+        text = (r'\documentclass{article}\begin{document}VisibleBodyMarker'
+                + '\n' + r'\verb|\end{document}|' + '\n'
+                + r'\end{document}UnrenderedTailMarker')
+        self.path.write_text(text, encoding='utf-8')
+        before = self.path.read_bytes()
+        compiled = run(['xelatex', '-no-shell-escape', '-halt-on-error',
+                        '-interaction=nonstopmode', self.path.name], cwd=self.root, timeout=45)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout)
+        extracted = run(['pdftotext', str(self.path.with_suffix('.pdf')), '-'], timeout=15)
+        self.assertEqual(extracted.returncode, 0, extracted.stderr)
+        self.assertIn('VisibleBodyMarker', extracted.stdout)
+        self.assertNotIn('UnrenderedTailMarker', extracted.stdout)
+        self.assertIn('VisibleBodyMarker', plain_tex(text))
+        self.assertNotIn('UnrenderedTailMarker', plain_tex(text))
+        self.assertEqual(self.path.read_bytes(), before)
+
     def test_real_tex_accepts_literal_graphics_and_keeps_parent_after_eof_comment(self):
         if not (shutil.which('xelatex') and shutil.which('pdftotext')):
             if os.environ.get('SCIENTIFIC_REQUIRE_TEX_BOUNDARY') == '1':

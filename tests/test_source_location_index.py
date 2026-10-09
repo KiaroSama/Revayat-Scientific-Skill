@@ -87,6 +87,26 @@ class SourceLocationIndexTest(unittest.TestCase):
         for offset in range(len(closure.text)+1):
             self.assertEqual(closure.location(offset),reference(closure,offset))
 
+    def test_repeated_protection_and_waiver_queries_use_snapshot_indexes(self):
+        from source_model import Source
+        class CountedRegions(list):
+            walks = 0
+            def __iter__(self):
+                self.walks += 1
+                return super().__iter__()
+        path = self.root / 'indexed.tex'
+        path.write_text('% fa-lint: allow arabic-letters\nكي \\en{123}\nمتن\n', encoding='utf-8')
+        source = Source(path)
+        protected, comments = CountedRegions(source.protected), CountedRegions(source.comments)
+        source.protected, source.comments = protected, comments
+        for _ in range(50):
+            self.assertTrue(source.is_protected(source.text.index('123')))
+            self.assertFalse(source.is_protected(source.text.index('كي')))
+            self.assertTrue(source.suppressed(source.text.index('كي'), 'arabic-letters'))
+            self.assertFalse(source.suppressed(source.text.index('كي'), 'eastern-digits'))
+            self.assertFalse(source.suppressed(source.text.index('متن'), 'arabic-letters'))
+        self.assertEqual((protected.walks, comments.walks), (0, 0))
+
     def test_newline_index_has_bounded_compact_storage(self):
         text='\n'*10000
         path=self.root/'dense.tex'

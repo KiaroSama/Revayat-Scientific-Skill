@@ -203,6 +203,64 @@ class BuildGuardTest(unittest.TestCase):
         self.assertEqual(self.output.read_bytes(), self.working.read_bytes())
         self.assertEqual(self.source.read_bytes(), original)
 
+    def test_delivery_uses_bounded_streaming_identity(self):
+        self.create()
+        self.seal()
+        expected = self.working.read_bytes()
+        read_bytes = Path.read_bytes
+
+        def no_whole_pdf(path):
+            if path.suffix == '.pdf':
+                raise AssertionError('delivery must not allocate whole PDF read_bytes')
+            return read_bytes(path)
+
+        with mock.patch.object(Path, 'read_bytes', no_whole_pdf):
+            self.assertEqual(SUPPORT.main(['publish', str(self.working), str(self.output),
+                                          '--guard', str(self.record)]), 0)
+        self.assertEqual(self.output.read_bytes(), expected)
+        self.assertEqual(self.working.read_bytes(), expected)
+        self.assertFalse(list(self.root.glob('.revayat-delivery-*')))
+
+    def test_delivery_rejects_changed_staging_and_preserves_previous_output(self):
+        self.create()
+        self.seal()
+        copy = SUPPORT.shutil.copyfile
+        original = self.working.read_bytes()
+
+        def corrupt_copy(source, destination, *args, **kwargs):
+            result = copy(source, destination, *args, **kwargs)
+            Path(destination).write_bytes(b'corrupted staged bytes')
+            return result
+
+        with mock.patch.object(SUPPORT.shutil, 'copyfile', side_effect=corrupt_copy):
+            with self.assertRaisesRegex(ValueError, 'changed'):
+                SUPPORT.main(['publish', str(self.working), str(self.output), '--guard', str(self.record)])
+        self.assertEqual(self.working.read_bytes(), original)
+        self.assertEqual(self.output.read_bytes(), b'previous approved delivery')
+        self.assertFalse(list(self.root.glob('.revayat-delivery-*')))
+
+    def test_delivery_rejects_a_source_revision_copied_as_a_new_baseline(self):
+        copy = SUPPORT.shutil.copyfile
+
+        def change_source(source, destination, *args, **kwargs):
+            Path(source).write_bytes(b'new source revision')
+            return copy(source, destination, *args, **kwargs)
+
+        with mock.patch.object(SUPPORT.shutil, 'copyfile', side_effect=change_source):
+            with self.assertRaisesRegex(ValueError, 'changed'):
+                SUPPORT.main(['publish', str(self.working), str(self.output)])
+        self.assertEqual(self.working.read_bytes(), b'new source revision')
+        self.assertEqual(self.output.read_bytes(), b'previous approved delivery')
+        self.assertFalse(list(self.root.glob('.revayat-delivery-*')))
+
+    def test_delivery_still_refuses_inputs_above_the_explicit_build_limit(self):
+        with mock.patch.object(guard, 'MAX_FILE_BYTES', 4):
+            with self.assertRaises(ValueError):
+                SUPPORT.main(['publish', str(self.working), str(self.output)])
+        self.assertEqual(self.working.read_bytes(), b'previous working file')
+        self.assertEqual(self.output.read_bytes(), b'previous approved delivery')
+        self.assertFalse(list(self.root.glob('.revayat-delivery-*')))
+
     def test_invalid_record_duplicate_keys_and_oversized_maps_fail_explicitly(self):
         record = self.create()
         correct = self.record.read_bytes()
