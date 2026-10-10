@@ -64,6 +64,41 @@ namespace ScientificSecurity
             foreach (string observation in observations) Console.Out.WriteLine(observation);
             Console.Out.Flush();
         }
+        internal static void RequireOwnQueries(Native.ProcessInfo child, bool expectedAllowed)
+        {
+            IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero;
+            bool impersonating = false;
+            try {
+                Native.Check(Native.OpenProcessToken(child.process, 0xA, out token), "open own-query control token");
+                Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate own-query control token");
+                Native.Check(ImpersonateLoggedOnUser(duplicate), "enter own-query actual LPAC context");
+                impersonating = true;
+                RequireQueryHandle(OpenProcess(0x1000, false, child.pid), expectedAllowed);
+                RequireQueryHandle(OpenThread(0x800, false, child.tid), expectedAllowed);
+            }
+            finally {
+                try {
+                    if (impersonating && !RevertToSelf())
+                        Environment.FailFast("Own-query identity restoration failed; outer owner must reap and clean up.");
+                }
+                finally {
+                    try { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close own-query impersonation token"); }
+                    finally { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close own-query source token"); }
+                }
+            }
+            Console.Out.WriteLine("WINDOWS_OWN_QUERY_CONTROL expected_allowed=" + expectedAllowed + " process_control_passed=true thread_control_passed=true");
+            Console.Out.Flush();
+        }
+        static void RequireQueryHandle(IntPtr handle, bool expectedAllowed)
+        {
+            bool opened = handle != IntPtr.Zero;
+            int error = opened ? 0 : Marshal.GetLastWin32Error();
+            try {
+                if (opened != expectedAllowed || (!opened && error != 5))
+                    throw new InvalidOperationException("own-query same-token native access control differs");
+            }
+            finally { if (opened) Native.Check(Native.CloseHandle(handle), "close own-query real handle"); }
+        }
         static void ObserveHandle(string label, uint access, IntPtr handle, IntPtr invalid, List<string> observations)
         {
             int error = handle == invalid ? Marshal.GetLastWin32Error() : 0;
