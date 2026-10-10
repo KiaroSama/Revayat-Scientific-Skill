@@ -159,12 +159,20 @@ try {
     $pythonHome = [IO.Path]::GetDirectoryName($Python)
     if (Test-Path -LiteralPath (Join-Path ([IO.Path]::GetDirectoryName($pythonHome)) 'pyvenv.cfg')) { throw 'Pass the prepared base Python, not a relocated virtual environment launcher' }
     if (-not (Test-Path -LiteralPath (Join-Path $pythonHome 'Lib'))) { throw 'Prepared Python base runtime has no Lib directory' }
-    Assert-SourceTree $pythonHome
-    Copy-Item -LiteralPath (Join-Path $pythonHome 'python.exe') -Destination $runtime
-    foreach ($item in @(Get-ChildItem -LiteralPath $pythonHome -File | Where-Object { $_.Extension -in @('.dll','.zip','._pth') })) { Copy-Item -LiteralPath $item.FullName -Destination $runtime }
-    Copy-Item -LiteralPath (Join-Path $pythonHome 'DLLs'), (Join-Path $pythonHome 'Lib') -Destination $runtime -Recurse
+    # The hosted toolcache also contains a python3.exe alias that is not copied.
+    # Validate the exact immutable copy plan, never dereference or exempt a selected link.
+    $pythonLeaves = @((Join-Path $pythonHome 'python.exe')) + @(
+        Get-ChildItem -LiteralPath $pythonHome -File -Force |
+            Where-Object { $_.Extension -in @('.dll','.zip','._pth') } |
+            ForEach-Object { $_.FullName }
+    )
+    $pythonTrees = @((Join-Path $pythonHome 'DLLs'), (Join-Path $pythonHome 'Lib'))
+    foreach ($selected in $pythonLeaves) { Assert-SourcePath $selected }
+    foreach ($selected in $pythonTrees) { Assert-SourceTree $selected }
     $pwsh = [string](Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     Assert-SourceTree ([IO.Path]::GetDirectoryName($pwsh))
+    Copy-Item -LiteralPath $pythonLeaves -Destination $runtime
+    Copy-Item -LiteralPath $pythonTrees -Destination $runtime -Recurse
     Copy-Item -Path (Join-Path ([IO.Path]::GetDirectoryName($pwsh)) '*') -Destination $psRuntime -Recurse
     $childPython = Join-Path $runtime 'python.exe'
     $childPowerShell = Join-Path $psRuntime 'pwsh.exe'
