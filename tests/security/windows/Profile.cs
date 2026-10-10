@@ -128,8 +128,32 @@ namespace ScientificSecurity
             FileSystemSecurity actual = directory ? (FileSystemSecurity)FileSystemAclExtensions.GetAccessControl(new DirectoryInfo(path))
                 : FileSystemAclExtensions.GetAccessControl(new FileInfo(path));
             if (!actual.AreAccessRulesProtected || actual.GetSecurityDescriptorSddlForm(AccessControlSections.Access)
-                != acl.GetSecurityDescriptorSddlForm(AccessControlSections.Access))
+                != acl.GetSecurityDescriptorSddlForm(AccessControlSections.Access)) {
+                ReportSealDifference(acl, actual, directory);
                 throw new InvalidOperationException("owned profile filesystem seal readback differs");
+            }
+        }
+        static void ReportSealDifference(FileSystemSecurity expected, FileSystemSecurity actual, bool directory)
+        {
+            var left = new RawSecurityDescriptor(expected.GetSecurityDescriptorBinaryForm(), 0);
+            var right = new RawSecurityDescriptor(actual.GetSecurityDescriptorBinaryForm(), 0);
+            int leftCount = left.DiscretionaryAcl == null ? -1 : left.DiscretionaryAcl.Count;
+            int rightCount = right.DiscretionaryAcl == null ? -1 : right.DiscretionaryAcl.Count;
+            Console.Error.WriteLine("WINDOWS_PROFILE_SEAL_DIFF directory=" + directory + " expected_protected=" + expected.AreAccessRulesProtected
+                + " actual_protected=" + actual.AreAccessRulesProtected + " expected_canonical=" + expected.AreAccessRulesCanonical
+                + " actual_canonical=" + actual.AreAccessRulesCanonical + " expected_control=" + (int)left.ControlFlags
+                + " actual_control=" + (int)right.ControlFlags + " expected_rules=" + leftCount + " actual_rules=" + rightCount);
+            int count = Math.Min(Math.Min(Math.Max(leftCount, 0), Math.Max(rightCount, 0)), 16);
+            for (int index = 0; index < count; index++) {
+                var expectedAce = left.DiscretionaryAcl[index] as KnownAce;
+                var actualAce = right.DiscretionaryAcl[index] as KnownAce;
+                Console.Error.WriteLine("WINDOWS_PROFILE_ACE_DIFF index=" + index + " expected_type=" + left.DiscretionaryAcl[index].AceType
+                    + " actual_type=" + right.DiscretionaryAcl[index].AceType + " expected_flags=" + (int)left.DiscretionaryAcl[index].AceFlags
+                    + " actual_flags=" + (int)right.DiscretionaryAcl[index].AceFlags + " expected_mask=" + (expectedAce == null ? -1 : expectedAce.AccessMask)
+                    + " actual_mask=" + (actualAce == null ? -1 : actualAce.AccessMask) + " identity_equal=" +
+                    (expectedAce != null && actualAce != null && expectedAce.SecurityIdentifier.Equals(actualAce.SecurityIdentifier)));
+            }
+            Console.Error.Flush();
         }
         internal static void SealRegistry(IntPtr process, string name, string packageSid)
         {
