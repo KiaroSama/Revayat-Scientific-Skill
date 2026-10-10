@@ -27,6 +27,7 @@ def main():
         failed = []
         for name in ('admissions.py', 'tex_output.py'):
             logger.info('scenario_started name=%s', name)
+            print(json.dumps({'phase': name, 'status': 'started'}), flush=True)
             try:
                 runpy.run_path('/target/tests/security/' + name, run_name='__main__')
             except (AssertionError, OSError, ValueError, RuntimeError) as error:

@@ -42,5 +42,5 @@ jobs:
         shell: pwsh
         run: |
           $python = (Get-Command python -ErrorAction Stop).Source
-          & ./tests/security/windows/Run-WindowsSecurity.ps1 -Python $python -Root $PWD.Path
+          & $python -B ./tests/security/windows/bootstrap.py --python $python --root $PWD.Path
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -3,7 +3,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,10 +20,12 @@ def module(name):
     return result
 
 
-def expect_refusal(operation, label):
+def expect_refusal(operation, label, diagnostic=None):
     try:
         operation()
-    except ValueError:
+    except ValueError as error:
+        if diagnostic is not None and diagnostic not in str(error):
+            raise AssertionError(label + ': unrelated refusal: ' + str(error)) from error
         return
     raise AssertionError(label + ': unsafe input was accepted')
 
@@ -78,19 +79,53 @@ def html_cases(work):
     from source_model import Source
     from resource_policy import ResourcePolicy
     from build_guard import document_inputs
-    from document_context import DocumentContext
     text_order = module('check-pdf-text-order')
     build = module('build-support')
-    accepted = '<!doctype html><html lang="fa"><body>' + '<span>' * 32 + 'متن علمی' + '</span>' * 32 + '</body></html>'
+    renderer = module('render-html')
+
+    def render_entry(path, *, rejected):
+        output = work / ('render-' + path.stem + '.pdf')
+        output.write_bytes(b'previous render sentinel')
+        original = path.read_bytes()
+        sidecar = output.with_suffix('.resources.json')
+        with unittest.mock.patch.object(renderer, 'chromium') as backend:
+            try:
+                renderer.main([str(path), str(output), '--engine', 'chromium',
+                               '--browser', '/unused-admission-control', '--worker'])
+            finally:
+                assert path.read_bytes() == original, 'render admission changed source'
+                assert output.read_bytes() == b'previous render sentinel', 'render admission changed output'
+                if rejected:
+                    backend.assert_not_called()
+                    assert not sidecar.exists(), 'rejected render published a resource sidecar'
+            if not rejected:
+                backend.assert_called_once()
+        sidecar.unlink(missing_ok=True)
+
+    prefix = '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"></head><body>'
+    suffix = '</body></html>'
+    accepted = prefix + '<span>' * 32 + 'متن علمی' + '</span>' * 32 + suffix
     good = work / 'good.html'
     good.write_text(accepted, encoding='utf-8')
     assert ParsedHTML(accepted).text_content()
     assert Source(good).html.text_content()
     assert ResourcePolicy(good).source_bytes == accepted.encode('utf-8')
     assert text_order.source_plain(good)
-    seen = []
-    cases = {'depth': '<span>' * 513 + 'x' + '</span>' * 513,
-             'nodes': '<br>' * 100001}
+    def lint(path):
+        child = subprocess.run([sys.executable, '-B', str(SCRIPTS / 'check-fa.py'), str(path)],
+                               cwd=work, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=8)
+        assert len(child.stdout) + len(child.stderr) <= 65536, 'lint diagnostic bound exceeded'
+        return child
+    positive = lint(good)
+    assert positive.returncode == 0, 'ordinary supported nesting must pass public lint'
+    assert document_inputs(good) == [good.resolve()]
+    assert build.source_assets(good) == []
+    render_entry(good, rejected=False)
+    seen, failed = ['ordinary-nesting', 'ordinary-lint', 'ordinary-guard', 'ordinary-assets',
+                    'ordinary-render-entry-ordering'], []
+    cases = {'depth': prefix + '<span>' * 513 + 'متن علمی' + '</span>' * 513 + suffix,
+             'nodes': prefix + '<br>' * 100001 + 'متن علمی' + suffix}
     for label, text in cases.items():
         source = work / (label + '.html')
         source.write_text(text, encoding='utf-8')
@@ -101,15 +136,27 @@ def html_cases(work):
             'assets': lambda: build.source_assets(source),
             'text-order': lambda: text_order.source_plain(source),
             'resource-policy': lambda: ResourcePolicy(source),
+            'render-entry': lambda: render_entry(source, rejected=True),
         }
         for name, operation in operations.items():
-            expect_refusal(operation, label + '/' + name)
-            seen.append(label + '/' + name)
-        child = subprocess.run([sys.executable, '-B', str(SCRIPTS / 'check-fa.py'), str(source)],
-                               cwd=work, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, timeout=8)
-        assert child.returncode != 0 and len(child.stdout) + len(child.stderr) <= 65536
-        seen.append(label + '/lint')
+            case = label + '/' + name
+            try:
+                expect_refusal(operation, case, diagnostic='HTML work budget')
+            except (AssertionError, OSError, ValueError) as error:
+                failed.append(case)
+                print(json.dumps({'scenario': case, 'status': 'failed', 'reason': str(error)[:256]}), flush=True)
+            else:
+                seen.append(case)
+                print(json.dumps({'scenario': case, 'status': 'passed'}), flush=True)
+        child = lint(source)
+        case = label + '/lint'
+        if child.returncode != 2 or b'HTML work budget' not in child.stderr:
+            failed.append(case)
+            print(json.dumps({'scenario': case, 'status': 'failed', 'reason': 'missing work-budget refusal'}), flush=True)
+        else:
+            seen.append(case)
+    if failed:
+        raise AssertionError('HTML caller regressions failed: ' + ', '.join(failed))
     return seen
 
 
@@ -120,7 +167,6 @@ def publication_cases(work):
     destination = work / 'result.pdf'
     candidate = work / 'candidate.pdf'
     candidate.write_bytes(b'valid candidate')
-    real = candidate.lstat()
     class Reparse:
         st_mode = stat.S_IFDIR | 0o755
         st_file_attributes = 0x400

@@ -19,8 +19,10 @@ LABEL = 'org.revayat.security.run'
 MAX_OUTPUT = 1024 * 1024
 
 
-def command(arguments, logger, timeout=15):
+def command(arguments, logger, timeout=15, idle_timeout=20):
     chunks, overflow = [], threading.Event()
+    started = time.monotonic()
+    progress = [started]
     safe = {key: value for key, value in os.environ.items()
             if key in ('PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'HOME')}
     safe.update(DOCKER_HOST='', DOCKER_CONTEXT='', PYTHONUTF8='1')
@@ -36,16 +38,21 @@ def command(arguments, logger, timeout=15):
                 child.kill()
                 break
             chunks.append(data)
+            progress[0] = time.monotonic()
 
     reader = threading.Thread(target=drain, daemon=True)
     reader.start()
     try:
-        child.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        child.kill()
+        while child.poll() is None:
+            now = time.monotonic()
+            if now - started > timeout or now - progress[0] > idle_timeout:
+                raise RuntimeError('security controller wall/idle deadline exceeded')
+            time.sleep(0.05)
         child.wait(timeout=5)
-        raise RuntimeError('security controller command deadline exceeded') from None
     finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=5)
         reader.join(timeout=5)
         child.stdout.close()
     if reader.is_alive() or overflow.is_set():

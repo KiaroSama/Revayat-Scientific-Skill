@@ -1,6 +1,8 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Root)
+param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Root,
+      [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId = ([Guid]::NewGuid().ToString('N')),
+      [switch]$CleanupOnly)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -9,8 +11,19 @@ $Root = [IO.Path]::GetFullPath($Root)
 $Python = [IO.Path]::GetFullPath($Python)
 if (-not $IsWindows) { throw 'Native Windows security tier requires Windows' }
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Required prepared Python executable is unavailable' }
-$runId = [Guid]::NewGuid().ToString('N')
+$runId = $RunId
 $state = Join-Path $Root ".scratch/security-windows-$runId"
+if ($CleanupOnly) {
+    $ownedVhd = Join-Path $state 'scratch.vhdx'
+    if (Test-Path -LiteralPath $ownedVhd -PathType Leaf) {
+        if ((Get-Item -LiteralPath $ownedVhd -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Owned cleanup disk is a reparse point' }
+        $disk = Get-VHD -Path $ownedVhd -ErrorAction Stop
+        if ($disk.Attached) { Dismount-VHD -Path $ownedVhd -ErrorAction Stop }
+    }
+    if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop }
+    [Console]::Out.WriteLine('WINDOWS_OWNED_STATE_CLEANED')
+    exit 0
+}
 $null = New-Item -ItemType Directory -Path $state
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $logDir = Join-Path $Root '.scratch/security-logs'
@@ -24,11 +37,14 @@ catch { [Console]::Error.WriteLine('Security logging initialization failed'); th
 function Write-RunLog([string]$Level, [string]$Message) {
     $log.WriteLine('[' + [DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss') + " UTC] [$Level] [WINDOWS-SECURITY] $Message")
     $log.Flush()
+    # Content-free phase activity lets the independent outer owner enforce its idle deadline.
+    [Console]::Out.WriteLine("WINDOWS_SECURITY_PROGRESS level=$Level")
 }
 function Checked-Native([string]$Executable, [string[]]$Arguments) {
-    $output = & $Executable @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Trusted setup command failed: $([IO.Path]::GetFileName($Executable)) exit=$LASTEXITCODE" }
-    return $output
+    $resolved = (Get-Command $Executable -CommandType Application -ErrorAction Stop).Source
+    Write-RunLog INFO ('trusted setup command=' + [IO.Path]::GetFileName($resolved))
+    $text = [ScientificSecurity.TrustedSetup]::Run($resolved, $Arguments, $state)
+    return @($text -split "`r?`n" | Where-Object { $_ -ne '' })
 }
 function Set-OwnedAccess([string]$Path, [bool]$Writable, [bool]$Directory) {
     $acl = if ($Directory) { [Security.AccessControl.DirectorySecurity]::new() } else { [Security.AccessControl.FileSecurity]::new() }
@@ -72,9 +88,12 @@ function Assert-SourceTree([string]$Path) {
     }
 }
 function Protect-Tree([string]$Path) {
+    $completed = 0
     foreach ($item in @(Get-ChildItem -LiteralPath $Path -Recurse -Force)) {
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Prepared target/runtime unexpectedly contains a reparse point' }
         Set-OwnedAccess $item.FullName $false $item.PSIsContainer
+        $completed++
+        if ($completed % 500 -eq 0) { Write-RunLog INFO "readonly ACL preparation items=$completed" }
     }
     Set-OwnedAccess $Path $false $true
 }
@@ -88,7 +107,9 @@ try {
     foreach ($name in @('New-VHD','Mount-VHD','Dismount-VHD','Initialize-Disk','New-Partition','Format-Volume')) {
         if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { throw "Required native control unavailable: $name" }
     }
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'))
+    # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
+    # native setup commands use the suspended Job-owned runner loaded here.
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'))
     $moniker = 'Scientific.Security.' + $runId
     $package = [Security.Principal.SecurityIdentifier]::new([ScientificSecurity.Sandbox]::PackageSid($moniker))
     $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
@@ -146,7 +167,12 @@ try {
     Assert-SourcePath $chromium
     Copy-Item -LiteralPath $chromium -Destination (Join-Path $browserDir 'chromium.exe')
     $chromium = Join-Path $browserDir 'chromium.exe'
-    Protect-Tree $target; Protect-Tree $runtime; Protect-Tree $psRuntime
+    Write-RunLog INFO 'protecting target tree'
+    Protect-Tree $target
+    Write-RunLog INFO 'protecting prepared Python runtime'
+    Protect-Tree $runtime
+    Write-RunLog INFO 'protecting prepared PowerShell runtime'
+    Protect-Tree $psRuntime
     [IO.File]::WriteAllText((Join-Path $state 'host-canary'), 'dummy parent-only control', $utf8)
     $parentAcl = Get-Acl -LiteralPath $state
     $parentAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($package, [Security.AccessControl.FileSystemRights]::ReadAndExecute, [Security.AccessControl.AccessControlType]::Allow))

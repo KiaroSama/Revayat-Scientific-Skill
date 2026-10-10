@@ -82,6 +82,22 @@ def main():
                 raise RuntimeError('security preflight failed: file-size-not-enforced')
     finally:
         oversized.unlink(missing_ok=True)
+    quota_files, refused = [], False
+    try:
+        for index in range(9):
+            path = root / ('aggregate-control-' + str(index))
+            quota_files.append(path)
+            with path.open('xb') as handle:
+                try:
+                    os.posix_fallocate(handle.fileno(), 0, 16 * 1024 * 1024)
+                except OSError as error:
+                    require(error.errno == errno.ENOSPC, 'aggregate-denial-error')
+                    refused = True
+                    break
+        require(refused, 'aggregate-disk-enforced')
+    finally:
+        for path in quota_files:
+            path.unlink(missing_ok=True)
     print(json.dumps({'phase': 'preflight', 'status': 'passed', 'controls': sorted(allowed),
                       'scratch_bytes': 134217728, 'file_bytes': 67108864}))
 
