@@ -141,7 +141,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
     Write-RunLog INFO 'managed strict seal-comparison positive and negative controls passed'
     $gitCandidates = @(Get-Command git -CommandType Application -ErrorAction Stop)
@@ -268,7 +268,10 @@ try {
     $udpPort = $udp4.Client.LocalEndPoint.Port
     $udp6 = [Net.Sockets.UdpClient]::new([Net.Sockets.AddressFamily]::InterNetworkV6); $udp6.Client.DualMode = $false; $udp6.Client.Bind([Net.IPEndPoint]::new([Net.IPAddress]::IPv6Loopback, $udpPort))
     $env:SCIENTIFIC_AMBIENT_CANARY = 'dummy-never-forwarded'
-    Write-RunLog INFO 'trusted kernel preflight starts before reviewed-code import'
+    Write-RunLog INFO 'separate bounded trusted pass-code loader trace starts; never an admission control'
+    $loaderDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true)
+    Write-RunLog INFO $loaderDiagnostic
+    Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
     $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
     $preflight = $preflightText | ConvertFrom-Json
     if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }

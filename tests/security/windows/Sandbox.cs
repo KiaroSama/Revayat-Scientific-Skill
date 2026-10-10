@@ -22,17 +22,20 @@ namespace ScientificSecurity
 
         // Only the fixed probe and fixed regression entry are launchable; no arbitrary command API.
         public static string Run(string python, string root, string scratch, string powershell,
-                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false)
+                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false)
         {
+            if (loaderProbe && (!preflight || wallProbe))
+                throw new ArgumentException("loader tracing is restricted to the separate fixed trusted pass phase");
             python = Path.GetFullPath(python); root = Path.GetFullPath(root);
             scratch = Path.GetFullPath(scratch); powershell = Path.GetFullPath(powershell);
             string probe = preflight ? Path.Combine(root, "tests", "security", "windows", "KernelProbe.py")
                                      : Path.Combine(root, "tests", "security", "windows_probe.py");
-            string phase = wallProbe ? "wall" : (preflight ? "preflight" : "regressions");
+            string phase = loaderProbe ? "loader-trace" : (wallProbe ? "wall" : (preflight ? "preflight" : "regressions"));
             string launchCwd = preflight ? Path.GetDirectoryName(python) : scratch;
             var arguments = new List<string> { python, "-I", "-B", "-X", "utf8", probe, root, scratch, powershell };
             if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); arguments.Add(profileFolder); }
             if (wallProbe) arguments.Add("wall-tree");
+            if (loaderProbe) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
             var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
@@ -51,6 +54,7 @@ namespace ScientificSecurity
             Native.ProcessInfo process = new Native.ProcessInfo();
             bool started = false, resumed = false, wallExpired = false;
             Capture outputCapture = null, errorCapture = null;
+            LoaderTrace loader = loaderProbe ? new LoaderTrace() : null;
             try
             {
                 job = Native.CreateJobObject(IntPtr.Zero, null);
@@ -114,15 +118,17 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 using (OwnedToken restricted = OwnedToken.Create()) {
                     bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, python, new StringBuilder(command), processAttributes, processAttributes, true,
-                        Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment,
+                        Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment | (loaderProbe ? 2U : 0U),
                         env, launchCwd, ref startup, out process);
                     started = created;
+                    if (created && loader != null) loader.Arm(process);
                     Native.Check(created, "create suspended LPAC child from owned restricted LUA primary");
                     Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
                 }
+                if (loader != null) loader.CaptureCreated(ref process);
                 Profile.SealRegistry(process.process, moniker, package);
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
-                if (preflight && !wallProbe) {
+                if (preflight && !wallProbe && !loaderProbe) {
                     StartupAccess.Observe(process, python);
                     StartupAccess.RequireOwnQueries(process, false);
                 }
@@ -133,6 +139,14 @@ namespace ScientificSecurity
                 resumed = true;
                 foreach (IntPtr handle in handles) Native.CloseHandle(handle);
                 handles.Clear(); outputCapture.CloseWriter(); errorCapture.CloseWriter();
+                if (loader != null) {
+                    uint tracedExit = loader.Observe();
+                    Native.Check(Native.WaitForSingleObject(process.process, 5000) == 0, "wait for continued loader diagnostic process exit");
+                    string captured = outputCapture.Read() + errorCapture.Read();
+                    if (Encoding.UTF8.GetByteCount(captured) > 1048576)
+                        throw new InvalidOperationException("loader worker output exceeded 1 MiB");
+                    return "LOADER_TRACE_EXIT=0x" + tracedExit.ToString("X8");
+                }
                 var clock = Stopwatch.StartNew();
                 long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
@@ -169,8 +183,15 @@ namespace ScientificSecurity
             {
                 try
                 {
-                    if (started && !resumed) Native.Check(Native.TerminateProcess(process.process, 125), "terminate suspended child");
-                    if (job != IntPtr.Zero) ReapJob(job);
+                    try {
+                        if (started && loader != null) {
+                            Native.ProcessInfo retained = process;
+                            loader.SuppressOriginalAliases(ref process);
+                            loader.TerminateAndDrain(job, retained);
+                        }
+                        else if (started && !resumed) Native.Check(Native.TerminateProcess(process.process, 125), "terminate suspended child");
+                    }
+                    finally { if (job != IntPtr.Zero) ReapJob(job); }
                 }
                 finally
                 {
