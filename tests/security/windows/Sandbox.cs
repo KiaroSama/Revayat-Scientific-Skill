@@ -29,6 +29,7 @@ namespace ScientificSecurity
             string probe = preflight ? Path.Combine(root, "tests", "security", "windows", "KernelProbe.py")
                                      : Path.Combine(root, "tests", "security", "windows_probe.py");
             string phase = wallProbe ? "wall" : (preflight ? "preflight" : "regressions");
+            string launchCwd = preflight ? Path.GetDirectoryName(python) : scratch;
             var arguments = new List<string> { python, "-I", "-B", "-X", "utf8", probe, root, scratch, powershell };
             if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); }
             if (wallProbe) arguments.Add("wall-tree");
@@ -103,15 +104,17 @@ namespace ScientificSecurity
                 IntPtr processAttributes = Native.Structure(new Native.SecurityAttributes {
                     size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), descriptor = processDescriptor });
                 values.Add(processAttributes);
-                Console.Out.WriteLine("WINDOWS_LPAC_PATH executable=" + Quote(python) + " cwd=" + Quote(scratch)
+                Console.Out.WriteLine("WINDOWS_LPAC_PATH executable=" + Quote(python) + " cwd=" + Quote(launchCwd)
+                    + " desired_scratch=" + Quote(scratch) + " phase=" + phase
                     + " probe=" + Quote(probe) + " executable_exists=" + File.Exists(python)
-                    + " cwd_exists=" + Directory.Exists(scratch) + " probe_exists=" + File.Exists(probe));
+                    + " cwd_exists=" + Directory.Exists(launchCwd) + " scratch_exists=" + Directory.Exists(scratch)
+                    + " probe_exists=" + File.Exists(probe));
                 Console.Out.Flush();
-                if (!File.Exists(python) || !Directory.Exists(scratch) || !File.Exists(probe))
+                if (!File.Exists(python) || !Directory.Exists(launchCwd) || !Directory.Exists(scratch) || !File.Exists(probe))
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 Native.Check(Native.CreateProcessW(python, new StringBuilder(command), processAttributes, processAttributes, true,
                     Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment,
-                    env, scratch, ref startup, out process), "create suspended LPAC child");
+                    env, launchCwd, ref startup, out process), "create suspended LPAC child");
                 started = true;
                 Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);

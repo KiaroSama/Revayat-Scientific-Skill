@@ -243,6 +243,10 @@ def authority_controls(root, scratch, owners):
 def run():
     require(os.name == 'nt' and sys.version_info[:2] == (3, 11), 'native Windows 3.11 required')
     root, scratch, powershell = map(Path, sys.argv[1:4])
+    # Trusted launch starts on the prepared runtime volume; entering the bounded
+    # scratch volume is a required observed control, never an unrestricted fallback.
+    os.chdir(scratch)
+    require(Path.cwd() == scratch, 'trusted LPAC cannot enter assigned scratch volume')
     owners = token_controls()
     if sys.argv[-1] == 'token-child':
         print(json.dumps({'phase': 'token-child', 'owners': owners}, sort_keys=True), flush=True)
