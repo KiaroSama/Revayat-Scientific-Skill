@@ -69,15 +69,27 @@ function Set-OwnedAccess([string]$Path, [bool]$Writable, [bool]$Directory) {
     if (-not $Writable) {
         $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($package, [Security.AccessControl.FileSystemRights]::Write, $inherit, $prop, $deny))
     }
+    $existingOwner = (Get-Acl -LiteralPath $Path).GetOwner([Security.Principal.SecurityIdentifier]).Value
     $acl.SetOwner($user)
-    # Set-Acl forces all descriptor sections; persist only our changed Access/Owner
-    # sections so the previously established mandatory integrity label survives.
-    if ($Directory) {
-        [IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]::new($Path), $acl)
+    $aclDiagnostic = @{ phase='owned-acl'; relative=[IO.Path]::GetRelativePath($state, [IO.Path]::GetFullPath($Path));
+                       writable=$Writable; directory=$Directory; owner_matches_user=($existingOwner -eq $user.Value);
+                       attributes=[int](Get-Item -LiteralPath $Path -Force).Attributes } | ConvertTo-Json -Compress
+    # Preserve bounded output: only a failed operation emits its pre-captured metadata.
+    try {
+        if (-not $Writable) {
+            # Reuse the provider's scoped restore-privilege handling for copied RO trees.
+            # These entries have no scratch MIC label to preserve; an absent label is Medium.
+            Set-Acl -LiteralPath $Path -AclObject $acl
+        }
+        elseif ($Directory) {
+            # Persist Access/Owner only on the newly labeled empty scratch root.
+            [IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]::new($Path), $acl)
+        }
+        else {
+            [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($Path), $acl)
+        }
     }
-    else {
-        [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($Path), $acl)
-    }
+    catch { [Console]::Error.WriteLine($aclDiagnostic); throw }
 }
 function Assert-SourcePath([string]$Path) {
     $current = [IO.Path]::GetFullPath($Path)
@@ -103,7 +115,8 @@ function Assert-SourceTree([string]$Path) {
 }
 function Protect-Tree([string]$Path) {
     $completed = 0
-    foreach ($item in @(Get-ChildItem -LiteralPath $Path -Recurse -Force)) {
+    # Parent denies propagate to existing children, so complete descendants before parents.
+    foreach ($item in @(Get-ChildItem -LiteralPath $Path -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)) {
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Prepared target/runtime unexpectedly contains a reparse point' }
         Set-OwnedAccess $item.FullName $false $item.PSIsContainer
         $completed++
