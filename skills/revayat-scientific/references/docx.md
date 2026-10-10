@@ -26,6 +26,11 @@ no-DTD validation. Inspection and editing use the same actual part address.
 Part-name and extension mappings compare ASCII letters case-insensitively;
 overrides take precedence over defaults, including for the primary document.
 Duplicate equivalent declarations fail rather than silently selecting one.
+XML and relationship-part discovery also compare ASCII suffixes case-insensitively,
+including `.RELS` and relationship-directory variants. Original archive names and
+untouched bytes are preserved; case variants do not bypass restricted-feature
+inspection or edit refusal. This is package admission, not sanitization or proof
+that every Office application interprets the package identically.
 The legacy canonical-name subset is retained only for `application/xml` or
 `text/xml`, with the corresponding story root validated. An explicit custom type
 never becomes editable because of its filename or a `w:t` node. The supported

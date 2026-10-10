@@ -17,6 +17,8 @@ TEXT_BREAKS = {'address', 'article', 'aside', 'blockquote', 'br', 'caption', 'dd
 RCDATA = {'textarea', 'title'}
 RAWTEXT = {'script', 'style', 'xmp', 'iframe', 'noembed', 'noframes'}
 CHARREF = re.compile(r'&(?:\#[xX][0-9A-Fa-f]+;?|\#[0-9]+;?|[A-Za-z][A-Za-z0-9]{0,31};?)')
+MAX_ELEMENTS = 100000
+MAX_DEPTH = 512
 FOREIGN_BREAKOUT = {'b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd',
                     'div', 'dl', 'dt', 'em', 'embed', 'h1', 'h2', 'h3', 'h4', 'h5',
                     'h6', 'head', 'hr', 'i', 'img', 'li', 'listing', 'menu', 'meta',
@@ -196,6 +198,8 @@ class ParsedHTML(HTMLParser):
         self.protected.append((start, end))
 
     def handle_starttag(self, tag, attrs):
+        if len(self.nodes) >= MAX_ELEMENTS or len(self.stack) >= MAX_DEPTH:
+            raise ValueError('HTML work budget exceeded: at most 100000 elements and 512 open ancestors')
         start = self.position()
         end = start + len(self.get_starttag_text())
         attributes = {}

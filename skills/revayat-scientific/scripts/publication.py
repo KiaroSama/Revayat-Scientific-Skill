@@ -4,13 +4,18 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import tempfile
 
 from bounded_file_identity import file_identity
 
 
 def _linked(path):
-    return path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction())
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
 def validate_destination(destination, sources=()):

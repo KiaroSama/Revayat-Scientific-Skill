@@ -1,0 +1,46 @@
+name: Security regressions
+on:
+  push:
+    branches: [main, 'fix/security-ci-coverage']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - name: Prepare existing scientific toolchain
+        run: docker build --tag revayat-scientific-tex:1 --file skills/revayat-scientific/assets/Dockerfile.tex skills/revayat-scientific/assets
+      - name: Prepare isolated security runtime
+        run: docker build --tag revayat-scientific-security:1 --file tests/security/Dockerfile .
+      - name: Prove isolation before finite security scenarios
+        run: python -B tools/security-ci.py
+  windows-security:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.11'
+      - name: Prepare declared native Python dependencies
+        run: python -m pip install -r skills/revayat-scientific/requirements.txt
+      - name: Prove native containment before Windows junction and OPC scenarios
+        shell: pwsh
+        run: |
+          $python = (Get-Command python -ErrorAction Stop).Source
+          & $python -B ./tests/security/windows/bootstrap.py --python $python --root $PWD.Path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
