@@ -125,7 +125,7 @@ namespace ScientificSecurity
                     Native.Check(created, "create suspended LPAC child from owned restricted LUA primary");
                     Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
                 }
-                if (loader != null) loader.CaptureCreated(ref process);
+                if (loader != null) loader.PrepareHandles(ref process);
                 Profile.SealRegistry(process.process, moniker, package);
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
                 if (preflight && !wallProbe && !loaderProbe) {

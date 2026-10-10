@@ -49,7 +49,7 @@ namespace ScientificSecurity
         static extern uint GetFinalPathNameByHandleW(IntPtr file, StringBuilder path, uint characters, uint flags);
 
         readonly uint creator = GetCurrentThreadId();
-        readonly Stopwatch clock = Stopwatch.StartNew();
+        readonly Stopwatch clock = new Stopwatch();
         uint pid, tid; int events, bytes; bool initialBreakpoint, exited, pending;
         DebugEvent current;
         IntPtr originalProcess, originalThread, processAlias, threadAlias;
@@ -76,7 +76,7 @@ namespace ScientificSecurity
             if (child.process == processAlias) child.process = IntPtr.Zero;
             if (child.thread == threadAlias) child.thread = IntPtr.Zero;
         }
-        internal void CaptureCreated(ref Native.ProcessInfo child)
+        internal void PrepareHandles(ref Native.ProcessInfo child)
         {
             ThreadCheck();
             // Debug EXIT may close original creation aliases even when duplication fails.
@@ -93,6 +93,10 @@ namespace ScientificSecurity
                 if (thread != IntPtr.Zero) Native.CloseHandle(thread);
                 if (process != IntPtr.Zero) Native.CloseHandle(process);
             }
+        }
+        void CaptureCreationEvent()
+        {
+            ThreadCheck();
             while (!Receive()) {
                 if (clock.Elapsed.TotalSeconds >= 10) throw new TimeoutException("loader diagnostic create-event deadline exceeded");
             }
@@ -107,7 +111,7 @@ namespace ScientificSecurity
                 Emit("phase=create creator_thread_verified=true image=" + Basename(file));
             }
             finally { current.data.createProcess.file = IntPtr.Zero; CloseFile(file); }
-            // Creation event remains pending while profile/token/quota/own-DACL gates are applied.
+            // Gates were completed before resume; validate CREATE before allowing user-mode execution.
         }
         static void ReleaseOriginal(ref IntPtr original, IntPtr osOwned)
         {
@@ -136,7 +140,11 @@ namespace ScientificSecurity
         }
         internal uint Observe()
         {
-            ThreadCheck(); ContinuePending(Continue);
+            ThreadCheck();
+            if (clock.IsRunning || events != 0) throw new InvalidOperationException("loader observation may start only once");
+            clock.Start();
+            CaptureCreationEvent();
+            ContinuePending(Continue);
             while (!exited) {
                 if (clock.Elapsed.TotalSeconds >= 10 || events >= 128)
                     throw new TimeoutException("loader diagnostic event/time ceiling exceeded");
