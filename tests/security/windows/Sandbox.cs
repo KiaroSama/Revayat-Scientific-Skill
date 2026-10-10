@@ -112,11 +112,14 @@ namespace ScientificSecurity
                 Console.Out.Flush();
                 if (!File.Exists(python) || !Directory.Exists(launchCwd) || !Directory.Exists(scratch) || !File.Exists(probe))
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
-                Native.Check(Native.CreateProcessW(python, new StringBuilder(command), processAttributes, processAttributes, true,
-                    Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment,
-                    env, launchCwd, ref startup, out process), "create suspended LPAC child");
-                started = true;
-                Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
+                using (OwnedToken restricted = OwnedToken.Create()) {
+                    bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, python, new StringBuilder(command), processAttributes, processAttributes, true,
+                        Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment,
+                        env, launchCwd, ref startup, out process);
+                    started = created;
+                    Native.Check(created, "create suspended LPAC child from owned restricted LUA primary");
+                    Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
+                }
                 Profile.SealRegistry(process.process, moniker, package);
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)

@@ -46,6 +46,7 @@ namespace ScientificSecurity
             try
             {
                 Native.Check(Native.OpenProcessToken(process, 0xA8, out token), "open suspended LPAC policy token");
+                OwnedToken.RequireNoAdminOwner(token);
                 Luid traverse;
                 Native.Check(LookupPrivilegeValueW(null, "SeChangeNotifyPrivilege", out traverse), "resolve allowed traversal privilege");
                 data = Query(token, 3);

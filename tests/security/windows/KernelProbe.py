@@ -119,8 +119,12 @@ def token_controls():
                 'invalid token groups buffer')
         for index in range(count):
             item = SidAttributes.from_buffer(groups, Groups.first.offset + index * ctypes.sizeof(SidAttributes))
+            identity = sid_text(item.sid)
+            if identity == 'S-1-5-32-544':
+                require(not item.attributes & (8 | 4 | 2) and item.attributes & 16,
+                        'Administrators retains owner/enabled authority in actual worker token')
             if item.attributes & 8:
-                owners.add(sid_text(item.sid))
+                owners.add(identity)
         require(len(owners) <= 16, 'unbounded assignable owner set')
         return sorted(owners)
     finally:
@@ -214,6 +218,15 @@ def authority_controls(root, scratch, owners):
                             require(assigned in (5, 1307), 'finite owner assignment failed unexpectedly')
                     finally:
                         K.LocalFree(owner_sid)
+                # Administrators was unquotaable in the hosted observation and must not be assignable.
+                administrator = P()
+                require(A.ConvertStringSidToSidW('S-1-5-32-544', ctypes.byref(administrator)),
+                        'Administrators negative-control SID invalid')
+                try:
+                    require(A.SetSecurityInfo(handle, 1, 1, administrator, None, None, None) in (5, 1307),
+                            'private creator regained unquotaable Administrators ownership')
+                finally:
+                    K.LocalFree(administrator)
                 # Outside identity must not be assignable even with WRITE_OWNER on an own file.
                 outsider = P()
                 require(A.ConvertStringSidToSidW('S-1-5-21-101-202-303-404', ctypes.byref(outsider)), 'outside-owner probe SID invalid')
