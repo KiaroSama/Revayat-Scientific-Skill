@@ -127,10 +127,53 @@ namespace ScientificSecurity
             else FileSystemAclExtensions.SetAccessControl(new FileInfo(path), (FileSecurity)acl);
             FileSystemSecurity actual = directory ? (FileSystemSecurity)FileSystemAclExtensions.GetAccessControl(new DirectoryInfo(path))
                 : FileSystemAclExtensions.GetAccessControl(new FileInfo(path));
-            if (!actual.AreAccessRulesProtected || actual.GetSecurityDescriptorSddlForm(AccessControlSections.Access)
-                != acl.GetSecurityDescriptorSddlForm(AccessControlSections.Access)) {
+            if (!SealedAccessMatches(acl, actual)) {
                 ReportSealDifference(acl, actual, directory);
                 throw new InvalidOperationException("owned profile filesystem seal readback differs");
+            }
+        }
+        static bool SealedAccessMatches(ObjectSecurity expected, ObjectSecurity actual)
+        {
+            if (!expected.AreAccessRulesProtected || !actual.AreAccessRulesProtected ||
+                !expected.AreAccessRulesCanonical || !actual.AreAccessRulesCanonical) return false;
+            return AccessMatches(new RawSecurityDescriptor(expected.GetSecurityDescriptorBinaryForm(), 0),
+                new RawSecurityDescriptor(actual.GetSecurityDescriptorBinaryForm(), 0));
+        }
+        static bool AccessMatches(RawSecurityDescriptor expected, RawSecurityDescriptor actual)
+        {
+            // Windows adds resource-manager DACL auto-inheritance bookkeeping (AI/0x0400).
+            // Ignore only that observed flag; protection and every ordered ACL byte must match.
+            const ControlFlags bookkeeping = ControlFlags.DiscretionaryAclAutoInherited;
+            if ((expected.ControlFlags & ~bookkeeping) != (actual.ControlFlags & ~bookkeeping) ||
+                (expected.ControlFlags & ControlFlags.DiscretionaryAclProtected) == 0 ||
+                (actual.ControlFlags & ControlFlags.DiscretionaryAclProtected) == 0 ||
+                expected.DiscretionaryAcl == null || actual.DiscretionaryAcl == null) return false;
+            var left = new byte[expected.DiscretionaryAcl.BinaryLength];
+            var right = new byte[actual.DiscretionaryAcl.BinaryLength];
+            expected.DiscretionaryAcl.GetBinaryForm(left, 0);
+            actual.DiscretionaryAcl.GetBinaryForm(right, 0);
+            return left.SequenceEqual(right);
+        }
+        // Managed-only comparison check; no native/profile/registry operation.
+        public static void CheckSealComparison()
+        {
+            const string policy = "D:P(D;;WDWO;;;OW)(A;;FR;;;WD)";
+            var expected = new RawSecurityDescriptor(policy);
+            var actual = new RawSecurityDescriptor(policy);
+            actual.SetFlags(actual.ControlFlags | ControlFlags.DiscretionaryAclAutoInherited);
+            if (!AccessMatches(expected, actual)) throw new InvalidOperationException("DACL bookkeeping check failed");
+            foreach (ControlFlags change in new [] { ControlFlags.DiscretionaryAclProtected,
+                ControlFlags.DiscretionaryAclPresent, ControlFlags.DiscretionaryAclAutoInheritRequired,
+                ControlFlags.SystemAclAutoInherited }) {
+                var changed = new RawSecurityDescriptor(policy);
+                changed.SetFlags(changed.ControlFlags ^ change);
+                if (AccessMatches(expected, changed)) throw new InvalidOperationException("DACL control difference accepted");
+            }
+            foreach (string changed in new [] { "D:P(A;;FR;;;WD)", "D:P(D;;WD;;;OW)(A;;FR;;;WD)",
+                "D:P(D;;WDWO;;;SY)(A;;FR;;;WD)", "D:P(D;OI;WDWO;;;OW)(A;;FR;;;WD)",
+                "D:P(A;;FR;;;WD)(D;;WDWO;;;OW)", "D:P(D;;WDWO;;;OW)(A;;FA;;;WD)" }) {
+                if (AccessMatches(expected, new RawSecurityDescriptor(changed)))
+                    throw new InvalidOperationException("DACL ordered bytes difference accepted");
             }
         }
         static void ReportSealDifference(FileSystemSecurity expected, FileSystemSecurity actual, bool directory)
@@ -225,8 +268,7 @@ namespace ScientificSecurity
                     InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Allow));
             key.SetAccessControl(acl);
             RegistrySecurity actual = key.GetAccessControl(AccessControlSections.Access);
-            if (!actual.AreAccessRulesProtected || actual.GetSecurityDescriptorSddlForm(AccessControlSections.Access)
-                != acl.GetSecurityDescriptorSddlForm(AccessControlSections.Access))
+            if (!SealedAccessMatches(acl, actual))
                 throw new InvalidOperationException("owned profile registry seal readback differs");
         }
         public static void DeleteOwned(string name, string receiptPath)
