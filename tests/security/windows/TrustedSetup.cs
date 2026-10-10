@@ -21,7 +21,11 @@ namespace ScientificSecurity
             string name = Path.GetFileName(executable).ToLowerInvariant();
             if (!new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
-            if (!File.Exists(executable) || !Directory.Exists(cwd))
+            bool executableExists = File.Exists(executable), cwdExists = Directory.Exists(cwd);
+            Console.Out.WriteLine("WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd)
+                + " executable_exists=" + executableExists + " cwd_exists=" + cwdExists);
+            Console.Out.Flush();
+            if (!executableExists || !cwdExists)
                 throw new ArgumentException("trusted setup executable or working directory does not exist after native path normalization");
             IntPtr job = IntPtr.Zero, attrs = IntPtr.Zero;
             IntPtr list = IntPtr.Zero, input = IntPtr.Zero;
@@ -51,9 +55,6 @@ namespace ScientificSecurity
                 startup.attributes = attrs; startup.startup.flags = 0x100; startup.startup.input = input;
                 startup.startup.output = output.Writer; startup.startup.error = error.Writer;
                 string command = String.Join(" ", new [] { executable }.Concat(arguments).Select(Quote));
-                // CI-only prepared paths, never command arguments or document contents.
-                Console.Out.WriteLine("WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd));
-                Console.Out.Flush();
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
                     true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow, IntPtr.Zero, cwd, ref startup, out child),
                     "create suspended trusted setup process tool=" + name + " cwd=" + cwd); started = true;

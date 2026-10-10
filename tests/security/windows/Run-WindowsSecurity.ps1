@@ -41,7 +41,7 @@ function Write-RunLog([string]$Level, [string]$Message) {
     [Console]::Out.WriteLine("WINDOWS_SECURITY_PROGRESS level=$Level")
 }
 function Checked-Native([string]$Executable, [string[]]$Arguments) {
-    $resolved = (Get-Command $Executable -CommandType Application -ErrorAction Stop).Source
+    $resolved = [string](Get-Command $Executable -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     Write-RunLog INFO ('trusted setup command=' + [IO.Path]::GetFileName($resolved))
     $text = [ScientificSecurity.TrustedSetup]::Run($resolved, $Arguments, $state)
     return @($text -split "`r?`n" | Where-Object { $_ -ne '' })
@@ -110,7 +110,9 @@ try {
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
     Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'))
-    $gitExecutable = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+    $gitCandidates = @(Get-Command git -CommandType Application -ErrorAction Stop)
+    [Console]::Out.WriteLine("WINDOWS_SETUP_RESOLUTION command=git candidates=$($gitCandidates.Count) type=$($gitCandidates.GetType().FullName)")
+    $gitExecutable = [string]($gitCandidates | Select-Object -First 1).Source
     $mixedCwd = $state.Replace('\', '/')
     $nativeVersion = [ScientificSecurity.TrustedSetup]::Run($gitExecutable, @('--version'), $state)
     $mixedVersion = [ScientificSecurity.TrustedSetup]::Run($gitExecutable, @('--version'), $mixedCwd)
@@ -155,7 +157,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $pythonHome 'python.exe') -Destination $runtime
     foreach ($item in @(Get-ChildItem -LiteralPath $pythonHome -File | Where-Object { $_.Extension -in @('.dll','.zip','._pth') })) { Copy-Item -LiteralPath $item.FullName -Destination $runtime }
     Copy-Item -LiteralPath (Join-Path $pythonHome 'DLLs'), (Join-Path $pythonHome 'Lib') -Destination $runtime -Recurse
-    $pwsh = (Get-Command pwsh -CommandType Application -ErrorAction Stop).Source
+    $pwsh = [string](Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     Assert-SourceTree ([IO.Path]::GetDirectoryName($pwsh))
     Copy-Item -Path (Join-Path ([IO.Path]::GetDirectoryName($pwsh)) '*') -Destination $psRuntime -Recurse
     $childPython = Join-Path $runtime 'python.exe'
