@@ -82,7 +82,9 @@ namespace ScientificSecurity
                 instance = Activator.CreateInstance(type);
                 var control = (DiskQuotaControl)instance;
                 Check(control.Initialize(volume, true), "initialize owned SID quota volume");
-                Check(control.AddUserSid(buffer, 0, out user), "add package SID quota without name resolution");
+                // FindUserSid returns a default-backed user object even before a quota record
+                // exists; write-through setters below persist it and also handle existing owners.
+                Check(control.FindUserSid(buffer, 0, out user), "find owner SID quota without name resolution");
                 if (user == null) throw new InvalidOperationException("SID quota API returned no user record");
                 Check(user.SetQuotaThreshold(limit, true), "persist owner quota threshold");
                 Check(user.SetQuotaLimit(limit, true), "persist owner quota limit");
