@@ -96,7 +96,25 @@ namespace ScientificSecurity
                 }
                 Marshal.FreeHGlobal(data); data = IntPtr.Zero;
                 if (owners.Count > 16) throw new InvalidOperationException("assignable quota owners exceed finite bound");
-                foreach (string sid in owners.OrderBy(value => value, StringComparer.Ordinal)) QuotaSid.SetOwnerEntry(volume, sid);
+                int ownerIndex = 0;
+                foreach (string sid in owners.OrderBy(value => value, StringComparer.Ordinal)) {
+                    try { QuotaSid.SetOwnerEntry(volume, sid); }
+                    catch {
+                        using (WindowsIdentity parent = WindowsIdentity.GetCurrent())
+                        using (WindowsIdentity thread = WindowsIdentity.GetCurrent(true)) {
+                            string category = sid == userSid ? "user" : (sid == packageSid ? "package" : "group-owner");
+                            Console.Error.WriteLine("WINDOWS_QUOTA_OWNER_FAILURE owner_index=" + ownerIndex + " owner_count=" + owners.Count
+                                + " category=" + category + " builtin_administrators=" + (sid == "S-1-5-32-544")
+                                + " parent_user_matches_child=" + (parent.User.Value == userSid)
+                                + " parent_is_system=" + parent.IsSystem + " parent_admin_role=" +
+                                new WindowsPrincipal(parent).IsInRole(WindowsBuiltInRole.Administrator)
+                                + " thread_impersonating=" + (thread != null));
+                            Console.Error.Flush();
+                        }
+                        throw;
+                    }
+                    ownerIndex++;
+                }
                 // The trusted child independently enumerates this token and its descendants;
                 // every resulting owner is exercised against the kernel quota boundary.
                 Console.Out.WriteLine("WINDOWS_TOKEN_POLICY privileges=traversal-only quota_owners=[" +

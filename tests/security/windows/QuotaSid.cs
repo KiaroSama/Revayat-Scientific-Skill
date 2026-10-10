@@ -87,7 +87,19 @@ namespace ScientificSecurity
                 Check(control.FindUserSid(buffer, 0, out user), "find owner SID quota without name resolution");
                 if (user == null) throw new InvalidOperationException("SID quota API returned no user record");
                 Check(user.SetQuotaThreshold(limit, true), "persist owner quota threshold");
-                Check(user.SetQuotaLimit(limit, true), "persist owner quota limit");
+                int limitResult = user.SetQuotaLimit(limit, true);
+                if (limitResult != 0) {
+                    long existingLimit, existingThreshold;
+                    int limitRead = user.GetQuotaLimit(out existingLimit);
+                    int thresholdRead = user.GetQuotaThreshold(out existingThreshold);
+                    Console.Error.WriteLine("WINDOWS_QUOTA_FAILURE operation=set-limit limit_hresult=0x" + unchecked((uint)limitResult).ToString("X8")
+                        + " limit_read_hresult=0x" + unchecked((uint)limitRead).ToString("X8")
+                        + " threshold_read_hresult=0x" + unchecked((uint)thresholdRead).ToString("X8")
+                        + " observed_limit_bytes=" + (limitRead == 0 ? existingLimit.ToString() : "unavailable")
+                        + " threshold_bytes=" + (thresholdRead == 0 ? existingThreshold.ToString() : "unavailable"));
+                    Console.Error.Flush();
+                }
+                Check(limitResult, "persist owner quota limit");
                 Check(user.Invalidate(), "invalidate owner quota cache before readback");
                 long actualThreshold, actualLimit;
                 Check(user.GetQuotaThreshold(out actualThreshold), "read back owner quota threshold");
