@@ -84,7 +84,13 @@ function Assert-SourcePath([string]$Path) {
 function Assert-SourceTree([string]$Path) {
     Assert-SourcePath $Path
     foreach ($item in @(Get-ChildItem -LiteralPath $Path -Recurse -Force)) {
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Prepared runtime copy source contains a reparse point' }
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            $relative = [IO.Path]::GetRelativePath($Path, $item.FullName)
+            $diagnostic = @{ phase='runtime-copy'; root=[IO.Path]::GetFullPath($Path); relative=$relative;
+                             attributes=[int]$item.Attributes; item_type=$item.GetType().Name } | ConvertTo-Json -Compress
+            [Console]::Error.WriteLine($diagnostic)
+            throw 'Prepared runtime copy source contains a reparse point'
+        }
     }
 }
 function Protect-Tree([string]$Path) {
