@@ -12,7 +12,7 @@ $Python = [IO.Path]::GetFullPath($Python)
 if (-not $IsWindows) { throw 'Native Windows security tier requires Windows' }
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Required prepared Python executable is unavailable' }
 $runId = $RunId
-$state = Join-Path $Root ".scratch/security-windows-$runId"
+$state = [IO.Path]::GetFullPath((Join-Path (Join-Path $Root '.scratch') "security-windows-$runId"))
 if ($CleanupOnly) {
     $ownedVhd = Join-Path $state 'scratch.vhdx'
     if (Test-Path -LiteralPath $ownedVhd -PathType Leaf) {
@@ -110,6 +110,12 @@ try {
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
     Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'))
+    $gitExecutable = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+    $mixedCwd = $state.Replace('\', '/')
+    $nativeVersion = [ScientificSecurity.TrustedSetup]::Run($gitExecutable, @('--version'), $state)
+    $mixedVersion = [ScientificSecurity.TrustedSetup]::Run($gitExecutable, @('--version'), $mixedCwd)
+    if ($nativeVersion -notmatch '^git version ' -or $mixedVersion -ne $nativeVersion) { throw 'Trusted setup normalized-CWD regression failed' }
+    Write-RunLog INFO 'trusted setup native and mixed-separator CWD controls passed'
     $moniker = 'Scientific.Security.' + $runId
     $package = [Security.Principal.SecurityIdentifier]::new([ScientificSecurity.Sandbox]::PackageSid($moniker))
     $user = [Security.Principal.WindowsIdentity]::GetCurrent().User

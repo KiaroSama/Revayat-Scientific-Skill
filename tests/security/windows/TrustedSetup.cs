@@ -14,9 +14,15 @@ namespace ScientificSecurity
     {
         public static string Run(string executable, string[] arguments, string cwd)
         {
+            if (!Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd))
+                throw new ArgumentException("trusted setup requires fully qualified executable and working directory");
+            executable = Path.GetFullPath(executable);
+            cwd = Path.GetFullPath(cwd);
             string name = Path.GetFileName(executable).ToLowerInvariant();
-            if (!Path.IsPathRooted(executable) || !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
+            if (!new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
+            if (!File.Exists(executable) || !Directory.Exists(cwd))
+                throw new ArgumentException("trusted setup executable or working directory does not exist after native path normalization");
             IntPtr job = IntPtr.Zero, attrs = IntPtr.Zero;
             IntPtr list = IntPtr.Zero, input = IntPtr.Zero;
             Capture output = null, error = null;
@@ -45,9 +51,12 @@ namespace ScientificSecurity
                 startup.attributes = attrs; startup.startup.flags = 0x100; startup.startup.input = input;
                 startup.startup.output = output.Writer; startup.startup.error = error.Writer;
                 string command = String.Join(" ", new [] { executable }.Concat(arguments).Select(Quote));
+                // CI-only prepared paths, never command arguments or document contents.
+                Console.Out.WriteLine("WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd));
+                Console.Out.Flush();
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
                     true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow, IntPtr.Zero, cwd, ref startup, out child),
-                    "create suspended trusted setup process tool=" + name); started = true;
+                    "create suspended trusted setup process tool=" + name + " cwd=" + cwd); started = true;
                 Native.Check(Native.AssignProcessToJobObject(job, child.process), "own trusted setup process before resume");
                 if (Native.ResumeThread(child.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume trusted setup process");

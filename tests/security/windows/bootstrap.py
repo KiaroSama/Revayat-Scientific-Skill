@@ -1,7 +1,7 @@
 """Trusted stdlib-only Windows CI owner; never imports production/test modules."""
 import argparse
 import ctypes
-from ctypes import wintypes as w
+import ctypes.wintypes as w
 import json
 import os
 from pathlib import Path
@@ -156,7 +156,8 @@ def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
         check(kernel.UpdateProcThreadAttribute(attributes, 0, 0x20002, inherited, ctypes.sizeof(inherited), None, None), 'outer handle allowlist')
         startup = StartupEx()
         startup.startup.cb, startup.startup.flags = ctypes.sizeof(StartupEx), 0x100
-        startup.startup.stdin, startup.startup.stdout, startup.startup.stderr = stdin, *writers
+        startup.startup.stdin = stdin
+        startup.startup.stdout, startup.startup.stderr = writers
         startup.attributes = ctypes.cast(attributes, P)
         command = ctypes.create_unicode_buffer(subprocess.list2cmdline(arguments))
         check(kernel.CreateProcessW(pwsh, command, None, None, True, 0x80000 | 4 | 0x8000000,
@@ -235,7 +236,6 @@ def main():
     if not pwsh:
         raise RuntimeError('existing PowerShell 7 prerequisite unavailable')
     kernel, run_id = bind(), uuid.uuid4().hex
-    status = 1
     try:
         status = run_owned(kernel, pwsh, entry, python, root, run_id)
     finally:

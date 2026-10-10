@@ -1,6 +1,6 @@
 """Trusted finite kernel observations. Does not import reviewed project modules."""
 import ctypes
-from ctypes import wintypes as w
+import ctypes.wintypes as w
 import json
 import os
 from pathlib import Path

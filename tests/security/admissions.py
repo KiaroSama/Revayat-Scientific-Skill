@@ -161,7 +161,6 @@ def html_cases(work):
 
 
 def publication_cases(work):
-    from publication import publish_files, validate_destination
     import publication
     import stat
     destination = work / 'result.pdf'
@@ -176,11 +175,11 @@ def publication_cases(work):
         return Reparse() if path == destination.parent else original_lstat(path, *args, **kwargs)
     with unittest.mock.patch.object(Path, 'lstat', observation):
         expect_refusal(lambda: publication.validate_destination(destination), 'reparse metadata')
-    publish_files([(candidate, destination)])
+    publication.publish_files([(candidate, destination)])
     assert destination.read_bytes() == b'valid candidate'
     alias = work / 'alias.pdf'
     os.link(destination, alias)
-    expect_refusal(lambda: validate_destination(alias, [destination]), 'protected hardlink')
+    expect_refusal(lambda: publication.validate_destination(alias, [destination]), 'protected hardlink')
     return ['portable-reparse-metadata', 'ordinary-publication', 'protected-hardlink']
 
 
