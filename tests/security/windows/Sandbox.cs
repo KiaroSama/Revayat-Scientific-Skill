@@ -122,6 +122,7 @@ namespace ScientificSecurity
                 }
                 Profile.SealRegistry(process.process, moniker, package);
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
+                if (preflight && !wallProbe) StartupAccess.Observe(process, python);
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
