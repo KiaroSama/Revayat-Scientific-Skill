@@ -47,6 +47,8 @@ function Checked-Native([string]$Executable, [string[]]$Arguments) {
     return @($text -split "`r?`n" | Where-Object { $_ -ne '' })
 }
 function Set-OwnedAccess([string]$Path, [bool]$Writable, [bool]$Directory) {
+    # Label the owned empty scratch root before denying the owner's WRITE_OWNER.
+    if ($Writable) { $null = Checked-Native (Join-Path $env:SystemRoot 'System32/icacls.exe') @($Path, '/setintegritylevel', '(OI)(CI)L') }
     $acl = if ($Directory) { [Security.AccessControl.DirectorySecurity]::new() } else { [Security.AccessControl.FileSecurity]::new() }
     $acl.SetAccessRuleProtection($true, $false)
     $inherit = if ($Directory) { [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit' } else { [Security.AccessControl.InheritanceFlags]::None }
@@ -68,8 +70,14 @@ function Set-OwnedAccess([string]$Path, [bool]$Writable, [bool]$Directory) {
         $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($package, [Security.AccessControl.FileSystemRights]::Write, $inherit, $prop, $deny))
     }
     $acl.SetOwner($user)
-    Set-Acl -LiteralPath $Path -AclObject $acl
-    if ($Writable) { $null = Checked-Native (Join-Path $env:SystemRoot 'System32/icacls.exe') @($Path, '/setintegritylevel', '(OI)(CI)L') }
+    # Set-Acl forces all descriptor sections; persist only our changed Access/Owner
+    # sections so the previously established mandatory integrity label survives.
+    if ($Directory) {
+        [IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]::new($Path), $acl)
+    }
+    else {
+        [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($Path), $acl)
+    }
 }
 function Assert-SourcePath([string]$Path) {
     $current = [IO.Path]::GetFullPath($Path)
@@ -115,7 +123,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'))
     $gitCandidates = @(Get-Command git -CommandType Application -ErrorAction Stop)
     [Console]::Out.WriteLine("WINDOWS_SETUP_RESOLUTION command=git candidates=$($gitCandidates.Count) type=$($gitCandidates.GetType().FullName)")
     $gitExecutable = [string]($gitCandidates | Select-Object -First 1).Source
@@ -206,6 +214,14 @@ try {
     if ($disk.Count -ne 1 -or $disk.PartitionStyle -ne 'RAW') { throw 'Owned new virtual disk identity is ambiguous' }
     $partition = $disk | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -UseMaximumSize -AssignDriveLetter
     $null = $partition | Format-Volume -FileSystem NTFS -Confirm:$false -Force
+    $ownedDisk = Get-VHD -Path $vhd -ErrorAction Stop
+    $ownedVolume = $partition | Get-Volume
+    if ($ownedDisk.VhdType -ne 'Fixed' -or $ownedDisk.Size -ne 134217728 -or
+        $ownedDisk.DiskNumber -ne $disk.Number -or $disk.Size -ne 134217728 -or
+        $ownedVolume.FileSystem -ne 'NTFS' -or $ownedVolume.Size -le 0 -or $ownedVolume.Size -gt 134217728) {
+        throw 'Owned fixed virtual-disk physical capacity or volume identity differs'
+    }
+    Write-RunLog INFO 'fixed virtual-disk physical capacity readback passed bytes=134217728'
     # A directory volume mount is itself a junction ancestor and would invalidate ordinary controls.
     $mountPath = "$($partition.DriveLetter):\"
     $volume = $mountPath
@@ -257,20 +273,38 @@ catch {
     }
 }
 finally {
-    foreach ($listener in @($tcp4,$tcp6)) { if ($listener) { $listener.Stop() } }
-    foreach ($socket in @($udp4,$udp6)) { if ($socket) { $socket.Dispose() } }
-    Remove-Item Env:SCIENTIFIC_AMBIENT_CANARY -ErrorAction SilentlyContinue
-    if (Get-Variable quota -ErrorAction SilentlyContinue) {
-        if ($quota) { $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($quota) }
-    }
+    $cleanupErrors = [Collections.Generic.List[string]]::new()
     try {
-        if ($mounted) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
-        # Only this run's disposable trees are removed; the operational log is retained.
-        Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop
-        Write-RunLog INFO 'cleanup complete owned_jobs=0 own_virtualdisk_detached=true'
+        foreach ($listener in @($tcp4,$tcp6)) {
+            try { if ($listener) { $listener.Stop() } } catch { $cleanupErrors.Add('listener close failed'); if (-not $failure) { $failure = $_ } }
+        }
+        foreach ($socket in @($udp4,$udp6)) {
+            try { if ($socket) { $socket.Dispose() } } catch { $cleanupErrors.Add('socket close failed'); if (-not $failure) { $failure = $_ } }
+        }
+        Remove-Item Env:SCIENTIFIC_AMBIENT_CANARY -ErrorAction SilentlyContinue
+        try {
+            if (Get-Variable quota -ErrorAction SilentlyContinue) {
+                if ($quota) { $null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($quota) }
+            }
+        }
+        catch { $cleanupErrors.Add('quota COM release failed'); if (-not $failure) { $failure = $_ } }
     }
-    catch { $failure = $_; Write-RunLog ERROR 'owned cleanup failed; diagnostic state retained' }
-    $log.Dispose()
+    finally {
+        try {
+            if ($mounted) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
+            # Retain the log; remove only this run's detached disposable state.
+            Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop
+        }
+        catch { $cleanupErrors.Add('owned virtual-disk/state cleanup failed'); if (-not $failure) { $failure = $_ } }
+        finally {
+            try {
+                if ($cleanupErrors.Count -eq 0) { Write-RunLog INFO 'cleanup complete owned_jobs=0 own_virtualdisk_detached=true' }
+                else { Write-RunLog ERROR ($cleanupErrors -join '; ') }
+            }
+            catch { if (-not $failure) { $failure = $_ } }
+            finally { try { $log.Dispose() } catch { if (-not $failure) { $failure = $_ } } }
+        }
+    }
 }
 if ($failure) { [Console]::Error.WriteLine($failure.Exception.Message); exit 1 }
 $result.cleanup = 'complete'

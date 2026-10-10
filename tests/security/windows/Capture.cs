@@ -63,6 +63,16 @@ namespace ScientificSecurity
         {
             if (Writer != IntPtr.Zero) { Native.CloseHandle(Writer); Writer = IntPtr.Zero; }
         }
+        internal bool HasWallTreeMarker()
+        {
+            lock (gate) {
+                if (failure != null) throw new InvalidOperationException("owned pipe capture failed", failure);
+                foreach (string line in Encoding.UTF8.GetString(captured.ToArray()).Split('\n')) {
+                    if (line.TrimEnd('\r') == "trusted wall-tree negative control started") return true;
+                }
+                return false;
+            }
+        }
         internal string Read()
         {
             if (!drain.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("pipe did not close after owned job reaping");

@@ -1,6 +1,7 @@
 """Trusted finite kernel observations. Does not import reviewed project modules."""
 import ctypes
 import ctypes.wintypes as w
+import errno
 import json
 import os
 from pathlib import Path
@@ -47,6 +48,42 @@ def denied_write(path):
     raise AssertionError('protected write was not kernel-denied: ' + str(path))
 
 
+class SidAttributes(ctypes.Structure):
+    _fields_ = [('sid', P), ('attributes', w.DWORD)]
+
+
+class Groups(ctypes.Structure):
+    _fields_ = [('count', w.DWORD), ('first', SidAttributes)]
+
+
+class Luid(ctypes.Structure):
+    _fields_ = [('low', w.DWORD), ('high', w.LONG)]
+
+
+class Privilege(ctypes.Structure):
+    _fields_ = [('luid', Luid), ('attributes', w.DWORD)]
+
+
+def token_data(token, kind):
+    returned = w.DWORD()
+    A.GetTokenInformation(token, kind, None, 0, ctypes.byref(returned))
+    require(0 < returned.value <= 65536, 'unexpected token information size')
+    data = ctypes.create_string_buffer(returned.value)
+    require(A.GetTokenInformation(token, kind, data, len(data), ctypes.byref(returned)), 'token information unavailable')
+    return data
+
+
+def sid_text(sid):
+    A.ConvertSidToStringSidW.argtypes = [P, ctypes.POINTER(w.LPWSTR)]
+    K.LocalFree.argtypes = [P]
+    text = w.LPWSTR()
+    require(A.ConvertSidToStringSidW(sid, ctypes.byref(text)), 'cannot stringify token SID')
+    try:
+        return text.value
+    finally:
+        K.LocalFree(ctypes.cast(text, P))
+
+
 def token_controls():
     token = P()
     require(A.OpenProcessToken(K.GetCurrentProcess(), 8, ctypes.byref(token)), 'cannot query worker token')
@@ -62,11 +99,53 @@ def token_controls():
         require(A.GetTokenInformation(token, 30, data, len(data), ctypes.byref(returned)),
                 'cannot query capabilities')
         require(w.DWORD.from_buffer(data).value == 0, 'worker has unexpected capabilities')
+        A.LookupPrivilegeValueW.argtypes = [w.LPCWSTR, w.LPCWSTR, ctypes.POINTER(Luid)]
+        traverse = Luid()
+        require(A.LookupPrivilegeValueW(None, 'SeChangeNotifyPrivilege', ctypes.byref(traverse)), 'cannot identify traversal privilege')
+        privileges = token_data(token, 3)
+        count = w.DWORD.from_buffer(privileges).value
+        require(count <= 128 and 4 + count * ctypes.sizeof(Privilege) <= len(privileges), 'invalid token privilege buffer')
+        for index in range(count):
+            item = Privilege.from_buffer(privileges, 4 + index * ctypes.sizeof(Privilege))
+            require((item.luid.low, item.luid.high) == (traverse.low, traverse.high),
+                    'dangerous privilege remains present in worker token')
+        user_data = token_data(token, 1)
+        package_data = token_data(token, 31)
+        require(len(user_data) >= ctypes.sizeof(P) and len(package_data) >= ctypes.sizeof(P), 'truncated token SID pointers')
+        owners = {sid_text(P.from_buffer(user_data)), sid_text(P.from_buffer(package_data))}
+        groups = token_data(token, 2)
+        count = w.DWORD.from_buffer(groups).value
+        require(count <= 256 and Groups.first.offset + count * ctypes.sizeof(SidAttributes) <= len(groups),
+                'invalid token groups buffer')
+        for index in range(count):
+            item = SidAttributes.from_buffer(groups, Groups.first.offset + index * ctypes.sizeof(SidAttributes))
+            if item.attributes & 8:
+                owners.add(sid_text(item.sid))
+        require(len(owners) <= 16, 'unbounded assignable owner set')
+        return sorted(owners)
     finally:
         K.CloseHandle(token)
 
 
-def authority_controls(root, scratch):
+def native_eof_quota(handle, sparse):
+    K.DeviceIoControl.argtypes = [P, w.DWORD, P, w.DWORD, P, w.DWORD, ctypes.POINTER(w.DWORD), P]
+    K.SetFilePointerEx.argtypes = [P, ctypes.c_longlong, ctypes.POINTER(ctypes.c_longlong), w.DWORD]
+    K.SetEndOfFile.argtypes = [P]
+    if sparse:
+        returned = w.DWORD()
+        require(K.DeviceIoControl(handle, 0x900C4, None, 0, None, 0, ctypes.byref(returned), None),
+                'native sparse control failed')
+    position = ctypes.c_longlong()
+    require(K.SetFilePointerEx(handle, 1024, ctypes.byref(position), 0), 'native small EOF seek failed')
+    require(K.SetEndOfFile(handle), 'native permitted EOF control failed')
+    require(K.SetFilePointerEx(handle, 16 * 1024**2 + 1, ctypes.byref(position), 0), 'native excessive EOF seek failed')
+    require(not K.SetEndOfFile(handle), 'native logical EOF limit was not enforced')
+    require(ctypes.get_last_error() in (112, 39, 1816), 'native EOF rejection was not a quota/space denial')
+    require(K.SetFilePointerEx(handle, 0, ctypes.byref(position), 0) and K.SetEndOfFile(handle),
+            'native quota fixture could not be reset')
+
+
+def authority_controls(root, scratch, owners):
     class SecurityAttributes(ctypes.Structure):
         _fields_ = [('length', w.DWORD), ('descriptor', P), ('inherit', w.BOOL)]
     K.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, ctypes.POINTER(SecurityAttributes), w.DWORD, w.DWORD, P]
@@ -107,33 +186,56 @@ def authority_controls(root, scratch):
                 result = A.SetNamedSecurityInfoW(str(path), 1, info, owner, None, acl, None)
                 require(result == 5, 'child can change scratch DACL/owner; mandatory authority denial unavailable')
             path.unlink()
-            # Explicit protected creator DACL must not evade owner/ACL policy or logical quota.
+            # Private creator DACL may change its own scratch file, never protected roots or quotas.
+            for protected_root in (root, Path(sys.executable).parent, Path(sys.executable),
+                                   Path(sys.argv[3]).parent, root.parent / 'host-canary', scratch):
+                for info, owner, acl in ((4 | 0x80000000, None, dacl), (1, package_sid, None)):
+                    require(A.SetNamedSecurityInfoW(str(protected_root), 1, info, owner, None, acl, None) == 5,
+                            'protected root DACL/owner authority was not denied')
             protected = scratch / 'authority-protected'
             sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), descriptor, False)
-            handle = K.CreateFileW(str(protected), 0xC0000000, 3, ctypes.byref(sa), 1, 0x80, None)
-            if handle == invalid:
-                require(ctypes.get_last_error() == 5, 'protected creator rejected without authority denial')
-            else:
+            handle = K.CreateFileW(str(protected), 0xC00C0000, 3, ctypes.byref(sa), 1, 0x80, None)
+            require(handle != invalid, 'private protected creator positive control failed')
+            try:
+                require(A.SetSecurityInfo(handle, 1, 4 | 0x80000000, None, None, dacl, None) == 0,
+                        'private scratch DACL control failed')
+                native_eof_quota(handle, sparse=False)
+                native_eof_quota(handle, sparse=True)
+                A.ConvertStringSidToSidW.argtypes = [w.LPCWSTR, ctypes.POINTER(P)]
+                for owner_name in owners:
+                    owner_sid = P()
+                    require(A.ConvertStringSidToSidW(owner_name, ctypes.byref(owner_sid)), 'cannot prepare finite owner SID')
+                    try:
+                        assigned = A.SetSecurityInfo(handle, 1, 1, owner_sid, None, None, None)
+                        if assigned == 0:
+                            native_eof_quota(handle, sparse=True)
+                        else:
+                            require(assigned in (5, 1307), 'finite owner assignment failed unexpectedly')
+                    finally:
+                        K.LocalFree(owner_sid)
+                # Outside identity must not be assignable even with WRITE_OWNER on an own file.
+                outsider = P()
+                require(A.ConvertStringSidToSidW('S-1-5-21-101-202-303-404', ctypes.byref(outsider)), 'outside-owner probe SID invalid')
                 try:
-                    for access in (0x40000, 0x80000):
-                        control = K.CreateFileW(str(protected), access, 3, None, 3, 0x80, None)
-                        if control != invalid:
-                            K.CloseHandle(control)
-                            raise AssertionError('protected creator bypassed mandatory DACL/owner authority denial')
-                        require(ctypes.get_last_error() == 5, 'protected object authority failed without kernel denial')
+                    require(A.SetSecurityInfo(handle, 1, 1, outsider, None, None, None) in (5, 1307),
+                            'private creator escaped finite quota owner identities')
                 finally:
-                    K.CloseHandle(handle)
-                    protected.unlink(missing_ok=True)
+                    K.LocalFree(outsider)
+                denied_write(root / 'protected-creator-escape')
+            finally:
+                K.CloseHandle(handle)
+                protected.unlink(missing_ok=True)
         finally:
             K.LocalFree(descriptor)
             path.unlink(missing_ok=True)
         # Raw volume write/quota authority must not be inherited from the elevated setup process.
         raw = '\\\\.\\' + scratch.drive
-        handle = K.CreateFileW(raw, 0xC0000000, 3, None, 3, 0, None)
-        if handle != invalid:
-            K.CloseHandle(handle)
-            raise AssertionError('child can open raw volume with write/quota authority')
-        require(ctypes.get_last_error() == 5, 'raw-volume authority failed without access denial')
+        for access in (0xC0000000, 0x40000000, 2):
+            handle = K.CreateFileW(raw, access, 3, None, 3, 0, None)
+            if handle != invalid:
+                K.CloseHandle(handle)
+                raise AssertionError('child can open raw volume with write/quota authority')
+            require(ctypes.get_last_error() == 5, 'raw-volume authority failed without access denial')
     finally:
         K.CloseHandle(token)
 
@@ -141,7 +243,10 @@ def authority_controls(root, scratch):
 def run():
     require(os.name == 'nt' and sys.version_info[:2] == (3, 11), 'native Windows 3.11 required')
     root, scratch, powershell = map(Path, sys.argv[1:4])
-    token_controls()
+    owners = token_controls()
+    if sys.argv[-1] == 'token-child':
+        print(json.dumps({'phase': 'token-child', 'owners': owners}, sort_keys=True), flush=True)
+        return
     if sys.argv[-1] == 'wall-tree':
         subprocess.Popen([sys.executable, '-I', '-B', '-c', 'import time; time.sleep(30)'],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -151,6 +256,11 @@ def run():
         raise AssertionError('wall-tree was not terminated')
     keys = {'SYSTEMROOT', 'WINDIR', 'PATH', 'HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA',
             'TEMP', 'TMP', 'PYTHONIOENCODING', 'REVAYAT_CHROMIUM', 'DOTNET_CLI_HOME', 'XDG_CACHE_HOME'}
+    K.GetDiskFreeSpaceExW.argtypes = [w.LPCWSTR, ctypes.POINTER(ctypes.c_ulonglong), ctypes.POINTER(ctypes.c_ulonglong), ctypes.POINTER(ctypes.c_ulonglong)]
+    available, total, free = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
+    require(K.GetDiskFreeSpaceExW(str(scratch), ctypes.byref(available), ctypes.byref(total), ctypes.byref(free)),
+            'cannot observe fixed scratch filesystem capacity')
+    require(0 < total.value <= 128 * 1024**2, 'scratch caller-visible space exceeds assigned ceiling')
     require(set(os.environ) == keys, 'worker inherited or lost an environment variable')
     require('SCIENTIFIC_AMBIENT_CANARY' not in os.environ, 'ambient environment canary leaked')
     for name in ('HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'TEMP', 'TMP', 'DOTNET_CLI_HOME', 'XDG_CACHE_HOME'):
@@ -179,7 +289,13 @@ def run():
         if token:
             K.CloseHandle(token)
     writable.unlink()
-    authority_controls(root, scratch)
+    child_token = subprocess.run([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__)),
+                                  str(root), str(scratch), str(powershell), sys.argv[4], sys.argv[5], 'token-child'],
+                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8',
+                                 timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
+    require(child_token.returncode == 0 and len(child_token.stdout) < 65536, 'descendant token verification failed')
+    require(json.loads(child_token.stdout)['owners'] == owners, 'descendant assignable owners/privileges changed')
+    authority_controls(root, scratch, owners)
     for path in (root / 'forbidden-write', Path(sys.executable).parent / 'forbidden-write',
                  powershell.parent / 'forbidden-write', root.parent / 'forbidden-write'):
         denied_write(path)
@@ -260,6 +376,7 @@ def run():
         path = scratch / ('quota-sparse' if sparse else 'quota-ordinary')
         try:
             with path.open('w+b') as stream:
+                native_eof_quota(msvcrt.get_osfhandle(stream.fileno()), sparse=sparse)
                 if sparse:
                     returned = w.DWORD()
                     require(K.DeviceIoControl(msvcrt.get_osfhandle(stream.fileno()), 0x900C4, None, 0,
@@ -267,7 +384,7 @@ def run():
                 try:
                     stream.truncate(16 * 1024**2 + 1)
                 except OSError as error:
-                    require(error.winerror in (112, 39, 1816), 'quota denial was not a space/quota error')
+                    require(error.errno == errno.ENOSPC, 'quota denial was not a space/quota error')
                 else:
                     raise AssertionError('NTFS hard quota failed to bound logical file length')
         finally:
@@ -284,7 +401,7 @@ def run():
                 try:
                     stream.truncate(9 * 1024**2)
                 except OSError as error:
-                    require(index == 1 and error.winerror in (112, 39, 1816), 'aggregate quota failed before expected bound')
+                    require(index == 1 and error.errno == errno.ENOSPC, 'aggregate quota failed before expected bound')
                 else:
                     require(index == 0, 'two individually permitted files exceeded aggregate quota')
     finally:

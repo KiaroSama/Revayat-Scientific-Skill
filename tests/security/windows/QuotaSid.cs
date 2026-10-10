@@ -60,11 +60,15 @@ namespace ScientificSecurity
     {
         public static void SetPackageEntry(string volume, string packageSid)
         {
-            const long limit = 16777216;
-            // No account-name lookup: profileless package SIDs are valid principals without logon names.
-            var sid = new SecurityIdentifier(packageSid);
-            if (!packageSid.StartsWith("S-1-15-2-", StringComparison.Ordinal))
+            if (String.IsNullOrEmpty(packageSid) || !packageSid.StartsWith("S-1-15-2-", StringComparison.Ordinal))
                 throw new ArgumentException("quota entry must be the assigned AppContainer package SID");
+            SetOwnerEntry(volume, packageSid);
+        }
+        public static void SetOwnerEntry(string volume, string ownerSid)
+        {
+            const long limit = 16777216;
+            // Token-derived owner SIDs need no account-name resolution.
+            var sid = new SecurityIdentifier(ownerSid);
             if (String.IsNullOrEmpty(volume) || volume.Length != 3 || volume[1] != ':' || volume[2] != '\\')
                 throw new ArgumentException("quota entry requires the owned virtual disk drive root");
             byte[] bytes = new byte[sid.BinaryLength]; sid.GetBinaryForm(bytes, 0);
@@ -80,17 +84,17 @@ namespace ScientificSecurity
                 Check(control.Initialize(volume, true), "initialize owned SID quota volume");
                 Check(control.AddUserSid(buffer, 0, out user), "add package SID quota without name resolution");
                 if (user == null) throw new InvalidOperationException("SID quota API returned no user record");
-                Check(user.SetQuotaThreshold(limit, true), "persist package quota threshold");
-                Check(user.SetQuotaLimit(limit, true), "persist package quota limit");
-                Check(user.Invalidate(), "invalidate package quota cache before readback");
+                Check(user.SetQuotaThreshold(limit, true), "persist owner quota threshold");
+                Check(user.SetQuotaLimit(limit, true), "persist owner quota limit");
+                Check(user.Invalidate(), "invalidate owner quota cache before readback");
                 long actualThreshold, actualLimit;
-                Check(user.GetQuotaThreshold(out actualThreshold), "read back package quota threshold");
-                Check(user.GetQuotaLimit(out actualLimit), "read back package quota limit");
+                Check(user.GetQuotaThreshold(out actualThreshold), "read back owner quota threshold");
+                Check(user.GetQuotaLimit(out actualLimit), "read back owner quota limit");
                 uint sidLength;
-                Check(user.GetSidLength(out sidLength), "read package quota identity length");
+                Check(user.GetSidLength(out sidLength), "read owner quota identity length");
                 if (sidLength != bytes.Length || actualThreshold != limit || actualLimit != limit)
                     throw new InvalidOperationException("persisted SID quota identity or bounds differ");
-                Check(user.GetSid(buffer, sidLength), "read back package quota SID");
+                Check(user.GetSid(buffer, sidLength), "read back owner quota SID");
                 byte[] actual = new byte[sidLength]; Marshal.Copy(buffer, actual, 0, actual.Length);
                 if (!new SecurityIdentifier(actual, 0).Equals(sid))
                     throw new InvalidOperationException("quota record belongs to a different SID");

@@ -46,7 +46,7 @@ namespace ScientificSecurity
             var values = new List<IntPtr>();
             var handles = new List<IntPtr>();
             Native.ProcessInfo process = new Native.ProcessInfo();
-            bool started = false, resumed = false;
+            bool started = false, resumed = false, wallExpired = false;
             Capture outputCapture = null, errorCapture = null;
             try
             {
@@ -105,22 +105,29 @@ namespace ScientificSecurity
                     Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment,
                     env, scratch, ref startup, out process), "create suspended LPAC child");
                 started = true;
-                SetUserOwner(process.process);
-                Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before resume");
+                Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
+                TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
                 foreach (IntPtr handle in handles) Native.CloseHandle(handle);
                 handles.Clear(); outputCapture.CloseWriter(); errorCapture.CloseWriter();
                 var clock = Stopwatch.StartNew();
-                long previous = 0; double progress = 0;
+                long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
                 {
                     long length = outputCapture.Length() + errorCapture.Length();
                     if (length > 1048576) throw new InvalidOperationException("worker standard output exceeded 1 MiB");
                     if (length != previous) { previous = length; progress = clock.Elapsed.TotalSeconds; }
-                    if (clock.Elapsed.TotalSeconds > (wallProbe ? 2 : 60) || clock.Elapsed.TotalSeconds - progress > 20)
-                        throw new TimeoutException("owned Windows worker wall/idle ceiling exceeded");
+                    if (wallProbe && !wallStarted.HasValue && outputCapture.HasWallTreeMarker()
+                        && Native.QueryJob<Native.Accounting>(job, 1).activeProcesses >= 2)
+                        wallStarted = clock.Elapsed.TotalSeconds;
+                    if (wallProbe && wallStarted.HasValue && clock.Elapsed.TotalSeconds - wallStarted.Value > 2) {
+                        wallExpired = true;
+                        throw new TimeoutException("verified wall-tree deadline exceeded");
+                    }
+                    if (clock.Elapsed.TotalSeconds > 60 || clock.Elapsed.TotalSeconds - progress > 20)
+                        throw new TimeoutException("owned Windows worker wall/idle ceiling exceeded before verified wall-tree");
                 }
                 uint exit; Native.Check(Native.GetExitCodeProcess(process.process, out exit), "read worker exit");
                 ReapJob(job);
@@ -134,7 +141,7 @@ namespace ScientificSecurity
             }
             catch (TimeoutException)
             {
-                if (!wallProbe) throw;
+                if (!wallProbe || !wallExpired || !resumed) throw;
                 return "WALL_TREE_TERMINATED";
             }
             finally
@@ -173,28 +180,6 @@ namespace ScientificSecurity
             while (Native.QueryJob<Native.Accounting>(job, 1).activeProcesses != 0) {
                 if (deadline.Elapsed.TotalSeconds > 5) throw new InvalidOperationException("owned Windows job still has active processes");
                 Thread.Sleep(20); // bounded kernel-state polling
-            }
-        }
-        static void SetUserOwner(IntPtr process)
-        {
-            IntPtr token = IntPtr.Zero, data = IntPtr.Zero, owner = IntPtr.Zero;
-            try
-            {
-                Native.Check(Native.OpenProcessToken(process, 0x88, out token), "open child owner token");
-                uint size;
-                Native.GetTokenInformation(token, 1, IntPtr.Zero, 0, out size);
-                if (size == 0) throw new InvalidOperationException("child user SID unavailable");
-                data = Marshal.AllocHGlobal((int)size);
-                Native.Check(Native.GetTokenInformation(token, 1, data, size, out size), "query child user SID");
-                owner = Marshal.AllocHGlobal(IntPtr.Size);
-                Marshal.WriteIntPtr(owner, Marshal.ReadIntPtr(data));
-                Native.Check(Native.SetTokenInformation(token, 4, owner, (uint)IntPtr.Size), "set child file owner to quota user SID");
-            }
-            finally
-            {
-                if (owner != IntPtr.Zero) Marshal.FreeHGlobal(owner);
-                if (data != IntPtr.Zero) Marshal.FreeHGlobal(data);
-                if (token != IntPtr.Zero) Native.CloseHandle(token);
             }
         }
         static void Attribute(IntPtr list, long name, IntPtr value, int bytes)
