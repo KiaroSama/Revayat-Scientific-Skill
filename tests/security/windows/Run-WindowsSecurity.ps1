@@ -225,7 +225,14 @@ try {
 }
 catch {
     $failure = $_
-    Write-RunLog ERROR ('failed type=' + $_.Exception.GetType().Name + ' message=' + $_.Exception.Message)
+    $cause = $_.Exception
+    while ($cause) {
+        $detail = 'failed type=' + $cause.GetType().Name + ' message=' + $cause.Message
+        if ($cause -is [ComponentModel.Win32Exception]) { $detail += ' native_error=' + $cause.NativeErrorCode }
+        Write-RunLog ERROR $detail
+        [Console]::Error.WriteLine($detail)
+        $cause = $cause.InnerException
+    }
 }
 finally {
     foreach ($listener in @($tcp4,$tcp6)) { if ($listener) { $listener.Stop() } }

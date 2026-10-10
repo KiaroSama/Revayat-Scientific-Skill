@@ -47,7 +47,7 @@ namespace ScientificSecurity
                 string command = String.Join(" ", new [] { executable }.Concat(arguments).Select(Quote));
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
                     true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow, IntPtr.Zero, cwd, ref startup, out child),
-                    "create suspended trusted setup process"); started = true;
+                    "create suspended trusted setup process tool=" + name); started = true;
                 Native.Check(Native.AssignProcessToJobObject(job, child.process), "own trusted setup process before resume");
                 if (Native.ResumeThread(child.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume trusted setup process");

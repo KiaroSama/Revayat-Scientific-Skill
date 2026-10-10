@@ -114,7 +114,12 @@ namespace ScientificSecurity
         internal static extern bool DeviceIoControl(IntPtr handle, uint code, IntPtr input, uint inputBytes,
             IntPtr output, uint outputBytes, out uint returned, IntPtr overlapped);
         internal static void Check(bool value, string operation)
-        { if (!value) throw new Win32Exception(Marshal.GetLastWin32Error(), operation); }
+        {
+            if (!value) {
+                int code = Marshal.GetLastWin32Error();
+                throw new Win32Exception(code, operation + " win32=" + code + " system=" + new Win32Exception(code).Message);
+            }
+        }
         internal static IntPtr Structure<T>(T value)
         {
             IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(T)));

@@ -148,7 +148,7 @@ def read_package(path):
         members = {entry.filename: archive.read(entry) for entry in entries}
         comment = archive.comment
     roots = {name: _xml(data) for name, data in members.items()
-             if name.endswith(('.xml', '.rels'))}
+             if _ascii_lower(name).endswith(('.xml', '.rels'))}
     required = ('[Content_Types].xml', '_rels/.rels', 'word/document.xml')
     if any(name not in roots for name in required):
         raise ValueError('DOCX is missing required package parts')
@@ -174,7 +174,7 @@ def read_package(path):
         raise ValueError('unsupported main document content type')
     relationships = []
     for name, root in roots.items():
-        if not name.endswith('.rels'):
+        if not _ascii_lower(name).endswith('.rels'):
             continue
         if root.tag != '{' + R + '}Relationships':
             raise ValueError('invalid relationships root')
