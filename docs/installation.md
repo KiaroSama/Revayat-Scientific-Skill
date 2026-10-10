@@ -13,6 +13,11 @@ The helper never installs a container runtime or pulls an image automatically.
 OCR requires Tesseract and the requested language data; `TESSERACT_CMD` can name
 an explicitly configured absolute executable. Helpers never install these tools.
 
+The [security regression CI controllers](security-testing.md) are repository development
+infrastructure, not installed skill prerequisites. Their Windows virtual disk, quotas
+and LPAC setup are owned by a disposable hosted job; ordinary installation never
+configures these controls on the user's system.
+
 No separate DOCX or PDF Processing Pro skill installation is required. Parallel
 translation/editing uses available host subagents only after affirmative user
 consent; a host without subagents follows the same workflow sequentially.
