@@ -14,12 +14,17 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Required prep
 $runId = $RunId
 $state = [IO.Path]::GetFullPath((Join-Path (Join-Path $Root '.scratch') "security-windows-$runId"))
 if ($CleanupOnly) {
+    Add-Type -Path (Join-Path $PSScriptRoot 'Profile.cs')
+    $profileCleanupFailure = $null
+    try { [ScientificSecurity.Profile]::DeleteOwned('Scientific.Security.' + $runId, (Join-Path $state 'profile.receipt')) }
+    catch { $profileCleanupFailure = $_ }
     $ownedVhd = Join-Path $state 'scratch.vhdx'
     if (Test-Path -LiteralPath $ownedVhd -PathType Leaf) {
         if ((Get-Item -LiteralPath $ownedVhd -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Owned cleanup disk is a reparse point' }
         $disk = Get-VHD -Path $ownedVhd -ErrorAction Stop
         if ($disk.Attached) { Dismount-VHD -Path $ownedVhd -ErrorAction Stop }
     }
+    if ($profileCleanupFailure) { throw $profileCleanupFailure }
     if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop }
     [Console]::Out.WriteLine('WINDOWS_OWNED_STATE_CLEANED')
     exit 0
@@ -128,7 +133,7 @@ $vhd = Join-Path $state 'scratch.vhdx'
 $mounted = $false
 $mountPath = Join-Path $state 'scratch'
 $tcp4 = $null; $tcp6 = $null; $udp4 = $null; $udp6 = $null
-$result = $null; $failure = $null
+$result = $null; $failure = $null; $profileOwned = $false; $moniker = 'Scientific.Security.' + $runId
 try {
     Write-RunLog INFO "start run=$runId native_runtime=3.11 root=$Root"
     foreach ($name in @('New-VHD','Mount-VHD','Dismount-VHD','Initialize-Disk','New-Partition','Format-Volume')) {
@@ -136,7 +141,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'Profile.cs'))
     $gitCandidates = @(Get-Command git -CommandType Application -ErrorAction Stop)
     [Console]::Out.WriteLine("WINDOWS_SETUP_RESOLUTION command=git candidates=$($gitCandidates.Count) type=$($gitCandidates.GetType().FullName)")
     $gitExecutable = [string]($gitCandidates | Select-Object -First 1).Source
@@ -147,6 +152,8 @@ try {
     Write-RunLog INFO 'trusted setup native and mixed-separator CWD controls passed'
     $moniker = 'Scientific.Security.' + $runId
     $package = [Security.Principal.SecurityIdentifier]::new([ScientificSecurity.Sandbox]::PackageSid($moniker))
+    $profileOwned = $true
+    $profileFolder = [ScientificSecurity.Profile]::CreateSealed($moniker, $package.Value, (Join-Path $state 'profile.receipt'))
     $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
     $userName = $user.Translate([Security.Principal.NTAccount]).Value
     $target = Join-Path $state 'target'
@@ -260,13 +267,13 @@ try {
     $udp6 = [Net.Sockets.UdpClient]::new([Net.Sockets.AddressFamily]::InterNetworkV6); $udp6.Client.DualMode = $false; $udp6.Client.Bind([Net.IPEndPoint]::new([Net.IPAddress]::IPv6Loopback, $udpPort))
     $env:SCIENTIFIC_AMBIENT_CANARY = 'dummy-never-forwarded'
     Write-RunLog INFO 'trusted kernel preflight starts before reviewed-code import'
-    $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $true, $tcpPort, $udpPort)
+    $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
     $preflight = $preflightText | ConvertFrom-Json
     if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }
-    $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $true, $tcpPort, $udpPort, $true)
+    $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $true)
     if ($wall -ne 'WALL_TREE_TERMINATED') { throw 'Native wall/process-tree negative control was not proved' }
     Write-RunLog INFO 'all required native controls observed including wall-tree cleanup; reviewed regressions admitted'
-    $regressionText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $false, 0, 0)
+    $regressionText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $false, 0, 0)
     $observations = @($regressionText -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
     $consumer = @($observations | Where-Object { $_.phase -eq 'consumer' })
     $regression = @($observations | Where-Object { $_.phase -eq 'native-regressions' })
@@ -304,9 +311,14 @@ finally {
     }
     finally {
         try {
+            if ($profileOwned) { [ScientificSecurity.Profile]::DeleteOwned($moniker, (Join-Path $state 'profile.receipt')); $profileOwned = $false }
+        }
+        catch { $cleanupErrors.Add('owned profile cleanup failed'); if (-not $failure) { $failure = $_ } }
+        finally {
+        try {
             if ($mounted) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
             # Retain the log; remove only this run's detached disposable state.
-            Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop
+            if (-not $profileOwned) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop }
         }
         catch { $cleanupErrors.Add('owned virtual-disk/state cleanup failed'); if (-not $failure) { $failure = $_ } }
         finally {
@@ -316,6 +328,7 @@ finally {
             }
             catch { if (-not $failure) { $failure = $_ } }
             finally { try { $log.Dispose() } catch { if (-not $failure) { $failure = $_ } } }
+        }
         }
     }
 }

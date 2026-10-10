@@ -188,7 +188,8 @@ def authority_controls(root, scratch, owners):
             path.unlink()
             # Private creator DACL may change its own scratch file, never protected roots or quotas.
             for protected_root in (root, Path(sys.executable).parent, Path(sys.executable),
-                                   Path(sys.argv[3]).parent, root.parent / 'host-canary', scratch):
+                                   Path(sys.argv[3]).parent, root.parent / 'host-canary', scratch,
+                                   Path(sys.argv[6]), Path(sys.argv[6]).parent):
                 for info, owner, acl in ((4 | 0x80000000, None, dacl), (1, package_sid, None)):
                     require(A.SetNamedSecurityInfoW(str(protected_root), 1, info, owner, None, acl, None) == 5,
                             'protected root DACL/owner authority was not denied')
@@ -243,6 +244,7 @@ def authority_controls(root, scratch, owners):
 def run():
     require(os.name == 'nt' and sys.version_info[:2] == (3, 11), 'native Windows 3.11 required')
     root, scratch, powershell = map(Path, sys.argv[1:4])
+    profile = Path(sys.argv[6])
     # Trusted launch starts on the prepared runtime volume; entering the bounded
     # scratch volume is a required observed control, never an unrestricted fallback.
     os.chdir(scratch)
@@ -294,7 +296,7 @@ def run():
             K.CloseHandle(token)
     writable.unlink()
     child_token = subprocess.run([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__)),
-                                  str(root), str(scratch), str(powershell), sys.argv[4], sys.argv[5], 'token-child'],
+                                  str(root), str(scratch), str(powershell), sys.argv[4], sys.argv[5], str(profile), 'token-child'],
                                  stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8',
                                  timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
     require(child_token.returncode == 0 and len(child_token.stdout) < 65536, 'descendant token verification failed')
@@ -309,8 +311,18 @@ def run():
         pass
     else:
         raise AssertionError('off-scratch host canary was accessible')
-    # Profileless identity must not gain a writable per-app profile via known folders.
-    require(not (root.parent / 'profile').exists(), 'unexpected profile storage')
+    require(profile.is_dir(), 'actual owned AppContainer profile is unavailable')
+    denied_write(profile / 'forbidden-profile-write')
+    denied_write(profile.parent / 'forbidden-profile-parent-write')
+    U = ctypes.WinDLL('userenv', use_last_error=True)
+    U.GetAppContainerRegistryLocation.argtypes = [w.DWORD, ctypes.POINTER(P)]
+    A.RegCloseKey.argtypes = [P]
+    profile_key = P()
+    profile_result = U.GetAppContainerRegistryLocation(0x20006, ctypes.byref(profile_key))
+    if profile_result == 0:
+        A.RegCloseKey(profile_key)
+        raise AssertionError('actual profile registry write authority was permitted')
+    require(profile_result & 0xFFFFFFFF == 0x80070005, 'profile registry failed without access denial')
     # Probe own HKCU creation: no registry capability means a kernel denial, not a writable profile.
     import winreg
     try:

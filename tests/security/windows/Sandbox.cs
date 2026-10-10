@@ -22,7 +22,7 @@ namespace ScientificSecurity
 
         // Only the fixed probe and fixed regression entry are launchable; no arbitrary command API.
         public static string Run(string python, string root, string scratch, string powershell,
-                                 string chromium, string moniker, bool preflight, int tcpPort, int udpPort, bool wallProbe = false)
+                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false)
         {
             python = Path.GetFullPath(python); root = Path.GetFullPath(root);
             scratch = Path.GetFullPath(scratch); powershell = Path.GetFullPath(powershell);
@@ -31,7 +31,7 @@ namespace ScientificSecurity
             string phase = wallProbe ? "wall" : (preflight ? "preflight" : "regressions");
             string launchCwd = preflight ? Path.GetDirectoryName(python) : scratch;
             var arguments = new List<string> { python, "-I", "-B", "-X", "utf8", probe, root, scratch, powershell };
-            if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); }
+            if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); arguments.Add(profileFolder); }
             if (wallProbe) arguments.Add("wall-tree");
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
@@ -117,6 +117,7 @@ namespace ScientificSecurity
                     env, launchCwd, ref startup, out process), "create suspended LPAC child");
                 started = true;
                 Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
+                Profile.SealRegistry(process.process, moniker, package);
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
