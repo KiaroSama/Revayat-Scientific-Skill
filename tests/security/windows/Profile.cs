@@ -373,18 +373,20 @@ namespace ScientificSecurity
             try {
                 int result = GetAppContainerRegistryLocation(access, out key);
                 if (key != IntPtr.Zero) handle = new SafeRegistryHandle(key, true);
+                string metadata = " mask=0x" + access.ToString("X8") + " expected_allowed=" + allowed
+                    + " hresult=0x" + unchecked((uint)result).ToString("X8") + " handle_nonzero=" + (key != IntPtr.Zero);
                 if (result == 0) {
                     if (handle == null || handle.IsInvalid ||
                         !String.Equals(RegistryName(handle), identity, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidOperationException("profile registry API opened a different or invalid owned root");
+                        throw new InvalidOperationException("profile registry API opened a different or invalid owned root" + metadata);
                 }
                 if (allowed) {
-                    Check(result, "open actual read-only profile registry");
+                    Check(result, "open actual read-only profile registry" + metadata);
                     if (handle == null || handle.IsInvalid)
-                        throw new InvalidOperationException("profile registry read returned no valid key");
+                        throw new InvalidOperationException("profile registry read returned no valid key" + metadata);
                 }
                 else if (unchecked((uint)result) != 0x80070005 || key != IntPtr.Zero)
-                    throw new InvalidOperationException("profile registry access negative control was not an explicit kernel denial");
+                    throw new InvalidOperationException("profile registry access negative control was not an explicit kernel denial" + metadata);
             }
             finally { if (handle != null) handle.Dispose(); }
         }
