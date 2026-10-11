@@ -86,11 +86,64 @@ def sid_text(sid):
         K.LocalFree(ctypes.cast(text, P))
 
 
+class NativeUnicode(ctypes.Structure):
+    _fields_ = [('length', w.USHORT), ('maximum', w.USHORT), ('buffer', P)]
+
+
+class NativeAttribute(ctypes.Structure):
+    _fields_ = [('name', NativeUnicode), ('kind', w.USHORT), ('reserved', w.USHORT),
+                ('flags', w.ULONG), ('count', w.ULONG), ('values', P)]
+
+
+class NativeAttributes(ctypes.Structure):
+    _fields_ = [('version', w.USHORT), ('reserved', w.USHORT), ('count', w.ULONG), ('entries', P)]
+
+
+def lpac_enabled(token):
+    require(ctypes.sizeof(P) == 8 and ctypes.sizeof(NativeUnicode) == 16 and
+            ctypes.sizeof(NativeAttributes) == 16 and ctypes.sizeof(NativeAttribute) == 40 and
+            NativeAttribute.values.offset == 32, 'LPAC query requires the verified Windows x64 ABI')
+    fixed_name = 'WIN://NOALLAPPPKG'.encode('utf-16-le')
+    name = ctypes.create_string_buffer(fixed_name)
+    query = NativeUnicode(len(fixed_name), len(fixed_name), ctypes.addressof(name))
+    output = (ctypes.c_uint64 * 64)()  # Fixed 512-byte, eight-byte-aligned output; no retry/fallback.
+    returned = w.ULONG()
+    native = ctypes.WinDLL('ntdll')
+    native.NtQuerySecurityAttributesToken.argtypes = [P, ctypes.POINTER(NativeUnicode), w.ULONG,
+                                                    P, w.ULONG, ctypes.POINTER(w.ULONG)]
+    native.NtQuerySecurityAttributesToken.restype = w.LONG
+    status = native.NtQuerySecurityAttributesToken(token, ctypes.byref(query), 1, output,
+                                                  ctypes.sizeof(output), ctypes.byref(returned))
+    require(status == 0 and 16 <= returned.value <= ctypes.sizeof(output),
+            'LPAC named-attribute query failed status=' + hex(status & 0xFFFFFFFF) + ' bytes=' + str(returned.value))
+    start = ctypes.addressof(output)
+
+    def span(pointer, count, alignment):
+        require(pointer and pointer % alignment == 0 and pointer >= start and pointer - start <= returned.value
+                and count <= returned.value - (pointer - start), 'LPAC attribute pointer exceeds returned bounds/alignment')
+        return pointer
+
+    header = NativeAttributes.from_address(span(start, 16, 8))
+    require(header.version == 1 and header.reserved == 0 and header.count == 1, 'LPAC attribute header is not exact')
+    attribute = NativeAttribute.from_address(span(header.entries, 40, 8))
+    require(attribute.kind == 2 and attribute.reserved == 0 and attribute.count == 1 and not attribute.flags & 0x10,
+            'LPAC attribute is not one active UInt64')
+    require(attribute.name.length == len(fixed_name) and attribute.name.maximum >= len(fixed_name)
+            and attribute.name.maximum % 2 == 0, 'LPAC attribute name length differs')
+    name_pointer = span(attribute.name.buffer, attribute.name.maximum, 2)
+    require(ctypes.string_at(name_pointer, attribute.name.length).decode('utf-16-le', errors='strict') == 'WIN://NOALLAPPPKG',
+            'LPAC attribute name differs from fixed query')
+    require(ctypes.c_uint64.from_address(span(attribute.values, 8, 8)).value == 1,
+            'LPAC attribute value is not exactly enabled')
+    return True
+
+
 def token_controls():
     token = P()
     require(A.OpenProcessToken(K.GetCurrentProcess(), 8, ctypes.byref(token)), 'cannot query worker token')
     try:
-        for kind, name in ((29, 'AppContainer'), (46, 'LPAC')):
+        require(lpac_enabled(token), 'worker is not LPAC')
+        for kind, name in ((29, 'AppContainer'),):
             value, returned = w.DWORD(), w.DWORD()
             require(A.GetTokenInformation(token, kind, ctypes.byref(value), 4, ctypes.byref(returned)),
                     'cannot query ' + name)
@@ -355,7 +408,8 @@ def run():
         token = P()
         require(A.OpenProcessToken(K.GetCurrentProcess(), 8, ctypes.byref(token)), 'cannot inspect registry worker token')
         try:
-            for kind in (29, 46):
+            require(lpac_enabled(token), 'registry worker is not LPAC')
+            for kind in (29,):
                 data = token_data(token, kind)
                 require(len(data) == 4 and w.DWORD.from_buffer(data).value == 1, 'registry worker lost LPAC context')
             data = token_data(token, 30)

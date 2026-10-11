@@ -104,7 +104,7 @@ namespace ScientificSecurity
         static Snapshot Read(IntPtr token, bool impersonation)
         {
             uint type = Scalar(token, 8), level = impersonation ? Scalar(token, 9) : 0,
-                appContainer = Scalar(token, 29), lpac = Scalar(token, 46);
+                appContainer = Scalar(token, 29), lpac = LpacQuery.Read(token);
             int capabilities = Groups(token, 30).Length;
             if (type != (impersonation ? 2U : 1U) || (impersonation && level != 2) ||
                 appContainer != 1 || lpac != 1 || capabilities != 0)
@@ -118,6 +118,7 @@ namespace ScientificSecurity
         }
         internal static void CheckValidation()
         {
+            LpacQuery.CheckValidation();
             if (!Within(100, 16, 100, 16) || !Within(100, 16, 108, 8) || Within(100, 16, 99, 1) ||
                 Within(100, 16, 108, 9) || Within(UInt64.MaxValue - 8, 8, 1, 1))
                 throw new InvalidOperationException("registry context buffer range self-check failed");
