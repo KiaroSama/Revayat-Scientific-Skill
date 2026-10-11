@@ -355,6 +355,7 @@ namespace ScientificSecurity
         internal static void RequireReadOnlyRegistry(IntPtr process, string name, string packageSid)
         {
             ValidName(name); CheckRegistryMasks();
+            string stage = "root-identity";
             try {
                 RegistryKey root;
                 if (!registryRoots.TryGetValue(name, out root))
@@ -364,21 +365,30 @@ namespace ScientificSecurity
                     !String.Equals(RegistryName(root.Handle), identity, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("retained owned profile registry identity changed");
                 if (!registryReadVerified.Contains(name)) {
+                    stage = "old-read-controls";
                     RequireRegistryAccess(process, packageSid, identity, root.Handle, false);
                     List<Tuple<RegistryKey, string>> entries;
                     if (!registryEntries.TryGetValue(name, out entries))
                         throw new InvalidOperationException("owned registry pre-seal handles were not retained");
+                    stage = "readonly-seal";
                     SealRegistryEntries(entries, packageSid, true);
+                    stage = "new-read-controls";
                     RequireRegistryAccess(process, packageSid, identity, root.Handle, true);
                     registryReadVerified.Add(name);
                     Console.Out.WriteLine("WINDOWS_PROFILE_REGISTRY_READ_PAIR old_denied=true new_read=true individual_mutations_denied=true keys=" + entries.Count);
                     Console.Out.Flush();
                 }
-                else RequireRegistryAccess(process, packageSid, identity, root.Handle, true);
+                else {
+                    stage = "new-read-controls";
+                    RequireRegistryAccess(process, packageSid, identity, root.Handle, true);
+                }
             }
             catch (Exception failure) {
                 try { CloseOwnedRegistry(name); }
                 catch (Exception cleanup) { throw new AggregateException("profile registry control and cleanup failed", failure, cleanup); }
+                if (failure is UnauthorizedAccessException)
+                    throw new UnauthorizedAccessException("profile registry unauthorized stage=" + stage
+                        + " hresult=0x" + unchecked((uint)failure.HResult).ToString("X8"), failure);
                 throw;
             }
         }
@@ -554,8 +564,17 @@ namespace ScientificSecurity
             foreach (SecurityIdentifier identity in new [] { WindowsIdentity.GetCurrent().User, new SecurityIdentifier("S-1-5-18"), new SecurityIdentifier("S-1-5-32-544") })
                 acl.AddAccessRule(new RegistryAccessRule(identity, RegistryRights.FullControl,
                     InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Allow));
-            key.SetAccessControl(acl);
-            RegistrySecurity actual = key.GetAccessControl(AccessControlSections.Access);
+            try { key.SetAccessControl(acl); }
+            catch (UnauthorizedAccessException failure) {
+                throw new UnauthorizedAccessException("profile registry unauthorized operation=SetAccessControl read_only=" + readOnly
+                    + " hresult=0x" + unchecked((uint)failure.HResult).ToString("X8"), failure);
+            }
+            RegistrySecurity actual;
+            try { actual = key.GetAccessControl(AccessControlSections.Access); }
+            catch (UnauthorizedAccessException failure) {
+                throw new UnauthorizedAccessException("profile registry unauthorized operation=GetAccessControl read_only=" + readOnly
+                    + " hresult=0x" + unchecked((uint)failure.HResult).ToString("X8"), failure);
+            }
             if (!SealedAccessMatches(acl, actual))
                 throw new InvalidOperationException("owned profile registry seal readback differs");
         }
