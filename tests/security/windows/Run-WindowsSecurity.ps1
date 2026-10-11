@@ -14,8 +14,11 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Required prep
 $runId = $RunId
 $state = [IO.Path]::GetFullPath((Join-Path (Join-Path $Root '.scratch') "security-windows-$runId"))
 if ($CleanupOnly) {
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'Profile.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'Profile.cs'))
     $profileCleanupFailure = $null
+    $snapsCleanupFailure = $null
+    try { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) }
+    catch { $snapsCleanupFailure = $_ }
     try { [ScientificSecurity.Profile]::DeleteOwned('Scientific.Security.' + $runId, (Join-Path $state 'profile.receipt')) }
     catch { $profileCleanupFailure = $_ }
     $ownedVhd = Join-Path $state 'scratch.vhdx'
@@ -24,6 +27,7 @@ if ($CleanupOnly) {
         $disk = Get-VHD -Path $ownedVhd -ErrorAction Stop
         if ($disk.Attached) { Dismount-VHD -Path $ownedVhd -ErrorAction Stop }
     }
+    if ($snapsCleanupFailure) { throw $snapsCleanupFailure }
     if ($profileCleanupFailure) { throw $profileCleanupFailure }
     if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop }
     [Console]::Out.WriteLine('WINDOWS_OWNED_STATE_CLEANED')
@@ -141,9 +145,10 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
     [ScientificSecurity.Profile]::CheckRegistryMasks()
+    [ScientificSecurity.LoaderSnaps]::CheckValidation()
     Write-RunLog INFO 'managed strict seal-comparison positive and negative controls passed'
     $gitCandidates = @(Get-Command git -CommandType Application -ErrorAction Stop)
     [Console]::Out.WriteLine("WINDOWS_SETUP_RESOLUTION command=git candidates=$($gitCandidates.Count) type=$($gitCandidates.GetType().FullName)")
@@ -271,8 +276,12 @@ try {
     $udp6 = [Net.Sockets.UdpClient]::new([Net.Sockets.AddressFamily]::InterNetworkV6); $udp6.Client.DualMode = $false; $udp6.Client.Bind([Net.IPEndPoint]::new([Net.IPAddress]::IPv6Loopback, $udpPort))
     $env:SCIENTIFIC_AMBIENT_CANARY = 'dummy-never-forwarded'
     Write-RunLog INFO 'fixed no-CRT native startup differential starts; never an admission control'
-    $nativeDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $true)
-    Write-RunLog INFO $nativeDiagnostic
+    try {
+        [ScientificSecurity.LoaderSnaps]::Enable($runId, $state, (Join-Path (Split-Path $childPython) 'startup-native.exe'))
+        $nativeDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $true)
+        Write-RunLog INFO $nativeDiagnostic
+    }
+    finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) }
     Write-RunLog INFO 'separate bounded trusted pass-code loader trace starts; never an admission control'
     $loaderDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true)
     Write-RunLog INFO $loaderDiagnostic
@@ -305,6 +314,10 @@ catch {
 finally {
     $cleanupErrors = [Collections.Generic.List[string]]::new()
     try {
+        if ('ScientificSecurity.LoaderSnaps' -as [type]) {
+            try { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) }
+            catch { $cleanupErrors.Add('owned loader-snaps cleanup failed'); if (-not $failure) { $failure = $_ } }
+        }
         foreach ($listener in @($tcp4,$tcp6)) {
             try { if ($listener) { $listener.Stop() } } catch { $cleanupErrors.Add('listener close failed'); if (-not $failure) { $failure = $_ } }
         }
@@ -328,7 +341,9 @@ finally {
         try {
             if ($mounted) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
             # Retain the log; remove only this run's detached disposable state.
-            if (-not $profileOwned) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop }
+            if (-not $profileOwned -and -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps.receipt'))) {
+                Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop
+            }
         }
         catch { $cleanupErrors.Add('owned virtual-disk/state cleanup failed'); if (-not $failure) { $failure = $_ } }
         finally {

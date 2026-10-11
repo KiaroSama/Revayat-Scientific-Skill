@@ -61,7 +61,7 @@ namespace ScientificSecurity
             Native.ProcessInfo process = new Native.ProcessInfo();
             bool started = false, resumed = false, wallExpired = false;
             Capture outputCapture = null, errorCapture = null;
-            LoaderTrace loader = loaderProbe ? new LoaderTrace() : null;
+            LoaderTrace loader = loaderProbe ? new LoaderTrace(nativeFixture) : null;
             try
             {
                 job = Native.CreateJobObject(IntPtr.Zero, null);

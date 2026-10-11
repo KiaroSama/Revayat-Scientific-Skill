@@ -27,7 +27,7 @@ namespace ScientificSecurity
             internal IntPtr file, imageBase; internal uint debugOffset, debugSize; internal IntPtr imageName; internal ushort unicode;
         }
         [StructLayout(LayoutKind.Sequential)] struct UnloadDllInfo { internal IntPtr imageBase; }
-        [StructLayout(LayoutKind.Sequential)] struct DebugStringInfo { internal IntPtr text; internal ushort unicode, characters; }
+        [StructLayout(LayoutKind.Sequential)] struct DebugStringInfo { internal IntPtr text; internal ushort unicode, bytes; }
         [StructLayout(LayoutKind.Sequential)] struct RipInfo { internal uint error, type; }
         [StructLayout(LayoutKind.Explicit, Size = 160)] struct DebugUnion {
             [FieldOffset(0)] internal ExceptionInfo exception;
@@ -42,6 +42,8 @@ namespace ScientificSecurity
         [StructLayout(LayoutKind.Sequential)] struct DebugEvent { internal uint code, pid, tid; internal DebugUnion data; }
         [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool WaitForDebugEventEx(out DebugEvent value, uint milliseconds);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern bool ReadProcessMemory(IntPtr process,
+            IntPtr address, byte[] buffer, UIntPtr bytes, out UIntPtr returned);
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool ContinueDebugEvent(uint pid, uint tid, uint status);
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool DuplicateHandle(IntPtr sourceProcess,
             IntPtr source, IntPtr targetProcess, out IntPtr duplicate, uint access, bool inherit, uint options);
@@ -52,11 +54,13 @@ namespace ScientificSecurity
         readonly Stopwatch clock = new Stopwatch();
         uint pid, tid; int events, bytes; bool initialBreakpoint, exited, pending;
         DebugEvent current;
-        IntPtr originalProcess, originalThread, processAlias, threadAlias;
+        IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess;
         readonly System.Collections.Generic.Dictionary<IntPtr, string> modules = new System.Collections.Generic.Dictionary<IntPtr, string>();
         const uint Continue = 0x10002, NotHandled = 0x80010001;
-        internal LoaderTrace()
+        readonly bool readNativeStrings;
+        internal LoaderTrace(bool nativeSnaps = false)
         {
+            readNativeStrings = nativeSnaps;
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
                 Marshal.SizeOf(typeof(ExceptionInfo)) != 160 || Marshal.OffsetOf(typeof(DebugEvent), "data").ToInt32() != 16 ||
                 Marshal.SizeOf(typeof(DebugEvent)) != 176 || Marshal.SizeOf(typeof(CreateProcessInfo)) != 72 ||
@@ -88,7 +92,7 @@ namespace ScientificSecurity
                     out process, 0, false, 2), "duplicate retained loader diagnostic process handle");
                 Native.Check(DuplicateHandle(Native.GetCurrentProcess(), originalThread, Native.GetCurrentProcess(),
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
-                child.process = process; child.thread = thread; process = thread = IntPtr.Zero;
+                child.process = process; child.thread = thread; memoryProcess = process; process = thread = IntPtr.Zero;
             }
             finally {
                 if (thread != IntPtr.Zero) Native.CloseHandle(thread);
@@ -139,6 +143,26 @@ namespace ScientificSecurity
             Native.Check(ContinueDebugEvent(current.pid, current.tid, status), "continue exact owned loader event");
             pending = false;
         }
+        void ObserveNativeString()
+        {
+            if (!readNativeStrings) { Emit("phase=debug-string content_read=False"); return; }
+            DebugStringInfo info = current.data.debugString;
+            if (info.text == IntPtr.Zero || info.bytes == 0 || info.bytes > 4096 || info.unicode > 1 ||
+                (info.unicode == 1 && (info.bytes & 1) != 0)) {
+                Emit("phase=debug-string observation=unknown format_valid=False"); return;
+            }
+            byte[] bytes = new byte[info.bytes];
+            try {
+                UIntPtr read;
+                bool copied = ReadProcessMemory(memoryProcess, info.text, bytes, new UIntPtr(info.bytes), out read);
+                int error = copied ? 0 : Marshal.GetLastWin32Error();
+                if (!copied || read.ToUInt64() != (ulong)bytes.Length) {
+                    Emit("phase=debug-string observation=unknown read_success=" + copied + " native_error=" + error); return;
+                }
+                Emit("phase=debug-string " + LoaderSnaps.Classify(bytes, info.unicode));
+            }
+            finally { Array.Clear(bytes, 0, bytes.Length); }
+        }
         internal uint Observe()
         {
             ThreadCheck();
@@ -184,7 +208,7 @@ namespace ScientificSecurity
                             Emit("phase=unload-dll module=" + (modules.TryGetValue(current.data.unloadDll.imageBase, out unloaded) ? unloaded : "unavailable"));
                             modules.Remove(current.data.unloadDll.imageBase); break;
                         case 8:
-                            Emit("phase=debug-string contents_unread=true"); break;
+                            ObserveNativeString(); break;
                         case 2: case 4:
                             Emit("phase=event kind=" + current.code); break; // no strings, pointers or remote reads.
                         default: throw new InvalidOperationException("unexpected owned loader event kind");
@@ -196,7 +220,7 @@ namespace ScientificSecurity
         }
         internal void TerminateAndDrain(IntPtr job, Native.ProcessInfo child)
         {
-            ThreadCheck();
+            ThreadCheck(); memoryProcess = IntPtr.Zero; // Borrowed read reference; never own/close the duplicated process here.
             var failures = new System.Collections.Generic.List<Exception>();
             if (!exited) {
                 IntPtr process = child.process != IntPtr.Zero ? child.process : originalProcess;
