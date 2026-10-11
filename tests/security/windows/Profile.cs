@@ -25,6 +25,47 @@ namespace ScientificSecurity
         [DllImport("advapi32.dll")] static extern IntPtr FreeSid(IntPtr sid);
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr handle);
         static readonly Dictionary<string, RegistryKey> registryRoots = new Dictionary<string, RegistryKey>(StringComparer.Ordinal);
+        static readonly HashSet<string> registryReadVerified = new HashSet<string>(StringComparer.Ordinal);
+        static readonly Dictionary<string, string> registryNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        static readonly Dictionary<string, List<Tuple<RegistryKey, string>>> registryEntries =
+            new Dictionary<string, List<Tuple<RegistryKey, string>>>(StringComparer.Ordinal);
+        [DllImport("ntdll.dll")] static extern int NtQueryKey(IntPtr key, int kind, IntPtr buffer, uint bytes, out uint returned);
+        static string RegistryName(SafeRegistryHandle handle)
+        {
+            const uint capacity = 4096;
+            IntPtr buffer = Marshal.AllocHGlobal((int)capacity); bool retained = false;
+            try {
+                handle.DangerousAddRef(ref retained);
+                uint returned;
+                int status = NtQueryKey(handle.DangerousGetHandle(), 3, buffer, capacity, out returned);
+                if (status != 0 || returned < 4 || returned > capacity)
+                    throw new InvalidOperationException("owned profile registry identity query failed or exceeded fixed bound");
+                uint length = unchecked((uint)Marshal.ReadInt32(buffer));
+                if (length == 0 || (length & 1) != 0 || length > returned - 4)
+                    throw new InvalidOperationException("owned profile registry identity length is invalid");
+                byte[] bytes = new byte[length]; Marshal.Copy(IntPtr.Add(buffer, 4), bytes, 0, bytes.Length);
+                string name = new System.Text.UnicodeEncoding(false, false, true).GetString(bytes);
+                if (name.IndexOf('\0') >= 0)
+                    throw new InvalidOperationException("owned profile registry identity contains an embedded terminator");
+                return name;
+            }
+            finally { try { if (retained) handle.DangerousRelease(); } finally { Marshal.FreeHGlobal(buffer); } }
+        }
+        const RegistryRights ReadOnlyRegistryDeny = RegistryRights.SetValue | RegistryRights.CreateSubKey | RegistryRights.Delete
+            | RegistryRights.ChangePermissions | RegistryRights.TakeOwnership;
+        public static void CheckRegistryMasks()
+        {
+            if ((RegistryRights.WriteKey & RegistryRights.ReadKey) != RegistryRights.ReadPermissions ||
+                (ReadOnlyRegistryDeny & RegistryRights.ReadKey) != 0)
+                throw new InvalidOperationException("registry read-only mask must preserve READ_CONTROL");
+            foreach (RegistryRights right in new [] { RegistryRights.SetValue, RegistryRights.CreateSubKey,
+                RegistryRights.Delete, RegistryRights.ChangePermissions, RegistryRights.TakeOwnership }) {
+                if ((ReadOnlyRegistryDeny & right) != right)
+                    throw new InvalidOperationException("registry read-only mask omitted a mutation/authority deny");
+            }
+            if ((ReadOnlyRegistryDeny & (RegistryRights.QueryValues | RegistryRights.EnumerateSubKeys | RegistryRights.Notify)) != 0)
+                throw new InvalidOperationException("registry read-only mask denies advertised read operations");
+        }
         static void Check(int result, string operation) { if (result != 0) throw new COMException(operation + " HRESULT=0x" + unchecked((uint)result).ToString("X8"), result); }
         static void CheckNative(bool value, string operation) { if (!value) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), operation); }
         static string ValidName(string name)
@@ -236,30 +277,165 @@ namespace ScientificSecurity
             RegistryKey root;
             try { root = RegistryKey.FromHandle(keyHandle); }
             catch { if (keyHandle != null) keyHandle.Dispose(); throw; }
+            var entries = new List<Tuple<RegistryKey, string>>();
+            bool transferred = false;
             try {
-                int count = 0;
-                SealRegistryTree(root, packageSid, ref count);
-                registryRoots.Add(name, root); root = null;
-                Console.Out.WriteLine("WINDOWS_PROFILE_REGISTRY sealed=true keys=" + count); Console.Out.Flush();
+                // Collection owns every handle before identity queries or recursion can throw.
+                entries.Add(Tuple.Create(root, (string)null)); root = null;
+                CollectRegistry(entries, 0, 0);
+                SealRegistryEntries(entries, packageSid, false);
+                string identity = entries[0].Item2;
+                Console.Out.WriteLine("WINDOWS_PROFILE_REGISTRY sealed=true keys=" + entries.Count); Console.Out.Flush();
+                registryRoots.Add(name, entries[0].Item1);
+                registryNames.Add(name, identity);
+                registryEntries.Add(name, entries);
+                transferred = true;
             }
-            finally { if (root != null) root.Dispose(); }
+            catch {
+                registryRoots.Remove(name); registryNames.Remove(name); registryEntries.Remove(name);
+                throw;
+            }
+            finally {
+                try { if (!transferred) CloseRegistryEntries(entries); }
+                finally { if (root != null) root.Dispose(); }
+            }
         }
-        static void SealRegistryTree(RegistryKey key, string sid, ref int count)
+        internal static void RequireReadOnlyRegistry(IntPtr process, string name, string packageSid)
         {
-            if (++count > 256) throw new InvalidOperationException("new profile registry exceeds finite seal budget");
-            foreach (string child in key.GetSubKeyNames()) {
-                using (RegistryKey entry = key.OpenSubKey(child, RegistryKeyPermissionCheck.ReadWriteSubTree,
-                    RegistryRights.ReadKey | RegistryRights.ChangePermissions)) {
-                    if (entry == null) throw new InvalidOperationException("owned profile registry child is unavailable");
-                    SealRegistryTree(entry, sid, ref count);
+            ValidName(name); CheckRegistryMasks();
+            try {
+                RegistryKey root;
+                if (!registryRoots.TryGetValue(name, out root))
+                    throw new InvalidOperationException("actual owned registry root must be sealed before access controls");
+                string identity;
+                if (!registryNames.TryGetValue(name, out identity) ||
+                    !String.Equals(RegistryName(root.Handle), identity, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("retained owned profile registry identity changed");
+                if (!registryReadVerified.Contains(name)) {
+                    RequireRegistryAccess(process, packageSid, identity, false);
+                    List<Tuple<RegistryKey, string>> entries;
+                    if (!registryEntries.TryGetValue(name, out entries))
+                        throw new InvalidOperationException("owned registry pre-seal handles were not retained");
+                    SealRegistryEntries(entries, packageSid, true);
+                    RequireRegistryAccess(process, packageSid, identity, true);
+                    registryReadVerified.Add(name);
+                    Console.Out.WriteLine("WINDOWS_PROFILE_REGISTRY_READ_PAIR old_denied=true new_read=true individual_mutations_denied=true keys=" + entries.Count);
+                    Console.Out.Flush();
+                }
+                else RequireRegistryAccess(process, packageSid, identity, true);
+            }
+            catch (Exception failure) {
+                try { CloseOwnedRegistry(name); }
+                catch (Exception cleanup) { throw new AggregateException("profile registry control and cleanup failed", failure, cleanup); }
+                throw;
+            }
+        }
+        static void RequireRegistryAccess(IntPtr process, string packageSid, string identity, bool readable)
+        {
+            IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero;
+            bool impersonating = false;
+            try {
+                CheckNative(OpenProcessToken(process, 0xA, out token), "open actual final profile access token");
+                uint size;
+                bool initial = GetTokenInformation(token, 31, IntPtr.Zero, 0, out size);
+                if (initial || Marshal.GetLastWin32Error() != 122 || size < IntPtr.Size || size > 65536)
+                    throw new InvalidOperationException("final profile access token package size is invalid");
+                IntPtr package = Marshal.AllocHGlobal((int)size);
+                try {
+                    uint capacity = size;
+                    CheckNative(GetTokenInformation(token, 31, package, capacity, out size), "query final profile access package identity");
+                    if (size < IntPtr.Size || size > capacity || Marshal.ReadIntPtr(package) == IntPtr.Zero ||
+                        new SecurityIdentifier(Marshal.ReadIntPtr(package)).Value != packageSid)
+                        throw new InvalidOperationException("final profile access token is not the owned package");
+                }
+                finally { Marshal.FreeHGlobal(package); }
+                CheckNative(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate final profile access token");
+                CheckNative(ImpersonateLoggedOnUser(duplicate), "enter actual final profile access context"); impersonating = true;
+                CheckProfileOpen(0x20019, readable, identity);
+                if (readable) foreach (uint access in new uint[] { 2, 4, 0x10000, 0x40000, 0x80000 })
+                    CheckProfileOpen(access, false, identity);
+            }
+            finally {
+                try {
+                    if (impersonating && !RevertToSelf())
+                        Environment.FailFast("Read-only profile identity restoration failed; outer owner must reap and clean up.");
+                }
+                finally {
+                    try { if (duplicate != IntPtr.Zero) CheckNative(CloseHandle(duplicate), "close profile access impersonation token"); }
+                    finally { if (token != IntPtr.Zero) CheckNative(CloseHandle(token), "close profile access source token"); }
                 }
             }
+        }
+        static void CheckProfileOpen(uint access, bool allowed, string identity)
+        {
+            IntPtr key = IntPtr.Zero;
+            SafeRegistryHandle handle = null;
+            try {
+                int result = GetAppContainerRegistryLocation(access, out key);
+                if (key != IntPtr.Zero) handle = new SafeRegistryHandle(key, true);
+                if (result == 0) {
+                    if (handle == null || handle.IsInvalid ||
+                        !String.Equals(RegistryName(handle), identity, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("profile registry API opened a different or invalid owned root");
+                }
+                if (allowed) {
+                    Check(result, "open actual read-only profile registry");
+                    if (handle == null || handle.IsInvalid)
+                        throw new InvalidOperationException("profile registry read returned no valid key");
+                }
+                else if (unchecked((uint)result) != 0x80070005 || key != IntPtr.Zero)
+                    throw new InvalidOperationException("profile registry access negative control was not an explicit kernel denial");
+            }
+            finally { if (handle != null) handle.Dispose(); }
+        }
+        static void CollectRegistry(List<Tuple<RegistryKey, string>> entries, int index, int depth)
+        {
+            if (depth > 32) throw new InvalidOperationException("owned profile registry exceeds finite depth budget");
+            RegistryKey key = entries[index].Item1;
+            entries[index] = Tuple.Create(key, RegistryName(key.Handle));
+            string[] children = key.GetSubKeyNames();
+            if (children.Length > 256 - entries.Count)
+                throw new InvalidOperationException("owned profile registry exceeds finite handle budget");
+            foreach (string child in children) {
+                if (entries.Count >= 256) throw new InvalidOperationException("owned profile registry exceeds finite handle budget");
+                RegistryKey entry = key.OpenSubKey(child, RegistryKeyPermissionCheck.ReadWriteSubTree,
+                    RegistryRights.ReadKey | RegistryRights.ChangePermissions);
+                if (entry == null) throw new InvalidOperationException("owned profile registry child is unavailable");
+                try { entries.Add(Tuple.Create(entry, (string)null)); }
+                catch { entry.Dispose(); throw; }
+                CollectRegistry(entries, entries.Count - 1, depth + 1);
+            }
+        }
+        static void SealRegistryEntries(List<Tuple<RegistryKey, string>> entries, string sid, bool readOnly)
+        {
+            if (entries.Count == 0 || entries.Count > 256)
+                throw new InvalidOperationException("owned registry seal handle set exceeds fixed bounds");
+            // Reverse depth-first collection is child-before-parent; no reopen after either seal.
+            for (int index = entries.Count - 1; index >= 0; index--) {
+                var entry = entries[index];
+                if (!String.Equals(RegistryName(entry.Item1.Handle), entry.Item2, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("retained owned registry child identity changed");
+                SealRegistryKey(entry.Item1, sid, readOnly);
+            }
+        }
+        static void CloseRegistryEntries(List<Tuple<RegistryKey, string>> entries)
+        {
+            var failures = new List<Exception>();
+            for (int index = entries.Count - 1; index >= 0; index--) {
+                try { entries[index].Item1.Dispose(); }
+                catch (Exception error) { failures.Add(error); }
+            }
+            entries.Clear();
+            if (failures.Count != 0) throw new AggregateException("owned registry handle cleanup failed", failures);
+        }
+        static void SealRegistryKey(RegistryKey key, string sid, bool readOnly)
+        {
             var acl = new RegistrySecurity(); acl.SetAccessRuleProtection(true, false);
             acl.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier("S-1-3-4"),
                 RegistryRights.ChangePermissions | RegistryRights.TakeOwnership,
                 InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Deny));
             acl.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(sid),
-                RegistryRights.WriteKey | RegistryRights.ChangePermissions | RegistryRights.TakeOwnership,
+                readOnly ? ReadOnlyRegistryDeny : RegistryRights.WriteKey | RegistryRights.ChangePermissions | RegistryRights.TakeOwnership,
                 InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Deny));
             acl.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(sid), RegistryRights.ReadKey,
                 InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Allow));
@@ -271,6 +447,16 @@ namespace ScientificSecurity
             if (!SealedAccessMatches(acl, actual))
                 throw new InvalidOperationException("owned profile registry seal readback differs");
         }
+        static void CloseOwnedRegistry(string name)
+        {
+            registryReadVerified.Remove(name); registryNames.Remove(name);
+            RegistryKey root; List<Tuple<RegistryKey, string>> entries;
+            bool hasRoot = registryRoots.TryGetValue(name, out root);
+            bool hasEntries = registryEntries.TryGetValue(name, out entries);
+            registryRoots.Remove(name); registryEntries.Remove(name);
+            if (hasEntries) CloseRegistryEntries(entries);
+            else if (hasRoot) root.Dispose();
+        }
         public static void DeleteOwned(string name, string receiptPath)
         {
             ValidName(name);
@@ -280,8 +466,7 @@ namespace ScientificSecurity
             if (receipt.Length != 3 || receipt[0] != name || !receipt[1].StartsWith("S-1-15-2-", StringComparison.Ordinal)
                 || (receipt[2] != "created" && receipt[2] != "intent"))
                 throw new InvalidOperationException("profile cleanup ownership receipt does not match this run");
-            RegistryKey registry;
-            try { if (registryRoots.TryGetValue(name, out registry)) { registryRoots.Remove(name); registry.Dispose(); } }
+            try { CloseOwnedRegistry(name); }
             finally { Check(DeleteAppContainerProfile(name), "delete only the owned profile after worker reaping"); }
         }
     }

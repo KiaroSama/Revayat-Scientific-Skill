@@ -135,6 +135,7 @@ namespace ScientificSecurity
                 if (loader != null) loader.PrepareHandles(ref process);
                 Profile.SealRegistry(process.process, moniker, package);
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
+                Profile.RequireReadOnlyRegistry(process.process, moniker, package);
                 if (preflight && !wallProbe && !loaderProbe) {
                     StartupAccess.Observe(process, python);
                     StartupAccess.RequireOwnQueries(process, false);

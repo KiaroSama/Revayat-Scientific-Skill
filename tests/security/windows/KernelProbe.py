@@ -331,11 +331,21 @@ def run():
     U.GetAppContainerRegistryLocation.argtypes = [w.DWORD, ctypes.POINTER(P)]
     A.RegCloseKey.argtypes = [P]
     profile_key = P()
-    profile_result = U.GetAppContainerRegistryLocation(0x20006, ctypes.byref(profile_key))
-    if profile_result == 0:
-        A.RegCloseKey(profile_key)
-        raise AssertionError('actual profile registry write authority was permitted')
-    require(profile_result & 0xFFFFFFFF == 0x80070005, 'profile registry failed without access denial')
+    try:
+        profile_result = U.GetAppContainerRegistryLocation(0x20019, ctypes.byref(profile_key))
+        require(profile_result == 0 and profile_key, 'actual sealed profile registry read was not permitted')
+    finally:
+        if profile_key:
+            require(A.RegCloseKey(profile_key) == 0, 'profile registry read handle did not close')
+    for access in (2, 4, 0x10000, 0x40000, 0x80000, 0x20006):
+        profile_key = P()
+        try:
+            profile_result = U.GetAppContainerRegistryLocation(access, ctypes.byref(profile_key))
+            require(profile_result & 0xFFFFFFFF == 0x80070005 and not profile_key,
+                    'profile registry mutation/authority failed without an explicit access denial')
+        finally:
+            if profile_key:
+                require(A.RegCloseKey(profile_key) == 0, 'profile registry negative-control handle did not close')
     # Probe own HKCU creation: no registry capability means a kernel denial, not a writable profile.
     import winreg
     try:

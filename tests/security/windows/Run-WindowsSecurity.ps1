@@ -143,6 +143,7 @@ try {
     # native setup commands use the suspended Job-owned runner loaded here.
     Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
+    [ScientificSecurity.Profile]::CheckRegistryMasks()
     Write-RunLog INFO 'managed strict seal-comparison positive and negative controls passed'
     $gitCandidates = @(Get-Command git -CommandType Application -ErrorAction Stop)
     [Console]::Out.WriteLine("WINDOWS_SETUP_RESOLUTION command=git candidates=$($gitCandidates.Count) type=$($gitCandidates.GetType().FullName)")
