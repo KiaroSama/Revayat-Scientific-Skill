@@ -65,6 +65,13 @@ namespace ScientificSecurity
                         { "SystemRoot", systemRoot }, { "WINDIR", systemRoot }, { "TEMP", cwd }, { "TMP", cwd },
                         { "PATH", Path.GetDirectoryName(executable) + ";" + Path.Combine(systemRoot, "System32") }
                     };
+                    if (name == "vswhere.exe") {
+                        string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                        NativeFixture.Plain(programData);
+                        if (!Directory.Exists(programData))
+                            throw new InvalidOperationException("VS discovery requires the existing Windows common application-data directory");
+                        fixedEnvironment.Add("ProgramData", Path.GetFullPath(programData));
+                    }
                     environment = Marshal.StringToHGlobalUni(String.Join("\0", fixedEnvironment.Select(pair => pair.Key + "=" + pair.Value)) + "\0\0");
                 }
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,

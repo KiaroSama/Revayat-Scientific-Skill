@@ -27,10 +27,14 @@ namespace ScientificSecurity
             string vswhere = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
                 "Microsoft Visual Studio", "Installer", "vswhere.exe");
             Plain(vswhere);
-            string[] installs = TrustedSetup.Run(vswhere, new [] { "-latest", "-products", "*", "-requires",
-                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath" }, state)
-                .Split(new [] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            if (installs.Length != 1 || !Path.IsPathFullyQualified(installs[0]))
+            string discovery = TrustedSetup.Run(vswhere, new [] { "-latest", "-products", "*", "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath" }, state);
+            string[] installs = discovery.Split(new [] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            bool firstAbsolute = installs.Length != 0 && Path.IsPathFullyQualified(installs[0]);
+            Console.Out.WriteLine("WINDOWS_MSVC_DISCOVERY candidate_count=" + installs.Length + " output_length=" + discovery.Length
+                + " first_absolute=" + firstAbsolute);
+            Console.Out.Flush();
+            if (installs.Length != 1 || !firstAbsolute)
                 throw new InvalidOperationException("preinstalled MSVC discovery is unavailable or ambiguous");
             string versionFile = Path.Combine(installs[0], "VC", "Auxiliary", "Build", "Microsoft.VCToolsVersion.default.txt");
             Plain(versionFile);
