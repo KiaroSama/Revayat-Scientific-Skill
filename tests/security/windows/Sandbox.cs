@@ -203,7 +203,10 @@ namespace ScientificSecurity
                         }
                         else if (started && !resumed) Native.Check(Native.TerminateProcess(process.process, 125), "terminate suspended child");
                     }
-                    finally { if (job != IntPtr.Zero) ReapJob(job); }
+                    finally {
+                        if (job != IntPtr.Zero) ReapJob(job);
+                        if (started && loader != null) loader.ConfirmDestroyed();
+                    }
                 }
                 finally
                 {

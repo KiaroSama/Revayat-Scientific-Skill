@@ -54,10 +54,11 @@ namespace ScientificSecurity
         readonly Stopwatch clock = new Stopwatch();
         uint pid, tid; int events, bytes; bool initialBreakpoint, exited, pending;
         DebugEvent current;
-        IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess;
+        IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess, lifetimeProcess;
         readonly System.Collections.Generic.Dictionary<IntPtr, string> modules = new System.Collections.Generic.Dictionary<IntPtr, string>();
         const uint Continue = 0x10002, NotHandled = 0x80010001;
         readonly bool readNativeStrings;
+        HardwareTrace hardware;
         internal LoaderTrace(bool nativeSnaps = false)
         {
             readNativeStrings = nativeSnaps;
@@ -92,7 +93,8 @@ namespace ScientificSecurity
                     out process, 0, false, 2), "duplicate retained loader diagnostic process handle");
                 Native.Check(DuplicateHandle(Native.GetCurrentProcess(), originalThread, Native.GetCurrentProcess(),
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
-                child.process = process; child.thread = thread; memoryProcess = process; process = thread = IntPtr.Zero;
+                child.process = process; child.thread = thread; memoryProcess = lifetimeProcess = process; process = thread = IntPtr.Zero;
+                if (readNativeStrings) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
             }
             finally {
                 if (thread != IntPtr.Zero) Native.CloseHandle(thread);
@@ -133,6 +135,7 @@ namespace ScientificSecurity
                 throw new System.ComponentModel.Win32Exception(error, "wait for owned loader event");
             }
             pending = true;
+            if (hardware != null) hardware.Stop(current.pid, current.tid, current.code);
             if (current.pid != pid) throw new InvalidOperationException("loader event is not from the fixed owned child");
             return true;
         }
@@ -142,6 +145,7 @@ namespace ScientificSecurity
             if (!pending) return;
             Native.Check(ContinueDebugEvent(current.pid, current.tid, status), "continue exact owned loader event");
             pending = false;
+            if (hardware != null) hardware.Continued();
         }
         void ObserveNativeString()
         {
@@ -181,6 +185,10 @@ namespace ScientificSecurity
                         case 1:
                             uint code = current.data.exception.record.code;
                             bool first = current.data.exception.firstChance != 0;
+                            if (hardware != null && hardware.SingleStep(current.tid, code, first)) {
+                                status = Continue; break;
+                            }
+                            if (hardware != null) hardware.Restore();
                             if (!initialBreakpoint && first && code == 0x80000003) {
                                 initialBreakpoint = true; status = Continue;
                             }
@@ -190,6 +198,7 @@ namespace ScientificSecurity
                         case 6:
                             IntPtr file = current.data.loadDll.file;
                             try {
+                                if (hardware != null) hardware.Load(file, current.data.loadDll.imageBase);
                                 string name = Basename(file);
                                 if (modules.Count >= 128) throw new InvalidOperationException("loader module metadata exceeds finite bound");
                                 modules[current.data.loadDll.imageBase] = name;
@@ -204,15 +213,22 @@ namespace ScientificSecurity
                         case 9:
                             Emit("phase=rip error=" + current.data.rip.error + " type=" + current.data.rip.type); break;
                         case 7:
+                            if (hardware != null) hardware.Unload(current.data.unloadDll.imageBase);
                             string unloaded;
                             Emit("phase=unload-dll module=" + (modules.TryGetValue(current.data.unloadDll.imageBase, out unloaded) ? unloaded : "unavailable"));
                             modules.Remove(current.data.unloadDll.imageBase); break;
                         case 8:
                             ObserveNativeString(); break;
                         case 2: case 4:
+                            if (hardware != null) hardware.OtherThread(current.tid, current.code);
                             Emit("phase=event kind=" + current.code); break; // no strings, pointers or remote reads.
                         default: throw new InvalidOperationException("unexpected owned loader event kind");
                     }
+                }
+                catch (Exception failure) {
+                    try { if (hardware != null) hardware.Restore(); }
+                    catch (Exception restoration) { throw new AggregateException("hardware observation and restoration failed", failure, restoration); }
+                    throw;
                 }
                 finally { try { CloseCurrentFile(); } finally { ContinuePending(status); } }
             }
@@ -222,6 +238,10 @@ namespace ScientificSecurity
         {
             ThreadCheck(); memoryProcess = IntPtr.Zero; // Borrowed read reference; never own/close the duplicated process here.
             var failures = new System.Collections.Generic.List<Exception>();
+            // Context access is legal only while an already-pending event stops the live creator.
+            if (pending && hardware != null) {
+                try { hardware.Restore(); } catch (Exception failure) { failures.Add(failure); }
+            }
             if (!exited) {
                 IntPtr process = child.process != IntPtr.Zero ? child.process : originalProcess;
                 try { if (process != IntPtr.Zero) Native.Check(Native.TerminateProcess(process, 125), "terminate owned debug child including pre-assignment failures"); }
@@ -244,6 +264,13 @@ namespace ScientificSecurity
             }
             catch (Exception error) { failures.Add(error); }
             if (failures.Count != 0) throw new AggregateException("owned loader cleanup failed", failures);
+        }
+        internal void ConfirmDestroyed()
+        {
+            // Caller has reaped the Job to zero; the independent duplicate must already be signaled.
+            if (!exited || lifetimeProcess == IntPtr.Zero || Native.WaitForSingleObject(lifetimeProcess, 0) != 0)
+                throw new InvalidOperationException("hardware destruction requires continued EXIT and a signaled retained process");
+            if (hardware != null) hardware.Destroyed();
         }
         void FinishCleanupEvent(System.Collections.Generic.List<Exception> failures)
         {
