@@ -19,7 +19,9 @@ namespace ScientificSecurity
             executable = Path.GetFullPath(executable);
             cwd = Path.GetFullPath(cwd);
             string name = Path.GetFileName(executable).ToLowerInvariant();
-            if (!new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
+            bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe" }.Contains(name);
+            if (compilerPreparation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
+            if (!compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
             bool executableExists = File.Exists(executable), cwdExists = Directory.Exists(cwd);
             Console.Out.WriteLine("WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd)
@@ -28,7 +30,7 @@ namespace ScientificSecurity
             if (!executableExists || !cwdExists)
                 throw new ArgumentException("trusted setup executable or working directory does not exist after native path normalization");
             IntPtr job = IntPtr.Zero, attrs = IntPtr.Zero;
-            IntPtr list = IntPtr.Zero, input = IntPtr.Zero;
+            IntPtr list = IntPtr.Zero, input = IntPtr.Zero, environment = IntPtr.Zero;
             Capture output = null, error = null;
             var child = new Native.ProcessInfo(); bool started = false, resumed = false;
             try
@@ -55,8 +57,19 @@ namespace ScientificSecurity
                 startup.attributes = attrs; startup.startup.flags = 0x100; startup.startup.input = input;
                 startup.startup.output = output.Writer; startup.startup.error = error.Writer;
                 string command = String.Join(" ", new [] { executable }.Concat(arguments).Select(Quote));
+                if (compilerPreparation) {
+                    string systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+                    if (String.IsNullOrEmpty(systemRoot) || !Path.IsPathFullyQualified(systemRoot))
+                        throw new InvalidOperationException("compiler setup requires an absolute trusted Windows root");
+                    var fixedEnvironment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        { "SystemRoot", systemRoot }, { "WINDIR", systemRoot }, { "TEMP", cwd }, { "TMP", cwd },
+                        { "PATH", Path.GetDirectoryName(executable) + ";" + Path.Combine(systemRoot, "System32") }
+                    };
+                    environment = Marshal.StringToHGlobalUni(String.Join("\0", fixedEnvironment.Select(pair => pair.Key + "=" + pair.Value)) + "\0\0");
+                }
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
-                    true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow, IntPtr.Zero, cwd, ref startup, out child),
+                    true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
+                    environment, cwd, ref startup, out child),
                     "create suspended trusted setup process tool=" + name + " cwd=" + cwd); started = true;
                 Native.Check(Native.AssignProcessToJobObject(job, child.process), "own trusted setup process before resume");
                 if (Native.ResumeThread(child.thread) == UInt32.MaxValue)
@@ -97,6 +110,7 @@ namespace ScientificSecurity
                             if (input != IntPtr.Zero && input != Native.InvalidHandle) Native.CloseHandle(input);
                             if (attrs != IntPtr.Zero) { Native.DeleteProcThreadAttributeList(attrs); Marshal.FreeHGlobal(attrs); }
                             if (list != IntPtr.Zero) Marshal.FreeHGlobal(list);
+                            if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
                             if (job != IntPtr.Zero) Native.CloseHandle(job);
                         }
                     }

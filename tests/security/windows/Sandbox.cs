@@ -22,20 +22,27 @@ namespace ScientificSecurity
 
         // Only the fixed probe and fixed regression entry are launchable; no arbitrary command API.
         public static string Run(string python, string root, string scratch, string powershell,
-                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false)
+                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false)
         {
             if (loaderProbe && (!preflight || wallProbe))
                 throw new ArgumentException("loader tracing is restricted to the separate fixed trusted pass phase");
+            if (nativeFixture && !loaderProbe) throw new ArgumentException("native fixture is a fixed loader diagnostic only");
             python = Path.GetFullPath(python); root = Path.GetFullPath(root);
             scratch = Path.GetFullPath(scratch); powershell = Path.GetFullPath(powershell);
             string probe = preflight ? Path.Combine(root, "tests", "security", "windows", "KernelProbe.py")
                                      : Path.Combine(root, "tests", "security", "windows_probe.py");
-            string phase = loaderProbe ? "loader-trace" : (wallProbe ? "wall" : (preflight ? "preflight" : "regressions"));
+            string phase = loaderProbe ? (nativeFixture ? "native-loader-trace" : "python-loader-trace") : (wallProbe ? "wall" : (preflight ? "preflight" : "regressions"));
             string launchCwd = preflight ? Path.GetDirectoryName(python) : scratch;
             var arguments = new List<string> { python, "-I", "-B", "-X", "utf8", probe, root, scratch, powershell };
             if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); arguments.Add(profileFolder); }
             if (wallProbe) arguments.Add("wall-tree");
+            string executable = python;
             if (loaderProbe) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
+            if (nativeFixture) {
+                executable = Path.Combine(Path.GetDirectoryName(python), "startup-native.exe");
+                NativeFixture.Validate(executable);
+                arguments = new List<string> { executable };
+            }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
             var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
@@ -108,16 +115,16 @@ namespace ScientificSecurity
                 IntPtr processAttributes = Native.Structure(new Native.SecurityAttributes {
                     size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), descriptor = processDescriptor });
                 values.Add(processAttributes);
-                Console.Out.WriteLine("WINDOWS_LPAC_PATH executable=" + Quote(python) + " cwd=" + Quote(launchCwd)
+                Console.Out.WriteLine("WINDOWS_LPAC_PATH executable=" + Quote(executable) + " cwd=" + Quote(launchCwd)
                     + " desired_scratch=" + Quote(scratch) + " phase=" + phase
-                    + " probe=" + Quote(probe) + " executable_exists=" + File.Exists(python)
+                    + " probe=" + Quote(probe) + " executable_exists=" + File.Exists(executable)
                     + " cwd_exists=" + Directory.Exists(launchCwd) + " scratch_exists=" + Directory.Exists(scratch)
                     + " probe_exists=" + File.Exists(probe));
                 Console.Out.Flush();
-                if (!File.Exists(python) || !Directory.Exists(launchCwd) || !Directory.Exists(scratch) || !File.Exists(probe))
+                if (!File.Exists(executable) || !Directory.Exists(launchCwd) || !Directory.Exists(scratch) || !File.Exists(probe))
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 using (OwnedToken restricted = OwnedToken.Create()) {
-                    bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, python, new StringBuilder(command), processAttributes, processAttributes, true,
+                    bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, executable, new StringBuilder(command), processAttributes, processAttributes, true,
                         Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment | (loaderProbe ? 2U : 0U),
                         env, launchCwd, ref startup, out process);
                     started = created;

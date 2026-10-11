@@ -53,6 +53,7 @@ namespace ScientificSecurity
         uint pid, tid; int events, bytes; bool initialBreakpoint, exited, pending;
         DebugEvent current;
         IntPtr originalProcess, originalThread, processAlias, threadAlias;
+        readonly System.Collections.Generic.Dictionary<IntPtr, string> modules = new System.Collections.Generic.Dictionary<IntPtr, string>();
         const uint Continue = 0x10002, NotHandled = 0x80010001;
         internal LoaderTrace()
         {
@@ -164,7 +165,12 @@ namespace ScientificSecurity
                             break;
                         case 6:
                             IntPtr file = current.data.loadDll.file;
-                            try { Emit("phase=load-dll module=" + Basename(file)); }
+                            try {
+                                string name = Basename(file);
+                                if (modules.Count >= 128) throw new InvalidOperationException("loader module metadata exceeds finite bound");
+                                modules[current.data.loadDll.imageBase] = name;
+                                Emit("phase=load-dll module=" + name);
+                            }
                             finally { current.data.loadDll.file = IntPtr.Zero; CloseFile(file); }
                             break;
                         case 5:
@@ -173,7 +179,13 @@ namespace ScientificSecurity
                             exited = true; break;
                         case 9:
                             Emit("phase=rip error=" + current.data.rip.error + " type=" + current.data.rip.type); break;
-                        case 2: case 4: case 7: case 8:
+                        case 7:
+                            string unloaded;
+                            Emit("phase=unload-dll module=" + (modules.TryGetValue(current.data.unloadDll.imageBase, out unloaded) ? unloaded : "unavailable"));
+                            modules.Remove(current.data.unloadDll.imageBase); break;
+                        case 8:
+                            Emit("phase=debug-string contents_unread=true"); break;
+                        case 2: case 4:
                             Emit("phase=event kind=" + current.code); break; // no strings, pointers or remote reads.
                         default: throw new InvalidOperationException("unexpected owned loader event kind");
                     }

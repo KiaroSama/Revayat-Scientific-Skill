@@ -14,7 +14,7 @@ Prepared runtimes and trusted kernel probes precede reviewed document/helper exe
 - An outer scratch quota is not production TeX output-bind quota.
 - A mechanical result, artifact hash or clean CI is not user consent or semantic translation approval.
 
-A bounded native startup trace of fixed trusted Python `-c pass` is diagnostic phase evidence only. It uses the same isolation settings and no target imports; normal undebugged kernel preflight remains the sole admission gate. Debugger-altered behavior or a last-loaded DLL never establishes containment or a unique initialization cause.
+A bounded native startup trace of fixed trusted Python `-c pass` is diagnostic phase evidence only. It uses the same isolation settings and no target imports; normal undebugged kernel preflight remains the sole admission gate. A fixed no-CRT native `ExitProcess(0)` fixture provides an image-independent differential under those same controls; existing hosted compiler tools, bounded PE/import validation and a read-only seal precede its launch. This diagnostic cannot replace Python 3.11 or admit target code. Debugger-altered behavior, either diagnostic exit or a last-loaded DLL never establishes containment or a unique initialization cause.
 
 Only the exact tested revision, actual prerequisite observations, load-bearing positive/negative assertions and owned cleanup support a completion claim. Source-audit hypotheses remain unresolved until their decisive facts are observed or independently refuted. All limits must be named in the job/report rather than hidden by `continue-on-error`.
 
