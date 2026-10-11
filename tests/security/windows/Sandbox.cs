@@ -142,6 +142,10 @@ namespace ScientificSecurity
                 }
                 OwnProcessAccess.Repair(process);
                 StartupAccess.RequireOwnQueries(process, true);
+                if (nativeFixture) {
+                    string metadata = TokenDefaultMetadata.Observe(process.process);
+                    Console.Out.WriteLine(metadata); Console.Out.Flush();
+                }
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;

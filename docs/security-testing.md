@@ -18,6 +18,8 @@ A bounded native startup trace of fixed trusted Python `-c pass` is diagnostic p
 
 Owner-approved Loader Snaps may add detailed startup diagnostics only for the fixed trusted native fixture on a disposable hosted Windows runner. Its per-image setting and ownership marker are committed atomically; an existing key is never overwritten. Normal and outer interrupted cleanup qualify and transactionally delete only exact owned state, then verify absence before Python phases. Only bounded debug-string event bytes from that fixture may be read, with fixed allowlisted routine/module/status output; raw messages, paths, addresses and identities are never logged. Time/event/output ceilings stay unchanged. Configuration, parsing or cleanup failures never admit target code, and no local native diagnostic or sandbox permission relaxation is implied.
 
+A separate fixed-native-only startup observation may summarize the suspended token's default new-object ACL after the existing admission preparations. Read-only queries and allocation-qualified ACL/ACE parsing emit only bounded category/count/mask metadata, distinguishing null, empty and unrecognized ACLs. No token or object permissions change, and this summary is neither an effective-access check nor evidence of the failed initializer's cause. Python and target execution remain behind the unchanged undebugged preflight.
+
 Only the exact tested revision, actual prerequisite observations, load-bearing positive/negative assertions and owned cleanup support a completion claim. Source-audit hypotheses remain unresolved until their decisive facts are observed or independently refuted. All limits must be named in the job/report rather than hidden by `continue-on-error`.
 
 ## Diagnostic logs
