@@ -23,6 +23,7 @@ namespace ScientificSecurity
                 throw new InvalidOperationException("native fixture source differs from fixed trusted pass contract");
             CheckValidation();
             Plain(output, true); Plain(obj, true);
+            RequireNoManifest(output);
             if (File.Exists(output) || File.Exists(obj)) throw new InvalidOperationException("native fixture output must be new owned state");
             string vswhere = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
                 "Microsoft Visual Studio", "Installer", "vswhere.exe");
@@ -66,10 +67,10 @@ namespace ScientificSecurity
             // /GS- is confined to this bufferless nonproduction fixture; never target/controller code.
             TrustedSetup.Run(cl, new [] { "/nologo", "/c", "/TC", "/GS-", "/Zl", "/Fo" + obj, source }, state);
             Plain(obj);
-            TrustedSetup.Run(link, new [] { "/nologo", "/NODEFAULTLIB", "/ENTRY:StartupEntry", "/SUBSYSTEM:CONSOLE",
+            TrustedSetup.Run(link, new [] { "/nologo", "/NODEFAULTLIB", "/MANIFEST:NO", "/ENTRY:StartupEntry", "/SUBSYSTEM:CONSOLE",
                 "/MACHINE:X64", "/OUT:" + output, obj, kernel32 }, state);
             Validate(output);
-            Console.Out.WriteLine("WINDOWS_NATIVE_FIXTURE pe_verified=true architecture=x64 imports=kernel32.ExitProcess crt=false clr=false");
+            Console.Out.WriteLine("WINDOWS_NATIVE_FIXTURE pe_verified=true architecture=x64 imports=kernel32.ExitProcess crt=false clr=false manifest=false");
             Console.Out.Flush();
         }
         internal static void Plain(string path, bool allowMissing = false)
@@ -89,9 +90,19 @@ namespace ScientificSecurity
                 catch (DirectoryNotFoundException) { if (!allowMissing) throw; }
             }
         }
+        static void RequireNoManifest(string executable)
+        {
+            foreach (string path in new [] { executable + ".manifest", Path.ChangeExtension(executable, ".manifest") }) {
+                Plain(path, true); // Validate existing ancestors/leaf before any existence decision.
+                try { File.GetAttributes(path); }
+                catch (FileNotFoundException) { continue; }
+                catch (DirectoryNotFoundException) { continue; }
+                throw new InvalidOperationException("fixed native fixture must not have a manifest sidecar");
+            }
+        }
         internal static void Validate(string path)
         {
-            Plain(path);
+            Plain(path); RequireNoManifest(path);
             byte[] image;
             using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
                 if (stream.Length < 256 || stream.Length > 1048576) throw new InvalidOperationException("native fixture PE size exceeds fixed bound");
@@ -126,6 +137,8 @@ namespace ScientificSecurity
                 bytes => Put(bytes, optional + 16, UInt32.MaxValue),
                 bytes => Put(bytes, optional + 120, UInt32.MaxValue),
                 bytes => Put(bytes, 0x254, (uint)1), // extra nonzero import descriptor.
+                bytes => { Put(bytes, optional + 112 + 2 * 8, (uint)0x1000); Put(bytes, optional + 116 + 2 * 8, (uint)16); },
+                bytes => Put(bytes, optional + 116 + 2 * 8, (uint)8), // resource size alone is not an absent directory.
                 bytes => Put(bytes, optional + 112 + 14 * 8, (uint)0x1000),
                 bytes => Put(bytes, optional + 112 + 9 * 8, (uint)0x1000),
                 bytes => Put(bytes, optional + 112 + 13 * 8, (uint)0x1000),
@@ -206,8 +219,8 @@ namespace ScientificSecurity
                 uint entry = U32(optional + 16); Require(entry != 0); Map(entry, 1);
                 Require(sections.Count(section => entry >= section.address && (ulong)entry < (ulong)section.address + section.rawSize
                     && (section.flags & 0x20000000) != 0) == 1);
-                foreach (int directory in new [] { 9, 13, 14 })
-                    Require(U64(optional + 112 + (ulong)directory * 8) == 0); // no TLS, delay imports or CLR.
+                foreach (int directory in new [] { 2, 9, 13, 14 })
+                    Require(U64(optional + 112 + (ulong)directory * 8) == 0); // no resources/manifest, TLS, delay imports or CLR.
                 uint importRva = U32(optional + 120), importSize = U32(optional + 124);
                 Require(importRva != 0 && importSize >= 40); int descriptor = Map(importRva, importSize);
                 uint thunk = U32((uint)descriptor), name = U32((uint)descriptor + 12), iat = U32((uint)descriptor + 16);
