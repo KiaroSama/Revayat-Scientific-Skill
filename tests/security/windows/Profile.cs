@@ -103,6 +103,7 @@ namespace ScientificSecurity
         public static void CheckRegistryMasks()
         {
             RegistryContext.CheckValidation();
+            RegistrySeal.CheckValidation();
             if ((RegistryRights.WriteKey & RegistryRights.ReadKey) != RegistryRights.ReadPermissions ||
                 (ReadOnlyRegistryDeny & RegistryRights.ReadKey) != 0 || (uint)LegacyRegistryAllow != 0x19 ||
                 (LegacyRegistryAllow & RegistryRights.ReadPermissions) != 0)
@@ -564,7 +565,10 @@ namespace ScientificSecurity
             foreach (SecurityIdentifier identity in new [] { WindowsIdentity.GetCurrent().User, new SecurityIdentifier("S-1-5-18"), new SecurityIdentifier("S-1-5-32-544") })
                 acl.AddAccessRule(new RegistryAccessRule(identity, RegistryRights.FullControl,
                     InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Allow));
-            try { key.SetAccessControl(acl); }
+            try {
+                if (readOnly) RegistrySeal.Persist(key.Handle, acl);
+                else key.SetAccessControl(acl);
+            }
             catch (UnauthorizedAccessException failure) {
                 throw new UnauthorizedAccessException("profile registry unauthorized operation=SetAccessControl read_only=" + readOnly
                     + " hresult=0x" + unchecked((uint)failure.HResult).ToString("X8"), failure);
