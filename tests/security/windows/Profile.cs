@@ -30,6 +30,52 @@ namespace ScientificSecurity
         static readonly Dictionary<string, List<Tuple<RegistryKey, string>>> registryEntries =
             new Dictionary<string, List<Tuple<RegistryKey, string>>>(StringComparer.Ordinal);
         [DllImport("ntdll.dll")] static extern int NtQueryKey(IntPtr key, int kind, IntPtr buffer, uint bytes, out uint returned);
+        [DllImport("ntdll.dll")] static extern int NtQueryObject(IntPtr handle, int kind, IntPtr buffer, uint bytes, out uint returned);
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+        static extern int RegOpenKeyExW(IntPtr key, string subkey, uint options, uint access, out IntPtr fresh);
+        [DllImport("advapi32.dll")] static extern int RegCloseKey(IntPtr key);
+        static bool DiagnosticKey(IntPtr key)
+        {
+            long value = key.ToInt64();
+            return value > 0 && !(value >= 0x80000000L && value <= 0x800000FFL);
+        }
+        static string BasicAccessMetadata(IntPtr key, string label)
+        {
+            const uint capacity = 56;
+            IntPtr buffer = Marshal.AllocHGlobal((int)capacity);
+            try {
+                uint returned;
+                int status = NtQueryObject(key, 0, buffer, capacity, out returned);
+                string metadata = " " + label + "_query_status=0x" + unchecked((uint)status).ToString("X8")
+                    + " " + label + "_query_length=" + returned;
+                return metadata + " " + label + "_granted_access=" +
+                    (status == 0 && returned == capacity ? "0x" + unchecked((uint)Marshal.ReadInt32(buffer, 4)).ToString("X8") : "UNKNOWN");
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+        static string FailedOpenMetadata(SafeRegistryHandle locator, uint access)
+        {
+            bool retained = false; IntPtr fresh = IntPtr.Zero, original = IntPtr.Zero;
+            bool freshOwned = false; string metadata = "";
+            try {
+                locator.DangerousAddRef(ref retained); original = locator.DangerousGetHandle();
+                if (!DiagnosticKey(original)) return " diagnostic_locator_valid=False";
+                metadata = " diagnostic_locator_valid=True" + BasicAccessMetadata(original, "locator");
+                int result = RegOpenKeyExW(original, "", 0, access, out fresh);
+                bool distinct = fresh != IntPtr.Zero && fresh != original;
+                freshOwned = distinct && DiagnosticKey(fresh);
+                metadata += " fresh_open_status=" + result + " fresh_handle_nonzero=" + (fresh != IntPtr.Zero)
+                    + " fresh_handle_distinct=" + distinct + " fresh_handle_valid=" + freshOwned;
+                if (freshOwned) metadata += BasicAccessMetadata(fresh, "fresh");
+            }
+            finally {
+                try {
+                    if (freshOwned) metadata += " fresh_close_status=" + RegCloseKey(fresh);
+                }
+                finally { if (retained) locator.DangerousRelease(); }
+            }
+            return metadata;
+        }
         static string RegistryName(SafeRegistryHandle handle)
         {
             const uint capacity = 4096;
@@ -385,8 +431,10 @@ namespace ScientificSecurity
                     if (handle == null || handle.IsInvalid)
                         throw new InvalidOperationException("profile registry read returned no valid key" + metadata);
                 }
-                else if (unchecked((uint)result) != 0x80070005 || key != IntPtr.Zero)
+                else if (unchecked((uint)result) != 0x80070005 || key != IntPtr.Zero) {
+                    if (handle != null && !handle.IsInvalid) metadata += FailedOpenMetadata(handle, access);
                     throw new InvalidOperationException("profile registry access negative control was not an explicit kernel denial" + metadata);
+                }
             }
             finally { if (handle != null) handle.Dispose(); }
         }
