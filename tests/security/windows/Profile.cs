@@ -97,12 +97,15 @@ namespace ScientificSecurity
             }
             finally { try { if (retained) handle.DangerousRelease(); } finally { Marshal.FreeHGlobal(buffer); } }
         }
+        const RegistryRights LegacyRegistryAllow = RegistryRights.ReadKey & ~RegistryRights.ReadPermissions;
         const RegistryRights ReadOnlyRegistryDeny = RegistryRights.SetValue | RegistryRights.CreateSubKey | RegistryRights.Delete
             | RegistryRights.ChangePermissions | RegistryRights.TakeOwnership;
         public static void CheckRegistryMasks()
         {
+            RegistryContext.CheckValidation();
             if ((RegistryRights.WriteKey & RegistryRights.ReadKey) != RegistryRights.ReadPermissions ||
-                (ReadOnlyRegistryDeny & RegistryRights.ReadKey) != 0)
+                (ReadOnlyRegistryDeny & RegistryRights.ReadKey) != 0 || (uint)LegacyRegistryAllow != 0x19 ||
+                (LegacyRegistryAllow & RegistryRights.ReadPermissions) != 0)
                 throw new InvalidOperationException("registry read-only mask must preserve READ_CONTROL");
             foreach (RegistryRights right in new [] { RegistryRights.SetValue, RegistryRights.CreateSubKey,
                 RegistryRights.Delete, RegistryRights.ChangePermissions, RegistryRights.TakeOwnership }) {
@@ -304,9 +307,12 @@ namespace ScientificSecurity
                 }
                 finally { Marshal.FreeHGlobal(identity); }
                 CheckNative(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate profile impersonation token");
+                var context = new RegistryContext(token, duplicate, packageSid);
                 CheckNative(ImpersonateLoggedOnUser(duplicate), "enter exact profile identity"); impersonating = true;
+                context.RequireThread();
                 int result = GetAppContainerRegistryLocation(0x20019 | 0x40000, out key);
                 if (key != IntPtr.Zero) keyHandle = new SafeRegistryHandle(key, true);
+                context.RequireThread();
                 Check(result, "open actual profile registry for seal");
             }
             catch { if (keyHandle != null) keyHandle.Dispose(); throw; }
@@ -358,17 +364,17 @@ namespace ScientificSecurity
                     !String.Equals(RegistryName(root.Handle), identity, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("retained owned profile registry identity changed");
                 if (!registryReadVerified.Contains(name)) {
-                    RequireRegistryAccess(process, packageSid, identity, false);
+                    RequireRegistryAccess(process, packageSid, identity, root.Handle, false);
                     List<Tuple<RegistryKey, string>> entries;
                     if (!registryEntries.TryGetValue(name, out entries))
                         throw new InvalidOperationException("owned registry pre-seal handles were not retained");
                     SealRegistryEntries(entries, packageSid, true);
-                    RequireRegistryAccess(process, packageSid, identity, true);
+                    RequireRegistryAccess(process, packageSid, identity, root.Handle, true);
                     registryReadVerified.Add(name);
                     Console.Out.WriteLine("WINDOWS_PROFILE_REGISTRY_READ_PAIR old_denied=true new_read=true individual_mutations_denied=true keys=" + entries.Count);
                     Console.Out.Flush();
                 }
-                else RequireRegistryAccess(process, packageSid, identity, true);
+                else RequireRegistryAccess(process, packageSid, identity, root.Handle, true);
             }
             catch (Exception failure) {
                 try { CloseOwnedRegistry(name); }
@@ -376,7 +382,7 @@ namespace ScientificSecurity
                 throw;
             }
         }
-        static void RequireRegistryAccess(IntPtr process, string packageSid, string identity, bool readable)
+        static void RequireRegistryAccess(IntPtr process, string packageSid, string identity, SafeRegistryHandle retainedRoot, bool readable)
         {
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero;
             bool impersonating = false;
@@ -396,10 +402,15 @@ namespace ScientificSecurity
                 }
                 finally { Marshal.FreeHGlobal(package); }
                 CheckNative(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate final profile access token");
+                var context = new RegistryContext(token, duplicate, packageSid);
                 CheckNative(ImpersonateLoggedOnUser(duplicate), "enter actual final profile access context"); impersonating = true;
-                CheckProfileOpen(0x20019, readable, identity);
-                if (readable) foreach (uint access in new uint[] { 2, 4, 0x10000, 0x40000, 0x80000 })
-                    CheckProfileOpen(access, false, identity);
+                context.RequireThread();
+                CheckProfileOpen(0x20019, readable, identity, context);
+                CheckFreshProfileOpen(retainedRoot, 0x20019, readable, identity, context);
+                if (readable) foreach (uint access in new uint[] { 2, 4, 0x10000, 0x40000, 0x80000 }) {
+                    CheckProfileOpen(access, false, identity, context);
+                    CheckFreshProfileOpen(retainedRoot, access, false, identity, context);
+                }
             }
             finally {
                 try {
@@ -412,20 +423,24 @@ namespace ScientificSecurity
                 }
             }
         }
-        static void CheckProfileOpen(uint access, bool allowed, string identity)
+        static void CheckProfileOpen(uint access, bool allowed, string identity, RegistryContext context)
         {
             IntPtr key = IntPtr.Zero;
             SafeRegistryHandle handle = null;
             try {
+                context.RequireThread();
                 int result = GetAppContainerRegistryLocation(access, out key);
                 if (key != IntPtr.Zero) handle = new SafeRegistryHandle(key, true);
+                context.RequireThread();
                 string metadata = " mask=0x" + access.ToString("X8") + " expected_allowed=" + allowed
                     + " hresult=0x" + unchecked((uint)result).ToString("X8") + " handle_nonzero=" + (key != IntPtr.Zero);
                 if (result == 0) {
                     if (handle == null || handle.IsInvalid ||
                         !String.Equals(RegistryName(handle), identity, StringComparison.OrdinalIgnoreCase))
                         throw new InvalidOperationException("profile registry API opened a different or invalid owned root" + metadata);
+                    RequireReadOnlyGrant(handle, access);
                 }
+                if (handle != null && !handle.IsInvalid && result != 0) RequireReadOnlyGrant(handle, access);
                 if (allowed) {
                     Check(result, "open actual read-only profile registry" + metadata);
                     if (handle == null || handle.IsInvalid)
@@ -437,6 +452,53 @@ namespace ScientificSecurity
                 }
             }
             finally { if (handle != null) handle.Dispose(); }
+        }
+        static void RequireReadOnlyGrant(SafeRegistryHandle handle, uint requested)
+        {
+            const uint capacity = 56;
+            IntPtr buffer = Marshal.AllocHGlobal((int)capacity); bool retained = false;
+            try {
+                handle.DangerousAddRef(ref retained); IntPtr key = handle.DangerousGetHandle();
+                if (!DiagnosticKey(key)) throw new InvalidOperationException("profile access returned a pseudo/predefined key");
+                uint length;
+                int status = NtQueryObject(key, 0, buffer, capacity, out length);
+                if (status != 0 || length != capacity)
+                    throw new InvalidOperationException("profile granted-access query failed; authority is unknown requested=0x" + requested.ToString("X8")
+                        + " status=0x" + unchecked((uint)status).ToString("X8") + " length=" + length);
+                uint granted = unchecked((uint)Marshal.ReadInt32(buffer, 4));
+                if ((granted & ~0x20019U) != 0 || (granted & requested) != requested)
+                    throw new InvalidOperationException("profile key grants authority outside exact requested read-only bounds requested=0x" + requested.ToString("X8")
+                        + " granted=0x" + granted.ToString("X8") + " status=0x" + unchecked((uint)status).ToString("X8") + " length=" + length);
+            }
+            finally { try { if (retained) handle.DangerousRelease(); } finally { Marshal.FreeHGlobal(buffer); } }
+        }
+        static void CheckFreshProfileOpen(SafeRegistryHandle root, uint access, bool allowed, string identity, RegistryContext context)
+        {
+            bool retained = false; IntPtr original = IntPtr.Zero, fresh = IntPtr.Zero;
+            SafeRegistryHandle handle = null;
+            try {
+                root.DangerousAddRef(ref retained); original = root.DangerousGetHandle();
+                if (!DiagnosticKey(original)) throw new InvalidOperationException("retained profile root is not a valid native key");
+                context.RequireThread();
+                int result = RegOpenKeyExW(original, "", 0, access, out fresh);
+                if (fresh != IntPtr.Zero && fresh != original) handle = new SafeRegistryHandle(fresh, true);
+                context.RequireThread();
+                string metadata = " mask=0x" + access.ToString("X8") + " expected_allowed=" + allowed
+                    + " native_status=" + result + " handle_nonzero=" + (fresh != IntPtr.Zero) + " distinct=" + (fresh != original);
+                if (fresh == original) throw new InvalidOperationException("fresh profile access unexpectedly returned the retained alias");
+                if (handle != null && !handle.IsInvalid) {
+                    if (!String.Equals(RegistryName(handle), identity, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("fresh profile access opened a different owned key");
+                    RequireReadOnlyGrant(handle, access);
+                }
+                if (allowed) {
+                    if (result != 0 || handle == null || handle.IsInvalid)
+                        throw new InvalidOperationException("fresh profile read-positive control failed" + metadata);
+                }
+                else if (result != 5 || fresh != IntPtr.Zero)
+                    throw new InvalidOperationException("fresh profile negative control was not access denied" + metadata);
+            }
+            finally { try { if (handle != null) handle.Dispose(); } finally { if (retained) root.DangerousRelease(); } }
         }
         static void CollectRegistry(List<Tuple<RegistryKey, string>> entries, int index, int depth)
         {
@@ -487,7 +549,7 @@ namespace ScientificSecurity
             acl.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(sid),
                 readOnly ? ReadOnlyRegistryDeny : RegistryRights.WriteKey | RegistryRights.ChangePermissions | RegistryRights.TakeOwnership,
                 InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Deny));
-            acl.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(sid), RegistryRights.ReadKey,
+            acl.AddAccessRule(new RegistryAccessRule(new SecurityIdentifier(sid), readOnly ? RegistryRights.ReadKey : LegacyRegistryAllow,
                 InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Allow));
             foreach (SecurityIdentifier identity in new [] { WindowsIdentity.GetCurrent().User, new SecurityIdentifier("S-1-5-18"), new SecurityIdentifier("S-1-5-32-544") })
                 acl.AddAccessRule(new RegistryAccessRule(identity, RegistryRights.FullControl,

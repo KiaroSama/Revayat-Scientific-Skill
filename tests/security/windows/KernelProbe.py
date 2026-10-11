@@ -66,10 +66,12 @@ class Privilege(ctypes.Structure):
 
 def token_data(token, kind):
     returned = w.DWORD()
-    A.GetTokenInformation(token, kind, None, 0, ctypes.byref(returned))
-    require(0 < returned.value <= 65536, 'unexpected token information size')
+    initial = A.GetTokenInformation(token, kind, None, 0, ctypes.byref(returned))
+    require(not initial and ctypes.get_last_error() == 122 and 4 <= returned.value <= 65536,
+            'unexpected token information size')
     data = ctypes.create_string_buffer(returned.value)
     require(A.GetTokenInformation(token, kind, data, len(data), ctypes.byref(returned)), 'token information unavailable')
+    require(4 <= returned.value <= len(data), 'token information returned invalid bounds')
     return data
 
 
@@ -92,12 +94,8 @@ def token_controls():
             value, returned = w.DWORD(), w.DWORD()
             require(A.GetTokenInformation(token, kind, ctypes.byref(value), 4, ctypes.byref(returned)),
                     'cannot query ' + name)
-            require(value.value == 1, 'worker is not ' + name)
-        returned = w.DWORD()
-        A.GetTokenInformation(token, 30, None, 0, ctypes.byref(returned))
-        data = ctypes.create_string_buffer(returned.value)
-        require(A.GetTokenInformation(token, 30, data, len(data), ctypes.byref(returned)),
-                'cannot query capabilities')
+            require(returned.value == 4 and value.value == 1, 'worker is not ' + name)
+        data = token_data(token, 30)
         require(w.DWORD.from_buffer(data).value == 0, 'worker has unexpected capabilities')
         A.LookupPrivilegeValueW.argtypes = [w.LPCWSTR, w.LPCWSTR, ctypes.POINTER(Luid)]
         traverse = Luid()
@@ -330,22 +328,78 @@ def run():
     U = ctypes.WinDLL('userenv', use_last_error=True)
     U.GetAppContainerRegistryLocation.argtypes = [w.DWORD, ctypes.POINTER(P)]
     A.RegCloseKey.argtypes = [P]
-    profile_key = P()
-    try:
-        profile_result = U.GetAppContainerRegistryLocation(0x20019, ctypes.byref(profile_key))
-        require(profile_result == 0 and profile_key, 'actual sealed profile registry read was not permitted')
-    finally:
-        if profile_key:
-            require(A.RegCloseKey(profile_key) == 0, 'profile registry read handle did not close')
-    for access in (2, 4, 0x10000, 0x40000, 0x80000, 0x20006):
-        profile_key = P()
+    N = ctypes.WinDLL('ntdll')
+    N.NtQueryObject.argtypes = [P, ctypes.c_int, P, w.ULONG, ctypes.POINTER(w.ULONG)]
+    N.NtQueryKey.argtypes = [P, ctypes.c_int, P, w.ULONG, ctypes.POINTER(w.ULONG)]
+    A.RegOpenKeyExW.argtypes = [P, w.LPCWSTR, w.DWORD, w.DWORD, ctypes.POINTER(P)]
+
+    def readonly_key(key, requested):
+        require(key and 0 < key.value < 0x7FFFFFFFFFFFFFFF and not 0x80000000 <= key.value <= 0x800000FF,
+                'profile returned a pseudo/predefined handle')
+        info, length = ctypes.create_string_buffer(56), w.ULONG()
+        require(N.NtQueryObject(key, 0, info, len(info), ctypes.byref(length)) == 0 and length.value == 56,
+                'profile granted-access query was not exact')
+        granted = w.DWORD.from_buffer(info, 4).value
+        require(not granted & ~0x20019 and granted & requested == requested,
+                'profile handle exposes authority beyond requested read-only access')
+        name = ctypes.create_string_buffer(4096)
+        require(N.NtQueryKey(key, 3, name, len(name), ctypes.byref(length)) == 0 and 4 <= length.value <= len(name),
+                'profile key identity query failed')
+        count = w.DWORD.from_buffer(name).value
+        require(0 < count <= length.value - 4 and count % 2 == 0, 'profile key identity length is invalid')
+        identity = name.raw[4:4 + count].decode('utf-16-le', errors='strict')
+        require('\x00' not in identity, 'profile key identity contains a terminator')
+        return identity.casefold()
+
+    def registry_token_check():
+        token = P()
+        require(A.OpenProcessToken(K.GetCurrentProcess(), 8, ctypes.byref(token)), 'cannot inspect registry worker token')
         try:
-            profile_result = U.GetAppContainerRegistryLocation(access, ctypes.byref(profile_key))
-            require(profile_result & 0xFFFFFFFF == 0x80070005 and not profile_key,
-                    'profile registry mutation/authority failed without an explicit access denial')
+            for kind in (29, 46):
+                data = token_data(token, kind)
+                require(len(data) == 4 and w.DWORD.from_buffer(data).value == 1, 'registry worker lost LPAC context')
+            data = token_data(token, 30)
+            require(w.DWORD.from_buffer(data).value == 0, 'registry worker acquired a capability')
         finally:
-            if profile_key:
-                require(A.RegCloseKey(profile_key) == 0, 'profile registry negative-control handle did not close')
+            require(K.CloseHandle(token), 'registry worker context handle did not close')
+
+    locator = P()
+    try:
+        registry_token_check()
+        profile_result = U.GetAppContainerRegistryLocation(0x20019, ctypes.byref(locator))
+        registry_token_check()
+        require(profile_result == 0 and locator, 'actual sealed profile registry read was not permitted')
+        identity = readonly_key(locator, 0x20019)
+        for access in (0x20019, 2, 4, 0x10000, 0x40000, 0x80000, 0x20006):
+            fresh = P()
+            try:
+                result = A.RegOpenKeyExW(locator, '', 0, access, ctypes.byref(fresh))
+                require(not fresh or fresh.value != locator.value, 'fresh profile access returned a locator alias')
+                if fresh:
+                    require(readonly_key(fresh, access) == identity, 'fresh profile key identity differs')
+                if access == 0x20019:
+                    require(result == 0 and fresh, 'fresh profile read was not permitted')
+                else:
+                    require(result == 5 and not fresh, 'fresh profile mutation was not kernel-denied')
+            finally:
+                if fresh and fresh.value != locator.value:
+                    require(A.RegCloseKey(fresh) == 0, 'fresh profile handle did not close')
+        for access in (2, 4, 0x10000, 0x40000, 0x80000, 0x20006):
+            profile_key = P()
+            try:
+                registry_token_check()
+                result = U.GetAppContainerRegistryLocation(access, ctypes.byref(profile_key))
+                registry_token_check()
+                if profile_key:
+                    require(readonly_key(profile_key, access) == identity, 'profile API returned a different owned key')
+                require(result & 0xFFFFFFFF == 0x80070005 and not profile_key,
+                        'profile API mutation was not explicitly denied')
+            finally:
+                if profile_key and profile_key.value != locator.value:
+                    require(A.RegCloseKey(profile_key) == 0, 'profile API negative handle did not close')
+    finally:
+        if locator:
+            require(A.RegCloseKey(locator) == 0, 'profile registry locator did not close')
     # Probe own HKCU creation: no registry capability means a kernel denial, not a writable profile.
     import winreg
     try:
