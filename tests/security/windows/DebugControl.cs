@@ -51,6 +51,19 @@ namespace ScientificSecurity
         {
             NativeFixture.CheckDebugControlValidation();
             Sandbox.CheckCleanupValidation();
+            bool requested = false; int attempts = 0;
+            RequestTermination(ref requested, () => attempts++);
+            RequestTermination(ref requested, () => attempts++);
+            Need(requested && attempts == 1, "fixed control repeated a successful termination request");
+            requested = false; attempts = 0;
+            var expectedFailure = new InvalidOperationException("fixed termination failure");
+            Exception observedFailure = null;
+            try { RequestTermination(ref requested, () => { attempts++; throw expectedFailure; }); }
+            catch (Exception failure) { observedFailure = failure; }
+            Need(!requested && attempts == 1 && Object.ReferenceEquals(observedFailure, expectedFailure),
+                "fixed control lost a failed termination request");
+            RequestTermination(ref requested, () => attempts++);
+            Need(requested && attempts == 2, "fixed control did not retry a failed termination request");
             var before = new byte[1232]; var after = (byte[])before.Clone();
             Put(after, 104, 0xFFFE0FF1); Put(after, 112, 0x401);
             string metadata = Status("fixture", before, after);
@@ -77,6 +90,12 @@ namespace ScientificSecurity
                 + " classic_cause=0x" + (U64(actual, 104) & 0xE00FUL).ToString("X16")
                 + " raw_debug_equal=" + DebugEqual(expected, actual)
                 + " control_integer_unchanged=" + DebugContext.UnchangedControlInteger(expected, actual);
+        }
+        static void RequestTermination(ref bool requested, Action terminate)
+        {
+            if (requested) return;
+            terminate();
+            requested = true;
         }
         static void Need(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
         static void Attempt(List<Exception> failures, Action action)
@@ -105,7 +124,7 @@ namespace ScientificSecurity
             Capture output, error;
             Native.ProcessInfo child;
             IntPtr job, attributes, environment, originalProcess, originalThread, processAlias, threadAlias;
-            bool duplicatesRetained;
+            bool duplicatesRetained, terminationRequested;
             Event current;
             bool pending, started, exited, live = true, changed, hit, creation, initialBreakpoint;
             byte[] saved;
@@ -296,7 +315,10 @@ namespace ScientificSecurity
             void Terminate()
             {
                 var failures = new List<Exception>();
-                Attempt(failures, () => { if (started && !exited) Native.Check(Native.TerminateProcess(child.process, 125), "terminate fixed debug control"); });
+                Attempt(failures, () => {
+                    if (started && !exited) RequestTermination(ref terminationRequested,
+                        () => Native.Check(Native.TerminateProcess(child.process, 125), "terminate fixed debug control"));
+                });
                 Attempt(failures, () => { if (job != IntPtr.Zero) Native.Check(Native.TerminateJobObject(job, 125), "terminate fixed debug-control job"); });
                 if (failures.Count != 0) throw new AggregateException("fixed control termination failed", failures);
             }
