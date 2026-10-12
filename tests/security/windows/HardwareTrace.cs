@@ -8,15 +8,13 @@ namespace ScientificSecurity
     public sealed class HardwareTrace
     {
         const int ContextSize = 1232, ContextFlags = 48, Dr0 = 72, Dr6 = 104, Dr7 = 112;
-        const uint ReadFlags = 0x100013, WriteFlags = 0x100010;
+        const uint WriteFlags = 0x100010;
         const ulong CauseMask = 0xE00F, OccupiedControl = 0xFFFF20FF;
         [StructLayout(LayoutKind.Sequential)] struct MemoryInfo {
             internal IntPtr address, allocationBase;
             internal uint allocationProtect; internal ushort partition;
             internal UIntPtr size; internal uint state, protect, type;
         }
-        [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetThreadContext(IntPtr thread, IntPtr context);
-        [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetThreadContext(IntPtr thread, IntPtr context);
         [DllImport("kernel32.dll", SetLastError = true)] static extern UIntPtr VirtualQueryEx(IntPtr process, IntPtr address,
             out MemoryInfo info, UIntPtr bytes);
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool ReadProcessMemory(IntPtr process,
@@ -51,30 +49,13 @@ namespace ScientificSecurity
         }
         byte[] ReadContext()
         {
-            LiveStop(); IntPtr allocation = Marshal.AllocHGlobal(ContextSize + 15);
-            try {
-                IntPtr context = new IntPtr((allocation.ToInt64() + 15) & ~15L);
-                Marshal.Copy(new byte[ContextSize], 0, context, ContextSize);
-                Marshal.WriteInt32(context, ContextFlags, (int)ReadFlags);
-                Native.Check(GetThreadContext(thread, context), "read stopped creator context for hardware diagnostic");
-                byte[] bytes = new byte[ContextSize]; Marshal.Copy(context, bytes, 0, bytes.Length); return bytes;
-            }
-            finally {
-                try { for (int offset = 0; offset < ContextSize + 15; offset++) Marshal.WriteByte(allocation, offset, 0); }
-                finally { Marshal.FreeHGlobal(allocation); }
-            }
+            LiveStop(); return DebugContext.Read(thread);
         }
         static ulong U64(byte[] context, int offset) { return BitConverter.ToUInt64(context, offset); }
         static void Put(byte[] context, int offset, ulong value) { BitConverter.GetBytes(value).CopyTo(context, offset); }
         static bool UnchangedControlInteger(byte[] before, byte[] after)
         {
-            // Only requested CONTROL/INTEGER state; home slots, FP, segments and XSTATE are not claimed.
-            foreach (int offset in new [] { 56, 66 })
-                if (BitConverter.ToUInt16(before, offset) != BitConverter.ToUInt16(after, offset)) return false;
-            if (BitConverter.ToUInt32(before, 68) != BitConverter.ToUInt32(after, 68)) return false;
-            for (int offset = 120; offset <= 248; offset += 8)
-                if (U64(before, offset) != U64(after, offset)) return false;
-            return true;
+            return DebugContext.UnchangedControlInteger(before, after);
         }
         static bool FreeDebugState(byte[] context)
         {
@@ -125,24 +106,15 @@ namespace ScientificSecurity
             Put(desired, Dr6, restore ? U64(original, Dr6) : expectedStatus);
             Put(desired, Dr7, control);
             BitConverter.GetBytes(WriteFlags).CopyTo(desired, ContextFlags);
-            IntPtr allocation = Marshal.AllocHGlobal(ContextSize + 15);
-            try {
-                IntPtr context = new IntPtr((allocation.ToInt64() + 15) & ~15L);
-                Marshal.Copy(desired, 0, context, desired.Length);
-                modified = true; // A failing setter/readback may still have changed state: always attempt restoration.
-                Native.Check(SetThreadContext(thread, context), "set only stopped creator debug-register context");
-                byte[] after = ReadContext();
-                if (!UnchangedControlInteger(before, after))
-                    throw new InvalidOperationException("hardware context write altered CONTROL/INTEGER state");
-                for (int offset = Dr0; offset <= Dr7; offset += 8)
-                    if (U64(desired, offset) != U64(after, offset))
-                        throw new InvalidOperationException("hardware debug-register readback differs from exact requested state");
-                if (restore) modified = false;
-            }
-            finally {
-                try { for (int offset = 0; offset < ContextSize + 15; offset++) Marshal.WriteByte(allocation, offset, 0); }
-                finally { Marshal.FreeHGlobal(allocation); }
-            }
+            modified = true; // A failing setter/readback may still have changed state: always attempt restoration.
+            DebugContext.Write(thread, desired);
+            byte[] after = ReadContext();
+            if (!UnchangedControlInteger(before, after))
+                throw new InvalidOperationException("hardware context write altered CONTROL/INTEGER state");
+            for (int offset = Dr0; offset <= Dr7; offset += 8)
+                if (U64(desired, offset) != U64(after, offset))
+                    throw new InvalidOperationException("hardware debug-register readback differs from exact requested state");
+            if (restore) modified = false;
         }
         internal void Load(IntPtr file, IntPtr imageBase)
         {

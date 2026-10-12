@@ -133,7 +133,7 @@ namespace ScientificSecurity
                 Thread.Sleep(20);
             }
         }
-        static string Quote(string value)
+        internal static string Quote(string value)
         {
             var text = new StringBuilder("\""); int slashes = 0;
             foreach (char c in value) {

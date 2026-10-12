@@ -25,6 +25,19 @@ namespace ScientificSecurity
             Plain(output, true); Plain(obj, true);
             RequireNoManifest(output);
             if (File.Exists(output) || File.Exists(obj)) throw new InvalidOperationException("native fixture output must be new owned state");
+            var tools = CompilerTools(state);
+            string cl = tools.Item1, link = tools.Item2, kernel32 = tools.Item3;
+            // /GS- is confined to this bufferless nonproduction fixture; never target/controller code.
+            TrustedSetup.Run(cl, new [] { "/nologo", "/c", "/TC", "/GS-", "/Zl", "/Fo" + obj, source }, state);
+            Plain(obj);
+            TrustedSetup.Run(link, new [] { "/nologo", "/NODEFAULTLIB", "/MANIFEST:NO", "/ENTRY:StartupEntry", "/SUBSYSTEM:CONSOLE",
+                "/MACHINE:X64", "/OUT:" + output, obj, kernel32 }, state);
+            Validate(output);
+            Console.Out.WriteLine("WINDOWS_NATIVE_FIXTURE pe_verified=true architecture=x64 imports=kernel32.ExitProcess crt=false clr=false manifest=false");
+            Console.Out.Flush();
+        }
+        static Tuple<string, string, string> CompilerTools(string state)
+        {
             string vswhere = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
                 "Microsoft Visual Studio", "Installer", "vswhere.exe");
             Plain(vswhere);
@@ -64,14 +77,60 @@ namespace ScientificSecurity
             }
             if (candidates.Count == 0) throw new InvalidOperationException("preinstalled x64 Kernel32 import library is unavailable");
             string kernel32 = candidates.OrderByDescending(value => value.Item1).First().Item2;
-            // /GS- is confined to this bufferless nonproduction fixture; never target/controller code.
-            TrustedSetup.Run(cl, new [] { "/nologo", "/c", "/TC", "/GS-", "/Zl", "/Fo" + obj, source }, state);
+            return Tuple.Create(cl, link, kernel32);
+        }
+        public static void BuildDebugControlFixed(string runtime, string state)
+        {
+            Plain(runtime); Plain(state);
+            string stateName = Path.GetFileName(Path.TrimEndingDirectorySeparator(state));
+            string run = stateName.StartsWith("security-windows-", StringComparison.Ordinal) ? stateName.Substring("security-windows-".Length) : "";
+            if (run.Length != 32 || !run.All(c => (c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) ||
+                !String.Equals(Path.GetFullPath(runtime), Path.Combine(Path.GetFullPath(state), "python"), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("fixed debug-control builder requires the owned prepared runtime");
+            CheckDebugControlValidation();
+            string source = Path.Combine(state, "debug-control-native.c");
+            string output = Path.Combine(runtime, "debug-control-native.exe"), obj = Path.Combine(state, "debug-control-native.obj");
+            string library = Path.Combine(state, "debug-control-native.lib"), exp = Path.Combine(state, "debug-control-native.exp");
+            foreach (string path in new [] { source, output, obj, library, exp }) {
+                Plain(path, true);
+                try { File.GetAttributes(path); }
+                catch (FileNotFoundException) { continue; }
+                catch (DirectoryNotFoundException) { continue; }
+                throw new InvalidOperationException("fixed debug-control build output collides with an existing entry");
+            }
+            RequireNoManifest(output);
+            const string fixedSource = "/* Fixed hosted debugger control; no CRT or input. */\n" +
+                "__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\n" +
+                "__declspec(noinline) unsigned long DebugControlSite(void) { return 0x53444331UL; }\n" +
+                "void __stdcall StartupEntry(void) { ExitProcess(DebugControlSite() == 0x53444331UL ? 0 : 1); }\n";
+            byte[] bytes = Encoding.UTF8.GetBytes(fixedSource);
+            using (var stream = new FileStream(source, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                stream.Write(bytes, 0, bytes.Length); stream.Flush(true);
+            }
+            Plain(source);
+            if (File.ReadAllText(source, Encoding.UTF8) != fixedSource)
+                throw new InvalidOperationException("fixed debug-control source readback differs");
+            var tools = CompilerTools(state);
+            TrustedSetup.Run(tools.Item1, new [] { "/nologo", "/c", "/TC", "/O2", "/Ob0", "/GS-", "/Zl", "/Fo" + obj, source }, state);
             Plain(obj);
-            TrustedSetup.Run(link, new [] { "/nologo", "/NODEFAULTLIB", "/MANIFEST:NO", "/ENTRY:StartupEntry", "/SUBSYSTEM:CONSOLE",
-                "/MACHINE:X64", "/OUT:" + output, obj, kernel32 }, state);
-            Validate(output);
-            Console.Out.WriteLine("WINDOWS_NATIVE_FIXTURE pe_verified=true architecture=x64 imports=kernel32.ExitProcess crt=false clr=false manifest=false");
-            Console.Out.Flush();
+            TrustedSetup.Run(tools.Item2, new [] { "/nologo", "/NODEFAULTLIB", "/MANIFEST:NO", "/ENTRY:StartupEntry",
+                "/EXPORT:DebugControlSite", "/IMPLIB:" + library, "/SUBSYSTEM:CONSOLE", "/MACHINE:X64", "/OUT:" + output, obj, tools.Item3 }, state);
+            DebugControlSiteFromFile(output);
+        }
+        internal static uint DebugControlSiteFromFile(string path)
+        {
+            Plain(path); RequireNoManifest(path);
+            byte[] bytes;
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                if (stream.Length < 256 || stream.Length > 1048576) throw new InvalidOperationException("fixed debug-control PE exceeds bounds");
+                bytes = new byte[(int)stream.Length]; int position = 0;
+                while (position < bytes.Length) {
+                    int read = stream.Read(bytes, position, bytes.Length - position);
+                    if (read == 0) throw new InvalidOperationException("fixed debug-control PE read was truncated");
+                    position += read;
+                }
+            }
+            var pe = new Pe(bytes); pe.Validate(); return pe.DebugControlSite();
         }
         internal static void Plain(string path, bool allowMissing = false)
         {
@@ -153,6 +212,41 @@ namespace ScientificSecurity
                 if (!rejected) throw new InvalidOperationException("native fixture malformed-PE regression was accepted");
             }
         }
+        public static void CheckDebugControlValidation()
+        {
+            byte[] bytes = DebugControlFixture();
+            var pe = new Pe(bytes); pe.Validate();
+            if (pe.DebugControlSite() != 0x1010) throw new InvalidOperationException("debug-control site fixture failed");
+            foreach (Action<byte[]> change in new Action<byte[]>[] {
+                b => b[0x210] = 0x90, b => b[0x215] = 0x90,
+                b => Put(b, 0x300 + 20, (uint)2), b => Put(b, 0x340, (uint)0x1100),
+                b => Put(b, 0x34C, UInt32.MaxValue), b => Put(b, 0x188 + 36, (uint)0x40000040)
+            }) {
+                byte[] bad = (byte[])bytes.Clone(); change(bad); bool rejected = false;
+                try { new Pe(bad).DebugControlSite(); } catch (InvalidOperationException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("malformed fixed debug-control PE was accepted");
+            }
+        }
+        static byte[] DebugControlFixture()
+        {
+            // Same single-section/import fixture used above, with exactly one fixed export/site.
+            byte[] b = new byte[1024]; Put(b, 0, (ushort)0x5A4D); Put(b, 0x3C, (uint)0x80);
+            Put(b, 0x80, (uint)0x4550); Put(b, 0x84, (ushort)0x8664); Put(b, 0x86, (ushort)1);
+            Put(b, 0x94, (ushort)240); Put(b, 0x96, (ushort)2); const int optional = 0x98, section = 0x188;
+            Put(b, optional, (ushort)0x20B); Put(b, optional + 16, (uint)0x1000); Put(b, optional + 60, (uint)0x200);
+            Put(b, optional + 68, (ushort)3); Put(b, optional + 108, (uint)16);
+            Put(b, optional + 112, (uint)0x1100); Put(b, optional + 116, (uint)0x100);
+            Put(b, optional + 120, (uint)0x1040); Put(b, optional + 124, (uint)40);
+            Put(b, section + 8, (uint)0x200); Put(b, section + 12, (uint)0x1000);
+            Put(b, section + 16, (uint)0x200); Put(b, section + 20, (uint)0x200); Put(b, section + 36, (uint)0x60000020);
+            Put(b, 0x240, (uint)0x1080); Put(b, 0x24C, (uint)0x10A0); Put(b, 0x250, (uint)0x1090);
+            Put(b, 0x280, (ulong)0x10C0); Put(b, 0x290, (ulong)0x10C0);
+            Encoding.ASCII.GetBytes("KERNEL32.dll\0").CopyTo(b, 0x2A0); Encoding.ASCII.GetBytes("ExitProcess\0").CopyTo(b, 0x2C2);
+            Put(b, 0x300 + 20, (uint)1); Put(b, 0x300 + 24, (uint)1); Put(b, 0x300 + 28, (uint)0x1140);
+            Put(b, 0x300 + 32, (uint)0x114C); Put(b, 0x300 + 36, (uint)0x1150); Put(b, 0x340, (uint)0x1010);
+            Put(b, 0x34C, (uint)0x1160); Encoding.ASCII.GetBytes("DebugControlSite\0").CopyTo(b, 0x360);
+            new byte[] { 0xB8, 0x31, 0x43, 0x44, 0x53, 0xC3 }.CopyTo(b, 0x210); return b;
+        }
         static void Put(byte[] bytes, int offset, ushort value) { BitConverter.GetBytes(value).CopyTo(bytes, offset); }
         static void Put(byte[] bytes, int offset, uint value) { BitConverter.GetBytes(value).CopyTo(bytes, offset); }
         static void Put(byte[] bytes, int offset, ulong value) { BitConverter.GetBytes(value).CopyTo(bytes, offset); }
@@ -162,6 +256,7 @@ namespace ScientificSecurity
             struct Section { internal uint address, virtualSize, raw, rawSize, flags; }
             readonly List<Section> sections = new List<Section>();
             uint headers;
+            bool validated;
             internal Pe(byte[] bytes) { data = bytes; }
             void Require(bool value) { if (!value) throw new InvalidOperationException("native fixture PE does not match the fixed no-CRT contract"); }
             void Range(ulong offset, ulong count) { Require(offset <= (ulong)data.Length && count <= (ulong)data.Length - offset); }
@@ -191,8 +286,28 @@ namespace ScientificSecurity
                 }
                 throw new InvalidOperationException("native fixture import name exceeds finite bound");
             }
+            internal uint DebugControlSite()
+            {
+                Validate(); uint nt = U32(0x3C); ulong optional = (ulong)nt + 24;
+                uint export = U32(optional + 112), exportBytes = U32(optional + 116);
+                Require(export != 0 && exportBytes >= 40 && (ulong)export + exportBytes <= UInt32.MaxValue);
+                int table = Map(export, exportBytes);
+                Require(U32((ulong)table + 20) == 1 && U32((ulong)table + 24) == 1);
+                uint function = U32((ulong)Map(U32((ulong)table + 28), 4));
+                uint name = U32((ulong)Map(U32((ulong)table + 32), 4));
+                Require(U16((ulong)Map(U32((ulong)table + 36), 2)) == 0 && Text(name) == "DebugControlSite");
+                Require(function < export || (ulong)function >= (ulong)export + exportBytes);
+                bool executable = false;
+                foreach (Section section in sections)
+                    executable |= (section.flags & 0x20000000) != 0 && function >= section.address &&
+                        (ulong)function + 6 <= (ulong)section.address + section.rawSize;
+                Require(executable); int code = Map(function, 6);
+                Require(data.Skip(code).Take(6).SequenceEqual(new byte[] { 0xB8, 0x31, 0x43, 0x44, 0x53, 0xC3 }));
+                return function;
+            }
             internal void Validate()
             {
+                if (validated) return;
                 Require(U16(0) == 0x5A4D); ulong pe = U32(0x3C);
                 Require(pe >= 64 && U32(pe) == 0x4550 && U16(pe + 4) == 0x8664);
                 ushort count = U16(pe + 6), optionalSize = U16(pe + 20);
@@ -231,6 +346,7 @@ namespace ScientificSecurity
                 Require(symbol > 0 && symbol <= UInt32.MaxValue && U64((uint)lookup + 8) == 0);
                 Require(Text(checked((uint)symbol + 2)) == "ExitProcess"); Map((uint)symbol, 2);
                 int address = Map(iat, 16); Require(U64((uint)address) == symbol && U64((uint)address + 8) == 0);
+                validated = true;
             }
         }
     }
