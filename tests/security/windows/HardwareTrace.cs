@@ -98,7 +98,20 @@ namespace ScientificSecurity
             }
             if (U64(context, Dr0 + 16) != U64(original, Dr0 + 16) || U64(context, Dr0 + 24) != U64(original, Dr0 + 24) ||
                 U64(context, Dr7) != control || (U64(context, Dr6) & ~3UL) != (expectedStatus & ~3UL))
-                throw new InvalidOperationException("hardware unowned control/status registers changed");
+                throw new InvalidOperationException("hardware unowned control/status registers changed "
+                    + OwnershipMetadata(context, original, expectedStatus, control));
+        }
+        static string OwnershipMetadata(byte[] current, byte[] baseline, ulong status, ulong control)
+        {
+            ulong dr6 = U64(current, Dr6), dr7 = U64(current, Dr7);
+            return "dr2_match=" + (U64(current, Dr0 + 16) == U64(baseline, Dr0 + 16))
+                + " dr3_match=" + (U64(current, Dr0 + 24) == U64(baseline, Dr0 + 24))
+                + " dr7_control_match=" + (dr7 == control)
+                + " dr6_unowned_match=" + ((dr6 & ~3UL) == (status & ~3UL))
+                + " dr6_cause_mask=0x" + (dr6 & CauseMask).ToString("X16")
+                + " dr6_other_bits_xor=0x" + ((dr6 ^ status) & ~CauseMask).ToString("X16")
+                + " dr6_expected=0x" + status.ToString("X16") + " dr6_actual=0x" + dr6.ToString("X16")
+                + " dr7_expected=0x" + control.ToString("X16") + " dr7_actual=0x" + dr7.ToString("X16");
         }
         void Apply(byte[] before, bool restore)
         {
@@ -281,6 +294,7 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
+            Sandbox.CheckCleanupValidation();
             byte[] before = new byte[ContextSize], after = (byte[])before.Clone();
             Put(before, Dr7, 0x400); Put(after, Dr7, 0x400);
             if (!CanRestore(true, true, true) || CanRestore(true, true, false) || CanRestore(true, false, true) ||
@@ -312,6 +326,17 @@ namespace ScientificSecurity
             bool rejected = false;
             try { ArmEventWindow(entries, active, slots); } catch (InvalidOperationException) { rejected = true; }
             if (!rejected) throw new InvalidOperationException("event slot duplicate window activation was accepted");
+            before = new byte[ContextSize]; after = (byte[])before.Clone();
+            const ulong privateAddress = 0x123456789ABCDEF0;
+            Put(after, Dr0 + 16, privateAddress); Put(after, Dr6, 0x1001); Put(after, Dr7, 0x401);
+            string metadata = OwnershipMetadata(after, before, 0, 0x400);
+            if (!metadata.Contains("dr2_match=False") || !metadata.Contains("dr3_match=True") ||
+                !metadata.Contains("dr6_unowned_match=False") || !metadata.Contains("dr7_control_match=False") ||
+                !metadata.Contains("dr6_cause_mask=0x0000000000000001") ||
+                !metadata.Contains("dr6_other_bits_xor=0x0000000000001000") ||
+                !metadata.Contains("dr6_expected=0x0000000000000000") || !metadata.Contains("dr6_actual=0x0000000000001001") ||
+                metadata.Length > 512 || metadata.Contains(privateAddress.ToString("X16")))
+                throw new InvalidOperationException("hardware ownership metadata omitted a predicate or disclosed an address");
         }
     }
 }

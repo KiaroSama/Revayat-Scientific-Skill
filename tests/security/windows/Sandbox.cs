@@ -60,6 +60,7 @@ namespace ScientificSecurity
             var handles = new List<IntPtr>();
             Native.ProcessInfo process = new Native.ProcessInfo();
             bool started = false, resumed = false, wallExpired = false;
+            Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
             LoaderTrace loader = loaderProbe ? new LoaderTrace(nativeFixture) : null;
             try
@@ -186,49 +187,72 @@ namespace ScientificSecurity
                 if (wallProbe) throw new InvalidOperationException("wall negative control exited before owned deadline");
                 return text;
             }
-            catch (TimeoutException)
+            catch (TimeoutException failure)
             {
-                if (!wallProbe || !wallExpired || !resumed) throw;
+                if (!wallProbe || !wallExpired || !resumed) { primaryFailure = failure; throw; }
                 return "WALL_TREE_TERMINATED";
             }
+            catch (Exception failure) { primaryFailure = failure; throw; }
             finally
             {
-                try
-                {
-                    try {
-                        if (started && loader != null) {
-                            Native.ProcessInfo retained = process;
-                            loader.SuppressOriginalAliases(ref process);
-                            loader.TerminateAndDrain(job, retained);
-                        }
-                        else if (started && !resumed) Native.Check(Native.TerminateProcess(process.process, 125), "terminate suspended child");
+                var cleanupFailures = new List<Exception>();
+                AttemptCleanup(cleanupFailures, () => {
+                    if (started && loader != null) {
+                        Native.ProcessInfo retained = process;
+                        loader.SuppressOriginalAliases(ref process);
+                        loader.TerminateAndDrain(job, retained);
                     }
-                    finally {
-                        if (job != IntPtr.Zero) ReapJob(job);
-                        if (started && loader != null) loader.ConfirmDestroyed();
+                    else if (started && !resumed) Native.Check(Native.TerminateProcess(process.process, 125), "terminate suspended child");
+                });
+                bool reaped = false;
+                AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) ReapJob(job); reaped = true; });
+                if (reaped && started && loader != null)
+                    AttemptCleanup(cleanupFailures, () => loader.ConfirmDestroyed());
+                AttemptCleanup(cleanupFailures, () => { if (outputCapture != null) outputCapture.Dispose(); });
+                AttemptCleanup(cleanupFailures, () => { if (errorCapture != null) errorCapture.Dispose(); });
+                AttemptCleanup(cleanupFailures, () => { if (process.thread != IntPtr.Zero) Native.Check(Native.CloseHandle(process.thread), "close owned child thread"); });
+                AttemptCleanup(cleanupFailures, () => { if (process.process != IntPtr.Zero) Native.Check(Native.CloseHandle(process.process), "close owned child process"); });
+                foreach (IntPtr handle in handles)
+                    AttemptCleanup(cleanupFailures, () => Native.Check(Native.CloseHandle(handle), "close owned standard handle"));
+                AttemptCleanup(cleanupFailures, () => {
+                    if (attrs != IntPtr.Zero) {
+                        try { Native.DeleteProcThreadAttributeList(attrs); }
+                        finally { Marshal.FreeHGlobal(attrs); }
                     }
-                }
-                finally
-                {
-                    try { if (outputCapture != null) outputCapture.Dispose(); }
-                    finally
-                    {
-                        try { if (errorCapture != null) errorCapture.Dispose(); }
-                        finally
-                        {
-                            if (process.thread != IntPtr.Zero) Native.CloseHandle(process.thread);
-                            if (process.process != IntPtr.Zero) Native.CloseHandle(process.process);
-                            foreach (IntPtr handle in handles) Native.CloseHandle(handle);
-                            if (attrs != IntPtr.Zero) { Native.DeleteProcThreadAttributeList(attrs); Marshal.FreeHGlobal(attrs); }
-                            foreach (IntPtr value in values) Marshal.FreeHGlobal(value);
-                            if (env != IntPtr.Zero) Marshal.FreeHGlobal(env);
-                            if (processDescriptor != IntPtr.Zero) Native.LocalFree(processDescriptor);
-                            if (sid != IntPtr.Zero) Native.FreeSid(sid);
-                            if (job != IntPtr.Zero) Native.CloseHandle(job);
-                        }
-                    }
-                }
+                });
+                foreach (IntPtr value in values) AttemptCleanup(cleanupFailures, () => Marshal.FreeHGlobal(value));
+                AttemptCleanup(cleanupFailures, () => { if (env != IntPtr.Zero) Marshal.FreeHGlobal(env); });
+                AttemptCleanup(cleanupFailures, () => { if (processDescriptor != IntPtr.Zero && Native.LocalFree(processDescriptor) != IntPtr.Zero)
+                    throw new InvalidOperationException("owned process descriptor cleanup failed"); });
+                AttemptCleanup(cleanupFailures, () => { if (sid != IntPtr.Zero && Native.FreeSid(sid) != IntPtr.Zero)
+                    throw new InvalidOperationException("owned package SID cleanup failed"); });
+                AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) Native.Check(Native.CloseHandle(job), "close owned job"); });
+                if (cleanupFailures.Count != 0) throw CleanupFailure(primaryFailure, cleanupFailures);
             }
+        }
+        static void AttemptCleanup(List<Exception> failures, Action action)
+        {
+            try { action(); } catch (Exception failure) { failures.Add(failure); }
+        }
+        static AggregateException CleanupFailure(Exception primary, List<Exception> cleanup)
+        {
+            var failures = new List<Exception>();
+            if (primary != null) failures.Add(primary);
+            failures.AddRange(cleanup);
+            return new AggregateException("owned Windows operation/cleanup failed", failures);
+        }
+        internal static void CheckCleanupValidation()
+        {
+            var primary = new InvalidOperationException("fixed primary fixture");
+            var cleanup = new List<Exception>(); int attempts = 0;
+            AttemptCleanup(cleanup, () => { attempts++; throw new InvalidOperationException("fixed cleanup one"); });
+            AttemptCleanup(cleanup, () => { attempts++; throw new InvalidOperationException("fixed cleanup two"); });
+            AttemptCleanup(cleanup, () => attempts++);
+            AggregateException combined = CleanupFailure(primary, cleanup);
+            if (attempts != 3 || combined.InnerExceptions.Count != 3 || !Object.ReferenceEquals(combined.InnerExceptions[0], primary) ||
+                !Object.ReferenceEquals(combined.InnerExceptions[1], cleanup[0]) ||
+                !Object.ReferenceEquals(combined.InnerExceptions[2], cleanup[1]) || CleanupFailure(null, cleanup).InnerExceptions.Count != 2)
+                throw new InvalidOperationException("owned cleanup did not preserve primary/order or attempt every phase");
         }
         static void ReapJob(IntPtr job)
         {

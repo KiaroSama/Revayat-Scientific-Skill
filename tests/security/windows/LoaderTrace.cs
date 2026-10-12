@@ -268,8 +268,13 @@ namespace ScientificSecurity
         internal void ConfirmDestroyed()
         {
             // Caller has reaped the Job to zero; the independent duplicate must already be signaled.
-            if (!exited || lifetimeProcess == IntPtr.Zero || Native.WaitForSingleObject(lifetimeProcess, 0) != 0)
-                throw new InvalidOperationException("hardware destruction requires continued EXIT and a signaled retained process");
+            bool present = lifetimeProcess != IntPtr.Zero;
+            uint wait = exited && present ? Native.WaitForSingleObject(lifetimeProcess, 0) : UInt32.MaxValue;
+            int error = exited && present && wait == UInt32.MaxValue ? Marshal.GetLastWin32Error() : 0;
+            if (!exited || !present || wait != 0)
+                throw new InvalidOperationException("hardware destruction requires continued EXIT and a signaled retained process"
+                    + " exited=" + exited + " handle_present=" + present + " wait_result=0x" + wait.ToString("X8")
+                    + " native_error=" + error);
             if (hardware != null) hardware.Destroyed();
         }
         void FinishCleanupEvent(System.Collections.Generic.List<Exception> failures)
