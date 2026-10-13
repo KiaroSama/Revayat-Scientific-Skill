@@ -24,7 +24,6 @@ namespace ScientificSecurity
         readonly Action<string> emit;
         readonly Dictionary<string, KernelImage> images = new Dictionary<string, KernelImage>(StringComparer.Ordinal);
         readonly ulong[] entries = new ulong[2], addresses = new ulong[2], returns = new ulong[2], stacks = new ulong[2];
-        readonly uint[] arguments = new uint[2];
         readonly bool[] enabled = new bool[2], returning = new bool[2];
         byte[] original;
         readonly ulong[] entryStatuses = new ulong[2];
@@ -122,19 +121,19 @@ namespace ScientificSecurity
             if (images.ContainsKey(image.Name)) throw new InvalidOperationException("hardware system image was loaded twice");
             images.Add(image.Name, image);
             int slot = image.Name == "kernelbase.dll" ? 0 : 1;
-            uint rva = slot == 0 ? image.Entry : image.CsrClientConnectToServer();
+            uint rva = slot == 0 ? image.Entry : image.RtlUnicodeStringToAnsiString();
             if (rva == 0) throw new InvalidOperationException("hardware fixed system routine has no entry point");
             ulong address = image.Address(rva); RequireExecutable(address, image);
             Save(); byte[] before = ReadContext(); RequireOwned(before);
             if (address == addresses[1 - slot] && enabled[1 - slot])
                 throw new InvalidOperationException("hardware entry slots alias");
             entries[slot] = address;
-            // The one fixed CSR connection export is armed only inside verified PROCESS_ATTACH.
+            // The one fixed conversion export is armed only inside verified PROCESS_ATTACH.
             addresses[slot] = slot == 0 ? address : 0; enabled[slot] = slot == 0;
             Apply(before, false);
             emit("phase=hardware-arm routine=" + Routine(slot) + " enabled=" + enabled[slot] + " control_integer_unchanged=True");
         }
-        static string Routine(int slot) { return slot == 0 ? "KernelBaseEntry" : "CsrClientConnectToServer"; }
+        static string Routine(int slot) { return slot == 0 ? "KernelBaseEntry" : "RtlUnicodeStringToAnsiString"; }
         MemoryInfo Region(ulong address, uint bytes)
         {
             MemoryInfo info; uint size = (uint)Marshal.SizeOf(typeof(MemoryInfo));
@@ -197,27 +196,27 @@ namespace ScientificSecurity
                 throw new InvalidOperationException("hardware exception has an unowned, foreign or unsupported trap status");
             ulong stack = U64(before, 152);
             if (!returning[slot]) {
-                uint argument = unchecked((uint)U64(before, 136));
-                if (slot == 1 && !ConnectionBoundary(slot, stacks[0] != 0 && returning[0], returning[1]))
-                    throw new InvalidOperationException("hardware connection entry is outside the selected KernelBase attach window");
-                if (slot == 0 && argument != 1)
+                if (slot == 1 && !InitializerApiBoundary(slot, stacks[0] != 0 && returning[0], returning[1]))
+                    throw new InvalidOperationException("hardware initializer API entry is outside the selected KernelBase attach window");
+                // RDX is a pointer for the selected API: only read it for the DLL reason in slot0.
+                if (slot == 0 && unchecked((uint)U64(before, 136)) != 1)
                     throw new InvalidOperationException("hardware KernelBase observation is not PROCESS_ATTACH");
                 ulong target = ReturnAddress(stack);
                 if (target == entries[slot] || (enabled[1 - slot] && target == addresses[1 - slot]))
                     throw new InvalidOperationException("hardware return breakpoint aliases an active entry/return slot");
-                stacks[slot] = stack; returns[slot] = target; arguments[slot] = argument; entryStatuses[slot] = eventStatus;
+                stacks[slot] = stack; returns[slot] = target; entryStatuses[slot] = eventStatus;
                 // Entry stays disarmed until this outermost return; recursive calls are intentionally unobserved.
                 addresses[slot] = target; returning[slot] = true;
-                if (slot == 0) ArmConnectionWindow(entries, addresses, enabled);
+                if (slot == 0) ArmInitializerApiWindow(entries, addresses, enabled);
                 Apply(before, false);
-                emit("phase=hardware-entry routine=" + Routine(slot) + (slot == 0 ? " reason=PROCESS_ATTACH" :
-                    " " + ConnectionEntry(argument)) + " " + DebugContext.TrapQualifiers(eventStatus)
+                emit("phase=hardware-entry routine=" + Routine(slot) + (slot == 0 ? " reason=PROCESS_ATTACH" : "")
+                    + " " + DebugContext.TrapQualifiers(eventStatus)
                     + " outermost_only=True control_integer_unchanged=True");
             }
             else {
-                // A pending outermost connection cannot be skipped by an initializer return/unwind.
-                if (!ConnectionBoundary(slot, stacks[0] != 0 && returning[0], returning[1]))
-                    throw new InvalidOperationException("hardware connection/initializer return nesting is inconclusive");
+                // A pending outermost initializer API cannot be skipped by an initializer return/unwind.
+                if (!InitializerApiBoundary(slot, stacks[0] != 0 && returning[0], returning[1]))
+                    throw new InvalidOperationException("hardware initializer API/initializer return nesting is inconclusive");
                 if (!Pair(stack, stacks[slot], U64(before, 248), returns[slot]))
                     throw new InvalidOperationException("hardware outermost return stack/address pairing is inconclusive");
                 uint result = unchecked((uint)U64(before, 120));
@@ -225,7 +224,7 @@ namespace ScientificSecurity
                 CompleteReturn(slot, entries, addresses, returning, enabled);
                 Apply(before, false);
                 emit("phase=hardware-return routine=" + Routine(slot) + (slot == 0 ? " attach_succeeded=" + (result != 0) :
-                    " " + ConnectionReturn(arguments[slot], result)) + " entry_raw_dr6=0x" + entryStatuses[slot].ToString("X16")
+                    " " + InitializerApiReturn(result)) + " entry_raw_dr6=0x" + entryStatuses[slot].ToString("X16")
                     + " entry_rtm_bit_set=" + ((entryStatuses[slot] & 0x10000) != 0)
                     + " entry_bld_bit_set=" + ((entryStatuses[slot] & 0x800) != 0)
                     + " " + DebugContext.TrapQualifiers(eventStatus) + " pair_verified=True control_integer_unchanged=True");
@@ -238,16 +237,14 @@ namespace ScientificSecurity
             activeAddresses[slot] = slot == 0 ? 0 : routineEntries[slot]; pendingReturns[slot] = false;
             if (slot == 0) { activeAddresses[1] = 0; activeSlots[0] = activeSlots[1] = false; }
         }
-        static bool ConnectionBoundary(int slot, bool initializerActive, bool connectionPending)
-        { return slot == 0 ? !connectionPending : slot == 1 && initializerActive; }
-        static string ConnectionEntry(uint server)
-        { return "server_id=0x" + server.ToString("X8"); }
-        static string ConnectionReturn(uint server, uint status)
-        { return ConnectionEntry(server) + " native_status=0x" + status.ToString("X8"); }
-        static void ArmConnectionWindow(ulong[] routineEntries, ulong[] activeAddresses, bool[] activeSlots)
+        static bool InitializerApiBoundary(int slot, bool initializerActive, bool apiReturnPending)
+        { return slot == 0 ? !apiReturnPending : slot == 1 && initializerActive; }
+        static string InitializerApiReturn(uint status)
+        { return "native_status=0x" + status.ToString("X8"); }
+        static void ArmInitializerApiWindow(ulong[] routineEntries, ulong[] activeAddresses, bool[] activeSlots)
         {
             if (routineEntries[1] == 0 || routineEntries[1] == activeAddresses[0] || activeSlots[1])
-                throw new InvalidOperationException("hardware attach window lacks a distinct inactive fixed connection entry");
+                throw new InvalidOperationException("hardware attach window lacks a distinct inactive fixed initializer API entry");
             activeAddresses[1] = routineEntries[1]; activeSlots[1] = true;
         }
         static bool CanRestore(bool changed, bool alive, bool pending)
@@ -316,30 +313,34 @@ namespace ScientificSecurity
             ulong[] entries = { 100, 200 }, active = { 108, 0 };
             bool[] slots = { true, false };
             if (slots[1] || active[1] != 0) throw new InvalidOperationException("event slot was armed before attach window");
-            ArmConnectionWindow(entries, active, slots);
+            ArmInitializerApiWindow(entries, active, slots);
             if (!slots[1] || active[1] != 200) throw new InvalidOperationException("event slot did not arm inside attach window");
             bool rejected = false;
-            try { ArmConnectionWindow(entries, active, slots); } catch (InvalidOperationException) { rejected = true; }
-            if (!rejected) throw new InvalidOperationException("connection slot duplicate window activation was accepted");
-            // Old per-slot pairing alone accepted a KB return while the connection still awaited return.
+            try { ArmInitializerApiWindow(entries, active, slots); } catch (InvalidOperationException) { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("initializer API slot duplicate window activation was accepted");
+            // Old per-slot pairing alone accepted a KB return while the initializer API still awaited return.
             bool oldInitializerPair = Pair(108, 100, 200, 200);
-            if (!oldInitializerPair || ConnectionBoundary(0, true, true) || ConnectionBoundary(1, false, true) ||
-                ConnectionBoundary(1, false, false) || !ConnectionBoundary(1, true, false) ||
-                !ConnectionBoundary(1, true, true) || !ConnectionBoundary(0, true, false))
-                throw new InvalidOperationException("connection/initializer nesting boundary was accepted incorrectly");
+            if (!oldInitializerPair || InitializerApiBoundary(0, true, true) || InitializerApiBoundary(1, false, true) ||
+                InitializerApiBoundary(1, false, false) || !InitializerApiBoundary(1, true, false) ||
+                !InitializerApiBoundary(1, true, true) || !InitializerApiBoundary(0, true, false))
+                throw new InvalidOperationException("initializer API/initializer nesting boundary was accepted incorrectly");
             bool[] pendingReturns = { true, true };
             CompleteReturn(1, entries, active, pendingReturns, slots);
             if (pendingReturns[1] || !pendingReturns[0] || active[1] != entries[1] ||
-                !ConnectionBoundary(0, pendingReturns[0], pendingReturns[1]))
-                throw new InvalidOperationException("completed connection did not permit its enclosing initializer return");
+                !InitializerApiBoundary(0, pendingReturns[0], pendingReturns[1]))
+                throw new InvalidOperationException("completed initializer API did not permit its enclosing initializer return");
             CompleteReturn(0, entries, active, pendingReturns, slots);
             if (pendingReturns[0] || slots[0] || slots[1] || active[0] != 0 || active[1] != 0)
-                throw new InvalidOperationException("completed initializer retained an active connection observation");
-            const uint server = 0xFFFFFFFF, failure = 0xC0000022;
-            string entry = ConnectionEntry(server), result = ConnectionReturn(server, failure);
-            if (entry != "server_id=0xFFFFFFFF" || result != "server_id=0xFFFFFFFF native_status=0xC0000022" ||
-                result.Contains("True") || result.Contains("False") || entry.Length > 32 || result.Length > 64)
-                throw new InvalidOperationException("connection scalar evidence lost bounded raw uint semantics");
+                throw new InvalidOperationException("completed initializer retained an active initializer API observation");
+            uint[] statusValues = { 0, 0xC0000022, UInt32.MaxValue };
+            string[] expectedEvidence = { "native_status=0x00000000", "native_status=0xC0000022", "native_status=0xFFFFFFFF" };
+            for (int index = 0; index < statusValues.Length; index++) {
+                string result = InitializerApiReturn(statusValues[index]);
+                if (result != expectedEvidence[index] || result.Length != 24 ||
+                    result.Contains("server_id") || result.Contains("desired_access") || result.Contains("pointer") ||
+                    result.Contains("True") || result.Contains("False"))
+                    throw new InvalidOperationException("initializer API evidence lost bounded status-only semantics");
+            }
             before = new byte[ContextSize]; after = (byte[])before.Clone();
             const ulong privateAddress = 0x123456789ABCDEF0;
             Put(after, Dr0 + 16, privateAddress); Put(after, Dr6, 0x1001); Put(after, Dr7, 0x401);
