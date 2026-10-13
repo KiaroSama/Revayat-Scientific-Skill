@@ -7,7 +7,7 @@ using System.Text;
 namespace ScientificSecurity
 {
     // Reads only the exact OS load-event image handle; no symbol server or remote image parsing.
-    public sealed class KernelImage
+    public sealed partial class KernelImage
     {
         struct Section { internal uint rva, size, raw, rawSize, flags; }
         readonly byte[] data;
@@ -140,6 +140,7 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
+            CheckIdentityValidation();
             byte[] bytes = Fixture(); var image = new KernelImage(bytes, 0x10000000, "ntdll.dll");
             if (image.Entry != 0x1000 || image.RtlNtStatusToDosError() != 0x1000 || !image.ContainsExecutable(0x10001000))
                 throw new InvalidOperationException("hardware image positive parser fixture failed");
