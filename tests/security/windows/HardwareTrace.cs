@@ -27,6 +27,7 @@ namespace ScientificSecurity
         readonly bool[] enabled = new bool[2], returning = new bool[2];
         byte[] original;
         readonly ulong[] entryStatuses = new ulong[2];
+        uint selectedInput;
         bool creatorAlive = true, stopped, modified, completed;
 
         internal HardwareTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId, Action<string> output)
@@ -121,19 +122,19 @@ namespace ScientificSecurity
             if (images.ContainsKey(image.Name)) throw new InvalidOperationException("hardware system image was loaded twice");
             images.Add(image.Name, image);
             int slot = image.Name == "kernelbase.dll" ? 0 : 1;
-            uint rva = slot == 0 ? image.Entry : image.RtlUnicodeStringToAnsiString();
+            uint rva = slot == 0 ? image.Entry : image.RtlNtStatusToDosError();
             if (rva == 0) throw new InvalidOperationException("hardware fixed system routine has no entry point");
             ulong address = image.Address(rva); RequireExecutable(address, image);
             Save(); byte[] before = ReadContext(); RequireOwned(before);
             if (address == addresses[1 - slot] && enabled[1 - slot])
                 throw new InvalidOperationException("hardware entry slots alias");
             entries[slot] = address;
-            // The one fixed conversion export is armed only inside verified PROCESS_ATTACH.
+            // The one fixed exploratory mapper export is armed only inside verified PROCESS_ATTACH.
             addresses[slot] = slot == 0 ? address : 0; enabled[slot] = slot == 0;
             Apply(before, false);
             emit("phase=hardware-arm routine=" + Routine(slot) + " enabled=" + enabled[slot] + " control_integer_unchanged=True");
         }
-        static string Routine(int slot) { return slot == 0 ? "KernelBaseEntry" : "RtlUnicodeStringToAnsiString"; }
+        static string Routine(int slot) { return slot == 0 ? "KernelBaseEntry" : "RtlNtStatusToDosError"; }
         MemoryInfo Region(ulong address, uint bytes)
         {
             MemoryInfo info; uint size = (uint)Marshal.SizeOf(typeof(MemoryInfo));
@@ -198,9 +199,10 @@ namespace ScientificSecurity
             if (!returning[slot]) {
                 if (slot == 1 && !InitializerApiBoundary(slot, stacks[0] != 0 && returning[0], returning[1]))
                     throw new InvalidOperationException("hardware initializer API entry is outside the selected KernelBase attach window");
-                // RDX is a pointer for the selected API: only read it for the DLL reason in slot0.
+                // DLL reason uses RDX; mapper input is the documented NTSTATUS scalar in RCX.
                 if (slot == 0 && unchecked((uint)U64(before, 136)) != 1)
                     throw new InvalidOperationException("hardware KernelBase observation is not PROCESS_ATTACH");
+                if (slot == 1) selectedInput = MapperInput(before);
                 ulong target = ReturnAddress(stack);
                 if (target == entries[slot] || (enabled[1 - slot] && target == addresses[1 - slot]))
                     throw new InvalidOperationException("hardware return breakpoint aliases an active entry/return slot");
@@ -209,7 +211,7 @@ namespace ScientificSecurity
                 addresses[slot] = target; returning[slot] = true;
                 if (slot == 0) ArmInitializerApiWindow(entries, addresses, enabled);
                 Apply(before, false);
-                emit("phase=hardware-entry routine=" + Routine(slot) + (slot == 0 ? " reason=PROCESS_ATTACH" : "")
+                emit("phase=hardware-entry routine=" + Routine(slot) + (slot == 0 ? " reason=PROCESS_ATTACH" : " " + MapperEntry(selectedInput))
                     + " " + DebugContext.TrapQualifiers(eventStatus)
                     + " outermost_only=True control_integer_unchanged=True");
             }
@@ -224,7 +226,7 @@ namespace ScientificSecurity
                 CompleteReturn(slot, entries, addresses, returning, enabled);
                 Apply(before, false);
                 emit("phase=hardware-return routine=" + Routine(slot) + (slot == 0 ? " attach_succeeded=" + (result != 0) :
-                    " " + InitializerApiReturn(result)) + " entry_raw_dr6=0x" + entryStatuses[slot].ToString("X16")
+                    " " + MapperReturn(selectedInput, result)) + " entry_raw_dr6=0x" + entryStatuses[slot].ToString("X16")
                     + " entry_rtm_bit_set=" + ((entryStatuses[slot] & 0x10000) != 0)
                     + " entry_bld_bit_set=" + ((entryStatuses[slot] & 0x800) != 0)
                     + " " + DebugContext.TrapQualifiers(eventStatus) + " pair_verified=True control_integer_unchanged=True");
@@ -239,8 +241,12 @@ namespace ScientificSecurity
         }
         static bool InitializerApiBoundary(int slot, bool initializerActive, bool apiReturnPending)
         { return slot == 0 ? !apiReturnPending : slot == 1 && initializerActive; }
-        static string InitializerApiReturn(uint status)
-        { return "native_status=0x" + status.ToString("X8"); }
+        static uint MapperInput(byte[] context)
+        { return unchecked((uint)U64(context, 128)); }
+        static string MapperEntry(uint status)
+        { return "status_to_map=0x" + status.ToString("X8"); }
+        static string MapperReturn(uint status, uint mappedError)
+        { return MapperEntry(status) + " mapped_win32_error=0x" + mappedError.ToString("X8"); }
         static void ArmInitializerApiWindow(ulong[] routineEntries, ulong[] activeAddresses, bool[] activeSlots)
         {
             if (routineEntries[1] == 0 || routineEntries[1] == activeAddresses[0] || activeSlots[1])
@@ -280,7 +286,7 @@ namespace ScientificSecurity
             if (original != null) Array.Clear(original, 0, original.Length);
             Array.Clear(entries, 0, entries.Length); Array.Clear(addresses, 0, addresses.Length);
             Array.Clear(returns, 0, returns.Length); Array.Clear(stacks, 0, stacks.Length);
-            Array.Clear(entryStatuses, 0, entryStatuses.Length);
+            Array.Clear(entryStatuses, 0, entryStatuses.Length); selectedInput = 0;
             emit("phase=hardware-cleanup state_destroyed=True restored_claimed=False");
         }
         public static void CheckValidation()
@@ -332,14 +338,28 @@ namespace ScientificSecurity
             CompleteReturn(0, entries, active, pendingReturns, slots);
             if (pendingReturns[0] || slots[0] || slots[1] || active[0] != 0 || active[1] != 0)
                 throw new InvalidOperationException("completed initializer retained an active initializer API observation");
-            uint[] statusValues = { 0, 0xC0000022, UInt32.MaxValue };
-            string[] expectedEvidence = { "native_status=0x00000000", "native_status=0xC0000022", "native_status=0xFFFFFFFF" };
+            // These are formatting/input-retention fixtures, not assertions of the OS mapping table.
+            uint[] statusValues = { 0, 0xC0000022, UInt32.MaxValue, 0xC0000001 };
+            uint[] mappedValues = { 0, 5, 317, UInt32.MaxValue };
+            string[] expectedEntry = { "status_to_map=0x00000000", "status_to_map=0xC0000022", "status_to_map=0xFFFFFFFF", "status_to_map=0xC0000001" };
+            string[] expectedPairs = {
+                "status_to_map=0x00000000 mapped_win32_error=0x00000000",
+                "status_to_map=0xC0000022 mapped_win32_error=0x00000005",
+                "status_to_map=0xFFFFFFFF mapped_win32_error=0x0000013D",
+                "status_to_map=0xC0000001 mapped_win32_error=0xFFFFFFFF"
+            };
+            uint retainedInput = 0;
             for (int index = 0; index < statusValues.Length; index++) {
-                string result = InitializerApiReturn(statusValues[index]);
-                if (result != expectedEvidence[index] || result.Length != 24 ||
-                    result.Contains("server_id") || result.Contains("desired_access") || result.Contains("pointer") ||
+                byte[] entryContext = new byte[ContextSize];
+                Put(entryContext, 128, 0x1234567800000000UL | statusValues[index]);
+                retainedInput = MapperInput(entryContext);
+                Put(entryContext, 128, 0xFFFFFFFF00000000UL); // Return-time RCX must not replace the retained entry input.
+                string entry = MapperEntry(retainedInput), result = MapperReturn(retainedInput, mappedValues[index]);
+                if (entry != expectedEntry[index] || result != expectedPairs[index] || entry.Length != 24 || result.Length != 54 ||
+                    result.Contains("native_status") || result.Contains("server_id") || result.Contains("desired_access") ||
+                    result.Contains("last_error") || result.Contains("pointer") || result.Contains("12345678") ||
                     result.Contains("True") || result.Contains("False"))
-                    throw new InvalidOperationException("initializer API evidence lost bounded status-only semantics");
+                    throw new InvalidOperationException("mapper evidence lost distinct bounded input/output semantics");
             }
             before = new byte[ContextSize]; after = (byte[])before.Clone();
             const ulong privateAddress = 0x123456789ABCDEF0;
