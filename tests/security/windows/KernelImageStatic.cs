@@ -42,28 +42,39 @@ namespace ScientificSecurity
             };
             require(text != null && text.Length <= 1048576, "input-bound");
             var slice = EntrySlice();
-            ulong previousEnd = slice.Start;
+            ulong previousEnd = slice.Start; string pending = null;
+            Action finalize = () => {
+                if (pending == null) return;
+                output.Append(pending); require(output.Length <= 65024, "output-budget"); require(++records <= 4096, "record-count");
+                pending = null;
+            };
             using (var reader = new System.IO.StringReader(text)) {
                 string line;
                 while ((line = reader.ReadLine()) != null) {
                     require(++lines <= 4096, "line-count"); require(line.Length <= 1024, "line-length");
                     bool ascii = true; foreach (char c in line) if ((c < 32 && c != '\t') || c > 126) ascii = false;
-                    if (!ascii) { unsupported++; continue; }
+                    if (!ascii) { pending = null; unsupported++; continue; }
                     string trimmed = line.Trim();
-                    require(!Regex.IsMatch(trimmed, @"^(?:[0-9A-Fa-f]{2}[ \t]+)*[0-9A-Fa-f]{2}$", RegexOptions.CultureInvariant), "bytes-only-continuation"); // Unframed continuation cannot qualify its preceding instruction.
-                    if (trimmed.Length == 0 || trimmed.StartsWith("Dump of file ", StringComparison.Ordinal) ||
+                    if (Regex.IsMatch(trimmed, @"^(?:[0-9A-Fa-f]{2}[ \t]+)*[0-9A-Fa-f]{2}$", RegexOptions.CultureInvariant)) {
+                        pending = null; unsupported++; continue; // Discard the whole ambiguous instruction, never join a guessed prefix.
+                    }
+                    if (trimmed.Length == 0) continue;
+                    if (trimmed.StartsWith("Dump of file ", StringComparison.Ordinal) ||
                         trimmed == "File Type: DLL" || trimmed == "Summary" ||
-                        Regex.IsMatch(trimmed, @"^[0-9A-Fa-f]{1,8} \.[A-Za-z0-9_$]{1,16}$", RegexOptions.CultureInvariant)) continue;
+                        Regex.IsMatch(trimmed, @"^[0-9A-Fa-f]{1,8} \.[A-Za-z0-9_$]{1,16}$", RegexOptions.CultureInvariant)) { finalize(); continue; }
                     Match instruction = Regex.Match(line, @"^[ \t]*([0-9A-Fa-f]{16}):[ \t]+((?:[0-9A-Fa-f]{2} )*[0-9A-Fa-f]{2})[ \t]{2,}([a-z][a-z0-9]{0,15})(?:[ \t]+(.*))?$", RegexOptions.CultureInvariant);
-                    if (!instruction.Success || !Regex.IsMatch(instruction.Groups[3].Value,
-                        @"^(?:mov|movzx|movsx|movsxd|lea|push|pop|add|sub|adc|sbb|inc|dec|and|or|xor|test|cmp|neg|not|shl|shr|sar|sal|rol|ror|imul|mul|div|idiv|xchg|call|ret|jmp|j(?:e|ne|z|nz|a|ae|b|be|g|ge|l|le|s|ns|o|no|p|np|rcxz)|nop|int3|endbr64|leave|cdqe|cqo|cmov(?:e|ne|a|ae|b|be|g|ge|l|le|s|ns)|set(?:e|ne|a|ae|b|be|g|ge|l|le|s|ns))$",
-                        RegexOptions.CultureInvariant)) { unsupported++; continue; }
+                    if (!instruction.Success) { pending = null; unsupported++; continue; }
+                    finalize();
                     ulong address = UInt64.Parse(instruction.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
                     string[] bytes = instruction.Groups[2].Value.Split(' ');
                     require(bytes.Length >= 1 && bytes.Length <= 15, "opcode-count");
                     require(address >= previousEnd, "address-order");
                     require(address >= slice.Start && address < slice.Start + slice.Length, "address-window");
+                    previousEnd = address + (ulong)bytes.Length; // Dropping a record must never rewind the framing/order guard.
                     if ((ulong)bytes.Length > slice.Start + slice.Length - address) { unsupported++; continue; }
+                    if (!Regex.IsMatch(instruction.Groups[3].Value,
+                        @"^(?:mov|movzx|movsx|movsxd|lea|push|pop|add|sub|adc|sbb|inc|dec|and|or|xor|test|cmp|neg|not|shl|shr|sar|sal|rol|ror|imul|mul|div|idiv|xchg|call|ret|jmp|j(?:e|ne|z|nz|a|ae|b|be|g|ge|l|le|s|ns|o|no|p|np|rcxz)|nop|int3|endbr64|leave|cdqe|cqo|cmov(?:e|ne|a|ae|b|be|g|ge|l|le|s|ns)|set(?:e|ne|a|ae|b|be|g|ge|l|le|s|ns))$",
+                        RegexOptions.CultureInvariant)) { unsupported++; continue; }
                     var hex = new StringBuilder();
                     for (int index = 0; index < bytes.Length; index++) {
                         byte value = Byte.Parse(bytes[index], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
@@ -80,13 +91,11 @@ namespace ScientificSecurity
                         @"^(?:rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r(?:8|9|1[0-5])|eax|ebx|ecx|edx|esi|edi|ebp|esp|r(?:8|9|1[0-5])d|ax|bx|cx|dx|al|bl|cl|dl)(?:,(?:rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r(?:8|9|1[0-5])|eax|ebx|ecx|edx|esi|edi|ebp|esp|r(?:8|9|1[0-5])d|ax|bx|cx|dx|al|bl|cl|dl|[01]h?))?$",
                         RegexOptions.CultureInvariant)) safe = operands;
                     if (safe == "withheld") unsupported++;
-                    output.Append("rva=0x").Append((Entry + address - slice.Start).ToString("X8", CultureInfo.InvariantCulture))
-                        .Append(" bytes=").Append(hex).Append(" mnemonic=").Append(instruction.Groups[3].Value)
-                        .Append(" operands=").Append(safe).Append('\n');
-                    require(output.Length <= 65024, "output-budget"); require(++records <= 4096, "record-count"); previousEnd = address + (ulong)bytes.Length;
+                    pending = "rva=0x" + (Entry + address - slice.Start).ToString("X8", CultureInfo.InvariantCulture) +
+                        " bytes=" + hex + " mnemonic=" + instruction.Groups[3].Value + " operands=" + safe + "\n";
                 }
             }
-            require(records != 0, "no-qualified-record"); return new StaticView(output.ToString(), records, unsupported);
+            finalize(); require(records != 0, "no-qualified-record"); return new StaticView(output.ToString(), records, unsupported);
         }
         static void CheckStaticValidation()
         {
@@ -100,15 +109,25 @@ namespace ScientificSecurity
                 "rva=0x00001000 bytes=B800000000 mnemonic=mov operands=eax,0\n" +
                 "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
             Need(!view.Text.Contains("private") && !view.Text.Contains("18000") && !view.Text.Contains("\\"));
-            var partial = image.QualifyStatic("  0000000180001000: B8 00 00 00 00     mov eax,0\nunknown label:\n");
-            Need(partial.Records == 1 && partial.Unsupported == 1);
+            var partial = image.QualifyStatic("  0000000180001000: B8 00 00 00 00     mov eax,0\nunknown label:\n  0000000180001005: C3     ret\n");
+            Need(partial.Records == 1 && partial.Unsupported == 1 && partial.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
+            var wrapped = image.QualifyStatic("  0000000180001000: B8 00     mov eax,0\n       00 00\n       00\n  0000000180001005: C3     ret\n");
+            Need(wrapped.Records == 1 && wrapped.Unsupported == 2 && wrapped.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
+            var blankWrapped = image.QualifyStatic("  0000000180001000: B8 00     mov eax,0\n\n       00 00 00\n  0000000180001005: C3     ret\n");
+            Need(blankWrapped.Records == 1 && blankWrapped.Unsupported == 1 && blankWrapped.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
+            var blankEnd = image.QualifyStatic("  0000000180001005: C3     ret\n\n");
+            Need(blankEnd.Records == 1 && blankEnd.Unsupported == 0 && blankEnd.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
+            var orphan = image.QualifyStatic("       FF\n  0000000180001005: C3     ret\n");
+            Need(orphan.Records == 1 && orphan.Unsupported == 1);
+            var groups = image.QualifyStatic("  0000000180001000: B8 00     mov eax,0\n       00\n  0000000180001005: C3     ret\n\n  0000000180001006: E8 F5     call 0000000180001000\n       FF FF FF\n");
+            Need(groups.Records == 1 && groups.Unsupported == 2 && groups.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
             var branch = image.QualifyStatic("  0000000180001006: E8 F5 FF FF FF     call 0000000180001000\n");
             Need(branch.Unsupported == 0 && branch.Text == "rva=0x00001006 bytes=E8F5FFFFFF mnemonic=call operands=rva:0x00001000\n");
             var clipped = image.QualifyStatic("  0000000180001005: C3     ret\n  00000001800015FF: 00 00     mov al,al\n");
             Need(clipped.Records == 1 && clipped.Unsupported == 1 && clipped.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
             var privateOperand = image.QualifyStatic("  0000000180001005: C3     ret C:\\private\\secret.dll\n");
             Need(privateOperand.Unsupported == 1 && privateOperand.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=withheld\n");
-            var unsafeText = image.QualifyStatic("  0000000180001005: C3     ret\n" + (char)0x202E + "private\n  0000000180001006: E8 F5 FF FF FF     bogus\n");
+            var unsafeText = image.QualifyStatic("  0000000180001005: C3     ret\n  0000000180001006: E8 F5 FF FF FF     bogus\n" + (char)0x202E + "private\n");
             Need(unsafeText.Records == 1 && unsafeText.Unsupported == 2 && unsafeText.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
             string[] diagnosticInputs = { "", "Dump of file C:\\private\\KernelBase.dll\n",
                 "  0000000180001000: B8 00 00 00 00     mov eax,0\n                    00\n",
@@ -116,7 +135,7 @@ namespace ScientificSecurity
             string[] diagnosticExpected = {
                 "static qualifier refused stage=no-qualified-record lines=0 records=0 unsupported=0 output_chars=0 text_chars=0",
                 "static qualifier refused stage=no-qualified-record lines=1 records=0 unsupported=0 output_chars=0 text_chars=39",
-                "static qualifier refused stage=bytes-only-continuation lines=2 records=1 unsupported=0 output_chars=60 text_chars=72",
+                "static qualifier refused stage=no-qualified-record lines=2 records=0 unsupported=1 output_chars=0 text_chars=72",
                 "static qualifier refused stage=byte-equality lines=1 records=0 unsupported=0 output_chars=0 text_chars=31"
             };
             for (int index = 0; index < diagnosticInputs.Length; index++) {
@@ -132,6 +151,9 @@ namespace ScientificSecurity
                 "  0000000180001000: B8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00     mov\n",
                 "  0000000180001000:     ret\n", "  0000000180001000: B8     ???\n",
                 "  0000000180001000: B8 00 00 00 00     mov eax,0\n                    00\n",
+                "  0000000180001000: B8 00     mov eax,0\n       00\n  0000000180001001: 00     nop\n",
+                "  0000000180001005: C3     ret\n       00\n  0000000180001000: B8 00 00 00 00     mov eax,0\n",
+                "  0000000180001000: B8 00     mov eax,0\nprivate path\n       00\n",
                 new string('x', 1048577), new string('\n', 4097)
             }) {
                 bool refused = false;
