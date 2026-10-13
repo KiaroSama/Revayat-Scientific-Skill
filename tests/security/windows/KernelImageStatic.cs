@@ -33,17 +33,24 @@ namespace ScientificSecurity
         }
         internal StaticView QualifyStatic(string text)
         {
-            Need(text != null && text.Length <= 1048576);
-            var slice = EntrySlice(); var output = new StringBuilder(); int records = 0, unsupported = 0, lines = 0;
+            var output = new StringBuilder(); int records = 0, unsupported = 0, lines = 0;
+            int textChars = text == null ? 0 : text.Length;
+            Action<bool, string> require = (condition, stage) => {
+                if (!condition) throw new InvalidOperationException("static qualifier refused stage=" + stage +
+                    " lines=" + lines + " records=" + records + " unsupported=" + unsupported +
+                    " output_chars=" + output.Length + " text_chars=" + textChars);
+            };
+            require(text != null && text.Length <= 1048576, "input-bound");
+            var slice = EntrySlice();
             ulong previousEnd = slice.Start;
             using (var reader = new System.IO.StringReader(text)) {
                 string line;
                 while ((line = reader.ReadLine()) != null) {
-                    Need(++lines <= 4096 && line.Length <= 1024);
+                    require(++lines <= 4096, "line-count"); require(line.Length <= 1024, "line-length");
                     bool ascii = true; foreach (char c in line) if ((c < 32 && c != '\t') || c > 126) ascii = false;
                     if (!ascii) { unsupported++; continue; }
                     string trimmed = line.Trim();
-                    Need(!Regex.IsMatch(trimmed, @"^(?:[0-9A-Fa-f]{2}[ \t]+)*[0-9A-Fa-f]{2}$", RegexOptions.CultureInvariant)); // Unframed continuation cannot qualify its preceding instruction.
+                    require(!Regex.IsMatch(trimmed, @"^(?:[0-9A-Fa-f]{2}[ \t]+)*[0-9A-Fa-f]{2}$", RegexOptions.CultureInvariant), "bytes-only-continuation"); // Unframed continuation cannot qualify its preceding instruction.
                     if (trimmed.Length == 0 || trimmed.StartsWith("Dump of file ", StringComparison.Ordinal) ||
                         trimmed == "File Type: DLL" || trimmed == "Summary" ||
                         Regex.IsMatch(trimmed, @"^[0-9A-Fa-f]{1,8} \.[A-Za-z0-9_$]{1,16}$", RegexOptions.CultureInvariant)) continue;
@@ -53,12 +60,14 @@ namespace ScientificSecurity
                         RegexOptions.CultureInvariant)) { unsupported++; continue; }
                     ulong address = UInt64.Parse(instruction.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
                     string[] bytes = instruction.Groups[2].Value.Split(' ');
-                    Need(bytes.Length >= 1 && bytes.Length <= 15 && address >= previousEnd && address >= slice.Start && address < slice.Start + slice.Length);
+                    require(bytes.Length >= 1 && bytes.Length <= 15, "opcode-count");
+                    require(address >= previousEnd, "address-order");
+                    require(address >= slice.Start && address < slice.Start + slice.Length, "address-window");
                     if ((ulong)bytes.Length > slice.Start + slice.Length - address) { unsupported++; continue; }
                     var hex = new StringBuilder();
                     for (int index = 0; index < bytes.Length; index++) {
                         byte value = Byte.Parse(bytes[index], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-                        Need(value == data[slice.Raw + (int)(address - slice.Start) + index]); hex.Append(value.ToString("X2", CultureInfo.InvariantCulture));
+                        require(value == data[slice.Raw + (int)(address - slice.Start) + index], "byte-equality"); hex.Append(value.ToString("X2", CultureInfo.InvariantCulture));
                     }
                     string operands = instruction.Groups[4].Value, safe = operands.Length == 0 ? "none" : "withheld";
                     ulong operand;
@@ -74,10 +83,10 @@ namespace ScientificSecurity
                     output.Append("rva=0x").Append((Entry + address - slice.Start).ToString("X8", CultureInfo.InvariantCulture))
                         .Append(" bytes=").Append(hex).Append(" mnemonic=").Append(instruction.Groups[3].Value)
                         .Append(" operands=").Append(safe).Append('\n');
-                    Need(output.Length <= 65024 && ++records <= 4096); previousEnd = address + (ulong)bytes.Length;
+                    require(output.Length <= 65024, "output-budget"); require(++records <= 4096, "record-count"); previousEnd = address + (ulong)bytes.Length;
                 }
             }
-            Need(records != 0); return new StaticView(output.ToString(), records, unsupported);
+            require(records != 0, "no-qualified-record"); return new StaticView(output.ToString(), records, unsupported);
         }
         static void CheckStaticValidation()
         {
@@ -101,6 +110,20 @@ namespace ScientificSecurity
             Need(privateOperand.Unsupported == 1 && privateOperand.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=withheld\n");
             var unsafeText = image.QualifyStatic("  0000000180001005: C3     ret\n" + (char)0x202E + "private\n  0000000180001006: E8 F5 FF FF FF     bogus\n");
             Need(unsafeText.Records == 1 && unsafeText.Unsupported == 2 && unsafeText.Text == "rva=0x00001005 bytes=C3 mnemonic=ret operands=none\n");
+            string[] diagnosticInputs = { "", "Dump of file C:\\private\\KernelBase.dll\n",
+                "  0000000180001000: B8 00 00 00 00     mov eax,0\n                    00\n",
+                "  0000000180001000: C3     ret\n" };
+            string[] diagnosticExpected = {
+                "static qualifier refused stage=no-qualified-record lines=0 records=0 unsupported=0 output_chars=0 text_chars=0",
+                "static qualifier refused stage=no-qualified-record lines=1 records=0 unsupported=0 output_chars=0 text_chars=39",
+                "static qualifier refused stage=bytes-only-continuation lines=2 records=1 unsupported=0 output_chars=60 text_chars=72",
+                "static qualifier refused stage=byte-equality lines=1 records=0 unsupported=0 output_chars=0 text_chars=31"
+            };
+            for (int index = 0; index < diagnosticInputs.Length; index++) {
+                string failure = null;
+                try { image.QualifyStatic(diagnosticInputs[index]); } catch (InvalidOperationException error) { failure = error.Message; }
+                Need(failure == diagnosticExpected[index]);
+            }
             foreach (string invalid in new [] {
                 "", "Dump of file C:\\private\\KernelBase.dll\n", "  0000000180001000: C3     ret\n",
                 "  0000000180001000: B8 00 00 00 00     mov\n  0000000180001000: B8     mov\n",

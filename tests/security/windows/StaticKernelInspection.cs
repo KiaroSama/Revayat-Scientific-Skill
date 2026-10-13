@@ -11,30 +11,42 @@ namespace ScientificSecurity
         public static void RunFixed(string state)
         {
             if (expectedIdentity != null) throw new InvalidOperationException("static KernelBase inspection is already bound for this run");
+            string phase = "input-path";
             try {
                 NativeFixture.Plain(state);
                 string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "kernelbase.dll");
                 NativeFixture.Plain(path);
+                phase = "held-open";
                 using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
-                    byte[] bytes = ReadHeld(stream); var image = KernelImage.FromStatic(bytes);
-                    string identity = image.KernelBaseIdentity(); var slice = image.EntrySlice();
-                    var tools = NativeFixture.CompilerTools(state);
+                    phase = "held-read"; byte[] bytes = ReadHeld(stream);
+                    phase = "image"; var image = KernelImage.FromStatic(bytes);
+                    phase = "identity"; string identity = image.KernelBaseIdentity();
+                    phase = "slice"; var slice = image.EntrySlice();
+                    phase = "tool-discovery"; var tools = NativeFixture.CompilerTools(state);
                     string dumpbin = Path.Combine(Path.GetDirectoryName(tools.Item1), "dumpbin.exe"); NativeFixture.Plain(dumpbin);
                     string range = "/RANGE:0x" + slice.Start.ToString("X", CultureInfo.InvariantCulture) + ",0x" +
                         (slice.Start + slice.Length - 1).ToString("X", CultureInfo.InvariantCulture);
-                    string text = TrustedSetup.Run(dumpbin, new [] { "/NOLOGO", "/NOPDB", "/DISASM:BYTES", range, path }, state);
-                    NativeFixture.Plain(path);
-                    RequireSame(identity, KernelImage.FromStatic(ReadHeld(stream)).KernelBaseIdentity());
-                    var view = image.QualifyStatic(text);
+                    phase = "tool"; string text = TrustedSetup.Run(dumpbin, new [] { "/NOLOGO", "/NOPDB", "/DISASM:BYTES", range, path }, state);
+                    phase = "post-path"; NativeFixture.Plain(path);
+                    phase = "posthash"; RequireSame(identity, KernelImage.FromStatic(ReadHeld(stream)).KernelBaseIdentity());
+                    phase = "qualifier"; var view = image.QualifyStatic(text);
                     expectedIdentity = identity; // Bind only after successful post-tool same-held-file and evidence checks.
+                    phase = "evidence-output";
                     Console.Out.WriteLine("WINDOWS_STATIC_KERNEL phase=entry-slice module=kernelbase.dll records=" + view.Records +
                         " unsupported_lines=" + view.Unsupported + " evidence=" + (view.Unsupported == 0 ? "qualified-records" : "partial") +
                         " slice_bytes=" + slice.Length + " complete_slice_claimed=False cause_claimed=False abi_claimed=False");
                     Console.Out.Write(view.Text); Console.Out.Flush();
+                    phase = "held-close";
                 }
             }
+            catch (Exception) when (ReportFailurePhase(phase)) { throw; }
             catch (IOException) { throw new InvalidOperationException("static KernelBase held-file inspection I/O failed; details withheld"); }
             catch (UnauthorizedAccessException) { throw new InvalidOperationException("static KernelBase held-file inspection access failed; details withheld"); }
+        }
+        static bool ReportFailurePhase(string phase)
+        {
+            Console.Error.WriteLine("WINDOWS_STATIC_KERNEL failure_phase=" + phase); Console.Error.Flush();
+            return false; // Observe the fixed stage without catching, replacing or exposing the original exception.
         }
         static byte[] ReadHeld(FileStream stream)
         {
