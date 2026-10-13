@@ -119,7 +119,7 @@ namespace ScientificSecurity
             }
             throw new InvalidOperationException("hardware export name exceeds fixed bound");
         }
-        internal uint NtCreateEvent()
+        internal uint CsrClientConnectToServer()
         {
             Need(exportRva != 0 && exportSize >= 40 && (ulong)exportRva + exportSize <= imageSize);
             int directory = Map(exportRva, 40);
@@ -130,7 +130,7 @@ namespace ScientificSecurity
             int ordinals = Map(U32((ulong)directory + 36), checked(names * 2));
             uint found = 0; int matches = 0;
             for (uint index = 0; index < names; index++) {
-                if (ExportName(U32((ulong)nameTable + index * 4)) != "NtCreateEvent") continue;
+                if (ExportName(U32((ulong)nameTable + index * 4)) != "CsrClientConnectToServer") continue;
                 ushort ordinal = U16((ulong)ordinals + index * 2); Need(ordinal < functions);
                 uint rva = U32((ulong)addresses + (ulong)ordinal * 4);
                 Need(rva < exportRva || (ulong)rva >= (ulong)exportRva + exportSize); // Forwarded exports are not instrumented.
@@ -141,17 +141,17 @@ namespace ScientificSecurity
         public static void CheckValidation()
         {
             byte[] bytes = Fixture(); var image = new KernelImage(bytes, 0x10000000, "ntdll.dll");
-            if (image.Entry != 0x1000 || image.NtCreateEvent() != 0x1000 || !image.ContainsExecutable(0x10001000))
+            if (image.Entry != 0x1000 || image.CsrClientConnectToServer() != 0x1000 || !image.ContainsExecutable(0x10001000))
                 throw new InvalidOperationException("hardware image positive parser fixture failed");
             foreach (Action<byte[]> change in new Action<byte[]>[] {
                 b => Put(b, 0x3C, UInt32.MaxValue), b => Put16(b, 0x86, 65),
                 b => Put(b, 0x98 + 16, 0x3000), b => Put(b, 0x98 + 112, UInt32.MaxValue),
                 b => Put(b, 0x300 + 24, 4097), b => Put16(b, 0x350, 2),
                 b => Put(b, 0x340, 0x1100), b => Put(b, 0x188 + 36, 0x40000040),
-                b => Put(b, 0x34C, UInt32.MaxValue)
+                b => Put(b, 0x34C, UInt32.MaxValue), b => b[0x360] = (byte)'X'
             }) {
                 byte[] bad = (byte[])bytes.Clone(); change(bad); bool rejected = false;
-                try { new KernelImage(bad, 0x10000000, "ntdll.dll").NtCreateEvent(); }
+                try { new KernelImage(bad, 0x10000000, "ntdll.dll").CsrClientConnectToServer(); }
                 catch (InvalidOperationException) { rejected = true; }
                 if (!rejected) throw new InvalidOperationException("malformed hardware image fixture was accepted");
             }
@@ -166,7 +166,7 @@ namespace ScientificSecurity
             Put(b, 0x188 + 20, 0x200); Put(b, 0x188 + 36, 0x60000020);
             Put(b, 0x300 + 20, 1); Put(b, 0x300 + 24, 1); Put(b, 0x300 + 28, 0x1140);
             Put(b, 0x300 + 32, 0x114C); Put(b, 0x300 + 36, 0x1150); Put(b, 0x340, 0x1000);
-            Put(b, 0x34C, 0x1160); Encoding.ASCII.GetBytes("NtCreateEvent\0").CopyTo(b, 0x360);
+            Put(b, 0x34C, 0x1160); Encoding.ASCII.GetBytes("CsrClientConnectToServer\0").CopyTo(b, 0x360);
             return b;
         }
         static void Put(byte[] b, int offset, uint value) { BitConverter.GetBytes(value).CopyTo(b, offset); }
