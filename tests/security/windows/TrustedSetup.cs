@@ -19,12 +19,14 @@ namespace ScientificSecurity
             executable = Path.GetFullPath(executable);
             cwd = Path.GetFullPath(cwd);
             string name = Path.GetFileName(executable).ToLowerInvariant();
-            bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe" }.Contains(name);
+            bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe" }.Contains(name);
             if (compilerPreparation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
             if (!compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
             bool executableExists = File.Exists(executable), cwdExists = Directory.Exists(cwd);
-            Console.Out.WriteLine("WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd)
+            Console.Out.WriteLine(name == "dumpbin.exe" ?
+                "WINDOWS_SETUP_PATH tool=dumpbin.exe executable_exists=" + executableExists + " cwd_exists=" + cwdExists :
+                "WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd)
                 + " executable_exists=" + executableExists + " cwd_exists=" + cwdExists);
             Console.Out.Flush();
             if (!executableExists || !cwdExists)
@@ -77,7 +79,7 @@ namespace ScientificSecurity
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
                     true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
                     environment, cwd, ref startup, out child),
-                    "create suspended trusted setup process tool=" + name + " cwd=" + cwd); started = true;
+                    "create suspended trusted setup process tool=" + name + (name == "dumpbin.exe" ? "" : " cwd=" + cwd)); started = true;
                 Native.Check(Native.AssignProcessToJobObject(job, child.process), "own trusted setup process before resume");
                 if (Native.ResumeThread(child.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume trusted setup process");
@@ -98,7 +100,10 @@ namespace ScientificSecurity
                 string text = output.Read(), diagnostics = error.Read();
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(diagnostics) > 1048576)
                     throw new InvalidOperationException("combined trusted setup output exceeded 1 MiB");
-                if (exit != 0) throw new InvalidOperationException("trusted setup " + name + " failed exit=" + exit + " " + diagnostics + " " + text);
+                if (name == "dumpbin.exe" && diagnostics.Length != 0)
+                    throw new InvalidOperationException("trusted setup dumpbin.exe emitted stderr exit=" + exit + " static output withheld");
+                if (exit != 0) throw new InvalidOperationException("trusted setup " + name + " failed exit=" + exit +
+                    (name == "dumpbin.exe" ? " static output withheld" : " " + diagnostics + " " + text));
                 return text;
             }
             finally

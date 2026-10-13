@@ -122,7 +122,7 @@ namespace ScientificSecurity
             if (images.ContainsKey(image.Name)) throw new InvalidOperationException("hardware system image was loaded twice");
             images.Add(image.Name, image);
             int slot = image.Name == "kernelbase.dll" ? 0 : 1;
-            if (slot == 0) emit(image.KernelBaseIdentity());
+            if (slot == 0) { StaticKernelInspection.BindLoad(image); emit(image.KernelBaseIdentity()); }
             uint rva = slot == 0 ? image.Entry : image.RtlNtStatusToDosError();
             if (rva == 0) throw new InvalidOperationException("hardware fixed system routine has no entry point");
             ulong address = image.Address(rva); RequireExecutable(address, image);

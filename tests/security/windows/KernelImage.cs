@@ -141,6 +141,7 @@ namespace ScientificSecurity
         public static void CheckValidation()
         {
             CheckIdentityValidation();
+            CheckStaticValidation();
             byte[] bytes = Fixture(); var image = new KernelImage(bytes, 0x10000000, "ntdll.dll");
             if (image.Entry != 0x1000 || image.RtlNtStatusToDosError() != 0x1000 || !image.ContainsExecutable(0x10001000))
                 throw new InvalidOperationException("hardware image positive parser fixture failed");

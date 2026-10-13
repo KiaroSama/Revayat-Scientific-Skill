@@ -36,7 +36,7 @@ namespace ScientificSecurity
             Console.Out.WriteLine("WINDOWS_NATIVE_FIXTURE pe_verified=true architecture=x64 imports=kernel32.ExitProcess crt=false clr=false manifest=false");
             Console.Out.Flush();
         }
-        static Tuple<string, string, string> CompilerTools(string state)
+        internal static Tuple<string, string, string> CompilerTools(string state)
         {
             string vswhere = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
                 "Microsoft Visual Studio", "Installer", "vswhere.exe");
