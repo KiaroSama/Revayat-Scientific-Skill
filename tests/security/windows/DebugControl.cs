@@ -49,6 +49,7 @@ namespace ScientificSecurity
 
         public static void CheckValidation()
         {
+            DebugContext.CheckTrapValidation();
             NativeFixture.CheckDebugControlValidation();
             Sandbox.CheckCleanupValidation();
             bool requested = false; int attempts = 0;
@@ -78,8 +79,7 @@ namespace ScientificSecurity
         static void Put(byte[] bytes, int offset, ulong value) { BitConverter.GetBytes(value).CopyTo(bytes, offset); }
         static bool DebugEqual(byte[] expected, byte[] actual)
         {
-            for (int offset = 72; offset <= 112; offset += 8) if (U64(expected, offset) != U64(actual, offset)) return false;
-            return true;
+            return DebugContext.RawDebugEqual(expected, actual);
         }
         static string Status(string stage, byte[] expected, byte[] actual)
         {
@@ -218,13 +218,18 @@ namespace ScientificSecurity
                 } // Ordinary initial loader breakpoint, at most once.
                 Need(code == 0x80000004 && current.data.exception.first != 0 && current.tid == child.tid && !hit,
                     "fixed debugger control observed an unexpected exception/thread");
-                byte[] context = Read(); Emit(Status("known-site-event", saved, context));
-                Need(U64(context, 248) == breakpoint && U64(context, 72) == breakpoint && (U64(context, 104) & 0xE00FUL) == 1,
+                byte[] context = Read();
+                Emit("stage=known-site-event " + DebugContext.TrapQualifiers(U64(context, 104))
+                    + " raw_dr7=0x" + U64(context, 112).ToString("X16") + " setter_readback_claimed=False");
+                Need(DebugContext.OwnedTrapSite(current.tid, child.tid, current.data.exception.first != 0,
+                    (U64(context, 112) & 1) != 0, U64(context, 248), breakpoint) && U64(context, 72) == breakpoint && (U64(context, 104) & 0xE00FUL) == 1,
                     "fixed debugger-control B0 cannot be paired to the qualified site");
                 for (int offset = 80; offset <= 96; offset += 8)
                     Need(U64(context, offset) == U64(saved, offset), "fixed debugger-control unowned address changed");
-                Need(U64(context, 112) == (U64(saved, 112) | 1), "fixed debugger-control raw control is inconclusive");
-                hit = true; Restore(); Emit("known_site_b0=True transaction_context=unknown normalization_approved=False");
+                Need(DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), U64(saved, 112) | 1, 0),
+                    "fixed debugger-control observed an unsupported or foreign owned-trap qualifier");
+                hit = true; Restore();
+                Emit("known_site_b0=True " + DebugContext.TrapQualifiers(U64(context, 104)) + " normalization_approved=False");
             }
             internal void Run()
             {

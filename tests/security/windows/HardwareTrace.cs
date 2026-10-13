@@ -9,7 +9,7 @@ namespace ScientificSecurity
     {
         const int ContextSize = 1232, ContextFlags = 48, Dr0 = 72, Dr6 = 104, Dr7 = 112;
         const uint WriteFlags = 0x100010;
-        const ulong CauseMask = 0xE00F, OccupiedControl = 0xFFFF20FF;
+        const ulong CauseMask = 0xE00F, OccupiedControl = 0xFFFF28FF;
         [StructLayout(LayoutKind.Sequential)] struct MemoryInfo {
             internal IntPtr address, allocationBase;
             internal uint allocationProtect; internal ushort partition;
@@ -27,7 +27,7 @@ namespace ScientificSecurity
         readonly uint[] arguments = new uint[2];
         readonly bool[] enabled = new bool[2], returning = new bool[2];
         byte[] original;
-        ulong expectedStatus;
+        readonly ulong[] entryStatuses = new ulong[2];
         bool creatorAlive = true, stopped, modified, completed;
 
         internal HardwareTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId, Action<string> output)
@@ -67,7 +67,6 @@ namespace ScientificSecurity
             if (original != null) return;
             original = ReadContext();
             if (!FreeDebugState(original)) throw new InvalidOperationException("hardware trace refuses existing debug-register ownership");
-            expectedStatus = U64(original, Dr6);
         }
         void RequireOwned(byte[] context)
         {
@@ -78,9 +77,9 @@ namespace ScientificSecurity
                 if (enabled[index]) control |= 1UL << (index * 2);
             }
             if (U64(context, Dr0 + 16) != U64(original, Dr0 + 16) || U64(context, Dr0 + 24) != U64(original, Dr0 + 24) ||
-                U64(context, Dr7) != control || (U64(context, Dr6) & ~3UL) != (expectedStatus & ~3UL))
+                U64(context, Dr7) != control || (U64(context, Dr6) & ~3UL) != (U64(original, Dr6) & ~3UL))
                 throw new InvalidOperationException("hardware unowned control/status registers changed "
-                    + OwnershipMetadata(context, original, expectedStatus, control));
+                    + OwnershipMetadata(context, original, U64(original, Dr6), control));
         }
         static string OwnershipMetadata(byte[] current, byte[] baseline, ulong status, ulong control)
         {
@@ -103,7 +102,7 @@ namespace ScientificSecurity
                 Put(desired, Dr0 + index * 8, address);
                 if (!restore && index < 2 && enabled[index]) control |= 1UL << (index * 2);
             }
-            Put(desired, Dr6, restore ? U64(original, Dr6) : expectedStatus);
+            Put(desired, Dr6, U64(original, Dr6)); // Set/restore saved configuration, never trap-time RTM payload.
             Put(desired, Dr7, control);
             BitConverter.GetBytes(WriteFlags).CopyTo(desired, ContextFlags);
             modified = true; // A failing setter/readback may still have changed state: always attempt restoration.
@@ -111,9 +110,8 @@ namespace ScientificSecurity
             byte[] after = ReadContext();
             if (!UnchangedControlInteger(before, after))
                 throw new InvalidOperationException("hardware context write altered CONTROL/INTEGER state");
-            for (int offset = Dr0; offset <= Dr7; offset += 8)
-                if (U64(desired, offset) != U64(after, offset))
-                    throw new InvalidOperationException("hardware debug-register readback differs from exact requested state");
+            if (!DebugContext.RawDebugEqual(desired, after))
+                throw new InvalidOperationException("hardware debug-register readback differs from exact requested state");
             if (restore) modified = false;
         }
         internal void Load(IntPtr file, IntPtr imageBase)
@@ -184,13 +182,20 @@ namespace ScientificSecurity
             if (code != 0x80000004 || completed) return false;
             if (eventThread != tid || !firstChance || original == null)
                 throw new InvalidOperationException("hardware single-step cannot be attributed to the owned creator protocol");
-            byte[] before = ReadContext(); RequireOwned(before);
-            ulong cause = U64(before, Dr6) & CauseMask;
+            byte[] before = ReadContext();
+            ulong eventStatus = U64(before, Dr6), cause = eventStatus & CauseMask;
             int slot = cause == 1 ? 0 : cause == 2 ? 1 : -1;
-            if (slot < 0 || !enabled[slot] || U64(before, 248) != addresses[slot])
-                throw new InvalidOperationException("hardware exception has an unowned or ambiguous breakpoint cause");
+            ulong control = U64(original, Dr7);
+            for (int index = 0; index < 2; index++) {
+                if (U64(before, Dr0 + index * 8) != addresses[index])
+                    throw new InvalidOperationException("hardware trap address changed outside the owned protocol");
+                if (enabled[index]) control |= 1UL << (index * 2);
+            }
+            if (slot < 0 || !DebugContext.OwnedTrapSite(eventThread, tid, firstChance, enabled[slot], U64(before, 248), addresses[slot]) ||
+                U64(before, Dr0 + 16) != U64(original, Dr0 + 16) || U64(before, Dr0 + 24) != U64(original, Dr0 + 24) ||
+                !DebugContext.OwnedTrapStatus(eventStatus, U64(before, Dr7), control, slot))
+                throw new InvalidOperationException("hardware exception has an unowned, foreign or unsupported trap status");
             ulong stack = U64(before, 152);
-            expectedStatus = U64(before, Dr6) & ~(1UL << slot);
             if (!returning[slot]) {
                 uint argument = unchecked((uint)U64(before, 136));
                 if (slot == 1 && (stacks[0] == 0 || !returning[0]))
@@ -200,12 +205,13 @@ namespace ScientificSecurity
                 ulong target = ReturnAddress(stack);
                 if (target == entries[slot] || (enabled[1 - slot] && target == addresses[1 - slot]))
                     throw new InvalidOperationException("hardware return breakpoint aliases an active entry/return slot");
-                stacks[slot] = stack; returns[slot] = target; arguments[slot] = argument;
+                stacks[slot] = stack; returns[slot] = target; arguments[slot] = argument; entryStatuses[slot] = eventStatus;
                 addresses[slot] = target; returning[slot] = true;
                 if (slot == 0) ArmEventWindow(entries, addresses, enabled);
                 Apply(before, false);
                 emit("phase=hardware-entry routine=" + Routine(slot) + (slot == 0 ? " reason=PROCESS_ATTACH" :
-                    " desired_access=0x" + argument.ToString("X8")) + " outermost_only=True control_integer_unchanged=True");
+                    " desired_access=0x" + argument.ToString("X8")) + " " + DebugContext.TrapQualifiers(eventStatus)
+                    + " outermost_only=True control_integer_unchanged=True");
             }
             else {
                 if (!Pair(stack, stacks[slot], U64(before, 248), returns[slot]))
@@ -218,7 +224,10 @@ namespace ScientificSecurity
                 }
                 Apply(before, false);
                 emit("phase=hardware-return routine=" + Routine(slot) + (slot == 0 ? " attach_succeeded=" + (result != 0) :
-                    " native_status=0x" + result.ToString("X8")) + " pair_verified=True control_integer_unchanged=True");
+                    " native_status=0x" + result.ToString("X8")) + " entry_raw_dr6=0x" + entryStatuses[slot].ToString("X16")
+                    + " entry_rtm_bit_set=" + ((entryStatuses[slot] & 0x10000) != 0)
+                    + " entry_bld_bit_set=" + ((entryStatuses[slot] & 0x800) != 0)
+                    + " " + DebugContext.TrapQualifiers(eventStatus) + " pair_verified=True control_integer_unchanged=True");
                 if (slot == 0) Restore(); // The selected window ends with the first PROCESS_ATTACH pair.
             }
             return true;
@@ -262,10 +271,12 @@ namespace ScientificSecurity
             if (original != null) Array.Clear(original, 0, original.Length);
             Array.Clear(entries, 0, entries.Length); Array.Clear(addresses, 0, addresses.Length);
             Array.Clear(returns, 0, returns.Length); Array.Clear(stacks, 0, stacks.Length);
+            Array.Clear(entryStatuses, 0, entryStatuses.Length);
             emit("phase=hardware-cleanup state_destroyed=True restored_claimed=False");
         }
         public static void CheckValidation()
         {
+            DebugContext.CheckTrapValidation();
             Sandbox.CheckCleanupValidation();
             byte[] before = new byte[ContextSize], after = (byte[])before.Clone();
             Put(before, Dr7, 0x400); Put(after, Dr7, 0x400);
@@ -282,7 +293,7 @@ namespace ScientificSecurity
             if (FreeDebugState(after)) throw new InvalidOperationException("hardware enabled collision fixture was accepted");
             after = (byte[])before.Clone(); Put(after, Dr6, 0x4000);
             if (FreeDebugState(after)) throw new InvalidOperationException("hardware foreign single-step cause fixture was accepted");
-            foreach (ulong collision in new ulong[] { 0x2000, 0x10000, 0xC0000000 }) {
+            foreach (ulong collision in new ulong[] { 0x800, 0x2000, 0x10000, 0xC0000000 }) {
                 after = (byte[])before.Clone(); Put(after, Dr7, 0x400 | collision);
                 if (FreeDebugState(after)) throw new InvalidOperationException("hardware foreign control fixture was accepted");
             }
