@@ -27,7 +27,7 @@ namespace ScientificSecurity
         readonly bool[] enabled = new bool[2], returning = new bool[2];
         byte[] original;
         readonly ulong[] entryStatuses = new ulong[2];
-        uint selectedInput;
+        bool siteConsumed, outerPaired, restored, invalidated;
         bool creatorAlive = true, stopped, modified, completed;
 
         internal HardwareTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId, Action<string> output)
@@ -121,21 +121,17 @@ namespace ScientificSecurity
             if (image == null) return;
             if (images.ContainsKey(image.Name)) throw new InvalidOperationException("hardware system image was loaded twice");
             images.Add(image.Name, image);
-            int slot = image.Name == "kernelbase.dll" ? 0 : 1;
-            if (slot == 0) { StaticKernelInspection.BindLoad(image); emit(image.KernelBaseIdentity()); }
-            uint rva = slot == 0 ? image.Entry : image.RtlNtStatusToDosError();
-            if (rva == 0) throw new InvalidOperationException("hardware fixed system routine has no entry point");
-            ulong address = image.Address(rva); RequireExecutable(address, image);
+            if (image.Name != "kernelbase.dll") return; // Ntdll remains a known return image, never a slot1 selector/write.
+            uint site = StaticKernelInspection.BindLoad(image); emit(image.KernelBaseIdentity());
+            ulong entry = image.Address(image.Entry), observation = image.Address(site);
+            RequireExecutable(entry, image); RequireExecutable(observation, image, 2);
+            if (entry == observation) throw new InvalidOperationException("hardware entry and fixed observation site alias");
             Save(); byte[] before = ReadContext(); RequireOwned(before);
-            if (address == addresses[1 - slot] && enabled[1 - slot])
-                throw new InvalidOperationException("hardware entry slots alias");
-            entries[slot] = address;
-            // The one fixed exploratory mapper export is armed only inside verified PROCESS_ATTACH.
-            addresses[slot] = slot == 0 ? address : 0; enabled[slot] = slot == 0;
+            entries[0] = entry; entries[1] = observation;
+            addresses[0] = entry; addresses[1] = 0; enabled[0] = true; enabled[1] = false;
             Apply(before, false);
-            emit("phase=hardware-arm routine=" + Routine(slot) + " enabled=" + enabled[slot] + " control_integer_unchanged=True");
+            emit("phase=hardware-arm routine=KernelBaseEntry enabled=True site_enabled=False control_integer_unchanged=True");
         }
-        static string Routine(int slot) { return slot == 0 ? "KernelBaseEntry" : "RtlNtStatusToDosError"; }
         MemoryInfo Region(ulong address, uint bytes)
         {
             MemoryInfo info; uint size = (uint)Marshal.SizeOf(typeof(MemoryInfo));
@@ -147,10 +143,10 @@ namespace ScientificSecurity
                 throw new InvalidOperationException("hardware memory span is not wholly committed/accessibile");
             return info;
         }
-        void RequireExecutable(ulong address, KernelImage image)
+        void RequireExecutable(ulong address, KernelImage image, uint bytes = 1)
         {
-            MemoryInfo info = Region(address, 1); uint protection = info.protect & 0xFF;
-            if (!image.ContainsExecutable(address) || info.type != 0x1000000 ||
+            MemoryInfo info = Region(address, bytes); uint protection = info.protect & 0xFF;
+            if (!image.ContainsExecutable(address) || !image.ContainsExecutable(address + bytes - 1) || info.type != 0x1000000 ||
                 unchecked((ulong)info.allocationBase.ToInt64()) != image.Base ||
                 (protection != 0x10 && protection != 0x20 && protection != 0x40 && protection != 0x80))
                 throw new InvalidOperationException("hardware routine is not executable within the verified loaded OS image");
@@ -180,7 +176,8 @@ namespace ScientificSecurity
         }
         internal bool SingleStep(uint eventThread, uint code, bool firstChance)
         {
-            if (code != 0x80000004 || completed) return false;
+            if (code != 0x80000004) return false;
+            if (completed) throw new InvalidOperationException("single-step arrived after the fixed observation window closed");
             if (eventThread != tid || !firstChance || original == null)
                 throw new InvalidOperationException("hardware single-step cannot be attributed to the owned creator protocol");
             byte[] before = ReadContext();
@@ -196,71 +193,79 @@ namespace ScientificSecurity
                 U64(before, Dr0 + 16) != U64(original, Dr0 + 16) || U64(before, Dr0 + 24) != U64(original, Dr0 + 24) ||
                 !DebugContext.OwnedTrapStatus(eventStatus, U64(before, Dr7), control, slot))
                 throw new InvalidOperationException("hardware exception has an unowned, foreign or unsupported trap status");
+            if (slot == 1) {
+                if (invalidated) throw new InvalidOperationException("one-shot site reached an invalidated diagnostic window");
+                RequireSiteWindow(stacks[0] != 0 && returning[0], siteConsumed, returning[1]);
+                string scalar = RawSiteValue(before);
+                ConsumeSite(addresses, enabled); Apply(before, false); siteConsumed = true;
+                emit("phase=hardware-site site=KernelBasePostCallTest rva=0x000BD278 " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
+                    " observation_scope=attach_window provisional=True slot_disabled=True control_integer_unchanged=True");
+                return true;
+            }
             ulong stack = U64(before, 152);
-            if (!returning[slot]) {
-                if (slot == 1 && !InitializerApiBoundary(slot, stacks[0] != 0 && returning[0], returning[1]))
-                    throw new InvalidOperationException("hardware initializer API entry is outside the selected KernelBase attach window");
-                // DLL reason uses RDX; mapper input is the documented NTSTATUS scalar in RCX.
-                if (slot == 0 && unchecked((uint)U64(before, 136)) != 1)
+            if (!returning[0]) {
+                if (unchecked((uint)U64(before, 136)) != 1)
                     throw new InvalidOperationException("hardware KernelBase observation is not PROCESS_ATTACH");
-                if (slot == 1) selectedInput = MapperInput(before);
                 ulong target = ReturnAddress(stack);
                 if (target == entries[slot] || (enabled[1 - slot] && target == addresses[1 - slot]))
                     throw new InvalidOperationException("hardware return breakpoint aliases an active entry/return slot");
                 stacks[slot] = stack; returns[slot] = target; entryStatuses[slot] = eventStatus;
                 // Entry stays disarmed until this outermost return; recursive calls are intentionally unobserved.
                 addresses[slot] = target; returning[slot] = true;
-                if (slot == 0) ArmInitializerApiWindow(entries, addresses, enabled);
+                ArmSiteWindow(entries, addresses, enabled, siteConsumed);
                 Apply(before, false);
-                emit("phase=hardware-entry routine=" + Routine(slot) + (slot == 0 ? " reason=PROCESS_ATTACH" : " " + MapperEntry(selectedInput))
+                emit("phase=hardware-entry routine=KernelBaseEntry reason=PROCESS_ATTACH"
                     + " " + DebugContext.TrapQualifiers(eventStatus)
                     + " outermost_only=True control_integer_unchanged=True");
             }
             else {
-                // A pending outermost initializer API cannot be skipped by an initializer return/unwind.
-                if (!InitializerApiBoundary(slot, stacks[0] != 0 && returning[0], returning[1]))
-                    throw new InvalidOperationException("hardware initializer API/initializer return nesting is inconclusive");
+                if (returning[1]) throw new InvalidOperationException("one-shot site entered an unsupported callee-return state");
                 if (!Pair(stack, stacks[slot], U64(before, 248), returns[slot]))
                     throw new InvalidOperationException("hardware outermost return stack/address pairing is inconclusive");
                 uint result = unchecked((uint)U64(before, 120));
                 // Observe one KernelBase PROCESS_ATTACH pair, never re-arm for PROCESS_DETACH.
-                CompleteReturn(slot, entries, addresses, returning, enabled);
-                Apply(before, false);
-                emit("phase=hardware-return routine=" + Routine(slot) + (slot == 0 ? " attach_succeeded=" + (result != 0) :
-                    " " + MapperReturn(selectedInput, result)) + " entry_raw_dr6=0x" + entryStatuses[slot].ToString("X16")
+                addresses[0] = addresses[1] = 0; returning[0] = false; enabled[0] = enabled[1] = false;
+                Apply(before, false); outerPaired = true;
+                emit("phase=hardware-return routine=KernelBaseEntry attach_succeeded=" + (result != 0) + " entry_raw_dr6=0x" + entryStatuses[slot].ToString("X16")
                     + " entry_rtm_bit_set=" + ((entryStatuses[slot] & 0x10000) != 0)
                     + " entry_bld_bit_set=" + ((entryStatuses[slot] & 0x800) != 0)
                     + " " + DebugContext.TrapQualifiers(eventStatus) + " pair_verified=True control_integer_unchanged=True");
-                if (slot == 0) Restore(); // The selected window ends with the first PROCESS_ATTACH pair.
+                Restore(); // The selected window ends with the first PROCESS_ATTACH pair.
             }
             return true;
         }
-        static void CompleteReturn(int slot, ulong[] routineEntries, ulong[] activeAddresses, bool[] pendingReturns, bool[] activeSlots)
+        static string RawSiteValue(byte[] context)
+        { return "raw_eax=0x" + unchecked((uint)U64(context, 120)).ToString("X8"); }
+        static void RequireSiteWindow(bool outerPending, bool consumed, bool siteReturning)
         {
-            activeAddresses[slot] = slot == 0 ? 0 : routineEntries[slot]; pendingReturns[slot] = false;
-            if (slot == 0) { activeAddresses[1] = 0; activeSlots[0] = activeSlots[1] = false; }
+            if (!outerPending || consumed || siteReturning)
+                throw new InvalidOperationException("one-shot site is outside its unconsumed outer attach window");
         }
-        static bool InitializerApiBoundary(int slot, bool initializerActive, bool apiReturnPending)
-        { return slot == 0 ? !apiReturnPending : slot == 1 && initializerActive; }
-        static uint MapperInput(byte[] context)
-        { return unchecked((uint)U64(context, 128)); }
-        static string MapperEntry(uint status)
-        { return "status_to_map=0x" + status.ToString("X8"); }
-        static string MapperReturn(uint status, uint mappedError)
-        { return MapperEntry(status) + " mapped_win32_error=0x" + mappedError.ToString("X8"); }
-        static void ArmInitializerApiWindow(ulong[] routineEntries, ulong[] activeAddresses, bool[] activeSlots)
+        static void ConsumeSite(ulong[] activeAddresses, bool[] activeSlots)
+        { activeAddresses[1] = 0; activeSlots[1] = false; }
+        static void ArmSiteWindow(ulong[] routineEntries, ulong[] activeAddresses, bool[] activeSlots, bool consumed)
         {
-            if (routineEntries[1] == 0 || routineEntries[1] == activeAddresses[0] || activeSlots[1])
-                throw new InvalidOperationException("hardware attach window lacks a distinct inactive fixed initializer API entry");
+            if (consumed || routineEntries[1] == 0 || routineEntries[1] == activeAddresses[0] || activeSlots[1])
+                throw new InvalidOperationException("hardware attach window lacks a distinct inactive unconsumed site");
             activeAddresses[1] = routineEntries[1]; activeSlots[1] = true;
         }
+        static void RequireObservationComplete(bool consumed, bool paired, bool restoration)
+        {
+            if (!consumed || !paired || !restoration)
+                throw new InvalidOperationException("one-shot diagnostic is inconclusive: site, outer pair or restoration missing");
+        }
+        internal void RequireComplete()
+        {
+            RequireObservationComplete(siteConsumed, outerPaired, restored);
+            if (invalidated) throw new InvalidOperationException("one-shot diagnostic window was invalidated after observation");
+        }
+        internal void Invalidate() { invalidated = true; }
         static bool CanRestore(bool changed, bool alive, bool pending)
         { return changed && alive && pending; }
         static bool Pair(ulong currentStack, ulong entryStack, ulong currentAddress, ulong returnedAddress)
         { return entryStack <= UInt64.MaxValue - 8 && currentStack == entryStack + 8 && currentAddress == returnedAddress; }
         internal void OtherThread(uint eventThread, uint kind)
         {
-            if (completed) return;
             if (kind == 2 || (kind == 4 && eventThread != tid))
                 throw new InvalidOperationException("hardware creator-only diagnostic encountered another thread transition");
         }
@@ -270,7 +275,7 @@ namespace ScientificSecurity
             ulong address = unchecked((ulong)imageBase.ToInt64());
             foreach (KernelImage image in images.Values)
                 if (image.Base == address) {
-                    Restore();
+                    invalidated = true; Restore();
                     emit("phase=hardware-unload observation=inconclusive"); return;
                 }
         }
@@ -278,7 +283,7 @@ namespace ScientificSecurity
         {
             if (!CanRestore(modified, creatorAlive, stopped)) return;
             byte[] before = ReadContext(); Apply(before, true);
-            completed = true; Array.Clear(enabled, 0, enabled.Length); Array.Clear(returning, 0, returning.Length);
+            completed = true; restored = true; Array.Clear(enabled, 0, enabled.Length); Array.Clear(returning, 0, returning.Length);
             emit("phase=hardware-restore restored=True control_integer_unchanged=True");
         }
         internal void Destroyed()
@@ -287,7 +292,7 @@ namespace ScientificSecurity
             if (original != null) Array.Clear(original, 0, original.Length);
             Array.Clear(entries, 0, entries.Length); Array.Clear(addresses, 0, addresses.Length);
             Array.Clear(returns, 0, returns.Length); Array.Clear(stacks, 0, stacks.Length);
-            Array.Clear(entryStatuses, 0, entryStatuses.Length); selectedInput = 0;
+            Array.Clear(entryStatuses, 0, entryStatuses.Length);
             emit("phase=hardware-cleanup state_destroyed=True restored_claimed=False");
         }
         public static void CheckValidation()
@@ -320,47 +325,49 @@ namespace ScientificSecurity
             ulong[] entries = { 100, 200 }, active = { 108, 0 };
             bool[] slots = { true, false };
             if (slots[1] || active[1] != 0) throw new InvalidOperationException("event slot was armed before attach window");
-            ArmInitializerApiWindow(entries, active, slots);
+            ArmSiteWindow(entries, active, slots, false);
             if (!slots[1] || active[1] != 200) throw new InvalidOperationException("event slot did not arm inside attach window");
             bool rejected = false;
-            try { ArmInitializerApiWindow(entries, active, slots); } catch (InvalidOperationException) { rejected = true; }
-            if (!rejected) throw new InvalidOperationException("initializer API slot duplicate window activation was accepted");
-            // Old per-slot pairing alone accepted a KB return while the initializer API still awaited return.
-            bool oldInitializerPair = Pair(108, 100, 200, 200);
-            if (!oldInitializerPair || InitializerApiBoundary(0, true, true) || InitializerApiBoundary(1, false, true) ||
-                InitializerApiBoundary(1, false, false) || !InitializerApiBoundary(1, true, false) ||
-                !InitializerApiBoundary(1, true, true) || !InitializerApiBoundary(0, true, false))
-                throw new InvalidOperationException("initializer API/initializer nesting boundary was accepted incorrectly");
-            bool[] pendingReturns = { true, true };
-            CompleteReturn(1, entries, active, pendingReturns, slots);
-            if (pendingReturns[1] || !pendingReturns[0] || active[1] != entries[1] ||
-                !InitializerApiBoundary(0, pendingReturns[0], pendingReturns[1]))
-                throw new InvalidOperationException("completed initializer API did not permit its enclosing initializer return");
-            CompleteReturn(0, entries, active, pendingReturns, slots);
-            if (pendingReturns[0] || slots[0] || slots[1] || active[0] != 0 || active[1] != 0)
-                throw new InvalidOperationException("completed initializer retained an active initializer API observation");
-            // These are formatting/input-retention fixtures, not assertions of the OS mapping table.
-            uint[] statusValues = { 0, 0xC0000022, UInt32.MaxValue, 0xC0000001 };
-            uint[] mappedValues = { 0, 5, 317, UInt32.MaxValue };
-            string[] expectedEntry = { "status_to_map=0x00000000", "status_to_map=0xC0000022", "status_to_map=0xFFFFFFFF", "status_to_map=0xC0000001" };
-            string[] expectedPairs = {
-                "status_to_map=0x00000000 mapped_win32_error=0x00000000",
-                "status_to_map=0xC0000022 mapped_win32_error=0x00000005",
-                "status_to_map=0xFFFFFFFF mapped_win32_error=0x0000013D",
-                "status_to_map=0xC0000001 mapped_win32_error=0xFFFFFFFF"
-            };
-            uint retainedInput = 0;
-            for (int index = 0; index < statusValues.Length; index++) {
-                byte[] entryContext = new byte[ContextSize];
-                Put(entryContext, 128, 0x1234567800000000UL | statusValues[index]);
-                retainedInput = MapperInput(entryContext);
-                Put(entryContext, 128, 0xFFFFFFFF00000000UL); // Return-time RCX must not replace the retained entry input.
-                string entry = MapperEntry(retainedInput), result = MapperReturn(retainedInput, mappedValues[index]);
-                if (entry != expectedEntry[index] || result != expectedPairs[index] || entry.Length != 24 || result.Length != 54 ||
-                    result.Contains("native_status") || result.Contains("server_id") || result.Contains("desired_access") ||
-                    result.Contains("last_error") || result.Contains("pointer") || result.Contains("12345678") ||
-                    result.Contains("True") || result.Contains("False"))
-                    throw new InvalidOperationException("mapper evidence lost distinct bounded input/output semantics");
+            try { ArmSiteWindow(entries, active, slots, false); } catch (InvalidOperationException) { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("one-shot site duplicate window activation was accepted");
+            RequireSiteWindow(true, false, false);
+            foreach (bool[] state in new [] { new [] { false, false, false }, new [] { true, true, false }, new [] { true, false, true } }) {
+                rejected = false;
+                try { RequireSiteWindow(state[0], state[1], state[2]); } catch (InvalidOperationException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("one-shot site accepted inactive, consumed or callee-return state");
+            }
+            ConsumeSite(active, slots);
+            if (active[1] != 0 || slots[1] || active[0] != 108 || !slots[0])
+                throw new InvalidOperationException("one-shot site disarm altered its enclosing return slot");
+            rejected = false;
+            try { ArmSiteWindow(entries, active, slots, true); } catch (InvalidOperationException) { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("consumed one-shot site was rearmed");
+            foreach (ulong site in new ulong[] { 0, 108 }) {
+                rejected = false;
+                try { ArmSiteWindow(new ulong[] { 100, site }, active, slots, false); } catch (InvalidOperationException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("one-shot site accepted a missing or aliased location");
+            }
+            var closed = new HardwareTrace(new IntPtr(1), new IntPtr(2), 7, 11, _ => { }); closed.completed = true;
+            rejected = false;
+            try { closed.SingleStep(11, 0x80000004, true); } catch (InvalidOperationException) { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("closed window silently accepted a repeated single-step");
+            closed.siteConsumed = closed.outerPaired = closed.restored = true; closed.RequireComplete(); closed.Invalidate();
+            rejected = false;
+            try { closed.RequireComplete(); } catch (InvalidOperationException) { rejected = true; }
+            if (!rejected) throw new InvalidOperationException("completed flag hid an invalidated diagnostic window");
+            uint[] values = { 0, 0x80000000, UInt32.MaxValue };
+            string[] scalar = { "raw_eax=0x00000000", "raw_eax=0x80000000", "raw_eax=0xFFFFFFFF" };
+            for (int index = 0; index < values.Length; index++) {
+                before = new byte[ContextSize]; Put(before, 120, 0x1234567800000000UL | values[index]);
+                string result = RawSiteValue(before);
+                if (result != scalar[index] || result.Length != 18 || result.Contains("12345678") || result.Contains("status") || result.Contains("return"))
+                    throw new InvalidOperationException("raw site scalar lost low32-only semantics");
+            }
+            RequireObservationComplete(true, true, true);
+            foreach (bool[] state in new [] { new [] { false, true, true }, new [] { true, false, true }, new [] { true, true, false }, new [] { false, false, true } }) {
+                rejected = false;
+                try { RequireObservationComplete(state[0], state[1], state[2]); } catch (InvalidOperationException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("diagnostic completion accepted missing site, pair or restoration");
             }
             before = new byte[ContextSize]; after = (byte[])before.Clone();
             const ulong privateAddress = 0x123456789ABCDEF0;

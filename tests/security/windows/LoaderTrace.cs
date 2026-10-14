@@ -188,7 +188,7 @@ namespace ScientificSecurity
                             if (hardware != null && hardware.SingleStep(current.tid, code, first)) {
                                 status = Continue; break;
                             }
-                            if (hardware != null) hardware.Restore();
+                            if (hardware != null) { hardware.Invalidate(); hardware.Restore(); }
                             if (!initialBreakpoint && first && code == 0x80000003) {
                                 initialBreakpoint = true; status = Continue;
                             }
@@ -211,6 +211,7 @@ namespace ScientificSecurity
                                 + " initial_breakpoint_seen=" + initialBreakpoint);
                             exited = true; break;
                         case 9:
+                            if (hardware != null) { hardware.Invalidate(); hardware.Restore(); }
                             Emit("phase=rip error=" + current.data.rip.error + " type=" + current.data.rip.type); break;
                         case 7:
                             if (hardware != null) hardware.Unload(current.data.unloadDll.imageBase);
@@ -232,6 +233,7 @@ namespace ScientificSecurity
                 }
                 finally { try { CloseCurrentFile(); } finally { ContinuePending(status); } }
             }
+            if (hardware != null) hardware.RequireComplete();
             return current.data.exit.code;
         }
         internal void TerminateAndDrain(IntPtr job, Native.ProcessInfo child)

@@ -12,7 +12,7 @@ namespace ScientificSecurity
         struct Section { internal uint rva, size, raw, rawSize, flags; }
         readonly byte[] data;
         readonly List<Section> sections = new List<Section>();
-        readonly uint headers, imageSize, exportRva, exportSize;
+        readonly uint headers, imageSize;
         internal readonly ulong Base;
         internal readonly string Name;
         internal readonly uint Entry;
@@ -61,7 +61,6 @@ namespace ScientificSecurity
             Need(U16(optional) == 0x20B && U32(optional + 108) >= 16);
             Entry = U32(optional + 16); imageSize = U32(optional + 56); headers = U32(optional + 60);
             Need(headers > 0 && headers <= data.Length && imageSize >= headers && imageSize <= 64 * 1024 * 1024);
-            exportRva = U32(optional + 112); exportSize = U32(optional + 116);
             ulong table = optional + optionalBytes; Range(table, (ulong)count * 40);
             Need(table + (ulong)count * 40 <= headers && Base <= 0x7FFFFFFFFFFFFFFFUL - imageSize);
             for (int index = 0; index < count; index++) {
@@ -108,52 +107,22 @@ namespace ScientificSecurity
         internal bool ContainsExecutable(ulong address)
         { return address >= Base && address - Base < imageSize && Executable((uint)(address - Base)); }
         internal ulong Address(uint rva) { Need(Executable(rva)); return Base + rva; }
-        string ExportName(uint rva)
-        {
-            var text = new StringBuilder();
-            for (uint index = 0; index < 64; index++) {
-                Need((ulong)rva + index <= UInt32.MaxValue);
-                byte value = data[Map(rva + index, 1)];
-                if (value == 0) return text.ToString();
-                Need(value >= 32 && value <= 126); text.Append((char)value);
-            }
-            throw new InvalidOperationException("hardware export name exceeds fixed bound");
-        }
-        internal uint RtlNtStatusToDosError()
-        {
-            Need(exportRva != 0 && exportSize >= 40 && (ulong)exportRva + exportSize <= imageSize);
-            int directory = Map(exportRva, 40);
-            uint functions = U32((ulong)directory + 20), names = U32((ulong)directory + 24);
-            Need(functions > 0 && functions <= 4096 && names > 0 && names <= 4096);
-            int addresses = Map(U32((ulong)directory + 28), checked(functions * 4));
-            int nameTable = Map(U32((ulong)directory + 32), checked(names * 4));
-            int ordinals = Map(U32((ulong)directory + 36), checked(names * 2));
-            uint found = 0; int matches = 0;
-            for (uint index = 0; index < names; index++) {
-                if (ExportName(U32((ulong)nameTable + index * 4)) != "RtlNtStatusToDosError") continue;
-                ushort ordinal = U16((ulong)ordinals + index * 2); Need(ordinal < functions);
-                uint rva = U32((ulong)addresses + (ulong)ordinal * 4);
-                Need(rva < exportRva || (ulong)rva >= (ulong)exportRva + exportSize); // Forwarded exports are not instrumented.
-                Need(Executable(rva)); found = rva; matches++;
-            }
-            Need(matches == 1); return found;
-        }
         public static void CheckValidation()
         {
             CheckIdentityValidation();
             CheckStaticValidation();
+            CheckObservationValidation();
             byte[] bytes = Fixture(); var image = new KernelImage(bytes, 0x10000000, "ntdll.dll");
-            if (image.Entry != 0x1000 || image.RtlNtStatusToDosError() != 0x1000 || !image.ContainsExecutable(0x10001000))
+            if (image.Entry != 0x1000 || !image.ContainsExecutable(0x10001000))
                 throw new InvalidOperationException("hardware image positive parser fixture failed");
             foreach (Action<byte[]> change in new Action<byte[]>[] {
                 b => Put(b, 0x3C, UInt32.MaxValue), b => Put16(b, 0x86, 65),
-                b => Put(b, 0x98 + 16, 0x3000), b => Put(b, 0x98 + 112, UInt32.MaxValue),
-                b => Put(b, 0x300 + 24, 4097), b => Put16(b, 0x350, 2),
-                b => Put(b, 0x340, 0x1100), b => Put(b, 0x188 + 36, 0x40000040),
-                b => Put(b, 0x34C, UInt32.MaxValue), b => b[0x360] = (byte)'X'
+                b => Put(b, 0x98 + 16, 0x3000), b => Put(b, 0x188 + 36, 0x40000040),
+                b => Put(b, 0x188 + 20, UInt32.MaxValue), b => Put(b, 0x188 + 12, UInt32.MaxValue),
+                b => { Put16(b, 0x86, 2); Array.Copy(b, 0x188, b, 0x1B0, 40); }
             }) {
                 byte[] bad = (byte[])bytes.Clone(); change(bad); bool rejected = false;
-                try { new KernelImage(bad, 0x10000000, "ntdll.dll").RtlNtStatusToDosError(); }
+                try { new KernelImage(bad, 0x10000000, "ntdll.dll"); }
                 catch (InvalidOperationException) { rejected = true; }
                 if (!rejected) throw new InvalidOperationException("malformed hardware image fixture was accepted");
             }
@@ -163,12 +132,9 @@ namespace ScientificSecurity
             byte[] b = new byte[1024]; Put16(b, 0, 0x5A4D); Put(b, 0x3C, 0x80); Put(b, 0x80, 0x4550);
             Put16(b, 0x84, 0x8664); Put16(b, 0x86, 1); Put16(b, 0x94, 240); Put16(b, 0x98, 0x20B);
             Put(b, 0x98 + 16, 0x1000); Put(b, 0x98 + 56, 0x2000); Put(b, 0x98 + 60, 0x200);
-            Put(b, 0x98 + 108, 16); Put(b, 0x98 + 112, 0x1100); Put(b, 0x98 + 116, 0x100);
+            Put(b, 0x98 + 108, 16);
             Put(b, 0x188 + 8, 0x200); Put(b, 0x188 + 12, 0x1000); Put(b, 0x188 + 16, 0x200);
             Put(b, 0x188 + 20, 0x200); Put(b, 0x188 + 36, 0x60000020);
-            Put(b, 0x300 + 20, 1); Put(b, 0x300 + 24, 1); Put(b, 0x300 + 28, 0x1140);
-            Put(b, 0x300 + 32, 0x114C); Put(b, 0x300 + 36, 0x1150); Put(b, 0x340, 0x1000);
-            Put(b, 0x34C, 0x1160); Encoding.ASCII.GetBytes("RtlNtStatusToDosError\0").CopyTo(b, 0x360);
             return b;
         }
         static void Put(byte[] b, int offset, uint value) { BitConverter.GetBytes(value).CopyTo(b, offset); }

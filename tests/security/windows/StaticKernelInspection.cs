@@ -30,7 +30,8 @@ namespace ScientificSecurity
                     phase = "post-path"; NativeFixture.Plain(path);
                     phase = "posthash"; RequireSame(identity, KernelImage.FromStatic(ReadHeld(stream)).KernelBaseIdentity());
                     phase = "qualifier"; var view = image.QualifyStatic(text);
-                    expectedIdentity = identity; // Bind only after successful post-tool same-held-file and evidence checks.
+                    phase = "observation-profile"; image.RequireObservationStatic(view);
+                    expectedIdentity = identity; // Bind only after successful post-tool same-held-file and fixed-profile checks.
                     phase = "evidence-output";
                     Console.Out.WriteLine("WINDOWS_STATIC_KERNEL phase=entry-slice module=kernelbase.dll records=" + view.Records +
                         " unsupported_lines=" + view.Unsupported + " evidence=" + (view.Unsupported == 0 ? "qualified-records" : "partial") +
@@ -67,10 +68,12 @@ namespace ScientificSecurity
             if (String.IsNullOrEmpty(expected) || !String.Equals(expected, actual, StringComparison.Ordinal))
                 throw new InvalidOperationException("static KernelBase same-run file identity is unavailable or changed");
         }
-        internal static void BindLoad(KernelImage image)
+        internal static uint BindLoad(KernelImage image)
         {
             RequireSame(expectedIdentity, image.KernelBaseIdentity());
-            Console.Out.WriteLine("WINDOWS_STATIC_KERNEL phase=load-binding identity_equal=True static_only=True"); Console.Out.Flush();
+            uint site = image.RequireObservationProfile();
+            Console.Out.WriteLine("WINDOWS_STATIC_KERNEL phase=load-binding identity_equal=True fixed_profile=True"); Console.Out.Flush();
+            return site;
         }
         public static void CheckValidation()
         {
