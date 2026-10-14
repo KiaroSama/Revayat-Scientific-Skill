@@ -292,7 +292,7 @@ try {
         Write-RunLog INFO $nativeDiagnostic
     }
     finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) }
-    [Console]::Out.WriteLine('WINDOWS_INTERNAL_OBSERVATION site=KernelBasePostCallTest observation_scope=attach_window site_consumed=True outer_pair=True restored=True sandbox_process_job_handle_cleanup=True global_cleanup=pending qualified_window=True cause_claimed=False abi_claimed=False')
+    [Console]::Out.WriteLine('WINDOWS_INTERNAL_OBSERVATION site=KernelBaseEarlierByteCompare rva=0x000BD243 observation_scope=attach_window site_consumed=True outer_pair=True restored=True sandbox_process_job_handle_cleanup=True global_cleanup=pending qualified_window=True cause_claimed=False abi_claimed=False')
     Write-RunLog INFO 'separate bounded trusted pass-code loader trace starts; never an admission control'
     $loaderDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true)
     Write-RunLog INFO $loaderDiagnostic

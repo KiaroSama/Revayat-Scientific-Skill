@@ -198,7 +198,7 @@ namespace ScientificSecurity
                 RequireSiteWindow(stacks[0] != 0 && returning[0], siteConsumed, returning[1]);
                 string scalar = RawSiteValue(before);
                 ConsumeSite(addresses, enabled); Apply(before, false); siteConsumed = true;
-                emit("phase=hardware-site site=KernelBasePostCallTest rva=0x000BD278 " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
+                emit("phase=hardware-site site=KernelBaseEarlierByteCompare rva=0x000BD243 " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
                     " observation_scope=attach_window provisional=True slot_disabled=True control_integer_unchanged=True");
                 return true;
             }
