@@ -123,6 +123,7 @@ namespace ScientificSecurity
             images.Add(image.Name, image);
             if (image.Name != "kernelbase.dll") return; // Ntdll remains a known return image, never a slot1 selector/write.
             uint site = StaticKernelInspection.BindLoad(image); emit(image.KernelBaseIdentity());
+            image.RequireCheckpointAddress();
             ulong entry = image.Address(image.Entry), observation = image.Address(site);
             RequireExecutable(entry, image); RequireExecutable(observation, image, 2);
             if (entry == observation) throw new InvalidOperationException("hardware entry and fixed observation site alias");
@@ -196,7 +197,9 @@ namespace ScientificSecurity
             if (slot == 1) {
                 if (invalidated) throw new InvalidOperationException("one-shot site reached an invalidated diagnostic window");
                 RequireSiteWindow(stacks[0] != 0 && returning[0], siteConsumed, returning[1]);
-                string scalar = RawSiteValue(before);
+                string scalar;
+                try { scalar = RawSiteValue(before) + " " + RawCheckpoint(ReadCheckpoint()); }
+                catch { Invalidate(); throw; }
                 ConsumeSite(addresses, enabled); Apply(before, false); siteConsumed = true;
                 emit("phase=hardware-site site=KernelBaseEarlierByteCompare rva=0x000BD243 " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
                     " observation_scope=attach_window provisional=True slot_disabled=True control_integer_unchanged=True");
@@ -234,6 +237,42 @@ namespace ScientificSecurity
             }
             return true;
         }
+        ushort ReadCheckpoint()
+        {
+            LiveStop(); KernelImage image;
+            if (!images.TryGetValue("kernelbase.dll", out image))
+                throw new InvalidOperationException("checkpoint read lacks its matched KernelBase image");
+            ulong address = image.RequireCheckpointAddress();
+            RequireCheckpointRegion(Region(address, 2), address, image.Base);
+            byte[] bytes = new byte[2];
+            try {
+                UIntPtr read;
+                bool copied = ReadProcessMemory(process, new IntPtr(unchecked((long)address)), bytes, new UIntPtr(2), out read);
+                Native.Check(copied, "read exactly one fixed KernelBase checkpoint WORD");
+                return DecodeCheckpoint(copied, read.ToUInt64(), bytes);
+            }
+            finally { Array.Clear(bytes, 0, bytes.Length); }
+        }
+        static void RequireCheckpointRegion(MemoryInfo info, ulong address, ulong imageBase)
+        {
+            ulong start = unchecked((ulong)info.address.ToInt64()), length = info.size.ToUInt64();
+            if (imageBase == 0 || imageBase > 0x7FFFFFFFFFFFFFFFUL - KernelImage.CheckpointRva - 2 ||
+                address != imageBase + KernelImage.CheckpointRva || start > address || start > 0x7FFFFFFFFFFFFFFFUL ||
+                length > 0x7FFFFFFFFFFFFFFFUL - start || address - start > length || 2UL > length - (address - start) ||
+                info.state != 0x1000 || info.type != 0x1000000 || unchecked((ulong)info.allocationBase.ToInt64()) != imageBase ||
+                (info.protect != 4 && info.protect != 8))
+                throw new InvalidOperationException("checkpoint read is not the complete fixed committed non-executable writable image span");
+        }
+        static ushort DecodeCheckpoint(bool copied, ulong count, byte[] bytes)
+        {
+            try {
+                if (!copied || count != 2 || bytes == null || bytes.Length != 2)
+                    throw new InvalidOperationException("checkpoint read did not return exactly one complete WORD");
+                return (ushort)(bytes[0] | (bytes[1] << 8));
+            }
+            finally { if (bytes != null) Array.Clear(bytes, 0, bytes.Length); }
+        }
+        static string RawCheckpoint(ushort value) { return "raw_checkpoint=0x" + value.ToString("X4"); }
         static string RawSiteValue(byte[] context)
         { return "raw_eax=0x" + unchecked((uint)U64(context, 120)).ToString("X8"); }
         static void RequireSiteWindow(bool outerPending, bool consumed, bool siteReturning)
@@ -295,10 +334,64 @@ namespace ScientificSecurity
             Array.Clear(entryStatuses, 0, entryStatuses.Length);
             emit("phase=hardware-cleanup state_destroyed=True restored_claimed=False");
         }
+        static void CheckCheckpointReadValidation()
+        {
+            const ulong imageBase = 0x180000000, address = 0x18039B8F8;
+            var info = new MemoryInfo { address = new IntPtr(0x18039B000L), allocationBase = new IntPtr((long)imageBase),
+                size = new UIntPtr(0x1000), state = 0x1000, type = 0x1000000, protect = 4 };
+            RequireCheckpointRegion(info, address, imageBase);
+            MemoryInfo copy = info; copy.protect = 8; RequireCheckpointRegion(copy, address, imageBase);
+            foreach (uint protection in new uint[] { 0, 1, 2, 0x10, 0x20, 0x40, 0x80, 0x104, 0x204, 0x404, 0x80000004 }) {
+                copy = info; copy.protect = protection; RequireCheckpointRegionRefused(copy, address, imageBase);
+            }
+            copy = info; copy.state = 0x2000; RequireCheckpointRegionRefused(copy, address, imageBase);
+            copy = info; copy.type = 0x20000; RequireCheckpointRegionRefused(copy, address, imageBase);
+            copy = info; copy.allocationBase = new IntPtr((long)imageBase + 1); RequireCheckpointRegionRefused(copy, address, imageBase);
+            copy = info; copy.address = new IntPtr((long)address + 1); RequireCheckpointRegionRefused(copy, address, imageBase);
+            copy = info; copy.size = new UIntPtr(0x8F9); RequireCheckpointRegionRefused(copy, address, imageBase);
+            copy = info; copy.size = UIntPtr.Zero; RequireCheckpointRegionRefused(copy, address, imageBase);
+            copy = info; copy.size = new UIntPtr(UInt64.MaxValue); RequireCheckpointRegionRefused(copy, address, imageBase);
+            RequireCheckpointRegionRefused(info, address + 1, imageBase);
+            RequireCheckpointRegionRefused(info, address, 0);
+            byte[][] bytes = { new byte[] { 0, 0 }, new byte[] { 0x58, 0x02 }, new byte[] { 0x12, 0x34 }, new byte[] { 0xFF, 0xFF } };
+            string[] expected = { "raw_checkpoint=0x0000", "raw_checkpoint=0x0258", "raw_checkpoint=0x3412", "raw_checkpoint=0xFFFF" };
+            for (int index = 0; index < bytes.Length; index++) {
+                string value = RawCheckpoint(DecodeCheckpoint(true, 2, bytes[index]));
+                if (value != expected[index] || value.Length != 21) throw new InvalidOperationException("checkpoint scalar lost exact little-endian WORD semantics");
+                RequireCheckpointCleared(bytes[index]);
+            }
+            foreach (ulong count in new ulong[] { 0, 1, 3, UInt64.MaxValue }) {
+                byte[] value = { 0x12, 0x34 }; bool refused = false;
+                try { DecodeCheckpoint(true, count, value); } catch (InvalidOperationException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("checkpoint read accepted a partial or oversized transfer");
+                RequireCheckpointCleared(value);
+            }
+            byte[] failed = { 0x12, 0x34 }; bool failedRefused = false;
+            try { DecodeCheckpoint(false, 2, failed); } catch (InvalidOperationException) { failedRefused = true; }
+            if (!failedRefused) throw new InvalidOperationException("checkpoint read accepted native failure");
+            RequireCheckpointCleared(failed);
+            foreach (byte[] malformed in new byte[][] { null, new byte[0], new byte[] { 0x12 }, new byte[] { 1, 2, 3 } }) {
+                bool refused = false;
+                try { DecodeCheckpoint(true, 2, malformed); } catch (InvalidOperationException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("checkpoint read accepted the wrong buffer width");
+                if (malformed != null) RequireCheckpointCleared(malformed);
+            }
+        }
+        static void RequireCheckpointRegionRefused(MemoryInfo info, ulong address, ulong imageBase)
+        {
+            bool refused = false;
+            try { RequireCheckpointRegion(info, address, imageBase); } catch (InvalidOperationException) { refused = true; }
+            if (!refused) throw new InvalidOperationException("checkpoint read accepted an unqualified image region");
+        }
+        static void RequireCheckpointCleared(byte[] bytes)
+        {
+            foreach (byte value in bytes) if (value != 0) throw new InvalidOperationException("checkpoint read buffer was not cleared");
+        }
         public static void CheckValidation()
         {
             DebugContext.CheckTrapValidation();
             Sandbox.CheckCleanupValidation();
+            CheckCheckpointReadValidation();
             byte[] before = new byte[ContextSize], after = (byte[])before.Clone();
             Put(before, Dr7, 0x400); Put(after, Dr7, 0x400);
             if (!CanRestore(true, true, true) || CanRestore(true, true, false) || CanRestore(true, false, true) ||
