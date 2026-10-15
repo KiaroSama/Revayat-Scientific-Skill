@@ -110,17 +110,37 @@ function Assert-SourcePath([string]$Path) {
         if ($parent -eq $current) { break }; $current = $parent
     }
 }
-function Assert-SourceTree([string]$Path) {
-    Assert-SourcePath $Path
-    foreach ($item in @(Get-ChildItem -LiteralPath $Path -Recurse -Force)) {
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            $relative = [IO.Path]::GetRelativePath($Path, $item.FullName)
-            $diagnostic = @{ phase='runtime-copy'; root=[IO.Path]::GetFullPath($Path); relative=$relative;
-                             attributes=[int]$item.Attributes; item_type=$item.GetType().Name } | ConvertTo-Json -Compress
-            [Console]::Error.WriteLine($diagnostic)
-            throw 'Prepared runtime copy source contains a reparse point'
+function Write-PreparationProgress(
+    [ValidateSet('leaf-plan','leaf-check','python-dlls','python-lib','powershell-tree','copy-python-leaves','copy-python-trees','copy-powershell')][string]$Phase,
+    [ValidateSet('before','validated','copied','after')][string]$State,
+    [ValidateRange(0,2147483647)][int]$Count = 0) {
+    Write-RunLog INFO "runtime preparation phase=$Phase state=$State count=$Count"
+    [Console]::Out.WriteLine("WINDOWS_RUNTIME_PREPARATION phase=$Phase state=$State count=$Count")
+    [Console]::Out.Flush()
+}
+function Measure-RuntimeCopy {
+    param([string]$Phase, [Parameter(ValueFromPipeline)]$Item)
+    begin { $completed = 0 }
+    process {
+        if ($Item -is [IO.FileInfo]) {
+            $completed++
+            if ($completed % 256 -eq 0) { Write-PreparationProgress $Phase 'copied' $completed }
         }
     }
+    end { Write-PreparationProgress $Phase 'after' $completed }
+}
+function Assert-SourceTree([string]$Path, [string]$Phase) {
+    Write-PreparationProgress $Phase 'before'
+    Assert-SourcePath $Path
+    $completed = 0
+    Get-ChildItem -LiteralPath $Path -Recurse -Force | ForEach-Object {
+        if (($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'Prepared runtime copy source contains a reparse point'
+        }
+        $completed++
+        if ($completed % 256 -eq 0) { Write-PreparationProgress $Phase 'validated' $completed }
+    }
+    Write-PreparationProgress $Phase 'after' $completed
 }
 function Protect-Tree([string]$Path) {
     $completed = 0
@@ -201,6 +221,7 @@ try {
     if (-not (Test-Path -LiteralPath $csc) -or -not (Test-Path -LiteralPath $windowsBase)) { throw 'Existing .NET Framework WindowsBase consumer is unavailable' }
     $consumerExe = Join-Path $target 'tests/security/windows/OpcConsumer.exe'
     $null = Checked-Native $csc @('/nologo','/target:exe',('/out:' + $consumerExe),('/reference:' + $windowsBase), (Join-Path $PSScriptRoot 'OpcConsumer.cs'))
+    Write-PreparationProgress 'leaf-plan' 'before'
     $pythonHome = [IO.Path]::GetDirectoryName($Python)
     if (Test-Path -LiteralPath (Join-Path ([IO.Path]::GetDirectoryName($pythonHome)) 'pyvenv.cfg')) { throw 'Pass the prepared base Python, not a relocated virtual environment launcher' }
     if (-not (Test-Path -LiteralPath (Join-Path $pythonHome 'Lib'))) { throw 'Prepared Python base runtime has no Lib directory' }
@@ -212,13 +233,20 @@ try {
             ForEach-Object { $_.FullName }
     )
     $pythonTrees = @((Join-Path $pythonHome 'DLLs'), (Join-Path $pythonHome 'Lib'))
+    Write-PreparationProgress 'leaf-plan' 'after' $pythonLeaves.Count
+    Write-PreparationProgress 'leaf-check' 'before'
     foreach ($selected in $pythonLeaves) { Assert-SourcePath $selected }
-    foreach ($selected in $pythonTrees) { Assert-SourceTree $selected }
+    Write-PreparationProgress 'leaf-check' 'after' $pythonLeaves.Count
+    Assert-SourceTree $pythonTrees[0] 'python-dlls'
+    Assert-SourceTree $pythonTrees[1] 'python-lib'
     $pwsh = [string](Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-    Assert-SourceTree ([IO.Path]::GetDirectoryName($pwsh))
-    Copy-Item -LiteralPath $pythonLeaves -Destination $runtime
-    Copy-Item -LiteralPath $pythonTrees -Destination $runtime -Recurse
-    Copy-Item -Path (Join-Path ([IO.Path]::GetDirectoryName($pwsh)) '*') -Destination $psRuntime -Recurse
+    Assert-SourceTree ([IO.Path]::GetDirectoryName($pwsh)) 'powershell-tree'
+    Write-PreparationProgress 'copy-python-leaves' 'before'
+    Copy-Item -LiteralPath $pythonLeaves -Destination $runtime -PassThru | Measure-RuntimeCopy 'copy-python-leaves'
+    Write-PreparationProgress 'copy-python-trees' 'before'
+    Copy-Item -LiteralPath $pythonTrees -Destination $runtime -Recurse -PassThru | Measure-RuntimeCopy 'copy-python-trees'
+    Write-PreparationProgress 'copy-powershell' 'before'
+    Copy-Item -Path (Join-Path ([IO.Path]::GetDirectoryName($pwsh)) '*') -Destination $psRuntime -Recurse -PassThru | Measure-RuntimeCopy 'copy-powershell'
     $childPython = Join-Path $runtime 'python.exe'
     $childPowerShell = Join-Path $psRuntime 'pwsh.exe'
     $chromium = $env:REVAYAT_CHROMIUM
