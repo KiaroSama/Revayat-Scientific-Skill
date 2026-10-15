@@ -30,6 +30,12 @@ A separately authorized hosted debugger control uses one immutable no-CRT truste
 
 Only the exact tested revision, actual prerequisite observations, load-bearing positive/negative assertions and owned cleanup support a completion claim. Source-audit hypotheses remain unresolved until their decisive facts are observed or independently refuted. All limits must be named in the job/report rather than hidden by `continue-on-error`.
 
+The separate fixed trusted Python `-I -B -c pass` trace may classify its first existing debug-string event to investigate a native startup denial. It does not enable Python Loader Snaps, create hardware breakpoints, inspect target code or change manifests/permissions. At most one event is read, with the existing 4096-byte span, exact transfer, strict decoding, buffer clearing and fixed routine/module/status-only output. Later events remain unread; unknown output stays inconclusive. The hardware observer remains native-fixture-only, and complete ordinary undebugged preflight still governs admission.
+
+## Workflow validation
+
+Both pinned linters remain required. Because actionlint 1.7.12 predates GitHub's `$/` same-repository syntax, `tools/check-workflows.py` translates only the three fixed root job references to equal-width `./` references in stdin. Original filenames preserve local callee input/secret/output checks and diagnostic positions. Unsupported forms fail closed; no diagnostics are filtered and no workflow is rewritten. Zizmor reads the unchanged originals. The quality job verifies that a missing required callee input still fails. The adapter uses the shared UTF-8 UTC per-run logger under `logs/check-workflows_YYYY-MM-DD_HH-MM-SS_UTC.log`, with collision-safe names and explicit logging fallback.
+
 ## Diagnostic logs
 
 Parent controllers write one UTF-8 UTC log per run, without document bodies or secret values. Linux uses `logs/security-ci_YYYY-MM-DD_HH-MM-SS_UTC.log`; Windows uses the owned security log directory described in the test README. Entries use `[timestamp UTC] [LEVEL] [COMPONENT] Message`. Logs record setup, effective controls, scenario transitions, exit status, duration and cleanup; logging failures are explicit. Preserve failed-run diagnostics locally, and share only a reviewed redacted log when requesting support. There is no automatic log upload or retention service.

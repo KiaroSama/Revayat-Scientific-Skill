@@ -20,6 +20,8 @@ namespace ScientificSecurity
         static readonly string[] Routines = { "LdrpCallInitRoutine", "LdrpInitializeProcess", "LdrpInitializeNode",
             "LdrInitializeThunk", "BaseDllInitialize" };
         static readonly string[] Modules = { "ntdll.dll", "kernel32.dll", "kernelbase.dll", Image };
+        static readonly string[] PythonModules = { "python.exe", "python311.dll", "ucrtbase.dll", "vcruntime140.dll",
+            "vcruntime140_1.dll", "version.dll", "ws2_32.dll", "pathcch.dll", "bcrypt.dll", "comctl32.dll" };
 
         // Pure bounded parser/ownership checks. No registry, process, or remote-memory calls.
         public static void CheckValidation()
@@ -54,6 +56,14 @@ namespace ScientificSecurity
                 if (Classify(input.Item1, input.Item2) != "phase=unknown format_valid=False")
                     throw new InvalidOperationException("malformed loader debug-string bytes were accepted");
             }
+            foreach (ushort format in new ushort[] { 0, 1 }) {
+                string diagnostic = "LdrpInitializeProcess python311.dll status=0xC0000022 C:\\private\\canary 0x123456789ABC";
+                byte[] payload = format == 0 ? Encoding.ASCII.GetBytes(diagnostic + "\0") : Encoding.Unicode.GetBytes(diagnostic + "\0");
+                string python = Classify(payload, format, true);
+                if (python != "phase=failure format_valid=True routine=LdrpInitializeProcess module=python311.dll status=0xC0000022" ||
+                    Classify(payload, format).Contains("python311.dll"))
+                    throw new InvalidOperationException("fixed Python string classification widened native labels or leaked content");
+            }
             string unknown = Classify(Encoding.ASCII.GetBytes("C:\\host\\secret.dll arbitraryRoutine 0xFFFFFFFF\0"), 0);
             if (unknown != "phase=unknown format_valid=True")
                 throw new InvalidOperationException("unknown loader debug string disclosed non-allowlisted content");
@@ -61,7 +71,7 @@ namespace ScientificSecurity
                 if (Classify(Encoding.ASCII.GetBytes(trap + "\0"), 0) != "phase=unknown format_valid=True")
                     throw new InvalidOperationException("loader status classifier accepted a non-label or embedded identifier");
         }
-        internal static string Classify(byte[] bytes, ushort unicode)
+        internal static string Classify(byte[] bytes, ushort unicode, bool python = false)
         {
             if (bytes == null || bytes.Length == 0 || bytes.Length > 4096 || unicode > 1 ||
                 (unicode == 1 && (bytes.Length < 2 || (bytes.Length & 1) != 0)))
@@ -83,6 +93,7 @@ namespace ScientificSecurity
             if (text.IndexOf('\0') >= 0) return "phase=unknown format_valid=False";
             string routine = Routines.FirstOrDefault(value => HasToken(text, value));
             string module = Modules.FirstOrDefault(value => HasToken(text, value));
+            if (module == null && python) module = PythonModules.FirstOrDefault(value => HasToken(text, value));
             var statuses = new List<string>();
             for (int index = 0; index <= text.Length - 6 && statuses.Count < 4; index++) {
                 if (!StartsAt(text, index, "status") || (index > 0 && TokenCharacter(text[index - 1]))) continue;

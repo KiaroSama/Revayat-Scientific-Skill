@@ -57,11 +57,12 @@ namespace ScientificSecurity
         IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess, lifetimeProcess;
         readonly System.Collections.Generic.Dictionary<IntPtr, string> modules = new System.Collections.Generic.Dictionary<IntPtr, string>();
         const uint Continue = 0x10002, NotHandled = 0x80010001;
-        readonly bool readNativeStrings;
+        readonly bool nativeHardware;
+        int pythonStringEvents;
         HardwareTrace hardware;
         internal LoaderTrace(bool nativeSnaps = false)
         {
-            readNativeStrings = nativeSnaps;
+            nativeHardware = nativeSnaps;
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
                 Marshal.SizeOf(typeof(ExceptionInfo)) != 160 || Marshal.OffsetOf(typeof(DebugEvent), "data").ToInt32() != 16 ||
                 Marshal.SizeOf(typeof(DebugEvent)) != 176 || Marshal.SizeOf(typeof(CreateProcessInfo)) != 72 ||
@@ -94,7 +95,7 @@ namespace ScientificSecurity
                 Native.Check(DuplicateHandle(Native.GetCurrentProcess(), originalThread, Native.GetCurrentProcess(),
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
                 child.process = process; child.thread = thread; memoryProcess = lifetimeProcess = process; process = thread = IntPtr.Zero;
-                if (readNativeStrings) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
+                if (nativeHardware) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
             }
             finally {
                 if (thread != IntPtr.Zero) Native.CloseHandle(thread);
@@ -147,9 +148,18 @@ namespace ScientificSecurity
             pending = false;
             if (hardware != null) hardware.Continued();
         }
+        static bool TakeDebugString(bool native, ref int pythonEvents)
+        {
+            if (native) return true;
+            if (pythonEvents != 0) return false;
+            pythonEvents = 1;
+            return true;
+        }
         void ObserveNativeString()
         {
-            if (!readNativeStrings) { Emit("phase=debug-string content_read=False"); return; }
+            if (!TakeDebugString(nativeHardware, ref pythonStringEvents)) {
+                Emit("phase=debug-string observation=unknown event_limit=True content_read=False"); return;
+            }
             DebugStringInfo info = current.data.debugString;
             if (info.text == IntPtr.Zero || info.bytes == 0 || info.bytes > 4096 || info.unicode > 1 ||
                 (info.unicode == 1 && (info.bytes & 1) != 0)) {
@@ -163,7 +173,7 @@ namespace ScientificSecurity
                 if (!copied || read.ToUInt64() != (ulong)bytes.Length) {
                     Emit("phase=debug-string observation=unknown read_success=" + copied + " native_error=" + error); return;
                 }
-                Emit("phase=debug-string " + LoaderSnaps.Classify(bytes, info.unicode));
+                Emit("phase=debug-string " + LoaderSnaps.Classify(bytes, info.unicode, !nativeHardware));
             }
             finally { Array.Clear(bytes, 0, bytes.Length); }
         }
@@ -175,6 +185,10 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
+            int strings = 0;
+            if (!TakeDebugString(false, ref strings) || strings != 1 || TakeDebugString(false, ref strings) || strings != 1 ||
+                !TakeDebugString(true, ref strings) || strings != 1)
+                throw new InvalidOperationException("Python debug-string one-event ceiling or native separation failed");
             int qualified = 0;
             Action complete = () => qualified++;
             if (!AcceptInitialBreakpoint(11, 11, 0x80000003, true, false, complete) || qualified != 1)

@@ -228,7 +228,8 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Workflow syntax and security
         run: |
-          python tools/run-check.py --timeout 120 --idle-timeout 60 -- actionlint
+          python tools/run-check.py --timeout 60 --idle-timeout 30 -- python -B -m unittest discover -s tests -p 'test_workflow_lint.py' -v
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B tools/check-workflows.py
           python tools/run-check.py --timeout 120 --idle-timeout 60 -- zizmor --offline .github/workflows
       - name: Runtime and development dependency audit
         run: python tools/run-check.py --timeout 300 --idle-timeout 90 -- python -m pip_audit --strict --progress-spinner off -r skills/revayat-scientific/requirements.txt -r requirements-dev.txt
