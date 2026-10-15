@@ -35,8 +35,10 @@ namespace ScientificSecurity
             IntPtr list = IntPtr.Zero, input = IntPtr.Zero, environment = IntPtr.Zero;
             Capture output = null, error = null;
             var child = new Native.ProcessInfo(); bool started = false, resumed = false;
+            Exception primaryFailure = null;
             try
             {
+                EmitStage(name, "prepare");
                 job = Native.CreateJobObject(IntPtr.Zero, null); Native.Check(job != IntPtr.Zero, "create trusted setup job");
                 var limits = new Native.ExtendedLimits();
                 limits.basic.flags = 0x2000 | 8 | 4; limits.basic.processes = 16;
@@ -76,28 +78,36 @@ namespace ScientificSecurity
                     }
                     environment = Marshal.StringToHGlobalUni(String.Join("\0", fixedEnvironment.Select(pair => pair.Key + "=" + pair.Value)) + "\0\0");
                 }
+                EmitStage(name, "create-before");
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
                     true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
                     environment, cwd, ref startup, out child),
                     "create suspended trusted setup process tool=" + name + (name == "dumpbin.exe" ? "" : " cwd=" + cwd)); started = true;
+                EmitStage(name, "create-after"); EmitStage(name, "assign-before");
                 Native.Check(Native.AssignProcessToJobObject(job, child.process), "own trusted setup process before resume");
+                EmitStage(name, "assign-after"); EmitStage(name, "resume-before");
                 if (Native.ResumeThread(child.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume trusted setup process");
-                resumed = true; output.CloseWriter(); error.CloseWriter(); Native.CloseHandle(input); input = IntPtr.Zero;
+                resumed = true; EmitStage(name, "resume-after");
+                output.CloseWriter(); error.CloseWriter(); Native.CloseHandle(input); input = IntPtr.Zero;
                 var clock = Stopwatch.StartNew(); long previous = 0; double progress = 0;
-                uint wait;
+                uint wait; bool firstWait = true;
                 while ((wait = Native.WaitForSingleObject(child.process, 100)) == 0x102)
                 {
+                    if (firstWait) { EmitStage(name, "wait-first"); firstWait = false; }
                     long count = output.Length() + error.Length();
                     if (count > 1048576) throw new InvalidOperationException("trusted setup output exceeded 1 MiB");
                     if (count != previous) { previous = count; progress = clock.Elapsed.TotalSeconds; }
                     if (clock.Elapsed.TotalSeconds > 60 || clock.Elapsed.TotalSeconds - progress > 20)
                         throw new TimeoutException("trusted setup command exceeded wall=60s idle=20s");
                 }
+                if (firstWait) EmitStage(name, "wait-first");
+                EmitStage(name, "wait-complete");
                 if (wait != 0) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "wait trusted setup process");
                 uint exit; Native.Check(Native.GetExitCodeProcess(child.process, out exit), "read trusted setup exit code");
-                Reap(job);
+                EmitStage(name, "reap-before"); Reap(job); EmitStage(name, "reap-after");
                 string text = output.Read(), diagnostics = error.Read();
+                EmitStage(name, "capture-after");
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(diagnostics) > 1048576)
                     throw new InvalidOperationException("combined trusted setup output exceeded 1 MiB");
                 if (name == "dumpbin.exe" && diagnostics.Length != 0)
@@ -106,28 +116,95 @@ namespace ScientificSecurity
                     (name == "dumpbin.exe" ? " static output withheld" : " " + diagnostics + " " + text));
                 return text;
             }
+            catch (Exception failure) { primaryFailure = failure; throw; }
             finally
             {
-                try {
-                    if (started && !resumed) Native.TerminateProcess(child.process, 125);
-                    if (job != IntPtr.Zero) Reap(job);
-                }
-                finally {
-                    try { if (output != null) output.Dispose(); }
-                    finally {
-                        try { if (error != null) error.Dispose(); }
-                        finally {
-                            if (child.thread != IntPtr.Zero) Native.CloseHandle(child.thread);
-                            if (child.process != IntPtr.Zero) Native.CloseHandle(child.process);
-                            if (input != IntPtr.Zero && input != Native.InvalidHandle) Native.CloseHandle(input);
-                            if (attrs != IntPtr.Zero) { Native.DeleteProcThreadAttributeList(attrs); Marshal.FreeHGlobal(attrs); }
-                            if (list != IntPtr.Zero) Marshal.FreeHGlobal(list);
-                            if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
-                            if (job != IntPtr.Zero) Native.CloseHandle(job);
-                        }
-                    }
-                }
+                FinishCleanup(primaryFailure,
+                    () => EmitStage(name, "cleanup-before"),
+                    () => { if (started && !resumed) Native.TerminateProcess(child.process, 125); },
+                    () => { if (job != IntPtr.Zero) Reap(job); },
+                    () => { if (output != null) output.Dispose(); },
+                    () => { if (error != null) error.Dispose(); },
+                    () => { if (child.thread != IntPtr.Zero) Native.CloseHandle(child.thread); },
+                    () => { if (child.process != IntPtr.Zero) Native.CloseHandle(child.process); },
+                    () => { if (input != IntPtr.Zero && input != Native.InvalidHandle) Native.CloseHandle(input); },
+                    () => { if (attrs != IntPtr.Zero) Native.DeleteProcThreadAttributeList(attrs); },
+                    () => { if (attrs != IntPtr.Zero) Marshal.FreeHGlobal(attrs); },
+                    () => { if (list != IntPtr.Zero) Marshal.FreeHGlobal(list); },
+                    () => { if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment); },
+                    () => { if (job != IntPtr.Zero) Native.CloseHandle(job); },
+                    () => EmitStage(name, "cleanup-after"));
             }
+        }
+        static void FinishCleanup(Exception primary, params Action[] actions)
+        {
+            var failures = new List<Exception>();
+            foreach (Action action in actions) {
+                try { action(); } catch (Exception failure) { failures.Add(failure); }
+            }
+            if (failures.Count != 0) {
+                if (primary != null) failures.Insert(0, primary);
+                throw new AggregateException("trusted setup operation/cleanup failed", failures);
+            }
+        }
+        static string Stage(string tool, string stage)
+        {
+            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(tool) ||
+                !new [] { "prepare", "create-before", "create-after", "assign-before", "assign-after", "resume-before", "resume-after",
+                    "wait-first", "wait-complete", "reap-before", "reap-after", "capture-after", "cleanup-before", "cleanup-after" }.Contains(stage))
+                throw new InvalidOperationException("unsupported trusted setup stage label");
+            return "WINDOWS_SETUP_STAGE tool=" + tool + " stage=" + stage;
+        }
+        static void EmitStage(string tool, string stage)
+        { EmitStage(tool, stage, Console.Out); }
+        static void EmitStage(string tool, string stage, TextWriter writer)
+        { writer.WriteLine(Stage(tool, stage)); writer.Flush(); }
+        public static void CheckValidation()
+        {
+            if (Stage("csc.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=csc.exe stage=create-before")
+                throw new InvalidOperationException("trusted setup stage literal differs");
+            foreach (var bad in new [] { Tuple.Create("C:\\private\\csc.exe", "create-before"), Tuple.Create("csc.exe", "secret") }) {
+                bool rejected = false;
+                try { Stage(bad.Item1, bad.Item2); } catch (InvalidOperationException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("trusted setup stage accepted private metadata");
+            }
+            foreach (bool flush in new [] { false, true }) {
+                var primary = new TimeoutException("fixed operation fixture");
+                var cleanup = new IOException("fixed cleanup fixture");
+                using (var writer = new FailingStageWriter(flush)) {
+                    int attempts = 0; AggregateException combined = null;
+                    try {
+                        FinishCleanup(primary,
+                            () => EmitStage("csc.exe", "cleanup-before", writer),
+                            () => { attempts++; throw cleanup; },
+                            () => attempts++,
+                            () => EmitStage("csc.exe", "cleanup-after", writer));
+                    }
+                    catch (AggregateException failure) { combined = failure; }
+                    if (attempts != 2 || writer.Writes != 2 || writer.Flushes != (flush ? 2 : 0) ||
+                        combined == null || combined.InnerExceptions.Count != 4 ||
+                        !Object.ReferenceEquals(combined.InnerExceptions[0], primary) ||
+                        !Object.ReferenceEquals(combined.InnerExceptions[1], writer.Failure) ||
+                        !Object.ReferenceEquals(combined.InnerExceptions[2], cleanup) ||
+                        !Object.ReferenceEquals(combined.InnerExceptions[3], writer.Failure))
+                        throw new InvalidOperationException("trusted setup marker failure replaced operation or skipped cleanup");
+                }
+                Exception retained = null;
+                try { try { throw primary; } finally { FinishCleanup(primary, () => { }); } }
+                catch (Exception failure) { retained = failure; }
+                if (!Object.ReferenceEquals(retained, primary))
+                    throw new InvalidOperationException("successful cleanup replaced original operation failure");
+            }
+        }
+        sealed class FailingStageWriter : TextWriter
+        {
+            readonly bool failFlush;
+            internal readonly IOException Failure = new IOException("fixed marker fixture");
+            internal int Writes, Flushes;
+            internal FailingStageWriter(bool flush) { failFlush = flush; }
+            public override Encoding Encoding { get { return Encoding.UTF8; } }
+            public override void WriteLine(string value) { Writes++; if (!failFlush) throw Failure; }
+            public override void Flush() { Flushes++; throw Failure; }
         }
         static void Reap(IntPtr job)
         {

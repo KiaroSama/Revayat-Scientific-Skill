@@ -258,10 +258,39 @@ def main():
     return status
 
 
-if __name__ == '__main__':
+def failure_categories(error):
+    pending, causes, visited, truncated = [(error, 0)], [], 0, False
+    while pending and visited < 32 and len(causes) < 16:
+        current, depth = pending.pop()
+        visited += 1
+        if isinstance(current, BaseExceptionGroup):
+            if depth >= 4:
+                truncated = True
+                continue
+            room = 32 - visited - len(pending)
+            children = current.exceptions[:max(0, room)]
+            truncated |= len(children) != len(current.exceptions)
+            pending.extend((child, depth + 1) for child in reversed(children))
+            continue
+        category = ('timeout' if isinstance(current, TimeoutError) else
+                    'unicode_error' if isinstance(current, UnicodeError) else
+                    'os_error' if isinstance(current, OSError) else 'unknown_failure')
+        item = {'category': category}
+        code = getattr(current, 'winerror', None) if category == 'os_error' else None
+        if type(code) is int and 0 <= code <= 0xFFFFFFFF:
+            item['winerror'] = code
+        causes.append(item)
+    return {'causes': causes, 'truncated': truncated or bool(pending)}
+
+
+def entrypoint():
     try:
-        raise SystemExit(main())
+        return main()
     except Exception as error:
-        print(json.dumps({'phase': 'windows-bootstrap', 'status': 'failed', 'error': str(error)}, sort_keys=True),
+        print(json.dumps({'phase': 'windows-bootstrap', 'status': 'failed', **failure_categories(error)}, sort_keys=True),
               file=sys.stderr, flush=True)
-        raise SystemExit(1)
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(entrypoint())

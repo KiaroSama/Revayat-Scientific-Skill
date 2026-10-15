@@ -154,6 +154,7 @@ try {
     [ScientificSecurity.KernelImage]::CheckCheckpointValidation()
     [ScientificSecurity.KernelImage]::CheckImportValidation()
     [ScientificSecurity.StartupImageAccess]::CheckValidation()
+    [ScientificSecurity.TrustedSetup]::CheckValidation()
     [ScientificSecurity.StaticKernelInspection]::CheckValidation()
     [ScientificSecurity.HardwareTrace]::CheckValidation()
     [ScientificSecurity.DebugControl]::CheckValidation()

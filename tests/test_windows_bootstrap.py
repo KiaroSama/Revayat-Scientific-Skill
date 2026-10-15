@@ -156,6 +156,26 @@ class BootstrapCaptureTest(unittest.TestCase):
         self.assertTrue(any(isinstance(item, UnicodeDecodeError) for item in failure.exceptions))
         self.assertEqual(output, '')
 
+    def test_failure_categories_are_bounded_redacted_and_nonzero(self):
+        native = OSError('private path and canary')
+        native.winerror = 5
+        failure = ExceptionGroup('private group', [TimeoutError('secret'), native, ValueError('hidden')])
+        evidence = bootstrap.failure_categories(failure)
+        self.assertEqual(evidence, {'causes': [{'category': 'timeout'}, {'category': 'os_error', 'winerror': 5},
+                                             {'category': 'unknown_failure'}], 'truncated': False})
+        output = io.StringIO()
+        with patch.object(bootstrap, 'main', side_effect=failure), contextlib.redirect_stderr(output):
+            self.assertEqual(bootstrap.entrypoint(), 1)
+        self.assertNotIn('private', output.getvalue())
+        self.assertNotIn('canary', output.getvalue())
+        nested = RuntimeError('hidden')
+        for _ in range(8):
+            nested = ExceptionGroup('hidden', [nested])
+        self.assertTrue(bootstrap.failure_categories(nested)['truncated'])
+        wide = ExceptionGroup('hidden', [ValueError('hidden') for _ in range(40)])
+        self.assertLessEqual(len(bootstrap.failure_categories(wide)['causes']), 16)
+        self.assertTrue(bootstrap.failure_categories(wide)['truncated'])
+
 
 if __name__ == '__main__':
     unittest.main()
