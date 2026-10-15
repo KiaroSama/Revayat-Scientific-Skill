@@ -139,6 +139,7 @@ namespace ScientificSecurity
                 Profile.RequireReadOnlyRegistry(process.process, moniker, package);
                 if (preflight && !wallProbe && !loaderProbe) {
                     StartupAccess.Observe(process, python);
+                    StartupImageAccess.Observe(process, python, package);
                     StartupAccess.RequireOwnQueries(process, false);
                 }
                 OwnProcessAccess.Repair(process);
