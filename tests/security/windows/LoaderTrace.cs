@@ -57,12 +57,13 @@ namespace ScientificSecurity
         IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess, lifetimeProcess;
         readonly System.Collections.Generic.Dictionary<IntPtr, string> modules = new System.Collections.Generic.Dictionary<IntPtr, string>();
         const uint Continue = 0x10002, NotHandled = 0x80010001;
-        readonly bool nativeHardware;
-        int pythonStringEvents;
+        readonly bool nativeHardware, pythonSnaps;
+        int pythonStringEvents, requestedBytes;
         HardwareTrace hardware;
-        internal LoaderTrace(bool nativeSnaps = false)
+        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false)
         {
-            nativeHardware = nativeSnaps;
+            if (nativeSnaps && cloneSnaps) throw new ArgumentException("diagnostic roles cannot overlap");
+            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps;
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
                 Marshal.SizeOf(typeof(ExceptionInfo)) != 160 || Marshal.OffsetOf(typeof(DebugEvent), "data").ToInt32() != 16 ||
                 Marshal.SizeOf(typeof(DebugEvent)) != 176 || Marshal.SizeOf(typeof(CreateProcessInfo)) != 72 ||
@@ -148,32 +149,46 @@ namespace ScientificSecurity
             pending = false;
             if (hardware != null) hardware.Continued();
         }
-        static bool TakeDebugString(bool native, ref int pythonEvents)
+        static bool TakeDebugString(bool native, bool clone, ref int pythonEvents)
         {
-            if (native) return true;
+            if (native || clone) return true;
             if (pythonEvents != 0) return false;
             pythonEvents = 1;
             return true;
         }
+        static void ChargeRead(ref int charged, int length)
+        {
+            if (length < 1 || length > 4096 || charged < 0 || charged > 65536 - length)
+                throw new InvalidOperationException("fixed clone debug-string requested-byte ceiling exceeded");
+            charged += length;
+        }
         void ObserveNativeString()
         {
-            if (!TakeDebugString(nativeHardware, ref pythonStringEvents)) {
+            if (!TakeDebugString(nativeHardware, pythonSnaps, ref pythonStringEvents)) {
                 Emit("phase=debug-string observation=unknown event_limit=True content_read=False"); return;
             }
             DebugStringInfo info = current.data.debugString;
             if (info.text == IntPtr.Zero || info.bytes == 0 || info.bytes > 4096 || info.unicode > 1 ||
                 (info.unicode == 1 && (info.bytes & 1) != 0)) {
-                Emit("phase=debug-string observation=unknown format_valid=False"); return;
+                Emit("phase=debug-string observation=unknown format_valid=False");
+                if (pythonSnaps) throw new InvalidOperationException("fixed clone debug-string span is unqualified");
+                return;
             }
+            if (pythonSnaps) ChargeRead(ref requestedBytes, info.bytes);
             byte[] bytes = new byte[info.bytes];
             try {
                 UIntPtr read;
                 bool copied = ReadProcessMemory(memoryProcess, info.text, bytes, new UIntPtr(info.bytes), out read);
                 int error = copied ? 0 : Marshal.GetLastWin32Error();
                 if (!copied || read.ToUInt64() != (ulong)bytes.Length) {
-                    Emit("phase=debug-string observation=unknown read_success=" + copied + " native_error=" + error); return;
+                    Emit("phase=debug-string observation=unknown read_success=" + copied + " native_error=" + error);
+                    if (pythonSnaps) throw new InvalidOperationException("fixed clone debug-string transfer is incomplete");
+                    return;
                 }
-                Emit("phase=debug-string " + LoaderSnaps.Classify(bytes, info.unicode, !nativeHardware));
+                string classified = LoaderSnaps.Classify(bytes, info.unicode, !nativeHardware);
+                Emit("phase=debug-string " + classified);
+                if (pythonSnaps && classified == "phase=unknown format_valid=False")
+                    throw new InvalidOperationException("fixed clone debug-string encoding is unqualified");
             }
             finally { Array.Clear(bytes, 0, bytes.Length); }
         }
@@ -186,9 +201,21 @@ namespace ScientificSecurity
         public static void CheckValidation()
         {
             int strings = 0;
-            if (!TakeDebugString(false, ref strings) || strings != 1 || TakeDebugString(false, ref strings) || strings != 1 ||
-                !TakeDebugString(true, ref strings) || strings != 1)
-                throw new InvalidOperationException("Python debug-string one-event ceiling or native separation failed");
+            if (!TakeDebugString(false, false, ref strings) || strings != 1 || TakeDebugString(false, false, ref strings) || strings != 1 ||
+                !TakeDebugString(true, false, ref strings) || strings != 1 || !TakeDebugString(false, true, ref strings) ||
+                !TakeDebugString(false, true, ref strings))
+                throw new InvalidOperationException("Python debug-string ceiling or fixed clone separation failed");
+            int charged = 0;
+            for (int index = 0; index < 16; index++) ChargeRead(ref charged, 4096);
+            if (charged != 65536) throw new InvalidOperationException("clone read budget boundary differs");
+            foreach (int invalid in new [] { 1, 4097, 0, -1 }) {
+                bool rejected = false;
+                try { ChargeRead(ref charged, invalid); } catch (InvalidOperationException) { rejected = true; }
+                if (!rejected || charged != 65536) throw new InvalidOperationException("clone over-budget request was accepted");
+            }
+            charged = 0; ChargeRead(ref charged, 4096); // A failed transfer does not refund its request.
+            ChargeRead(ref charged, 2);
+            if (charged != 4098) throw new InvalidOperationException("clone read requests were not charged cumulatively");
             int qualified = 0;
             Action complete = () => qualified++;
             if (!AcceptInitialBreakpoint(11, 11, 0x80000003, true, false, complete) || qualified != 1)

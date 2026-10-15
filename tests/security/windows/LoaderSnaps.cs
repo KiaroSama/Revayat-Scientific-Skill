@@ -7,7 +7,7 @@ using System.Text;
 
 namespace ScientificSecurity
 {
-    // Owned CI-only configuration for one fixed native fixture; never a target launch/admission path.
+    // Owned CI-only configuration for two closed diagnostic roles; never target admission.
     public static class LoaderSnaps
     {
         const string Image = "startup-native.exe";
@@ -41,6 +41,31 @@ namespace ScientificSecurity
                 bool rejected = false;
                 try { ParseReceipt(bad, run); } catch (InvalidOperationException) { rejected = true; }
                 if (!rejected) throw new InvalidOperationException("malformed loader-snaps ownership receipt was accepted");
+            }
+            string pythonReceipt = Receipt(run, nonce, true);
+            if (ParseReceipt(pythonReceipt, run, true) != Binding(run, nonce, true) ||
+                Binding(run, nonce, true) == binding || ImageName(true) != "startup-python.exe")
+                throw new InvalidOperationException("fixed clone ownership role binding failed");
+            foreach (bool role in new [] { false, true }) {
+                bool rejected = false;
+                try { ParseReceipt(Receipt(run, nonce, !role), run, role); }
+                catch (InvalidOperationException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("cross-role diagnostic receipt was accepted");
+            }
+            int attempts = 0;
+            var primary = new InvalidOperationException("fixed diagnostic operation failure");
+            var firstCleanup = new IOException("fixed first cleanup failure");
+            var secondCleanup = new IOException("fixed second cleanup failure");
+            try {
+                FinishRoles(primary, () => { attempts++; throw firstCleanup; }, () => { attempts++; throw secondCleanup; });
+                throw new InvalidOperationException("failed diagnostic cleanup was hidden");
+            }
+            catch (AggregateException failure) {
+                if (attempts != 2 || failure.InnerExceptions.Count != 3 ||
+                    !Object.ReferenceEquals(failure.InnerExceptions[0], primary) ||
+                    !Object.ReferenceEquals(failure.InnerExceptions[1], firstCleanup) ||
+                    !Object.ReferenceEquals(failure.InnerExceptions[2], secondCleanup))
+                    throw new InvalidOperationException("diagnostic cleanup lost failures or abandoned a role");
             }
             string text = "LdrpCallInitRoutine kernelbase.dll status=0xC0000142 C:\\private\\canary 0x123456789ABC";
             byte[] ascii = Encoding.ASCII.GetBytes(text + "\0");
@@ -159,19 +184,21 @@ namespace ScientificSecurity
         }
         static bool Identifier(string value)
         { return value != null && value.Length == 32 && value.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')); }
-        static string Binding(string run, string nonce)
+        static string ImageName(bool python) { return python ? "startup-python.exe" : Image; }
+        static string Binding(string run, string nonce, bool python = false)
         {
             if (!Identifier(run) || !Identifier(nonce)) throw new InvalidOperationException("loader-snaps ownership identifiers are invalid");
-            return "Scientific.Security.LoaderSnaps:" + run + ":" + nonce;
+            return "Scientific.Security.LoaderSnaps:" + (python ? "python-pass:" : "") + run + ":" + nonce;
         }
-        static string Receipt(string run, string nonce) { Binding(run, nonce); return "loader-snaps-v1\n" + Image + "\n" + run + "\n" + nonce + "\n"; }
-        static string ParseReceipt(string text, string run)
+        static string Receipt(string run, string nonce, bool python = false)
+        { Binding(run, nonce, python); return "loader-snaps-v1\n" + ImageName(python) + "\n" + run + "\n" + nonce + "\n"; }
+        static string ParseReceipt(string text, string run, bool python = false)
         {
             if (text == null || text.Length > 256) throw new InvalidOperationException("loader-snaps ownership receipt exceeds fixed bound");
             string[] parts = text.Split('\n');
-            if (parts.Length != 5 || parts[0] != "loader-snaps-v1" || parts[1] != Image || parts[2] != run || parts[4] != "")
+            if (parts.Length != 5 || parts[0] != "loader-snaps-v1" || parts[1] != ImageName(python) || parts[2] != run || parts[4] != "")
                 throw new InvalidOperationException("loader-snaps ownership receipt does not name this fixed run/image");
-            return Binding(run, parts[3]);
+            return Binding(run, parts[3], python);
         }
         static void State(string run, string state)
         {
@@ -179,10 +206,10 @@ namespace ScientificSecurity
                 Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(state))) != "security-windows-" + run)
                 throw new InvalidOperationException("loader-snaps state is not this run's fixed owned directory");
         }
-        static string ReceiptPath(string state)
+        static string ReceiptPath(string state, bool python = false)
         {
             if (!Path.IsPathFullyQualified(state)) throw new InvalidOperationException("loader-snaps state must be absolute");
-            string path = Path.Combine(Path.GetFullPath(state), "loader-snaps.receipt");
+            string path = Path.Combine(Path.GetFullPath(state), python ? "loader-snaps-python.receipt" : "loader-snaps.receipt");
             Plain(path, true); return path;
         }
         static void Plain(string path, bool missingLeaf)
@@ -200,25 +227,30 @@ namespace ScientificSecurity
             }
         }
         public static void Enable(string run, string state, string executable)
+        { EnableFixed(run, state, executable, false); }
+        public static void EnablePython(string run, string state)
+        { EnableFixed(run, state, Path.Combine(Path.GetFullPath(state), "python", ImageName(true)), true); }
+        static void EnableFixed(string run, string state, string executable, bool python)
         {
             CheckValidation(); State(run, state);
+            string image = ImageName(python);
             if (!Path.IsPathFullyQualified(executable) ||
-                !String.Equals(Path.GetFullPath(executable), Path.Combine(Path.GetFullPath(state), "python", Image), StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("loader snaps are limited to the fixed owned native fixture");
+                !String.Equals(Path.GetFullPath(executable), Path.Combine(Path.GetFullPath(state), "python", image), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("loader snaps are limited to the two fixed owned diagnostic roles");
             Plain(executable, false);
-            string receipt = ReceiptPath(state), nonce = Guid.NewGuid().ToString("N");
-            byte[] bytes = Utf8.GetBytes(Receipt(run, nonce));
+            string receipt = ReceiptPath(state, python), nonce = Guid.NewGuid().ToString("N");
+            byte[] bytes = Utf8.GetBytes(Receipt(run, nonce, python));
             using (var stream = new FileStream(receipt, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
                 stream.Write(bytes, 0, bytes.Length); stream.Flush(true);
             }
             IntPtr transaction = IntPtr.Zero, parent = IntPtr.Zero, key = IntPtr.Zero;
             try {
                 transaction = NewTransaction(); parent = OpenParent(transaction); uint disposition;
-                Check(RegCreateKeyTransactedW(parent, Image, 0, null, 0, Read | 2 | 0x10000 | View64,
+                Check(RegCreateKeyTransactedW(parent, image, 0, null, 0, Read | 2 | 0x10000 | View64,
                     IntPtr.Zero, out key, out disposition, transaction, IntPtr.Zero), "create fixed transactional loader-snaps key");
-                if (disposition != 1) throw new InvalidOperationException("pre-existing native-fixture IFEO key collision; no edits permitted");
-                WriteString(key, Marker, Binding(run, nonce)); WriteString(key, "GlobalFlag", Flag);
-                Verify(key, Binding(run, nonce));
+                if (disposition != 1) throw new InvalidOperationException("pre-existing diagnostic IFEO key collision; no edits permitted");
+                WriteString(key, Marker, Binding(run, nonce, python)); WriteString(key, "GlobalFlag", Flag);
+                Verify(key, Binding(run, nonce, python));
                 CheckBool(CommitTransaction(transaction), "commit complete loader-snaps ownership/configuration");
             }
             finally {
@@ -229,31 +261,63 @@ namespace ScientificSecurity
             IntPtr observed = IntPtr.Zero;
             try {
                 parent = OpenParent();
-                Check(RegOpenKeyExW(parent, Image, 0, Read | View64, out observed), "read back committed loader-snaps key");
-                Verify(observed, Binding(run, nonce));
+                Check(RegOpenKeyExW(parent, image, 0, Read | View64, out observed), "read back committed loader-snaps key");
+                Verify(observed, Binding(run, nonce, python));
             }
             finally { CloseAll(observed, parent, IntPtr.Zero); }
         }
-        public static void Cleanup(string run, string state)
+        public static void Cleanup(string run, string state) { Cleanup(run, state, null); }
+        public static void Cleanup(string run, string state, Exception primary)
+        { Cleanup(run, state, primary, null); }
+        public static void Cleanup(string run, string state, Exception primary, IDisposable lease)
+        { FinishRoles(primary, () => CleanupFixed(run, state, false), () => CleanupFixed(run, state, true),
+            () => { if (lease != null) lease.Dispose(); }); }
+        static void FinishRoles(Exception primary, params Action[] actions)
+        {
+            var failures = new List<Exception>();
+            foreach (Action action in actions) {
+                try { action(); } catch (Exception failure) { failures.Add(failure); }
+            }
+            if (failures.Count != 0) {
+                if (primary != null) failures.Insert(0, primary);
+                throw new AggregateException("owned diagnostic role cleanup failed", failures);
+            }
+        }
+        public static void RequireClean(string run, string state)
         {
             State(run, state);
+            foreach (bool python in new [] { false, true }) {
+                if (File.Exists(ReceiptPath(state, python))) throw new InvalidOperationException("diagnostic ownership receipt remains before admission");
+                IntPtr parent = IntPtr.Zero, key = IntPtr.Zero;
+                try {
+                    parent = OpenParent();
+                    int result = RegOpenKeyExW(parent, ImageName(python), 0, Read | View64, out key);
+                    if (result != 2 || key != IntPtr.Zero) throw new InvalidOperationException("diagnostic IFEO absence is unverified before admission");
+                }
+                finally { CloseAll(key, parent, IntPtr.Zero); }
+            }
+        }
+        static void CleanupFixed(string run, string state, bool python)
+        {
+            State(run, state);
+            string image = ImageName(python);
             try { Plain(state, false); }
             catch (FileNotFoundException) { return; }
             catch (DirectoryNotFoundException) { return; }
-            string receipt = ReceiptPath(state);
+            string receipt = ReceiptPath(state, python);
             if (!File.Exists(receipt)) return;
             if (new FileInfo(receipt).Length > 256) throw new InvalidOperationException("loader-snaps cleanup receipt is oversized");
-            string owner = ParseReceipt(File.ReadAllText(receipt, Utf8), run);
+            string owner = ParseReceipt(File.ReadAllText(receipt, Utf8), run, python);
             IntPtr transaction = IntPtr.Zero, parent = IntPtr.Zero, key = IntPtr.Zero;
             try {
                 transaction = NewTransaction(); parent = OpenParent(transaction);
-                int opened = RegOpenKeyTransactedW(parent, Image, 0, Read | 0x10000 | View64, out key, transaction, IntPtr.Zero);
+                int opened = RegOpenKeyTransactedW(parent, image, 0, Read | 0x10000 | View64, out key, transaction, IntPtr.Zero);
                 if (opened == 2 && key != IntPtr.Zero)
                     throw new InvalidOperationException("absent loader-snaps key unexpectedly returned a handle");
                 if (opened != 2) {
                     Check(opened, "open owned loader-snaps key within cleanup transaction");
                     Verify(key, owner);
-                    Check(RegDeleteKeyTransactedW(parent, Image, View64, 0, transaction, IntPtr.Zero), "delete exact verified loader-snaps key transactionally");
+                    Check(RegDeleteKeyTransactedW(parent, image, View64, 0, transaction, IntPtr.Zero), "delete exact verified loader-snaps key transactionally");
                     IntPtr close = key; key = IntPtr.Zero;
                     Check(RegCloseKey(close), "close deleted transactional loader-snaps key");
                     CheckBool(CommitTransaction(transaction), "commit owned loader-snaps cleanup");
@@ -266,7 +330,7 @@ namespace ScientificSecurity
             IntPtr remaining = IntPtr.Zero;
             try {
                 parent = OpenParent();
-                int opened = RegOpenKeyExW(parent, Image, 0, Read | View64, out remaining);
+                int opened = RegOpenKeyExW(parent, image, 0, Read | View64, out remaining);
                 if (opened != 2 || remaining != IntPtr.Zero)
                     throw new InvalidOperationException("fixed IFEO loader-snaps cleanup absence was not verified");
             }

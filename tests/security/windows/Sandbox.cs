@@ -22,16 +22,17 @@ namespace ScientificSecurity
 
         // Only the fixed probe and fixed regression entry are launchable; no arbitrary command API.
         public static string Run(string python, string root, string scratch, string powershell,
-                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false)
+                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false, bool pythonClone = false)
         {
             if (loaderProbe && (!preflight || wallProbe))
                 throw new ArgumentException("loader tracing is restricted to the separate fixed trusted pass phase");
             if (nativeFixture && !loaderProbe) throw new ArgumentException("native fixture is a fixed loader diagnostic only");
+            if (pythonClone && (!loaderProbe || nativeFixture)) throw new ArgumentException("Python clone is a separate fixed pass-code diagnostic only");
             python = Path.GetFullPath(python); root = Path.GetFullPath(root);
             scratch = Path.GetFullPath(scratch); powershell = Path.GetFullPath(powershell);
             string probe = preflight ? Path.Combine(root, "tests", "security", "windows", "KernelProbe.py")
                                      : Path.Combine(root, "tests", "security", "windows_probe.py");
-            string phase = loaderProbe ? (nativeFixture ? "native-loader-trace" : "python-loader-trace") : (wallProbe ? "wall" : (preflight ? "preflight" : "regressions"));
+            string phase = loaderProbe ? (nativeFixture ? "native-loader-trace" : (pythonClone ? "python-clone-loader-trace" : "python-loader-trace")) : (wallProbe ? "wall" : (preflight ? "preflight" : "regressions"));
             string launchCwd = preflight ? Path.GetDirectoryName(python) : scratch;
             var arguments = new List<string> { python, "-I", "-B", "-X", "utf8", probe, root, scratch, powershell };
             if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); arguments.Add(profileFolder); }
@@ -42,6 +43,10 @@ namespace ScientificSecurity
                 executable = Path.Combine(Path.GetDirectoryName(python), "startup-native.exe");
                 NativeFixture.Validate(executable);
                 arguments = new List<string> { executable };
+            }
+            if (pythonClone) {
+                executable = Path.Combine(Path.GetDirectoryName(python), "startup-python.exe");
+                arguments = new List<string> { executable, "-I", "-B", "-c", "pass" };
             }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
@@ -62,7 +67,7 @@ namespace ScientificSecurity
             bool started = false, resumed = false, wallExpired = false;
             Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
-            LoaderTrace loader = loaderProbe ? new LoaderTrace(nativeFixture) : null;
+            LoaderTrace loader = loaderProbe ? new LoaderTrace(nativeFixture, pythonClone) : null;
             try
             {
                 job = Native.CreateJobObject(IntPtr.Zero, null);

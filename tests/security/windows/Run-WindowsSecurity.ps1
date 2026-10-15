@@ -165,7 +165,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
     [ScientificSecurity.Profile]::CheckRegistryMasks()
     [ScientificSecurity.LoaderSnaps]::CheckValidation()
@@ -265,6 +265,8 @@ try {
     Write-RunLog INFO 'protecting target tree'
     [ScientificSecurity.NativeFixture]::Build($PSScriptRoot, $runtime, $state)
     [ScientificSecurity.NativeFixture]::BuildDebugControlFixed($runtime, $state)
+    [ScientificSecurity.PythonStartupFixture]::CheckValidation($state)
+    [ScientificSecurity.PythonStartupFixture]::Prepare($runId, $state)
     Protect-Tree $target
     Write-RunLog INFO 'protecting prepared Python runtime'
     Protect-Tree $runtime
@@ -318,16 +320,30 @@ try {
     Write-RunLog INFO 'single fixed trusted-host debugger control starts; never normalization or admission proof'
     [ScientificSecurity.DebugControl]::RunFixed($runId, $state)
     Write-RunLog INFO 'fixed no-CRT native startup differential starts; never an admission control'
+    $diagnosticFailure = $null
     try {
         [ScientificSecurity.LoaderSnaps]::Enable($runId, $state, (Join-Path (Split-Path $childPython) 'startup-native.exe'))
         $nativeDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $true)
         Write-RunLog INFO $nativeDiagnostic
     }
-    finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) }
+    catch { $diagnosticFailure = $_.Exception; throw }
+    finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure) }
+    [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
     [Console]::Out.WriteLine('WINDOWS_INTERNAL_OBSERVATION site=KernelBaseEarlierByteCompare rva=0x000BD243 checkpoint_rva=0x0039B8F8 checkpoint_bytes=2 raw_checkpoint_captured=True observation_scope=attach_window site_consumed=True outer_pair=True restored=True sandbox_process_job_handle_cleanup=True global_cleanup=pending qualified_window=True cause_claimed=False abi_claimed=False')
     Write-RunLog INFO 'separate bounded trusted pass-code loader trace starts; never an admission control'
     $loaderDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true)
     Write-RunLog INFO $loaderDiagnostic
+    Write-RunLog INFO 'fixed byte-identical Python clone loader snaps starts; rename and debug perturbation remain noncausal'
+    $diagnosticFailure = $null
+    $cloneLease = [ScientificSecurity.PythonStartupFixture]::Hold($runId, $state)
+    try {
+        [ScientificSecurity.LoaderSnaps]::EnablePython($runId, $state)
+        $cloneDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $false, $true)
+        Write-RunLog INFO $cloneDiagnostic
+    }
+    catch { $diagnosticFailure = $_.Exception; throw }
+    finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure, $cloneLease) }
+    [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
     Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
     $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
     $preflight = $preflightText | ConvertFrom-Json
@@ -384,7 +400,8 @@ finally {
         try {
             if ($mounted) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
             # Retain the log; remove only this run's detached disposable state.
-            if (-not $profileOwned -and -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps.receipt'))) {
+            if (-not $profileOwned -and -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps.receipt')) -and
+                -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps-python.receipt'))) {
                 Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop
             }
         }
