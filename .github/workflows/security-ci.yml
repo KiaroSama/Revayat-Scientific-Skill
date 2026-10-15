@@ -1,9 +1,6 @@
 name: Security regressions
 on:
-  push:
-    branches: [main, 'fix/security-ci-coverage']
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 concurrency:

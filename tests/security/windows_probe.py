@@ -26,7 +26,7 @@ def run():
         archive.writestr('word/chunk.html', '<html><body>bounded independent OPC control</body></html>')
     consumer = subprocess.run([str(root / 'tests/security/windows/OpcConsumer.exe'), str(package)],
                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                              encoding='utf-8', timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+                              encoding='utf-8', timeout=10, creationflags=subprocess.DETACHED_PROCESS)
     require(consumer.returncode == 0 and consumer.stdout.strip() == 'OPC_CASE_RELATIONSHIP_RECOGNIZED',
             'existing WindowsBase OPC consumer did not establish case-variant relationship identity')
     print(json.dumps({'phase': 'consumer', 'id': 'WIN-OPC-CASE-IDENTITY', 'status': 'passed'}), flush=True)
@@ -96,7 +96,7 @@ def run():
                '-OutputDirectory', str(link)]
     completed = subprocess.run(command, cwd=work, stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, encoding='utf-8', timeout=35,
-                               creationflags=subprocess.CREATE_NO_WINDOW)
+                               creationflags=subprocess.DETACHED_PROCESS)
     diagnostics = completed.stdout + completed.stderr
     require(len(diagnostics.encode('utf-8')) <= 65536, 'adapter diagnostics exceeded bound')
     if (completed.returncode != 0 and 'output path must not contain links or junctions' in diagnostics

@@ -305,8 +305,27 @@ def authority_controls(root, scratch, owners):
         K.CloseHandle(token)
 
 
+def require_detached_stdio():
+    K.GetConsoleProcessList.argtypes = [ctypes.POINTER(w.DWORD), w.DWORD]
+    K.GetConsoleProcessList.restype = w.DWORD
+    console = (w.DWORD * 1)()
+    ctypes.set_last_error(0)
+    count = K.GetConsoleProcessList(console, 1)
+    error = ctypes.get_last_error()
+    require(count == 0 and error == 6, 'contained worker unexpectedly has a console or cannot prove detachment')
+    K.GetStdHandle.argtypes = [w.DWORD]
+    K.GetStdHandle.restype = P
+    K.GetFileType.argtypes = [P]
+    K.GetFileType.restype = w.DWORD
+    for identifier, expected in ((-10, 2), (-11, 3), (-12, 3)):
+        handle = K.GetStdHandle(identifier & 0xFFFFFFFF)
+        require(handle not in (None, P(-1).value) and K.GetFileType(handle) == expected,
+                'contained standard handle is not the required NUL input or captured pipe')
+
+
 def run():
     require(os.name == 'nt' and sys.version_info[:2] == (3, 11), 'native Windows 3.11 required')
+    require_detached_stdio()
     root, scratch, powershell = map(Path, sys.argv[1:4])
     profile = Path(sys.argv[6])
     # Trusted launch starts on the prepared runtime volume; entering the bounded
@@ -315,12 +334,12 @@ def run():
     require(Path.cwd() == scratch, 'trusted LPAC cannot enter assigned scratch volume')
     owners = token_controls()
     if sys.argv[-1] == 'token-child':
-        print(json.dumps({'phase': 'token-child', 'owners': owners}, sort_keys=True), flush=True)
+        print(json.dumps({'phase': 'token-child', 'owners': owners, 'detached_stdio': True}, sort_keys=True), flush=True)
         return
     if sys.argv[-1] == 'wall-tree':
         subprocess.Popen([sys.executable, '-I', '-B', '-c', 'import time; time.sleep(30)'],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=subprocess.CREATE_NO_WINDOW)
+                         creationflags=subprocess.DETACHED_PROCESS)
         print('trusted wall-tree negative control started', flush=True)
         time.sleep(30)
         raise AssertionError('wall-tree was not terminated')
@@ -362,9 +381,11 @@ def run():
     child_token = subprocess.run([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__)),
                                   str(root), str(scratch), str(powershell), sys.argv[4], sys.argv[5], str(profile), 'token-child'],
                                  stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8',
-                                 timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
+                                 timeout=5, creationflags=subprocess.DETACHED_PROCESS)
     require(child_token.returncode == 0 and len(child_token.stdout) < 65536, 'descendant token verification failed')
-    require(json.loads(child_token.stdout)['owners'] == owners, 'descendant assignable owners/privileges changed')
+    child_controls = json.loads(child_token.stdout)
+    require(child_controls['owners'] == owners and child_controls['detached_stdio'] is True,
+            'descendant assignable owners/privileges or detached standard handles changed')
     authority_controls(root, scratch, owners)
     for path in (root / 'forbidden-write', Path(sys.executable).parent / 'forbidden-write',
                  powershell.parent / 'forbidden-write', root.parent / 'forbidden-write'):
@@ -499,12 +520,12 @@ def run():
         for _ in range(7):
             child = subprocess.Popen([sys.executable, '-I', '-B', '-c', 'import time; time.sleep(10)'],
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                     creationflags=subprocess.CREATE_NO_WINDOW)
+                                     creationflags=subprocess.DETACHED_PROCESS)
             children.append(child)
         try:
             extra = subprocess.Popen([sys.executable, '-I', '-B', '-c', 'raise SystemExit(0)'],
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                     creationflags=subprocess.CREATE_NO_WINDOW)
+                                     creationflags=subprocess.DETACHED_PROCESS)
         except OSError as error:
             require(error.winerror in (1816, 5, 8), 'PID limit failed for unrecognized reason')
         else:
@@ -555,6 +576,7 @@ def run():
         for path in aggregate:
             path.unlink(missing_ok=True)
     print(json.dumps({'phase': 'preflight', 'status': 'passed', 'lpac': True, 'capabilities': 0,
+                      'detached_stdio': True,
                       'cpu_rate': 1000, 'pids': 8, 'process_memory_mib': 384, 'job_memory_mib': 512,
                       'quota_bytes': 16 * 1024**2, 'python': sys.version.split()[0]}, sort_keys=True), flush=True)
 

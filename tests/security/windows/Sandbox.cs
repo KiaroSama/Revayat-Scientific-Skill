@@ -126,7 +126,7 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 using (OwnedToken restricted = OwnedToken.Create()) {
                     bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, executable, new StringBuilder(command), processAttributes, processAttributes, true,
-                        Native.ExtendedStartup | Native.Suspended | Native.NoWindow | Native.UnicodeEnvironment | (loaderProbe ? 2U : 0U),
+                        CreationFlags(loaderProbe),
                         env, launchCwd, ref startup, out process);
                     started = created;
                     if (created && loader != null) loader.Arm(process);
@@ -241,8 +241,13 @@ namespace ScientificSecurity
             failures.AddRange(cleanup);
             return new AggregateException("owned Windows operation/cleanup failed", failures);
         }
+        // NO_WINDOW still enters console allocation; detached workers use only the three explicit handles.
+        static uint CreationFlags(bool debug)
+        { return Native.ExtendedStartup | Native.Suspended | 8U | Native.UnicodeEnvironment | (debug ? 2U : 0U); }
         internal static void CheckCleanupValidation()
         {
+            if (CreationFlags(false) != 0x0008040C || CreationFlags(true) != 0x0008040E)
+                throw new InvalidOperationException("contained launch lost detached, suspended, Unicode or fixed debug flags");
             var primary = new InvalidOperationException("fixed primary fixture");
             var cleanup = new List<Exception>(); int attempts = 0;
             AttemptCleanup(cleanup, () => { attempts++; throw new InvalidOperationException("fixed cleanup one"); });
