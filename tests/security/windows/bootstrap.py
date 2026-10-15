@@ -95,6 +95,7 @@ def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
     lock = threading.Lock()
     last_progress = [time.monotonic()]
     started = resumed = False
+    primary_failure = None
     sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), None, True)
 
     def drain(handle, index):
@@ -186,39 +187,51 @@ def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
             thread.join(5)
             if thread.is_alive():
                 raise TimeoutError('outer pipe reader survived process-tree reaping')
-        with lock:
-            if errors:
-                raise errors[0]
-            stdout, stderr = (bytes(data).decode('utf-8', errors='strict') for data in chunks)
-        if stdout:
-            print(stdout, end='', flush=True)
-        if stderr:
-            print(stderr, end='', file=sys.stderr, flush=True)
         return exit_code.value
+    except BaseException as failure:
+        primary_failure = failure
+        raise
     finally:
-        try:
-            if started and not resumed:
-                check(kernel.TerminateProcess(child.process, 125), 'terminate suspended bootstrap')
-            reap()
-        finally:
-            if attributes is not None:
-                kernel.DeleteProcThreadAttributeList(attributes)
-            for handle in handles:
-                if handle in readers:
-                    kernel.CancelIoEx(handle, None)
-                kernel.CloseHandle(handle)
+        cleanup_errors = []
+
+        def attempt(action):
             try:
-                for thread in threads:
-                    thread.join(5)
-                    if thread.is_alive():
-                        raise TimeoutError('outer capture thread cleanup failed')
-            finally:
-                if child.thread:
-                    kernel.CloseHandle(child.thread)
-                if child.process:
-                    kernel.CloseHandle(child.process)
-                if job:
-                    kernel.CloseHandle(job)
+                action()
+            except BaseException as failure:
+                cleanup_errors.append(failure)
+
+        if started and not resumed:
+            attempt(lambda: check(kernel.TerminateProcess(child.process, 125), 'terminate suspended bootstrap'))
+        attempt(reap)
+        if attributes is not None:
+            attempt(lambda: kernel.DeleteProcThreadAttributeList(attributes))
+        for handle in handles:
+            if handle in readers:
+                attempt(lambda handle=handle: kernel.CancelIoEx(handle, None))
+            attempt(lambda handle=handle: kernel.CloseHandle(handle))
+        for thread in threads:
+            attempt(lambda thread=thread: thread.join(5))
+        if any(thread.is_alive() for thread in threads):
+            cleanup_errors.append(TimeoutError('outer capture thread cleanup failed'))
+        else:
+            # Preserve bounded phase evidence even when a deadline or cleanup failed.
+            def emit():
+                with lock:
+                    if sum(map(len, chunks)) > 1048576:
+                        raise RuntimeError('outer combined output exceeded 1 MiB')
+                    stdout, stderr = (bytes(data).decode('utf-8', errors='strict') for data in chunks)
+                if stdout:
+                    print(stdout, end='', flush=True)
+                if stderr:
+                    print(stderr, end='', file=sys.stderr, flush=True)
+            attempt(emit)
+            cleanup_errors.extend(errors)
+        for handle in (child.thread, child.process, job):
+            if handle:
+                attempt(lambda handle=handle: kernel.CloseHandle(handle))
+        if cleanup_errors:
+            failures = ([primary_failure] if primary_failure is not None else []) + cleanup_errors
+            raise BaseExceptionGroup('outer bootstrap operation/cleanup failed', failures) from None
 
 
 def main():

@@ -40,4 +40,6 @@ Both pinned linters remain required. Because actionlint 1.7.12 predates GitHub's
 
 ## Diagnostic logs
 
+The outer Windows bootstrap emits its bounded strict UTF-8 capture exactly once after its reader threads stop, including deadline/error paths; operation, cleanup and decoding failures remain failures and are preserved together. This retains the last captured phase for diagnosis without increasing deadlines or manufacturing progress.
+
 Parent controllers write one UTF-8 UTC log per run, without document bodies or secret values. Linux uses `logs/security-ci_YYYY-MM-DD_HH-MM-SS_UTC.log`; Windows uses the owned security log directory described in the test README. Entries use `[timestamp UTC] [LEVEL] [COMPONENT] Message`. Logs record setup, effective controls, scenario transitions, exit status, duration and cleanup; logging failures are explicit. Preserve failed-run diagnostics locally, and share only a reviewed redacted log when requesting support. There is no automatic log upload or retention service.
