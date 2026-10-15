@@ -390,6 +390,7 @@ namespace ScientificSecurity
         public static void CheckValidation()
         {
             DebugContext.CheckTrapValidation();
+            LoaderTrace.CheckValidation();
             Sandbox.CheckCleanupValidation();
             CheckCheckpointReadValidation();
             byte[] before = new byte[ContextSize], after = (byte[])before.Clone();

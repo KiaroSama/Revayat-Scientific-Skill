@@ -167,6 +167,30 @@ namespace ScientificSecurity
             }
             finally { Array.Clear(bytes, 0, bytes.Length); }
         }
+        static bool AcceptInitialBreakpoint(uint eventThread, uint creatorThread, uint code, bool first, bool seen, Action requireComplete)
+        {
+            if (eventThread != creatorThread || code != 0x80000003 || !first || seen) return false;
+            if (requireComplete != null) requireComplete();
+            return true;
+        }
+        public static void CheckValidation()
+        {
+            int qualified = 0;
+            Action complete = () => qualified++;
+            if (!AcceptInitialBreakpoint(11, 11, 0x80000003, true, false, complete) || qualified != 1)
+                throw new InvalidOperationException("initial breakpoint did not qualify its completed observation");
+            if (AcceptInitialBreakpoint(12, 11, 0x80000003, true, false, complete) ||
+                AcceptInitialBreakpoint(11, 11, 0x80000004, true, false, complete) ||
+                AcceptInitialBreakpoint(11, 11, 0x80000003, false, false, complete) ||
+                AcceptInitialBreakpoint(11, 11, 0x80000003, true, true, complete) || qualified != 1)
+                throw new InvalidOperationException("foreign, repeated or unsupported initial breakpoint was accepted");
+            bool refused = false;
+            try { AcceptInitialBreakpoint(11, 11, 0x80000003, true, false, () => { throw new InvalidOperationException("incomplete window"); }); }
+            catch (InvalidOperationException) { refused = true; }
+            if (!refused) throw new InvalidOperationException("initial breakpoint hid incomplete observation failure");
+            if (!AcceptInitialBreakpoint(11, 11, 0x80000003, true, false, null))
+                throw new InvalidOperationException("ordinary Python trace lost its initial breakpoint handling");
+        }
         internal uint Observe()
         {
             ThreadCheck();
@@ -188,10 +212,11 @@ namespace ScientificSecurity
                             if (hardware != null && hardware.SingleStep(current.tid, code, first)) {
                                 status = Continue; break;
                             }
-                            if (hardware != null) { hardware.Invalidate(); hardware.Restore(); }
-                            if (!initialBreakpoint && first && code == 0x80000003) {
+                            Action qualify = hardware == null ? null : new Action(hardware.RequireComplete);
+                            if (AcceptInitialBreakpoint(current.tid, tid, code, first, initialBreakpoint, qualify)) {
                                 initialBreakpoint = true; status = Continue;
                             }
+                            else if (hardware != null) { hardware.Invalidate(); hardware.Restore(); }
                             Emit("phase=exception code=0x" + code.ToString("X8") + " first_chance=" + first
                                 + " initial_breakpoint_seen=" + initialBreakpoint);
                             break;

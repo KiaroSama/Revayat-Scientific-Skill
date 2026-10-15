@@ -13,14 +13,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   security:
-    uses: ./.github/workflows/security-ci.yml
+    uses: $/.github/workflows/security-ci.yml
   codeql:
     permissions:
       contents: read
       security-events: write
-    uses: ./.github/workflows/codeql.yml
+    uses: $/.github/workflows/codeql.yml
   dependency-review:
-    uses: ./.github/workflows/dependency-review.yml
+    uses: $/.github/workflows/dependency-review.yml
     with:
       base_ref: ${{ inputs.base_ref }}
   portable:
