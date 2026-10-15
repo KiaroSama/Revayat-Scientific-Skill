@@ -21,7 +21,8 @@ namespace ScientificSecurity
             "LdrInitializeThunk", "BaseDllInitialize" };
         static readonly string[] Modules = { "ntdll.dll", "kernel32.dll", "kernelbase.dll", Image };
         static readonly string[] PythonModules = { "python.exe", "python311.dll", "ucrtbase.dll", "vcruntime140.dll",
-            "vcruntime140_1.dll", "version.dll", "ws2_32.dll", "pathcch.dll", "bcrypt.dll", "comctl32.dll" };
+            "vcruntime140_1.dll", "version.dll", "ws2_32.dll", "pathcch.dll", "bcrypt.dll", "comctl32.dll",
+            "advapi32.dll", "shell32.dll", "ole32.dll", "oleaut32.dll" };
 
         // Pure bounded parser/ownership checks. No registry, process, or remote-memory calls.
         public static void CheckValidation()
@@ -57,13 +58,23 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("malformed loader debug-string bytes were accepted");
             }
             foreach (ushort format in new ushort[] { 0, 1 }) {
-                string diagnostic = "LdrpInitializeProcess python311.dll status=0xC0000022 C:\\private\\canary 0x123456789ABC";
+                string diagnostic = "LdrpInitializeProcess failed python311.dll status=0xC0000022 C:\\private\\canary 0x123456789ABC";
                 byte[] payload = format == 0 ? Encoding.ASCII.GetBytes(diagnostic + "\0") : Encoding.Unicode.GetBytes(diagnostic + "\0");
                 string python = Classify(payload, format, true);
-                if (python != "phase=failure format_valid=True routine=LdrpInitializeProcess module=python311.dll status=0xC0000022" ||
+                if (python != "phase=failure format_valid=True routine=LdrpInitializeProcess module_mentioned=python311.dll access_denied_literal_present=True" ||
                     Classify(payload, format).Contains("python311.dll"))
                     throw new InvalidOperationException("fixed Python string classification widened native labels or leaked content");
             }
+            string missingDll = "LdrpProcessWork - ERROR: Unable to load DLL: C:\\private\\unknown.dll, Parent Module: C:\\private\\python311.dll; C0000022";
+            string kind = PythonEvidence(missingDll);
+            if (!kind.Contains("message_kind=dll_load_failure") || !kind.Contains("module_mentioned=python311.dll") ||
+                !kind.Contains("access_denied_literal_present=True") || kind.Contains("unknown.dll") || kind.Contains("failed_module"))
+                throw new InvalidOperationException("Python diagnostic role/redaction fixture failed");
+            if (PythonEvidence("manifest assembly SXS image import C00000220 secret.dll") != " access_denied_literal_present=False")
+                throw new InvalidOperationException("generic words or embedded status became Python failure evidence");
+            if (!PythonEvidence("Activation context generation failed; Dependent Assembly public could not be found")
+                .Contains("message_kind=activation_context_failure,assembly_resolution_failure"))
+                throw new InvalidOperationException("multiple fixed Python message kinds were hidden");
             string unknown = Classify(Encoding.ASCII.GetBytes("C:\\host\\secret.dll arbitraryRoutine 0xFFFFFFFF\0"), 0);
             if (unknown != "phase=unknown format_valid=True")
                 throw new InvalidOperationException("unknown loader debug string disclosed non-allowlisted content");
@@ -93,9 +104,8 @@ namespace ScientificSecurity
             if (text.IndexOf('\0') >= 0) return "phase=unknown format_valid=False";
             string routine = Routines.FirstOrDefault(value => HasToken(text, value));
             string module = Modules.FirstOrDefault(value => HasToken(text, value));
-            if (module == null && python) module = PythonModules.FirstOrDefault(value => HasToken(text, value));
             var statuses = new List<string>();
-            for (int index = 0; index <= text.Length - 6 && statuses.Count < 4; index++) {
+            for (int index = 0; !python && index <= text.Length - 6 && statuses.Count < 4; index++) {
                 if (!StartsAt(text, index, "status") || (index > 0 && TokenCharacter(text[index - 1]))) continue;
                 int cursor = index + 6;
                 while (cursor < text.Length && text[cursor] == ' ') cursor++;
@@ -113,7 +123,29 @@ namespace ScientificSecurity
             string phase = statuses.Count != 0 || HasToken(text, "error") || HasToken(text, "failed") ? "failure" :
                 (routine != null ? "initializer" : "unknown");
             return "phase=" + phase + " format_valid=True" + (routine == null ? "" : " routine=" + routine)
-                + (module == null ? "" : " module=" + module) + (statuses.Count == 0 ? "" : " status=" + String.Join(",", statuses));
+                + (module == null || python ? "" : " module=" + module) + (statuses.Count == 0 ? "" : " status=" + String.Join(",", statuses))
+                + (python ? PythonEvidence(text) : "");
+        }
+        static string PythonEvidence(string text)
+        {
+            var kinds = new List<string>();
+            if (Ordered(text, "LdrpProcessWork - ERROR: Unable to load DLL:", "Parent Module:")) kinds.Add("dll_load_failure");
+            if (text.IndexOf("Activation context generation failed", StringComparison.OrdinalIgnoreCase) >= 0)
+                kinds.Add("activation_context_failure");
+            if (Ordered(text, "Dependent Assembly", "could not be found")) kinds.Add("assembly_resolution_failure");
+            if (Ordered(text, "LDR: Process initialization failure for", "NTSTATUS"))
+                kinds.Add("process_initialization_wording_candidate");
+            var mentions = new List<string>();
+            foreach (string name in Modules.Concat(PythonModules)) if (HasToken(text, name)) mentions.Add(name);
+            // A DLL message also names its parent. Mentions never identify the failed DLL.
+            return (kinds.Count == 0 ? "" : " message_kind=" + String.Join(",", kinds))
+                + (mentions.Count == 0 ? "" : " module_mentioned=" + String.Join(",", mentions))
+                + " access_denied_literal_present=" + (HasToken(text, "C0000022") || HasToken(text, "0xC0000022"));
+        }
+        static bool Ordered(string text, string first, string second)
+        {
+            int index = text.IndexOf(first, StringComparison.OrdinalIgnoreCase);
+            return index >= 0 && text.IndexOf(second, index + first.Length, StringComparison.OrdinalIgnoreCase) >= 0;
         }
         static bool TokenCharacter(char value) { return Char.IsLetterOrDigit(value) || value == '_' || value == '.'; }
         static bool StartsAt(string text, int index, string value)

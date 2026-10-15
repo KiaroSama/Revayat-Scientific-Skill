@@ -34,7 +34,11 @@ namespace ScientificSecurity
                 Tuple.Create("ws2-32", Path.Combine(system, "ws2_32.dll")),
                 Tuple.Create("bcrypt", Path.Combine(system, "bcrypt.dll")),
                 Tuple.Create("version", Path.Combine(system, "version.dll")),
-                Tuple.Create("pathcch", Path.Combine(system, "pathcch.dll"))
+                Tuple.Create("pathcch", Path.Combine(system, "pathcch.dll")),
+                Tuple.Create("advapi32", Path.Combine(system, "advapi32.dll")),
+                Tuple.Create("shell32", Path.Combine(system, "shell32.dll")),
+                Tuple.Create("ole32", Path.Combine(system, "ole32.dll")),
+                Tuple.Create("oleaut32", Path.Combine(system, "oleaut32.dll"))
             };
             var observations = new List<string>(14);
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero;
