@@ -24,7 +24,12 @@ namespace ScientificSecurity
                 Need(refused);
             }
             Need(Next(1, 0, 0) == 2 && Next(2, 0, 0) == 3 && Next(3, 1, 0xC0000022) == 4);
-            Need(Next(2, 0, 0x80000000) == 4 && Next(2, 0, UInt32.MaxValue) == 4);
+            Need(Next(3, 1, 0x80000000) == 4 && Next(3, 1, UInt32.MaxValue) == 4);
+            foreach (uint value in new uint[] { 0, 1, 0x7FFFFFFF }) {
+                bool refused = false;
+                try { Next(3, 1, value); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
             foreach (int[] item in new [] { new [] {0,0}, new [] {1,1}, new [] {2,1}, new [] {3,0}, new [] {4,0}, new [] {4,1} }) {
                 bool refused = false;
                 try { Next(item[0], item[1], 0); } catch (InvalidOperationException) { refused = true; }
@@ -39,7 +44,9 @@ namespace ScientificSecurity
             Need(U64(entry, 72) == 0x1000 && U64(sites, 72) == 0x2000 && U64(sites, 80) == 0x3000 &&
                 U64(sites, 112) == 0x405 && DebugContext.RawDebugEqual(restored, baseline));
             Need(DebugContext.UnchangedControlInteger(baseline, sites) && U64(baseline, 72) == 0);
-            Need(Raw(0x12345678C0000022UL) == "raw_eax=0xC0000022" && Raw(UInt64.MaxValue) == "raw_eax=0xFFFFFFFF");
+            Need(Raw(0x12345678C0000022UL) == "raw_ebx=0xC0000022" && Raw(UInt64.MaxValue) == "raw_ebx=0xFFFFFFFF");
+            byte[] scalar = new byte[DebugContext.Size]; Put(scalar, 120, 1); Put(scalar, 144, 0x12345678C0000022UL);
+            Need(Raw(U64(scalar, 144)) == "raw_ebx=0xC0000022" && !Raw(U64(scalar, 144)).Contains("raw_eax"));
             Need(Complete(4, true, false) && !Complete(3, true, false) && !Complete(4, false, false) && !Complete(4, true, true));
             Need(Software(1, false, 7, 7, true) && !Software(2, false, 7, 7, true) &&
                 !Software(1, true, 7, 7, true) && !Software(1, false, 8, 7, true) && !Software(1, false, 7, 7, false));
@@ -169,12 +176,12 @@ namespace ScientificSecurity
         { if (!value) RequireCheck(false, check, () => emit(RefusalMetadata(check, context))); }
         static ulong U64(byte[] value, int offset) { return BitConverter.ToUInt64(value, offset); }
         static void Put(byte[] value, int offset, ulong number) { BitConverter.GetBytes(number).CopyTo(value, offset); }
-        static string Raw(ulong value) { return "raw_eax=0x" + unchecked((uint)value).ToString("X8"); }
+        static string Raw(ulong value) { return "raw_ebx=0x" + unchecked((uint)value).ToString("X8"); }
         static int Next(int stage, int slot, uint raw)
         {
             if (stage == 1 && slot == 0) return 2;
-            if (stage == 2 && slot == 0) return (raw & 0x80000000) != 0 ? 4 : 3;
-            if (stage == 3 && slot == 1) return 4;
+            if (stage == 2 && slot == 0) return 3;
+            if (stage == 3 && slot == 1 && (raw & 0x80000000) != 0) return 4;
             throw new InvalidOperationException("fixed activation observation order is invalid");
         }
         static bool Complete(int state, bool restoration, bool invalid) { return state == 4 && restoration && !invalid; }
@@ -288,23 +295,28 @@ namespace ScientificSecurity
                 Check(slot >= 0 && DebugContext.OwnedTrapSite(eventThread, tid, first, enabled[slot], U64(before, 248), addresses[slot]) &&
                     unchecked((ulong)exceptionAddress.ToInt64()) == U64(before, 248) &&
                     DebugContext.OwnedTrapStatus(status, U64(before, 112), Control(), slot), "hardware-trap", before);
-                int next = Next(stage, slot, stage == 1 ? 0 : unchecked((uint)U64(before, 120)));
+                int next = Next(stage, slot, stage == 3 ? unchecked((uint)U64(before, 144)) : 0);
                 if (stage == 1) {
                     Check(initial && kernel != null, "entry-prerequisites", before);
-                    RequireExecutable(kernel, KernelImage.CapturePostRva, 2); RequireExecutable(kernel, KernelImage.ServerPostRva, 2);
-                    addresses[0] = kernel.Address(KernelImage.CapturePostRva); addresses[1] = kernel.Address(KernelImage.ServerPostRva);
+                    RequireExecutable(kernel, KernelImage.WorkerEntryRva, 15); RequireExecutable(kernel, KernelImage.FailureFunnelRva, 2);
+                    addresses[0] = kernel.Address(KernelImage.WorkerEntryRva); addresses[1] = kernel.Address(KernelImage.FailureFunnelRva);
                     Need(addresses[0] != addresses[1] && addresses[0] != fixture.Address(fixture.Entry) && addresses[1] != fixture.Address(fixture.Entry));
                     enabled[0] = enabled[1] = true; stage = next; Apply(before, false);
-                    emit("phase=activation-entry-hit " + DebugContext.TrapQualifiers(status) + " post_sites_armed=True control_integer_unchanged=True");
+                    emit("phase=activation-entry-hit " + DebugContext.TrapQualifiers(status) + " worker_sites_armed=True control_integer_unchanged=True");
                 }
                 else {
-                    string site = stage == 2 ? "capture-post" : "server-post";
                     addresses[slot] = 0; enabled[slot] = false; stage = next;
-                    if (stage == 4) Restore(); else Apply(before, false);
-                    emit("phase=activation-caller-site site=" + site + " " + Raw(U64(before, 120)) + " " + DebugContext.TrapQualifiers(status) +
-                        " caller_local=True dynamic_target_verified=False invocation_pair_claimed=False control_integer_unchanged=True");
-                    if (stage == 4) emit("phase=activation-sites-complete restored=True second_site=" +
-                        (slot == 0 ? "disabled-not-observed" : "observed") + " branch_claimed=False cause_claimed=False");
+                    if (stage == 4) {
+                        Restore();
+                        emit("phase=activation-caller-site site=worker-failure-funnel " + Raw(U64(before, 144)) + " " + DebugContext.TrapQualifiers(status) +
+                            " caller_local=True producer_verified=False invocation_pair_claimed=False control_integer_unchanged=True");
+                        emit("phase=activation-sites-complete restored=True worker_entry_observed=True funnel_observed=True branch_claimed=False cause_claimed=False");
+                    }
+                    else {
+                        Apply(before, false);
+                        emit("phase=activation-worker-entry " + DebugContext.TrapQualifiers(status) +
+                            " slot_disabled=True scalar_read=False dispatch_route_verified=False control_integer_unchanged=True");
+                    }
                 }
                 return true;
             }

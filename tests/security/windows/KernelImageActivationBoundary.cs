@@ -6,16 +6,27 @@ namespace ScientificSecurity
 {
     public sealed partial class KernelImage
     {
-        internal const uint CapturePostRva = 0x24BB9, ServerPostRva = 0x24BE1;
-        static readonly uint[] activationRvas = { 0x24BAD, 0x24BB4, CapturePostRva, 0x24BBB, 0x24BBD,
-            0x24BC9, 0x24BCF, 0x24BD5, 0x24BDC, ServerPostRva };
+        internal const uint WorkerEntryRva = 0x24D20, FailureFunnelRva = 0x25A1A;
+        static readonly uint[] activationRvas = { 0x24BAD, 0x24BB4, 0x24BB9, 0x24BBB, 0x24BBD,
+            0x24BC9, 0x24BCF, 0x24BD5, 0x24BDC, 0x24BE1, WorkerEntryRva, 0x25A16, 0x25A18,
+            FailureFunnelRva, 0x25A1C, 0x25A21, 0x25A27 };
         static readonly string[] activationBytes = { "48FF152C6C0600", "0F1F440000", "8BD8", "85C0", "785D",
-            "41B9F8010000", "41B81E000110", "48FF15E4670600", "0F1F440000", "8BD8" };
+            "41B9F8010000", "41B81E000110", "48FF15E4670600", "0F1F440000", "8BD8",
+            "488BC4488958104889701848897820", "85DB", "790D", "8BCB", "E8AF90FEFF", "48834C2440FF", "488B45F0" };
         internal static void CheckActivationBoundaryValidation()
         {
             byte[] bytes = ActivationBoundaryFixture(); var image = FromActivationWorker(bytes);
             image.ActivationBoundaryBytes();
-            Need(image.Address(CapturePostRva) != image.Address(ServerPostRva));
+            Need(image.Address(WorkerEntryRva) != image.Address(FailureFunnelRva));
+            foreach (Action<byte[]> change in new Action<byte[]>[] {
+                b => b[0x2F20] ^= 1, b => b[0x3C16] ^= 1, b => b[0x3C19] ^= 1, b => b[0x3C1A] ^= 1,
+                b => b[0x3C1D] ^= 1, b => b[0x3C21] ^= 1, b => b[0x3C27] ^= 1,
+                b => Put(b, 0x188 + 8, 0x3A1B), b => Put(b, 0x188 + 16, 0x3A1B)
+            }) {
+                byte[] bad = (byte[])bytes.Clone(); change(bad); bool refused = false;
+                try { FromActivationWorker(bad).ActivationBoundaryBytes(); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
             foreach (Action<byte[]> change in new Action<byte[]>[] {
                 b => b[0x2DAD] ^= 1, b => b[0x2DB9] ^= 1, b => b[0x2DE1] ^= 1,
                 b => b[0x2DCF] ^= 1, b => b[0x2DBD] ^= 1,
@@ -40,9 +51,9 @@ namespace ScientificSecurity
         }
         static byte[] ActivationBoundaryFixture()
         {
-            byte[] bytes = new byte[0x3200]; Array.Copy(ActivationWorkerFixture(), bytes, 2048);
-            Put(bytes, 0x188 + 12, 0x22000); Put(bytes, 0x188 + 8, 0x3000); Put(bytes, 0x188 + 16, 0x3000);
-            Put(bytes, 0x98 + 16, 0x22000); Put(bytes, 0x98 + 56, 0x26000);
+            byte[] bytes = new byte[0x4200]; Array.Copy(ActivationWorkerFixture(), bytes, 2048);
+            Put(bytes, 0x188 + 12, 0x22000); Put(bytes, 0x188 + 8, 0x4000); Put(bytes, 0x188 + 16, 0x4000);
+            Put(bytes, 0x98 + 16, 0x22000); Put(bytes, 0x98 + 56, 0x27000);
             for (int index = 0; index < activationRvas.Length; index++) {
                 int raw = 0x200 + (int)activationRvas[index] - 0x22000;
                 for (int item = 0; item < activationBytes[index].Length / 2; item++)
@@ -66,6 +77,8 @@ namespace ScientificSecurity
             Need(checked(0x24BB4L + BitConverter.ToInt32(data, Map(0x24BB0, 4))) == 0x8B7E0);
             Need(checked(0x24BDCL + BitConverter.ToInt32(data, Map(0x24BD8, 4))) == 0x8B3C0);
             Need(checked(0x24BBFL + unchecked((sbyte)data[Map(0x24BBE, 1)])) == 0x24C1C);
+            Need(checked(0x25A1AL + unchecked((sbyte)data[Map(0x25A19, 1)])) == 0x25A27);
+            Need(checked(0x25A21L + BitConverter.ToInt32(data, Map(0x25A1D, 4))) == 0xEAD0);
         }
         internal void RequireActivationBoundaryProfile()
         {
