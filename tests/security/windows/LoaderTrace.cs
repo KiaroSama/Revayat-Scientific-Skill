@@ -51,7 +51,7 @@ namespace ScientificSecurity
         static extern uint GetFinalPathNameByHandleW(IntPtr file, StringBuilder path, uint characters, uint flags);
 
         readonly uint creator = GetCurrentThreadId();
-        readonly Stopwatch clock = new Stopwatch();
+        readonly Stopwatch clock = new Stopwatch(), activationCleanup = new Stopwatch();
         uint pid, tid; int events, bytes; bool initialBreakpoint, exited, pending;
         DebugEvent current;
         IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess, lifetimeProcess;
@@ -139,11 +139,11 @@ namespace ScientificSecurity
             IntPtr handle = original; original = IntPtr.Zero;
             if (handle != IntPtr.Zero && handle != osOwned) Native.Check(Native.CloseHandle(handle), "close distinct original creation handle");
         }
-        bool Receive()
+        bool Receive(uint milliseconds = 100)
         {
             ThreadCheck();
             if (pending) throw new InvalidOperationException("loader debug event was not continued");
-            if (!WaitForDebugEventEx(out current, 100)) {
+            if (!WaitForDebugEventEx(out current, milliseconds)) {
                 int error = Marshal.GetLastWin32Error();
                 if (error == 121) return false;
                 throw new System.ComponentModel.Win32Exception(error, "wait for owned loader event");
@@ -290,6 +290,64 @@ namespace ScientificSecurity
             if (!Object.ReferenceEquals(single, close) || String.Join(",", attempts) != "operation,close,second-close,restore,continue")
                 throw new InvalidOperationException("activation close failure skipped restoration or continuation");
         }
+        static uint RemainingActivationCleanup(long elapsed)
+        {
+            if (elapsed < 0) throw new InvalidOperationException("activation cleanup clock is invalid");
+            return elapsed >= 5000 ? 0 : (uint)(5000 - elapsed);
+        }
+        internal uint RemainingActivationCleanup()
+        {
+            if (!activationMode || !activationCleanup.IsRunning)
+                throw new InvalidOperationException("activation cleanup deadline was not started");
+            return RemainingActivationCleanup(activationCleanup.ElapsedMilliseconds);
+        }
+        static void ConfirmActivationDestruction(bool exitReceived, bool eventPending, bool handlePresent, long elapsed,
+            Func<uint, uint> wait, Action destroyed)
+        {
+            if (!exitReceived || eventPending || !handlePresent)
+                throw new InvalidOperationException("activation destruction lacks continued EXIT or retained handle");
+            uint result = wait(RemainingActivationCleanup(elapsed));
+            int error = result == UInt32.MaxValue ? Marshal.GetLastWin32Error() : 0;
+            if (result != 0) throw new InvalidOperationException("activation destruction wait did not signal wait_result=0x" +
+                result.ToString("X8") + " native_error=" + error);
+            destroyed();
+        }
+        internal static void CheckActivationDestructionValidation()
+        {
+            long[] elapsed = { 0, 1, 4999, 5000, 5001, Int64.MaxValue };
+            uint[] expected = { 5000, 4999, 1, 0, 0, 0 };
+            for (int index = 0; index < elapsed.Length; index++)
+                if (RemainingActivationCleanup(elapsed[index]) != expected[index])
+                    throw new InvalidOperationException("activation cleanup replenished its deadline");
+            bool invalid = false;
+            try { RemainingActivationCleanup(-1); } catch (InvalidOperationException) { invalid = true; }
+            if (!invalid) throw new InvalidOperationException("activation cleanup accepted a negative clock");
+            int called = 0; bool destroyed = false;
+            ConfirmActivationDestruction(true, false, true, 4999, timeout => { called++; if (timeout != 1) throw new Exception("timeout differs"); return 0; }, () => destroyed = true);
+            if (called != 1 || !destroyed) throw new InvalidOperationException("activation destruction did not wait for signaling");
+            foreach (uint result in new uint[] { 258, UInt32.MaxValue, 128, 1 }) {
+                destroyed = false; invalid = false;
+                try { ConfirmActivationDestruction(true, false, true, 5000, timeout => result, () => destroyed = true); }
+                catch (InvalidOperationException) { invalid = true; }
+                if (!invalid || destroyed) throw new InvalidOperationException("activation destruction accepted a nonsignaled wait");
+            }
+            foreach (bool[] state in new [] { new [] {false,false,true}, new [] {true,true,true}, new [] {true,false,false} }) {
+                called = 0; destroyed = false; invalid = false;
+                try { ConfirmActivationDestruction(state[0], state[1], state[2], 0, timeout => { called++; return 0; }, () => destroyed = true); }
+                catch (InvalidOperationException) { invalid = true; }
+                if (!invalid || called != 0 || destroyed) throw new InvalidOperationException("activation destruction ignored its prerequisites");
+            }
+            int queries = 0, pauses = 0;
+            Sandbox.AwaitActivationJobZero(() => ++queries < 3 ? 1U : 0U,
+                () => queries == 1 ? 21U : 1U,
+                milliseconds => { if (milliseconds != (pauses++ == 0 ? 20 : 1)) throw new Exception("job remainder differs"); });
+            if (queries != 3 || pauses != 2) throw new InvalidOperationException("activation Job-zero was not qualified");
+            invalid = false;
+            try { Sandbox.AwaitActivationJobZero(() => 1U, () => 0U, _ => { throw new Exception("expired pause"); }); }
+            catch (InvalidOperationException) { invalid = true; }
+            if (!invalid) throw new InvalidOperationException("activation Job-zero replenished its deadline");
+            Sandbox.AwaitActivationJobZero(() => 0U, () => { throw new Exception("zero job waited"); }, _ => { throw new Exception("zero job paused"); });
+        }
         void ObserveActivationEvent()
         {
             uint status = current.code == 1 ? NotHandled : Continue;
@@ -299,6 +357,7 @@ namespace ScientificSecurity
                     case 1:
                         uint code = current.data.exception.record.code;
                         bool first = current.data.exception.firstChance != 0;
+                        activation.Event(current.tid, code, first);
                         if (!activation.SingleStep(current.tid, code, first, current.data.exception.record.address) &&
                             !activation.AcceptSoftware(current.tid, code, first))
                             throw new InvalidOperationException("fixed activation diagnostic encountered an unexpected exception");
@@ -398,6 +457,7 @@ namespace ScientificSecurity
         internal void TerminateAndDrain(IntPtr job, Native.ProcessInfo child)
         {
             ThreadCheck(); memoryProcess = IntPtr.Zero; // Borrowed read reference; never own/close the duplicated process here.
+            if (activationMode && !activationCleanup.IsRunning) activationCleanup.Start();
             var failures = new System.Collections.Generic.List<Exception>();
             // Context access is legal only while an already-pending event stops the live creator.
             if (pending && hardware != null) {
@@ -416,9 +476,9 @@ namespace ScientificSecurity
             // Termination failures must not abandon a pending event or the bounded EXIT drain.
             try {
                 if (pending) FinishCleanupEvent(failures);
-                var cleanup = Stopwatch.StartNew(); int count = 0;
+                var cleanup = activationMode ? activationCleanup : Stopwatch.StartNew(); int count = 0;
                 while (!exited && cleanup.Elapsed.TotalSeconds < 5 && count < 128) {
-                    if (!Receive()) continue;
+                    if (!Receive(activationMode ? Math.Min(100U, RemainingActivationCleanup()) : 100U)) continue;
                     count++;
                     FinishCleanupEvent(failures);
                 }
@@ -431,6 +491,12 @@ namespace ScientificSecurity
         }
         internal void ConfirmDestroyed()
         {
+            if (activation != null) {
+                if (!activationCleanup.IsRunning) throw new InvalidOperationException("activation cleanup deadline was not started");
+                ConfirmActivationDestruction(exited, pending, lifetimeProcess != IntPtr.Zero, activationCleanup.ElapsedMilliseconds,
+                    milliseconds => Native.WaitForSingleObject(lifetimeProcess, milliseconds), activation.Destroyed);
+                return;
+            }
             // Caller has reaped the Job to zero; the independent duplicate must already be signaled.
             bool present = lifetimeProcess != IntPtr.Zero;
             uint wait = exited && present ? Native.WaitForSingleObject(lifetimeProcess, 0) : UInt32.MaxValue;

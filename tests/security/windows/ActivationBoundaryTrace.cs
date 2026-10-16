@@ -10,6 +10,7 @@ namespace ScientificSecurity
         {
             KernelImage.CheckActivationBoundaryValidation();
             LoaderTrace.CheckActivationEventValidation();
+            LoaderTrace.CheckActivationDestructionValidation();
             ChildActivationFixture.RequireDiagnosticRole(true, false, false, false, false, false, true);
             ChildActivationFixture.RequireDiagnosticRole(true, false, false, false, false, true, false);
             foreach (bool[] role in new [] {
@@ -54,6 +55,34 @@ namespace ScientificSecurity
             bool incomplete = false;
             try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
             Need(incomplete);
+            var reporting = new InvalidOperationException("private-reporting-sentinel");
+            AggregateException retained = null;
+            try { RequireCheck(false, "software-ownership", () => { throw reporting; }); }
+            catch (AggregateException failure) { retained = failure; }
+            Need(retained != null && retained.InnerExceptions.Count == 2 &&
+                retained.InnerExceptions[0].Message == "fixed activation observation refused check=software-ownership" &&
+                Object.ReferenceEquals(retained.InnerExceptions[1], reporting));
+            observer.original = new byte[DebugContext.Size]; observer.eventCode = 0x80000003;
+            observer.eventCreator = observer.eventFirst = true;
+            string metadata = observer.RefusalMetadata("software-ownership", observer.original);
+            Need(metadata.Contains("check=software-ownership stage=4 event_code=0x80000003 creator=True first_chance=True") &&
+                metadata.Contains("raw_dr6=0x0000000000000000") && metadata.Contains("raw_dr7=0x0000000000000000") &&
+                !metadata.Contains("raw_eax") && !metadata.Contains("digest") && metadata.Length < 768);
+            bool reported = false;
+            RequireCheck(true, "software-ownership", () => { reported = true; });
+            Need(!reported);
+            Need(observer.RefusalMetadata("hardware-stage", null).EndsWith("context_read=False"));
+            Put(observer.original, 104, UInt64.MaxValue); Put(observer.original, 112, UInt64.MaxValue);
+            metadata = observer.RefusalMetadata("hardware-trap", observer.original);
+            Need(metadata.Contains("raw_dr6=0xFFFFFFFFFFFFFFFF") && metadata.Contains("raw_dr7=0xFFFFFFFFFFFFFFFF") &&
+                !metadata.Contains("raw_eax") && !metadata.Contains("fixed") && !metadata.Contains("digest") && metadata.Length < 768);
+            observer.restored = false; observer.invalidated = false; observer.stage = 1;
+            bool rejected = false;
+            try { observer.AcceptSoftware(12, 0x80000003, true); } catch (InvalidOperationException) { rejected = true; }
+            Need(rejected && !observer.initial);
+            incomplete = false;
+            try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
+            Need(incomplete);
         }
         [StructLayout(LayoutKind.Sequential)] struct MemoryInfo {
             internal IntPtr address, allocation;
@@ -71,6 +100,8 @@ namespace ScientificSecurity
         KernelImage fixture, kernel;
         byte[] original;
         int stage;
+        uint eventCode;
+        bool eventCreator, eventFirst;
         bool stopped, initial, changed, restored, invalidated, alive = true;
         internal ActivationBoundaryTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId,
             string executable, string imageDigest, Action<string> output)
@@ -81,6 +112,30 @@ namespace ScientificSecurity
             path = executable; digest = imageDigest; emit = output;
         }
         static void Need(bool value) { if (!value) throw new InvalidOperationException("fixed activation caller-site observation is inconclusive"); }
+        static void RequireCheck(bool value, string check, Action report)
+        {
+            if (value) return;
+            var primary = new InvalidOperationException("fixed activation observation refused check=" + check);
+            try { report(); }
+            catch (Exception reporting) { throw new AggregateException("activation refusal and reporting failed", primary, reporting); }
+            throw primary;
+        }
+        string RefusalMetadata(string check, byte[] context)
+        {
+            string value = "phase=activation-refusal check=" + check + " stage=" + stage +
+                " event_code=0x" + eventCode.ToString("X8") + " creator=" + eventCreator + " first_chance=" + eventFirst +
+                " initial_seen=" + initial + " kernel_qualified=" + (kernel != null);
+            if (context == null) return value + " context_read=False";
+            value += " context_read=True " + DebugContext.TrapQualifiers(U64(context, 104)) + " raw_dr7=0x" + U64(context, 112).ToString("X16");
+            if (original == null) return value + " baseline_present=False";
+            for (int index = 0; index < 4; index++)
+                value += " dr" + index + "_match=" + (U64(context, 72 + index * 8) ==
+                    (index < 2 ? addresses[index] : U64(original, 72 + index * 8)));
+            return value + " dr7_exact=" + (U64(context, 112) == Control()) +
+                " dr6_unowned_match=" + ((U64(context, 104) & ~3UL) == (U64(original, 104) & ~3UL));
+        }
+        void Check(bool value, string check, byte[] context = null)
+        { if (!value) RequireCheck(false, check, () => emit(RefusalMetadata(check, context))); }
         static ulong U64(byte[] value, int offset) { return BitConverter.ToUInt64(value, offset); }
         static void Put(byte[] value, int offset, ulong number) { BitConverter.GetBytes(number).CopyTo(value, offset); }
         static string Raw(ulong value) { return "raw_eax=0x" + unchecked((uint)value).ToString("X8"); }
@@ -122,7 +177,7 @@ namespace ScientificSecurity
             byte[] desired = Desired(before, original, addresses, enabled, restore), after = null;
             try {
                 changed = true; DebugContext.Write(thread, desired); after = Read();
-                Need(DebugContext.RawDebugEqual(desired, after) && DebugContext.UnchangedControlInteger(before, after));
+                Check(DebugContext.RawDebugEqual(desired, after) && DebugContext.UnchangedControlInteger(before, after), "setter-readback", after);
                 if (restore) { changed = false; restored = true; }
             }
             finally { Array.Clear(desired, 0, desired.Length); if (after != null) Array.Clear(after, 0, after.Length); }
@@ -136,8 +191,10 @@ namespace ScientificSecurity
         void Ownership(byte[] context, bool trap)
         {
             for (int index = 0; index < 4; index++)
-                Need(U64(context, 72 + index * 8) == (index < 2 ? addresses[index] : U64(original, 72 + index * 8)));
-            if (!trap) Need(U64(context, 112) == Control() && (U64(context, 104) & ~3UL) == (U64(original, 104) & ~3UL));
+                Check(U64(context, 72 + index * 8) == (index < 2 ? addresses[index] : U64(original, 72 + index * 8)),
+                    trap ? "hardware-address-ownership" : "software-address-ownership", context);
+            if (!trap) Check(U64(context, 112) == Control() && (U64(context, 104) & ~3UL) == (U64(original, 104) & ~3UL),
+                "software-control-ownership", context);
         }
         static bool ExecutableRegion(MemoryInfo info, ulong address, uint bytes, ulong image)
         {
@@ -172,9 +229,12 @@ namespace ScientificSecurity
             Need(kernel == null && stage == 1); kernel = candidate;
             emit("phase=activation-load module=kernel32.dll identity_equal=True fixed_profile=True");
         }
+        internal void Event(uint eventThread, uint code, bool first)
+        { eventCode = code; eventCreator = eventThread == tid; eventFirst = first; }
         internal bool AcceptSoftware(uint eventThread, uint code, bool first)
         {
-            if (code != 0x80000003 || !Software(stage, initial, eventThread, tid, first)) return false;
+            if (code != 0x80000003) return false;
+            Check(Software(stage, initial, eventThread, tid, first), "software-stage");
             byte[] before = Read();
             try { Ownership(before, false); initial = true; }
             finally { Array.Clear(before, 0, before.Length); }
@@ -183,18 +243,18 @@ namespace ScientificSecurity
         internal bool SingleStep(uint eventThread, uint code, bool first, IntPtr exceptionAddress)
         {
             if (code != 0x80000004) return false;
-            Need(!invalidated && stage >= 1 && stage <= 3 && first && eventThread == tid && original != null);
+            Check(!invalidated && stage >= 1 && stage <= 3 && first && eventThread == tid && original != null, "hardware-stage");
             byte[] before = Read();
             try {
                 ulong status = U64(before, 104), cause = status & 0xE00FUL;
                 int slot = cause == 1 ? 0 : cause == 2 ? 1 : -1;
                 Ownership(before, true);
-                Need(slot >= 0 && DebugContext.OwnedTrapSite(eventThread, tid, first, enabled[slot], U64(before, 248), addresses[slot]) &&
+                Check(slot >= 0 && DebugContext.OwnedTrapSite(eventThread, tid, first, enabled[slot], U64(before, 248), addresses[slot]) &&
                     unchecked((ulong)exceptionAddress.ToInt64()) == U64(before, 248) &&
-                    DebugContext.OwnedTrapStatus(status, U64(before, 112), Control(), slot));
+                    DebugContext.OwnedTrapStatus(status, U64(before, 112), Control(), slot), "hardware-trap", before);
                 int next = Next(stage, slot, stage == 1 ? 0 : unchecked((uint)U64(before, 120)));
                 if (stage == 1) {
-                    Need(initial && kernel != null);
+                    Check(initial && kernel != null, "entry-prerequisites", before);
                     RequireExecutable(kernel, KernelImage.CapturePostRva, 2); RequireExecutable(kernel, KernelImage.ServerPostRva, 2);
                     addresses[0] = kernel.Address(KernelImage.CapturePostRva); addresses[1] = kernel.Address(KernelImage.ServerPostRva);
                     Need(addresses[0] != addresses[1] && addresses[0] != fixture.Address(fixture.Entry) && addresses[1] != fixture.Address(fixture.Entry));

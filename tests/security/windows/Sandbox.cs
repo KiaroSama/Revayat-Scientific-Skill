@@ -236,7 +236,10 @@ namespace ScientificSecurity
                     else if (started && !resumed) Native.Check(Native.TerminateProcess(process.process, 125), "terminate suspended child");
                 });
                 bool reaped = false;
-                AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) ReapJob(job); reaped = true; });
+                AttemptCleanup(cleanupFailures, () => {
+                    if (job != IntPtr.Zero) ReapJob(job, activationTrace && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
+                    reaped = true;
+                });
                 if (reaped && started && loader != null)
                     AttemptCleanup(cleanupFailures, () => loader.ConfirmDestroyed());
                 AttemptCleanup(cleanupFailures, () => { if (outputCapture != null) outputCapture.Dispose(); });
@@ -291,9 +294,21 @@ namespace ScientificSecurity
                 !Object.ReferenceEquals(combined.InnerExceptions[2], cleanup[1]) || CleanupFailure(null, cleanup).InnerExceptions.Count != 2)
                 throw new InvalidOperationException("owned cleanup did not preserve primary/order or attempt every phase");
         }
-        static void ReapJob(IntPtr job)
+        internal static void AwaitActivationJobZero(Func<uint> active, Func<uint> remaining, Action<int> pause)
+        {
+            while (active() != 0) {
+                uint milliseconds = remaining();
+                if (milliseconds == 0) throw new InvalidOperationException("activation job exceeded the shared cleanup deadline");
+                pause((int)Math.Min(20U, milliseconds)); // bounded kernel-state polling using only the shared remainder
+            }
+        }
+        static void ReapJob(IntPtr job, Func<uint> remaining = null)
         {
             Native.Check(Native.TerminateJobObject(job, 125), "terminate complete owned job");
+            if (remaining != null) {
+                AwaitActivationJobZero(() => Native.QueryJob<Native.Accounting>(job, 1).activeProcesses, remaining, Thread.Sleep);
+                return;
+            }
             var deadline = Stopwatch.StartNew();
             while (Native.QueryJob<Native.Accounting>(job, 1).activeProcesses != 0) {
                 if (deadline.Elapsed.TotalSeconds > 5) throw new InvalidOperationException("owned Windows job still has active processes");
