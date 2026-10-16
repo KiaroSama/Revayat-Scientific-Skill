@@ -7,7 +7,7 @@ using System.Text;
 
 namespace ScientificSecurity
 {
-    // The successful host context selects at most two files; not the failed call's attempted-object proof.
+    // The successful host context selects at most three files; not the failed call's attempted-object proof.
     public static class ActivationAssemblyAccess
     {
         [StructLayout(LayoutKind.Sequential)] struct AssemblyInfo {
@@ -24,6 +24,8 @@ namespace ScientificSecurity
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr CreateFileW(
             string path, uint access, uint share, IntPtr attributes, uint disposition, uint flags, IntPtr template);
         static readonly UnicodeEncoding Unicode = new UnicodeEncoding(false, false, true);
+        const string ControlsPrefix = "amd64_microsoft.windows.common-controls_6595b64144ccf1df_";
+        const string ResourcesPrefix = "amd64_microsoft.windows.c..-controls.resources_6595b64144ccf1df_";
         internal static List<Tuple<string, string>> Query(IntPtr context, string python, List<string> lines)
         {
             var paths = new List<Tuple<string, string>>();
@@ -40,9 +42,11 @@ namespace ScientificSecurity
                     var info = (AssemblyInfo)Marshal.PtrToStructure(buffer, typeof(AssemblyInfo));
                     RequirePathType(info.pathType);
                     string path = ReadPath(buffer, size, info.path, info.pathBytes);
+                    lines.Add(PathMetadata(path, python, item, size, info.pathType));
                     string label = QualifyFile(path, python, item);
                     paths.Add(Tuple.Create(label, path));
                 }
+                RequireProfile(paths.Select(value => value.Item1).ToArray(), count);
                 return paths;
             }
             finally {
@@ -64,7 +68,7 @@ namespace ScientificSecurity
         }
         static uint RequireCount(uint count)
         {
-            if (count < 1 || count > 2) throw new InvalidOperationException("activation assembly count exceeds fixed profile");
+            if (count < 1 || count > 3) throw new InvalidOperationException("activation assembly count exceeds fixed profile");
             return count;
         }
         static void RequirePathType(uint type)
@@ -95,19 +99,42 @@ namespace ScientificSecurity
             }
             finally { Array.Clear(data, 0, data.Length); }
         }
+        static string ManifestDirectory()
+        { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "WinSxS", "Manifests"); }
+        static bool Canonical(string path)
+        { return Path.IsPathFullyQualified(path) && String.Equals(Path.GetFullPath(path), path, StringComparison.OrdinalIgnoreCase); }
+        static bool Family(string path, string prefix)
+        {
+            string name = Path.GetFileName(path);
+            return name.Length <= 240 && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                name.EndsWith(".manifest", StringComparison.OrdinalIgnoreCase) &&
+                name.All(c => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.');
+        }
+        static string PathMetadata(string path, string python, uint index, uint size, uint type)
+        {
+            return "WINDOWS_ACTIVATION_ASSEMBLY context=host class=3 index=" + index + " returned_bytes=" + size + " path_type=" + type +
+                " canonical=" + Canonical(path) + " python_root=" + String.Equals(path, python, StringComparison.OrdinalIgnoreCase) +
+                " system_manifests=" + String.Equals(Path.GetDirectoryName(path), ManifestDirectory(), StringComparison.OrdinalIgnoreCase) +
+                " common_controls=" + Family(path, ControlsPrefix) + " common_controls_resources=" + Family(path, ResourcesPrefix) + " cause_claimed=False";
+        }
         static string Qualify(string path, string python, uint index)
         {
-            if (!Path.IsPathFullyQualified(path) || !String.Equals(Path.GetFullPath(path), path, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("activation manifest path is not canonical");
+            if (!Canonical(path)) throw new InvalidOperationException("activation manifest path is not canonical");
             if (index == 1 && String.Equals(path, python, StringComparison.OrdinalIgnoreCase)) return "python-root";
-            string expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "WinSxS", "Manifests");
-            string name = Path.GetFileName(path);
-            if (index != 2 || !String.Equals(Path.GetDirectoryName(path), expected, StringComparison.OrdinalIgnoreCase) || name.Length > 240 ||
-                !name.StartsWith("amd64_microsoft.windows.common-controls_6595b64144ccf1df_", StringComparison.OrdinalIgnoreCase) ||
-                !name.EndsWith(".manifest", StringComparison.OrdinalIgnoreCase) ||
-                name.Any(c => !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.')))
-                throw new InvalidOperationException("activation manifest is outside the fixed root/Common-Controls profile");
-            return "common-controls-manifest";
+            if ((index == 2 || index == 3) && String.Equals(Path.GetDirectoryName(path), ManifestDirectory(), StringComparison.OrdinalIgnoreCase)) {
+                if (Family(path, ControlsPrefix)) return "common-controls-manifest";
+                if (Family(path, ResourcesPrefix)) return "common-controls-resources-manifest";
+            }
+            throw new InvalidOperationException("activation manifest is outside the fixed root/Common-Controls profile");
+        }
+        static void RequireProfile(string[] labels, uint count)
+        {
+            RequireCount(count);
+            if (labels.Length != count || labels[0] != "python-root" || labels.Distinct().Count() != count ||
+                (count >= 2 && !labels.Contains("common-controls-manifest")) ||
+                (count == 3 && !labels.Contains("common-controls-resources-manifest")) ||
+                labels.Any(label => label != "python-root" && label != "common-controls-manifest" && label != "common-controls-resources-manifest"))
+                throw new InvalidOperationException("activation assembly families do not match the complete fixed profile");
         }
         internal static void OpenFiles(string context, List<Tuple<string, string>> paths, List<string> lines, Action deadline)
         {
@@ -140,9 +167,9 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("activation path/count fixture differs");
                 RequirePathType(2);
                 var lines = new List<string>();
-                foreach (uint count in new uint[] { 0, 1, 2, 3, UInt32.MaxValue }) {
+                foreach (uint count in new uint[] { 0, 1, 2, 3, 4, UInt32.MaxValue }) {
                     lines.Clear(); Marshal.WriteInt32(buffer, 8, unchecked((int)count));
-                    if (count == 1 || count == 2) {
+                    if (count >= 1 && count <= 3) {
                         if (ReadCount(buffer, new UIntPtr(64), lines) != count)
                             throw new InvalidOperationException("activation query count fixture differs");
                     }
@@ -162,7 +189,7 @@ namespace ScientificSecurity
                     () => ReadPath(buffer, 65536, IntPtr.Add(buffer, 65534), 2),
                     () => ReadPath(buffer, 65536, IntPtr.Subtract(buffer, 2), 2),
                     () => RequireSize(new UIntPtr(65537), 104), () => RequireSize(new UIntPtr(103), 104),
-                    () => RequireCount(0), () => RequireCount(3), () => RequireCount(UInt32.MaxValue),
+                    () => RequireCount(0), () => RequireCount(4), () => RequireCount(UInt32.MaxValue),
                     () => RequirePathType(0), () => RequirePathType(1), () => RequirePathType(3), () => RequirePathType(4)
                 }) Refuse(bad);
                 // Literal byte fixtures, independent of the strict decoder under test.
@@ -178,8 +205,26 @@ namespace ScientificSecurity
                 string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "WinSxS", "Manifests");
                 const string name = "amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.0.0_none_fixed.manifest";
                 string manifest = Path.Combine(directory, name);
-                if (Qualify(python, python, 1) != "python-root" || Qualify(manifest, python, 2) != "common-controls-manifest")
+                string resources = Path.Combine(directory, "amd64_microsoft.windows.c..-controls.resources_6595b64144ccf1df_6.0.0.0_en-us_fixed.manifest");
+                if (Qualify(python, python, 1) != "python-root" || Qualify(manifest, python, 2) != "common-controls-manifest" ||
+                    Qualify(manifest, python, 3) != "common-controls-manifest" || Qualify(resources, python, 2) != "common-controls-resources-manifest" ||
+                    Qualify(resources, python, 3) != "common-controls-resources-manifest")
                     throw new InvalidOperationException("activation assembly fixed path fixture failed");
+                RequireProfile(new [] { "python-root" }, 1);
+                RequireProfile(new [] { "python-root", "common-controls-manifest" }, 2);
+                RequireProfile(new [] { "python-root", "common-controls-manifest", "common-controls-resources-manifest" }, 3);
+                RequireProfile(new [] { "python-root", "common-controls-resources-manifest", "common-controls-manifest" }, 3);
+                foreach (Action bad in new Action[] {
+                    () => RequireProfile(new string[0], 1),
+                    () => RequireProfile(new [] { "python-root", "common-controls-resources-manifest" }, 2),
+                    () => RequireProfile(new [] { "python-root", "common-controls-manifest", "common-controls-manifest" }, 3),
+                    () => RequireProfile(new [] { "common-controls-manifest", "python-root", "common-controls-resources-manifest" }, 3),
+                    () => RequireProfile(new [] { "python-root", "common-controls-manifest", "foreign" }, 3),
+                    () => Qualify(resources, python, 1), () => Qualify(resources, python, 4)
+                }) Refuse(bad);
+                if (PathMetadata("C:\\private\\canary.manifest", python, 3, 104, 2) !=
+                    "WINDOWS_ACTIVATION_ASSEMBLY context=host class=3 index=3 returned_bytes=104 path_type=2 canonical=True python_root=False system_manifests=False common_controls=False common_controls_resources=False cause_claimed=False")
+                    throw new InvalidOperationException("activation assembly fixed metadata fixture differs");
                 foreach (Action bad in new Action[] {
                     () => Qualify("C:\\private\\canary.manifest", python, 2),
                     () => Qualify(Path.Combine(directory + "-sibling", name), python, 2),
