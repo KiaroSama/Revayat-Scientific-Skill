@@ -150,6 +150,8 @@ namespace ScientificSecurity
                 }
                 OwnProcessAccess.Repair(process);
                 StartupAccess.RequireOwnQueries(process, true);
+                if (preflight && !wallProbe && !loaderProbe)
+                    StartupTokenAccess.Observe(process, package);
                 if (nativeFixture) {
                     string metadata = TokenDefaultMetadata.Observe(process.process);
                     Console.Out.WriteLine(metadata); Console.Out.Flush();
