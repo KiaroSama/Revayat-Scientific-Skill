@@ -22,9 +22,9 @@ namespace ScientificSecurity
 
         // Only the fixed probe and fixed regression entry are launchable; no arbitrary command API.
         public static string Run(string python, string root, string scratch, string powershell,
-                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false, bool pythonClone = false, bool activationProbe = false)
+                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false, bool pythonClone = false, bool activationProbe = false, bool activationTrace = false)
         {
-            if (activationProbe) ChildActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone);
+            ChildActivationFixture.RequireDiagnosticRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace);
             if (loaderProbe && (!preflight || wallProbe))
                 throw new ArgumentException("loader tracing is restricted to the separate fixed trusted pass phase");
             if (nativeFixture && !loaderProbe) throw new ArgumentException("native fixture is a fixed loader diagnostic only");
@@ -49,10 +49,10 @@ namespace ScientificSecurity
                 executable = Path.Combine(Path.GetDirectoryName(python), "startup-python.exe");
                 arguments = new List<string> { executable, "-I", "-B", "-c", "pass" };
             }
-            if (activationProbe) {
+            if (activationProbe || activationTrace) {
                 executable = Path.Combine(Path.GetDirectoryName(python), "startup-activation.exe");
                 arguments = new List<string> { executable };
-                phase = "child-activation";
+                phase = activationTrace ? "child-activation-trace" : "child-activation";
             }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
@@ -73,12 +73,12 @@ namespace ScientificSecurity
             bool started = false, resumed = false, wallExpired = false;
             Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
-            LoaderTrace loader = loaderProbe ? new LoaderTrace(nativeFixture, pythonClone) : null;
+            LoaderTrace loader = loaderProbe || activationTrace ? new LoaderTrace(nativeFixture, pythonClone, activationTrace) : null;
             IDisposable activationLease = null;
             var activationClock = new Stopwatch();
             try
             {
-                if (activationProbe) activationLease = ChildActivationFixture.Hold(python);
+                if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 job = Native.CreateJobObject(IntPtr.Zero, null);
                 Native.Check(job != IntPtr.Zero, "create owned job");
                 var limits = new Native.ExtendedLimits();
@@ -140,7 +140,7 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 using (OwnedToken restricted = OwnedToken.Create()) {
                     bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, executable, new StringBuilder(command), processAttributes, processAttributes, true,
-                        CreationFlags(loaderProbe),
+                        CreationFlags(loaderProbe || activationTrace),
                         env, launchCwd, ref startup, out process);
                     started = created;
                     if (created && loader != null) loader.Arm(process);
@@ -159,7 +159,7 @@ namespace ScientificSecurity
                 }
                 OwnProcessAccess.Repair(process);
                 StartupAccess.RequireOwnQueries(process, true);
-                if (preflight && !wallProbe && !loaderProbe && !activationProbe)
+                if (preflight && !wallProbe && !loaderProbe && !activationProbe && !activationTrace)
                     StartupTokenAccess.Observe(process, package);
                 if (nativeFixture) {
                     string metadata = TokenDefaultMetadata.Observe(process.process);
@@ -174,7 +174,12 @@ namespace ScientificSecurity
                 if (loader != null) {
                     uint tracedExit = loader.Observe();
                     Native.Check(Native.WaitForSingleObject(process.process, 5000) == 0, "wait for continued loader diagnostic process exit");
-                    string captured = outputCapture.Read() + errorCapture.Read();
+                    string capturedOutput = outputCapture.Read(), capturedErrors = errorCapture.Read();
+                    if (activationTrace) {
+                        ChildActivationFixture.RequireTransport(tracedExit, capturedOutput, capturedErrors);
+                        return capturedOutput; // The existing finally qualifies Job-zero, destruction and all owned cleanup before return.
+                    }
+                    string captured = capturedOutput + capturedErrors;
                     if (Encoding.UTF8.GetByteCount(captured) > 1048576)
                         throw new InvalidOperationException("loader worker output exceeded 1 MiB");
                     return "LOADER_TRACE_EXIT=0x" + tracedExit.ToString("X8");

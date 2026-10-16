@@ -25,6 +25,11 @@ namespace ScientificSecurity
             if (!preflight || wall || loader || native || clone)
                 throw new ArgumentException("child activation is a separate fixed trusted preflight diagnostic");
         }
+        internal static void RequireDiagnosticRole(bool preflight, bool wall, bool loader, bool native, bool clone, bool probe, bool trace)
+        {
+            if (probe && trace) throw new ArgumentException("activation diagnostic roles cannot overlap");
+            if (probe || trace) RequireRole(preflight, wall, loader, native, clone);
+        }
         static void RequireIdentity(byte[] bytes, long length, string digest)
         {
             if (bytes.LongLength != length || Digest(bytes) != digest)
@@ -164,6 +169,18 @@ namespace ScientificSecurity
                 try { if (first != null) first.Dispose(); } finally { if (second != null) second.Dispose(); }
             }
         }
+        internal static ActivationBoundaryTrace Observer(Native.ProcessInfo child, Action<string> emit)
+        {
+            if (prepared == null) throw new InvalidOperationException("activation trace fixture is not prepared");
+            return new ActivationBoundaryTrace(child.process, child.thread, child.pid, child.tid,
+                prepared.image, prepared.imageDigest, emit);
+        }
+        public static string CompareTraceResult(string ordinary, string traced)
+        {
+            string first = RequireResult(ordinary), second = RequireResult(traced);
+            return "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=" + String.Equals(first, second, StringComparison.Ordinal) +
+                " debug_equivalence_claimed=False cause_claimed=False";
+        }
         internal static string RequireTransport(uint exit, string text, string errors)
         {
             if (exit != 0 || errors == null || errors.Length != 0)
@@ -213,6 +230,9 @@ namespace ScientificSecurity
             string denied = "WINDOWS_CHILD_ACTIVATION created=False win32_error=0x00000005 cause_claimed=False child_equivalence_claimed=False\n";
             if (RequireTransport(0, success, "") != success.TrimEnd('\n') || RequireTransport(0, denied, "") != denied.TrimEnd('\n'))
                 throw new InvalidOperationException("child activation literal result differs");
+            if (CompareTraceResult(denied, denied) != "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=True debug_equivalence_claimed=False cause_claimed=False" ||
+                CompareTraceResult(denied, success) != "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=False debug_equivalence_claimed=False cause_claimed=False")
+                throw new InvalidOperationException("activation comparison lost its noncausal result contract");
             foreach (Action invalid in new Action[] {
                 () => RequireTransport(0, success, "\n"), () => RequireTransport(0, success, " "),
                 () => RequireTransport(1, success, ""), () => RequireTransport(1, "private-sentinel", "private-sentinel"),

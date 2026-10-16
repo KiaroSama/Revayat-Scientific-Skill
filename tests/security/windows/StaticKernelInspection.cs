@@ -7,7 +7,7 @@ namespace ScientificSecurity
     // Fixed same-run file inspection only. The inspected DLL is never loaded or executed here.
     public static class StaticKernelInspection
     {
-        static string expectedIdentity;
+        static string expectedIdentity, expectedActivationIdentity;
         public static void RunFixed(string state)
         {
             if (expectedIdentity != null) throw new InvalidOperationException("static KernelBase inspection is already bound for this run");
@@ -64,6 +64,7 @@ namespace ScientificSecurity
                     phase = "post-path"; NativeFixture.Plain(path);
                     phase = "posthash"; RequireSame(identity, KernelImage.FromActivationWorker(ReadHeld(stream)).ActivationWorkerIdentity());
                     phase = "qualifier"; var view = image.QualifyStatic(text, slice);
+                    expectedActivationIdentity = identity;
                     phase = "evidence-output";
                     Console.Out.WriteLine("WINDOWS_STATIC_ACTIVATION " + identity);
                     Console.Out.WriteLine("WINDOWS_STATIC_ACTIVATION phase=worker-slice module=kernel32.dll export=CreateActCtxWWorker records=" + view.Records +
@@ -74,6 +75,11 @@ namespace ScientificSecurity
                 }
             }
             catch (Exception failure) { throw new ActivationFailure(phase, failure); }
+        }
+        internal static void BindActivationLoad(KernelImage image)
+        {
+            if (expectedActivationIdentity == null) throw new InvalidOperationException("activation static identity was not qualified");
+            RequireSame(expectedActivationIdentity, image.ActivationWorkerIdentity());
         }
         // Keep the original graph outside InnerException: the generic PowerShell reporter prints that chain's messages.
         sealed class ActivationFailure : Exception

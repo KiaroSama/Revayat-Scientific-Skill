@@ -21,7 +21,7 @@ namespace ScientificSecurity
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetFileSizeEx(IntPtr file, out long size);
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetFilePointerEx(IntPtr file, long distance, out long position, uint origin);
 
-        internal static KernelImage FromLoad(IntPtr file, IntPtr imageBase)
+        static string EventPath(IntPtr file)
         {
             if (file == IntPtr.Zero || file == Native.InvalidHandle) return null;
             var path = new StringBuilder(512);
@@ -29,12 +29,22 @@ namespace ScientificSecurity
             if (length == 0 || length >= 512) throw new InvalidOperationException("hardware image path provenance is unavailable");
             string actual = path.ToString();
             if (actual.StartsWith(@"\\?\", StringComparison.Ordinal)) actual = actual.Substring(4);
+            return actual;
+        }
+        internal static KernelImage FromLoad(IntPtr file, IntPtr imageBase)
+        {
+            string actual = EventPath(file);
+            if (actual == null) return null;
             string name = Path.GetFileName(actual);
             if (!String.Equals(name, "ntdll.dll", StringComparison.OrdinalIgnoreCase) &&
                 !String.Equals(name, "KernelBase.dll", StringComparison.OrdinalIgnoreCase)) return null;
             string expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), name);
             if (!String.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("hardware image is not the exact loaded system module");
+            return ReadEventImage(file, imageBase, name.ToLowerInvariant());
+        }
+        static KernelImage ReadEventImage(IntPtr file, IntPtr imageBase, string name)
+        {
             long size, position;
             Native.Check(GetFileSizeEx(file, out size), "read bounded OS image size");
             if (size < 256 || size > 16 * 1024 * 1024)

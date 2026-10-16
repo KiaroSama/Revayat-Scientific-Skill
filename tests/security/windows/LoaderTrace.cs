@@ -57,13 +57,15 @@ namespace ScientificSecurity
         IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess, lifetimeProcess;
         readonly System.Collections.Generic.Dictionary<IntPtr, string> modules = new System.Collections.Generic.Dictionary<IntPtr, string>();
         const uint Continue = 0x10002, NotHandled = 0x80010001;
-        readonly bool nativeHardware, pythonSnaps;
+        readonly bool nativeHardware, pythonSnaps, activationMode;
         int pythonStringEvents, requestedBytes;
         HardwareTrace hardware;
-        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false)
+        ActivationBoundaryTrace activation;
+        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false)
         {
-            if (nativeSnaps && cloneSnaps) throw new ArgumentException("diagnostic roles cannot overlap");
-            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps;
+            if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) > 1)
+                throw new ArgumentException("diagnostic roles cannot overlap");
+            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; activationMode = activationTrace;
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
                 Marshal.SizeOf(typeof(ExceptionInfo)) != 160 || Marshal.OffsetOf(typeof(DebugEvent), "data").ToInt32() != 16 ||
                 Marshal.SizeOf(typeof(DebugEvent)) != 176 || Marshal.SizeOf(typeof(CreateProcessInfo)) != 72 ||
@@ -97,6 +99,7 @@ namespace ScientificSecurity
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
                 child.process = process; child.thread = thread; memoryProcess = lifetimeProcess = process; process = thread = IntPtr.Zero;
                 if (nativeHardware) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
+                if (activationMode) activation = ChildActivationFixture.Observer(child, Emit);
             }
             finally {
                 if (thread != IntPtr.Zero) Native.CloseHandle(thread);
@@ -113,6 +116,15 @@ namespace ScientificSecurity
                 throw new InvalidOperationException("loader diagnostic first event is not the exact owned child creation");
             events++; // The initial CREATE counts toward the total 128-event diagnostic ceiling.
             IntPtr file = current.data.createProcess.file;
+            if (activation != null) {
+                ActivationEvent(() => {
+                    Emit("phase=create creator_thread_verified=true image=" + Basename(file));
+                    activation.Creation(file, current.data.createProcess.imageBase);
+                }, () => { activation.Invalidate(); activation.Restore(); }, new Action[] {
+                    () => ReleaseOriginal(ref originalProcess, current.data.createProcess.process),
+                    () => ReleaseOriginal(ref originalThread, current.data.createProcess.thread), CloseCurrentFile }, null);
+                return; // A failed CREATE is left pending for the outer termination/drain, never continued here.
+            }
             try {
                 // Retire original creation handles only when distinct from OS debug-event handles.
                 ReleaseOriginal(ref originalProcess, current.data.createProcess.process);
@@ -138,6 +150,7 @@ namespace ScientificSecurity
             }
             pending = true;
             if (hardware != null) hardware.Stop(current.pid, current.tid, current.code);
+            if (activation != null) activation.Stop(current.pid, current.tid, current.code);
             if (current.pid != pid) throw new InvalidOperationException("loader event is not from the fixed owned child");
             return true;
         }
@@ -148,6 +161,7 @@ namespace ScientificSecurity
             Native.Check(ContinueDebugEvent(current.pid, current.tid, status), "continue exact owned loader event");
             pending = false;
             if (hardware != null) hardware.Continued();
+            if (activation != null) activation.Continued();
         }
         static bool TakeDebugString(bool native, bool clone, ref int pythonEvents)
         {
@@ -232,6 +246,80 @@ namespace ScientificSecurity
             if (!AcceptInitialBreakpoint(11, 11, 0x80000003, true, false, null))
                 throw new InvalidOperationException("ordinary Python trace lost its initial breakpoint handling");
         }
+        // Activation-only event finalization: no exception may erase an earlier operation or cleanup result.
+        internal static void ActivationEvent(Action operation, Action restore, Action[] releases, Action continuation)
+        {
+            var failures = new System.Collections.Generic.List<Exception>();
+            Action<Action> attempt = action => { try { action(); } catch (Exception failure) { failures.Add(failure); } };
+            attempt(operation);
+            bool restorationAttempted = failures.Count != 0;
+            if (restorationAttempted) attempt(restore);
+            foreach (Action release in releases) attempt(release);
+            if (!restorationAttempted && failures.Count != 0) attempt(restore);
+            if (continuation != null) attempt(continuation);
+            if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            if (failures.Count != 0) throw new AggregateException("fixed activation event operation/cleanup failed", failures);
+        }
+        internal static void CheckActivationEventValidation()
+        {
+            var primary = new InvalidOperationException("operation"); var restoration = new InvalidOperationException("restore");
+            var close = new InvalidOperationException("close"); var continuation = new InvalidOperationException("continue");
+            var attempts = new System.Collections.Generic.List<string>();
+            AggregateException observed = null;
+            try { ActivationEvent(() => { attempts.Add("operation"); throw primary; },
+                () => { attempts.Add("restore"); throw restoration; },
+                new Action[] { () => { attempts.Add("close"); throw close; }, () => attempts.Add("second-close") },
+                () => { attempts.Add("continue"); throw continuation; }); }
+            catch (AggregateException failure) { observed = failure; }
+            if (observed == null || observed.InnerExceptions.Count != 4 ||
+                !Object.ReferenceEquals(observed.InnerExceptions[0], primary) || !Object.ReferenceEquals(observed.InnerExceptions[1], restoration) ||
+                !Object.ReferenceEquals(observed.InnerExceptions[2], close) || !Object.ReferenceEquals(observed.InnerExceptions[3], continuation) ||
+                String.Join(",", attempts) != "operation,restore,close,second-close,continue")
+                throw new InvalidOperationException("activation event lost ordered failures or skipped cleanup");
+            attempts.Clear(); Exception single = null;
+            try { ActivationEvent(() => { throw primary; }, () => attempts.Add("restore"),
+                new Action[] { () => attempts.Add("close") }, null); }
+            catch (Exception failure) { single = failure; }
+            if (!Object.ReferenceEquals(single, primary) || String.Join(",", attempts) != "restore,close")
+                throw new InvalidOperationException("activation CREATE failure was replaced or prematurely continued");
+            attempts.Clear(); single = null;
+            try { ActivationEvent(() => attempts.Add("operation"), () => attempts.Add("restore"),
+                new Action[] { () => { attempts.Add("close"); throw close; }, () => attempts.Add("second-close") },
+                () => attempts.Add("continue")); }
+            catch (Exception failure) { single = failure; }
+            if (!Object.ReferenceEquals(single, close) || String.Join(",", attempts) != "operation,close,second-close,restore,continue")
+                throw new InvalidOperationException("activation close failure skipped restoration or continuation");
+        }
+        void ObserveActivationEvent()
+        {
+            uint status = current.code == 1 ? NotHandled : Continue;
+            ActivationEvent(() => {
+                events++;
+                switch (current.code) {
+                    case 1:
+                        uint code = current.data.exception.record.code;
+                        bool first = current.data.exception.firstChance != 0;
+                        if (!activation.SingleStep(current.tid, code, first, current.data.exception.record.address) &&
+                            !activation.AcceptSoftware(current.tid, code, first))
+                            throw new InvalidOperationException("fixed activation diagnostic encountered an unexpected exception");
+                        status = Continue; break;
+                    case 6:
+                        activation.Load(current.data.loadDll.file, current.data.loadDll.imageBase);
+                        Emit("phase=activation-load-event module=" + Basename(current.data.loadDll.file)); break;
+                    case 5:
+                        exited = true;
+                        Emit("phase=activation-exit code=0x" + current.data.exit.code.ToString("X8")); break;
+                    case 7:
+                        activation.Unload(current.data.unloadDll.imageBase); break;
+                    case 8:
+                        Emit("phase=activation-debug-string content_read=False"); break;
+                    case 2: case 4:
+                        activation.OtherThread(); break;
+                    default:
+                        throw new InvalidOperationException("fixed activation diagnostic received an unsupported event");
+                }
+            }, () => { activation.Invalidate(); activation.Restore(); }, new Action[] { CloseCurrentFile }, () => ContinuePending(status));
+        }
         internal uint Observe()
         {
             ThreadCheck();
@@ -244,6 +332,10 @@ namespace ScientificSecurity
                     throw new TimeoutException("loader diagnostic event/time ceiling exceeded");
                 if (!Receive()) continue;
                 uint status = current.code == 1 ? NotHandled : Continue;
+                if (activation != null) {
+                    ObserveActivationEvent();
+                    continue;
+                }
                 try {
                     events++;
                     switch (current.code) {
@@ -300,6 +392,7 @@ namespace ScientificSecurity
                 finally { try { CloseCurrentFile(); } finally { ContinuePending(status); } }
             }
             if (hardware != null) hardware.RequireComplete();
+            if (activation != null) activation.RequireComplete();
             return current.data.exit.code;
         }
         internal void TerminateAndDrain(IntPtr job, Native.ProcessInfo child)
@@ -309,6 +402,9 @@ namespace ScientificSecurity
             // Context access is legal only while an already-pending event stops the live creator.
             if (pending && hardware != null) {
                 try { hardware.Restore(); } catch (Exception failure) { failures.Add(failure); }
+            }
+            if (pending && activation != null) {
+                try { activation.Restore(); } catch (Exception failure) { failures.Add(failure); }
             }
             if (!exited) {
                 IntPtr process = child.process != IntPtr.Zero ? child.process : originalProcess;
@@ -344,9 +440,21 @@ namespace ScientificSecurity
                     + " exited=" + exited + " handle_present=" + present + " wait_result=0x" + wait.ToString("X8")
                     + " native_error=" + error);
             if (hardware != null) hardware.Destroyed();
+            if (activation != null) activation.Destroyed();
         }
         void FinishCleanupEvent(System.Collections.Generic.List<Exception> failures)
         {
+            if (activation != null) {
+                try {
+                    ActivationEvent(() => { if (current.code == 5) exited = true; },
+                        () => { activation.Invalidate(); activation.Restore(); }, new Action[] {
+                            () => { if (current.code == 3) ReleaseOriginal(ref originalProcess, current.data.createProcess.process); },
+                            () => { if (current.code == 3) ReleaseOriginal(ref originalThread, current.data.createProcess.thread); },
+                            CloseCurrentFile }, () => ContinuePending(current.code == 1 ? NotHandled : Continue));
+                }
+                catch (Exception failure) { failures.Add(failure); }
+                return;
+            }
             try {
                 if (current.code == 3) {
                     try { ReleaseOriginal(ref originalProcess, current.data.createProcess.process); }
