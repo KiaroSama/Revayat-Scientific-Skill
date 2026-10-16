@@ -47,6 +47,22 @@ namespace ScientificSecurity
             if (primary != null) failures.Insert(0, primary);
             throw new AggregateException("fixed activation operation/cleanup failed", failures);
         }
+        static void FinalizeComparison(Exception primary, bool impersonating, Func<bool> revert, Action failFast, Action emit, params Action[] cleanup)
+        {
+            if (impersonating) {
+                bool reverted;
+                try { reverted = revert(); }
+                catch { failFast(); throw; }
+                if (!reverted) {
+                    failFast();
+                    throw new InvalidOperationException("activation identity restoration did not terminate");
+                }
+            }
+            var failures = new List<Exception>();
+            foreach (Action action in cleanup) Attempt(failures, action);
+            Attempt(failures, emit);
+            Finish(primary, failures);
+        }
         static void Deadline(Stopwatch clock)
         { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed activation comparison exceeded 10 seconds"); }
         internal static void Observe(Native.ProcessInfo child, string python, string package)
@@ -84,6 +100,7 @@ namespace ScientificSecurity
                 finally { Array.Clear(bytes, 0, bytes.Length); }
                 lines.Add("WINDOWS_STARTUP_MANIFEST resource_type=24 resource_id=1 language=" + manifest.Item1 + " bytes=" + manifest.Item2);
                 var assemblyPaths = new List<Tuple<string, string>>();
+                StartupRegistryAccess.Observe("host", lines, () => Deadline(clock), () => { });
                 bool host = ObserveOne("host", python, manifest.Item1, lines, clock, assemblyPaths);
                 if (!host) throw new InvalidOperationException("host activation-context positive control failed");
                 ActivationAssemblyAccess.OpenFiles("host", assemblyPaths, lines, () => Deadline(clock)); Deadline(clock);
@@ -92,6 +109,7 @@ namespace ScientificSecurity
                 var context = new RegistryContext(token, duplicate, package);
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter exact activation LPAC context");
                 impersonating = true; context.RequireThread();
+                StartupRegistryAccess.Observe("lpac", lines, () => Deadline(clock), context.RequireThread);
                 ObserveOne("lpac", python, manifest.Item1, lines, clock, null);
                 context.RequireThread(); Deadline(clock);
                 ActivationAssemblyAccess.OpenFiles("lpac", assemblyPaths, lines, () => Deadline(clock));
@@ -99,14 +117,12 @@ namespace ScientificSecurity
             }
             catch (Exception failure) { primary = failure; throw; }
             finally {
-                var failures = new List<Exception>();
-                if (impersonating && !RevertToSelf())
-                    Environment.FailFast("Activation identity restoration failed; outer owner must reap and clean up.");
-                Attempt(failures, () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close activation duplicate token"); });
-                Attempt(failures, () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close activation primary token"); });
-                Attempt(failures, () => { if (held != null) held.Dispose(); });
-                Attempt(failures, () => { foreach (string line in lines) Console.Out.WriteLine(line); Console.Out.Flush(); });
-                Finish(primary, failures);
+                FinalizeComparison(primary, impersonating, RevertToSelf,
+                    () => Environment.FailFast("Activation identity restoration failed; outer owner must reap and clean up."),
+                    () => { foreach (string line in lines) Console.Out.WriteLine(line); Console.Out.Flush(); },
+                    () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close activation duplicate token"); },
+                    () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close activation primary token"); },
+                    () => { if (held != null) held.Dispose(); });
             }
         }
         static bool ObserveOne(string label, string python, ushort language, List<string> lines, Stopwatch clock, List<Tuple<string, string>> assemblyPaths)
@@ -121,6 +137,46 @@ namespace ScientificSecurity
                 Deadline(clock); return handle != Native.InvalidHandle;
             }
             finally { if (handle != Native.InvalidHandle && handle != IntPtr.Zero) ReleaseActCtx(handle); }
+        }
+        static void CheckFinalization()
+        {
+            var order = new List<string>(); var lines = new List<string> { "fixed buffered metadata" };
+            bool reverted = false;
+            FinalizeComparison(null, true, () => { order.Add("revert"); reverted = true; return true; },
+                () => { throw new InvalidOperationException("unexpected fail-fast"); },
+                () => { if (!reverted || lines.Count != 1) throw new InvalidOperationException("output preceded reversion"); order.Add(lines[0]); },
+                () => order.Add("first cleanup"), () => order.Add("second cleanup"));
+            if (String.Join(",", order) != "revert,first cleanup,second cleanup,fixed buffered metadata")
+                throw new InvalidOperationException("activation finalization order differs");
+            var fatal = new IOException("fixed fail-fast");
+            foreach (bool throws in new [] { false, true }) {
+                order.Clear(); Exception caught = null;
+                try {
+                    FinalizeComparison(null, true, () => { order.Add("revert"); if (throws) throw new IOException("fixed revert failure"); return false; },
+                        () => { order.Add("fail-fast"); throw fatal; }, () => order.Add("emit"), () => order.Add("cleanup"));
+                }
+                catch (Exception failure) { caught = failure; }
+                if (!Object.ReferenceEquals(caught, fatal) || String.Join(",", order) != "revert,fail-fast")
+                    throw new InvalidOperationException("failed reversion allowed finalization");
+            }
+            order.Clear(); bool refused = false;
+            try { FinalizeComparison(null, true, () => false, () => order.Add("fail-fast"), () => order.Add("emit"), () => order.Add("cleanup")); }
+            catch (InvalidOperationException) { refused = true; }
+            if (!refused || String.Join(",", order) != "fail-fast") throw new InvalidOperationException("returning fail-fast allowed output");
+            var primary = new IOException("fixed operation"); var cleanup = new IOException("fixed cleanup"); var reporting = new IOException("fixed reporting");
+            foreach (bool impersonating in new [] { false, true }) {
+                order.Clear(); AggregateException caught = null;
+                try {
+                    FinalizeComparison(primary, impersonating, () => { order.Add("revert"); return true; },
+                        () => { throw fatal; }, () => { order.Add("emit"); throw reporting; },
+                        () => { order.Add("first cleanup"); throw cleanup; }, () => order.Add("second cleanup"));
+                }
+                catch (AggregateException failure) { caught = failure; }
+                if (caught == null || caught.InnerExceptions.Count != 3 || !Object.ReferenceEquals(caught.InnerExceptions[0], primary) ||
+                    !Object.ReferenceEquals(caught.InnerExceptions[1], cleanup) || !Object.ReferenceEquals(caught.InnerExceptions[2], reporting) ||
+                    String.Join(",", order) != (impersonating ? "revert," : "") + "first cleanup,second cleanup,emit")
+                    throw new InvalidOperationException("activation finalization lost ordered failures");
+            }
         }
         public static void CheckValidation()
         {
@@ -141,6 +197,7 @@ namespace ScientificSecurity
             bool refused = false;
             try { Outcome("host", IntPtr.Zero, 0); } catch (InvalidOperationException) { refused = true; }
             if (!refused) throw new InvalidOperationException("activation null result was accepted");
+            CheckFinalization();
             var primary = new IOException("fixed primary"); var cleanup = new IOException("fixed cleanup");
             var failures = new List<Exception>(); int attempts = 0;
             Attempt(failures, () => { attempts++; throw cleanup; }); Attempt(failures, () => attempts++);
