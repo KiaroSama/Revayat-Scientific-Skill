@@ -117,7 +117,7 @@ namespace ScientificSecurity
             try {
                 lines.Add(Outcome(label, handle, error)); Deadline(clock);
                 if (assemblyPaths != null && handle != Native.InvalidHandle)
-                    assemblyPaths.AddRange(ActivationAssemblyAccess.Query(handle, python));
+                    assemblyPaths.AddRange(ActivationAssemblyAccess.Query(handle, python, lines));
                 Deadline(clock); return handle != Native.InvalidHandle;
             }
             finally { if (handle != Native.InvalidHandle && handle != IntPtr.Zero) ReleaseActCtx(handle); }

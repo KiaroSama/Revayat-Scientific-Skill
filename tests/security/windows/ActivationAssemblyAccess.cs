@@ -24,15 +24,14 @@ namespace ScientificSecurity
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr CreateFileW(
             string path, uint access, uint share, IntPtr attributes, uint disposition, uint flags, IntPtr template);
         static readonly UnicodeEncoding Unicode = new UnicodeEncoding(false, false, true);
-        internal static List<Tuple<string, string>> Query(IntPtr context, string python)
+        internal static List<Tuple<string, string>> Query(IntPtr context, string python, List<string> lines)
         {
             var paths = new List<Tuple<string, string>>();
             IntPtr buffer = Marshal.AllocHGlobal(65536), index = IntPtr.Zero;
             try {
                 Clear(buffer); UIntPtr returned;
                 Native.Check(QueryActCtxW(0, context, IntPtr.Zero, 2, buffer, new UIntPtr(65536), out returned), "query fixed activation assembly count");
-                RequireSize(returned, 64);
-                uint count = RequireCount(unchecked((uint)Marshal.ReadInt32(buffer, 8)));
+                uint count = ReadCount(buffer, returned, lines);
                 index = Marshal.AllocHGlobal(4);
                 for (uint item = 1; item <= count; item++) {
                     Clear(buffer); Marshal.WriteInt32(index, (int)item);
@@ -55,6 +54,13 @@ namespace ScientificSecurity
             ulong size = returned.ToUInt64();
             if (size < minimum || size > 65536) throw new InvalidOperationException("activation query returned size exceeds fixed buffer");
             return (uint)size;
+        }
+        static uint ReadCount(IntPtr buffer, UIntPtr returned, List<string> lines)
+        {
+            uint size = RequireSize(returned, 64);
+            uint count = unchecked((uint)Marshal.ReadInt32(buffer, 8));
+            lines.Add("WINDOWS_ACTIVATION_QUERY context=host class=2 returned_bytes=" + size + " assembly_count=" + count + " cause_claimed=False");
+            return RequireCount(count);
         }
         static uint RequireCount(uint count)
         {
@@ -133,6 +139,22 @@ namespace ScientificSecurity
                     RequireCount(1) != 1 || RequireCount(2) != 2)
                     throw new InvalidOperationException("activation path/count fixture differs");
                 RequirePathType(2);
+                var lines = new List<string>();
+                foreach (uint count in new uint[] { 0, 1, 2, 3, UInt32.MaxValue }) {
+                    lines.Clear(); Marshal.WriteInt32(buffer, 8, unchecked((int)count));
+                    if (count == 1 || count == 2) {
+                        if (ReadCount(buffer, new UIntPtr(64), lines) != count)
+                            throw new InvalidOperationException("activation query count fixture differs");
+                    }
+                    else Refuse(() => ReadCount(buffer, new UIntPtr(64), lines));
+                    string expected = "WINDOWS_ACTIVATION_QUERY context=host class=2 returned_bytes=64 assembly_count=" + count + " cause_claimed=False";
+                    if (lines.Count != 1 || lines[0] != expected)
+                        throw new InvalidOperationException("activation query refusal metadata was lost");
+                }
+                lines.Clear();
+                Refuse(() => ReadCount(buffer, new UIntPtr(63), lines));
+                Refuse(() => ReadCount(buffer, new UIntPtr(65537), lines));
+                if (lines.Count != 0) throw new InvalidOperationException("unqualified activation query size was logged");
                 foreach (Action bad in new Action[] {
                     () => ReadPath(buffer, 104, path, 2), () => ReadPath(buffer, 65536, buffer, 2),
                     () => ReadPath(buffer, 65536, path, 3), () => ReadPath(buffer, 65536, IntPtr.Zero, 2),

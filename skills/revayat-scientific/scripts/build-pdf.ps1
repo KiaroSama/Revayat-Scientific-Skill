@@ -309,7 +309,7 @@ function Get-AvailableEngines([string]$Requested) {
 $requestedEngine = if ($Engine) { $Engine } else { 'auto' }
 $available = @(Get-AvailableEngines $requestedEngine)
 $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'select',
-    $srcItem.FullName, '--engine', $requestedEngine, '--available', ($available -join ','))
+    $srcItem.FullName, '--engine', $requestedEngine, ('--available=' + ($available -join ',')))
 if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; exit 1 }
 $plan = (($r.Output | ForEach-Object { "$_" }) -join "`n") | ConvertFrom-Json
 $srcItem = Get-Item -LiteralPath $plan.source
