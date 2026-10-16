@@ -6,16 +6,17 @@ namespace ScientificSecurity
 {
     public sealed partial class KernelImage
     {
-        internal const uint WorkerEntryRva = 0x24D20, GenerationResultRva = 0x258C9, FailureFunnelRva = 0x25A1A;
+        internal const uint WorkerEntryRva = 0x24D20, FileResultRva = 0x26263, FailureFunnelRva = 0x25A1A;
         static readonly uint[] activationRvas = { 0x24BAD, 0x24BB4, 0x24BB9, 0x24BBB, 0x24BBD,
             0x24BC9, 0x24BCF, 0x24BD5, 0x24BDC, 0x24BE1, WorkerEntryRva, 0x25A16, 0x25A18,
             FailureFunnelRva, 0x25A1C, 0x25A21, 0x25A27, 0x25861, 0x25868, 0x2586D, 0x25871, 0x25875,
-            0x258C4, GenerationResultRva, 0x258CB, 0x258CD };
+            0x258C4, 0x258C9, 0x258CB, 0x258CD, 0x2623A, 0x26257, 0x2625E, FileResultRva, 0x26265, 0x26267 };
         static readonly string[] activationBytes = { "48FF152C6C0600", "0F1F440000", "8BD8", "85C0", "785D",
             "41B9F8010000", "41B81E000110", "48FF15E4670600", "0F1F440000", "8BD8",
             "488BC4488958104889701848897820", "85DB", "790D", "8BCB", "E8AF90FEFF", "48834C2440FF", "488B45F0",
             "48FF1528370600", "0F1F440000", "48894590", "4883F8FF", "7533",
-            "E823040000", "8BD8", "85C0", "0F8819010000" };
+            "E823040000", "8BD8", "85C0", "0F8819010000",
+            "BA89001200", "48FF15B2500600", "0F1F440000", "8BD8", "85C0", "0F88690B0000" };
         internal static void CheckActivationBoundaryValidation()
         {
             byte[] bytes = ActivationBoundaryFixture(); var image = FromActivationWorker(bytes);
@@ -28,6 +29,9 @@ namespace ScientificSecurity
                 b => b[0x3A6D] ^= 1, b => b[0x3A71] ^= 1, b => b[0x3A76] ^= 1,
                 b => b[0x3AC4] ^= 1, b => b[0x3AC5] ^= 1, b => b[0x3AC9] ^= 1,
                 b => b[0x3ACB] ^= 1, b => b[0x3ACF] ^= 1,
+                b => b[0x443A] ^= 1, b => b[0x4457] ^= 1, b => b[0x445A] ^= 1,
+                b => b[0x445E] ^= 1, b => b[0x4463] ^= 1, b => b[0x4465] ^= 1, b => b[0x4469] ^= 1,
+                b => Put(b, 0x188 + 8, 0x4264), b => Put(b, 0x188 + 16, 0x4264),
                 b => Put(b, 0x188 + 8, 0x386F), b => Put(b, 0x188 + 16, 0x386F),
                 b => Put(b, 0x188 + 8, 0x38CA), b => Put(b, 0x188 + 16, 0x38CA),
                 b => Put(b, 0x188 + 8, 0x3CEC), b => Put(b, 0x188 + 16, 0x3CEC),
@@ -61,8 +65,8 @@ namespace ScientificSecurity
         }
         static byte[] ActivationBoundaryFixture()
         {
-            byte[] bytes = new byte[0x4200]; Array.Copy(ActivationWorkerFixture(), bytes, 2048);
-            Put(bytes, 0x188 + 12, 0x22000); Put(bytes, 0x188 + 8, 0x4000); Put(bytes, 0x188 + 16, 0x4000);
+            byte[] bytes = new byte[0x4800]; Array.Copy(ActivationWorkerFixture(), bytes, 2048);
+            Put(bytes, 0x188 + 12, 0x22000); Put(bytes, 0x188 + 8, 0x4600); Put(bytes, 0x188 + 16, 0x4600);
             Put(bytes, 0x98 + 16, 0x22000); Put(bytes, 0x98 + 56, 0x27000);
             for (int index = 0; index < activationRvas.Length; index++) {
                 int raw = 0x200 + (int)activationRvas[index] - 0x22000;
@@ -94,6 +98,8 @@ namespace ScientificSecurity
             Need(checked(0x258C9L + BitConverter.ToInt32(data, Map(0x258C5, 4))) == 0x25CEC);
             Need(FullExecutable(0x25CEC, 1)); Map(0x25CEC, 1);
             Need(checked(0x258D3L + BitConverter.ToInt32(data, Map(0x258CF, 4))) == 0x259EC);
+            Need(checked(0x2625EL + BitConverter.ToInt32(data, Map(0x2625A, 4))) == 0x8B310);
+            Need(checked(0x2626DL + BitConverter.ToInt32(data, Map(0x26269, 4))) == 0x26DD6);
         }
         internal void RequireActivationBoundaryProfile()
         {
