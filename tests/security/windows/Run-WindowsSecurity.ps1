@@ -165,7 +165,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
     [ScientificSecurity.Profile]::CheckRegistryMasks()
     [ScientificSecurity.LoaderSnaps]::CheckValidation()
@@ -177,6 +177,7 @@ try {
     [ScientificSecurity.StartupActivationAccess]::CheckValidation()
     [ScientificSecurity.ActivationAssemblyAccess]::CheckValidation($state)
     [ScientificSecurity.StartupTokenAccess]::CheckValidation()
+    [ScientificSecurity.ChildActivationFixture]::CheckValidation($state)
     [ScientificSecurity.StartupImageAccess]::CheckValidation()
     [ScientificSecurity.TrustedSetup]::CheckValidation()
     [ScientificSecurity.StaticKernelInspection]::CheckValidation()
@@ -271,6 +272,7 @@ try {
     [ScientificSecurity.NativeFixture]::BuildDebugControlFixed($runtime, $state)
     [ScientificSecurity.PythonStartupFixture]::CheckValidation($state)
     [ScientificSecurity.PythonStartupFixture]::Prepare($runId, $state)
+    [ScientificSecurity.ChildActivationFixture]::Build($PSScriptRoot, $childPython, $state)
     Protect-Tree $target
     Write-RunLog INFO 'protecting prepared Python runtime'
     Protect-Tree $runtime
@@ -348,6 +350,10 @@ try {
     catch { $diagnosticFailure = $_.Exception; throw }
     finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure, $cloneLease) }
     [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
+    Write-RunLog INFO 'fixed child-process activation comparison starts; never Python causality or admission'
+    $activationText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $false, $false, $false, $true)
+    [Console]::Out.WriteLine([ScientificSecurity.ChildActivationFixture]::RequireResult($activationText))
+    [Console]::Out.Flush()
     Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
     $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
     $preflight = $preflightText | ConvertFrom-Json

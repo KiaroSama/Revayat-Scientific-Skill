@@ -22,8 +22,9 @@ namespace ScientificSecurity
 
         // Only the fixed probe and fixed regression entry are launchable; no arbitrary command API.
         public static string Run(string python, string root, string scratch, string powershell,
-                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false, bool pythonClone = false)
+                                 string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false, bool pythonClone = false, bool activationProbe = false)
         {
+            if (activationProbe) ChildActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone);
             if (loaderProbe && (!preflight || wallProbe))
                 throw new ArgumentException("loader tracing is restricted to the separate fixed trusted pass phase");
             if (nativeFixture && !loaderProbe) throw new ArgumentException("native fixture is a fixed loader diagnostic only");
@@ -48,6 +49,11 @@ namespace ScientificSecurity
                 executable = Path.Combine(Path.GetDirectoryName(python), "startup-python.exe");
                 arguments = new List<string> { executable, "-I", "-B", "-c", "pass" };
             }
+            if (activationProbe) {
+                executable = Path.Combine(Path.GetDirectoryName(python), "startup-activation.exe");
+                arguments = new List<string> { executable };
+                phase = "child-activation";
+            }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
             var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
@@ -68,8 +74,11 @@ namespace ScientificSecurity
             Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
             LoaderTrace loader = loaderProbe ? new LoaderTrace(nativeFixture, pythonClone) : null;
+            IDisposable activationLease = null;
+            var activationClock = new Stopwatch();
             try
             {
+                if (activationProbe) activationLease = ChildActivationFixture.Hold(python);
                 job = Native.CreateJobObject(IntPtr.Zero, null);
                 Native.Check(job != IntPtr.Zero, "create owned job");
                 var limits = new Native.ExtendedLimits();
@@ -150,12 +159,13 @@ namespace ScientificSecurity
                 }
                 OwnProcessAccess.Repair(process);
                 StartupAccess.RequireOwnQueries(process, true);
-                if (preflight && !wallProbe && !loaderProbe)
+                if (preflight && !wallProbe && !loaderProbe && !activationProbe)
                     StartupTokenAccess.Observe(process, package);
                 if (nativeFixture) {
                     string metadata = TokenDefaultMetadata.Observe(process.process);
                     Console.Out.WriteLine(metadata); Console.Out.Flush();
                 }
+                if (activationProbe) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
@@ -173,6 +183,8 @@ namespace ScientificSecurity
                 long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
                 {
+                    if (activationProbe && activationClock.Elapsed.TotalSeconds > 10)
+                        throw new TimeoutException("fixed child activation exceeded 10 seconds");
                     long length = outputCapture.Length() + errorCapture.Length();
                     if (length > 1048576) throw new InvalidOperationException("worker standard output exceeded 1 MiB");
                     if (length != previous) { previous = length; progress = clock.Elapsed.TotalSeconds; }
@@ -191,6 +203,11 @@ namespace ScientificSecurity
                 string text = outputCapture.Read(), errors = errorCapture.Read();
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(errors) > 1048576)
                     throw new InvalidOperationException("combined worker output exceeded 1 MiB");
+                if (activationProbe) {
+                    if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed child activation exceeded 10 seconds");
+                    ChildActivationFixture.RequireTransport(exit, text, errors);
+                    return text;
+                }
                 if (exit != 0) throw new InvalidOperationException("Windows " + phase + " failed exit=" + exit + " " + errors + " " + text);
                 if (!String.IsNullOrWhiteSpace(errors)) throw new InvalidOperationException("unexpected worker error output: " + errors);
                 if (wallProbe) throw new InvalidOperationException("wall negative control exited before owned deadline");
@@ -236,6 +253,7 @@ namespace ScientificSecurity
                 AttemptCleanup(cleanupFailures, () => { if (sid != IntPtr.Zero && Native.FreeSid(sid) != IntPtr.Zero)
                     throw new InvalidOperationException("owned package SID cleanup failed"); });
                 AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) Native.Check(Native.CloseHandle(job), "close owned job"); });
+                AttemptCleanup(cleanupFailures, () => { if (activationLease != null) activationLease.Dispose(); });
                 if (cleanupFailures.Count != 0) throw CleanupFailure(primaryFailure, cleanupFailures);
             }
         }
