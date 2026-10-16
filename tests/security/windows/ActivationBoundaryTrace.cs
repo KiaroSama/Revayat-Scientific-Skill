@@ -52,7 +52,7 @@ namespace ScientificSecurity
             string[] callerExpected = { "00000000", "00000001", "7FFFFFFF", "80000000", "C0000022", "FFFFFFFF", "C0000022" };
             for (int index = 0; index < callerValues.Length; index++) {
                 Put(scalar, 120, callerValues[index]); Put(scalar, 144, 0x123456789ABCDEF0UL);
-                Need(LanguageResult(scalar) == "raw_eax=0x" + callerExpected[index] && Next(3, 0, unchecked((uint)callerValues[index])) == 4);
+                Need(AlternateFileResult(scalar) == "raw_eax=0x" + callerExpected[index] && Next(3, 0, unchecked((uint)callerValues[index])) == 4);
             }
             ulong[] resource = { 0x4000, 0x3000 };
             byte[] replaced = Desired(sites, baseline, resource, two, false);
@@ -191,7 +191,7 @@ namespace ScientificSecurity
         static ulong U64(byte[] value, int offset) { return BitConverter.ToUInt64(value, offset); }
         static void Put(byte[] value, int offset, ulong number) { BitConverter.GetBytes(number).CopyTo(value, offset); }
         static string Raw(ulong value) { return "raw_ebx=0x" + unchecked((uint)value).ToString("X8"); }
-        static string LanguageResult(byte[] context) { return "raw_eax=0x" + unchecked((uint)U64(context, 120)).ToString("X8"); }
+        static string AlternateFileResult(byte[] context) { return "raw_eax=0x" + unchecked((uint)U64(context, 120)).ToString("X8"); }
         static int Next(int stage, int slot, uint raw)
         {
             if (stage == 1 && slot == 0) return 2;
@@ -321,25 +321,25 @@ namespace ScientificSecurity
                     emit("phase=activation-entry-hit " + DebugContext.TrapQualifiers(status) + " worker_sites_armed=True control_integer_unchanged=True");
                 }
                 else if (stage == 2) {
-                    RequireExecutable(kernel, KernelImage.LanguageResultRva, 4);
-                    addresses[0] = kernel.Address(KernelImage.LanguageResultRva);
+                    RequireExecutable(kernel, KernelImage.AlternateFileResultRva, 2);
+                    addresses[0] = kernel.Address(KernelImage.AlternateFileResultRva);
                     Need(addresses[0] != addresses[1] && addresses[0] != fixture.Address(fixture.Entry));
                     stage = next; Apply(before, false);
                     emit("phase=activation-worker-entry " + DebugContext.TrapQualifiers(status) +
-                        " slot_replaced=True language_result_armed=True scalar_read=False dispatch_route_verified=False control_integer_unchanged=True");
+                        " slot_replaced=True alternate_file_result_armed=True scalar_read=False dispatch_route_verified=False control_integer_unchanged=True");
                 }
                 else {
-                    string result = stage == 3 ? LanguageResult(before) : null;
+                    string result = stage == 3 ? AlternateFileResult(before) : null;
                     addresses[slot] = 0; enabled[slot] = false; stage = next;
                     if (stage == 5) {
                         Restore();
                         emit("phase=activation-caller-site site=worker-failure-funnel " + Raw(U64(before, 144)) + " " + DebugContext.TrapQualifiers(status) +
                             " caller_local=True producer_verified=False invocation_pair_claimed=False control_integer_unchanged=True");
-                        emit("phase=activation-sites-complete restored=True worker_entry_observed=True language_result_observed=True funnel_observed=True branch_claimed=False cause_claimed=False");
+                        emit("phase=activation-sites-complete restored=True worker_entry_observed=True alternate_file_result_observed=True funnel_observed=True branch_claimed=False cause_claimed=False");
                     }
                     else {
                         Apply(before, false);
-                        emit("phase=activation-language-result " + result + " " + DebugContext.TrapQualifiers(status) +
+                        emit("phase=activation-alternate-file-result " + result + " " + DebugContext.TrapQualifiers(status) +
                             " slot_disabled=True caller_local=True producer_verified=False invocation_pair_claimed=False control_integer_unchanged=True");
                     }
                 }
