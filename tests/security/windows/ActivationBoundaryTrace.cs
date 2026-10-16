@@ -83,6 +83,37 @@ namespace ScientificSecurity
             incomplete = false;
             try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
             Need(incomplete);
+            foreach (ulong rtm in new ulong[] { 0, 0x10000 })
+                foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
+                    ulong status = 0xFFFE0FF0UL | rtm, control = 1UL | fixedBit;
+                    Need(SoftwareStatus(status, control, 1));
+                    foreach (ulong foreign in new ulong[] { 1, 2, 4, 8, 0x1000, 0x2000, 0x4000, 0x8000, 0x100000000 })
+                        Need(!SoftwareStatus(status | foreign, control, 1));
+                    Need(!SoftwareStatus(status ^ 0x800, control, 1) && !SoftwareStatus(status ^ 0x10, control, 1));
+                    foreach (ulong foreign in new ulong[] { 2, 4, 0x100, 0x200, 0x800, 0x2000, 0x10000, 0x40000, 0x100000000 })
+                        Need(!SoftwareStatus(status, control | foreign, 1));
+                    Need(!SoftwareStatus(status, control | 0x800, 0x801));
+                }
+            observer.original = new byte[DebugContext.Size]; observer.enabled[0] = true;
+            observer.addresses[0] = 0x1000; observer.initial = false;
+            byte[] software = new byte[DebugContext.Size]; Put(software, 72, 0x1000);
+            Put(software, 104, 0xFFFF0FF0); Put(software, 112, 0x401);
+            observer.Ownership(software, false);
+            byte[] idleArmed = Desired(observer.original, observer.original, observer.addresses, observer.enabled, false);
+            Need(!DebugContext.RawDebugEqual(idleArmed, software));
+            Need(U64(software, 112) != observer.Control() &&
+                (U64(software, 104) & ~3UL) != (U64(observer.original, 104) & ~3UL));
+            foreach (int offset in new [] { 72, 80, 88, 96 }) {
+                byte[] foreign = (byte[])software.Clone(); Put(foreign, offset, 0x9999);
+                rejected = false;
+                try { observer.Ownership(foreign, false); } catch (InvalidOperationException) { rejected = true; }
+                Need(rejected);
+            }
+            Need(!observer.initial && observer.stage == 1);
+            string qualifiers = DebugContext.TrapQualifiers(0xFFFF0FF0);
+            Need(qualifiers.Contains("rtm_bit_set=True") && qualifiers.Contains("bld_bit_set=True") && qualifiers.Contains("transaction_context=unknown"));
+            qualifiers = DebugContext.TrapQualifiers(0xFFFE0FF0);
+            Need(qualifiers.Contains("rtm_bit_set=False") && qualifiers.Contains("transaction_context=unknown"));
         }
         [StructLayout(LayoutKind.Sequential)] struct MemoryInfo {
             internal IntPtr address, allocation;
@@ -188,12 +219,17 @@ namespace ScientificSecurity
             for (int index = 0; index < 2; index++) if (enabled[index]) value |= 1UL << (index * 2);
             return value;
         }
+        static bool SoftwareStatus(ulong status, ulong control, ulong expectedControl)
+        {
+            return (status & ~0x10000UL) == 0xFFFE0FF0UL && (expectedControl & ~0x405UL) == 0 &&
+                ((control ^ expectedControl) & ~0x400UL) == 0;
+        }
         void Ownership(byte[] context, bool trap)
         {
             for (int index = 0; index < 4; index++)
                 Check(U64(context, 72 + index * 8) == (index < 2 ? addresses[index] : U64(original, 72 + index * 8)),
                     trap ? "hardware-address-ownership" : "software-address-ownership", context);
-            if (!trap) Check(U64(context, 112) == Control() && (U64(context, 104) & ~3UL) == (U64(original, 104) & ~3UL),
+            if (!trap) Check(SoftwareStatus(U64(context, 104), U64(context, 112), Control()),
                 "software-control-ownership", context);
         }
         static bool ExecutableRegion(MemoryInfo info, ulong address, uint bytes, ulong image)
@@ -235,10 +271,10 @@ namespace ScientificSecurity
         {
             if (code != 0x80000003) return false;
             Check(Software(stage, initial, eventThread, tid, first), "software-stage");
-            byte[] before = Read();
-            try { Ownership(before, false); initial = true; }
+            byte[] before = Read(); string qualifiers;
+            try { Ownership(before, false); qualifiers = DebugContext.TrapQualifiers(U64(before, 104)); initial = true; }
             finally { Array.Clear(before, 0, before.Length); }
-            emit("phase=activation-software-stop origin_verified=False ordering_only=True"); return true;
+            emit("phase=activation-software-stop origin_verified=False ordering_only=True " + qualifiers); return true;
         }
         internal bool SingleStep(uint eventThread, uint code, bool first, IntPtr exceptionAddress)
         {
