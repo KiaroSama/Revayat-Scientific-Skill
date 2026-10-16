@@ -83,14 +83,18 @@ namespace ScientificSecurity
                 }
                 finally { Array.Clear(bytes, 0, bytes.Length); }
                 lines.Add("WINDOWS_STARTUP_MANIFEST resource_type=24 resource_id=1 language=" + manifest.Item1 + " bytes=" + manifest.Item2);
-                bool host = ObserveOne("host", python, manifest.Item1, lines, clock);
+                var assemblyPaths = new List<Tuple<string, string>>();
+                bool host = ObserveOne("host", python, manifest.Item1, lines, clock, assemblyPaths);
                 if (!host) throw new InvalidOperationException("host activation-context positive control failed");
+                ActivationAssemblyAccess.OpenFiles("host", assemblyPaths, lines, () => Deadline(clock)); Deadline(clock);
                 Native.Check(Native.OpenProcessToken(child.process, 0xA, out token), "open exact activation primary token");
                 Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate exact activation token");
                 var context = new RegistryContext(token, duplicate, package);
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter exact activation LPAC context");
                 impersonating = true; context.RequireThread();
-                ObserveOne("lpac", python, manifest.Item1, lines, clock);
+                ObserveOne("lpac", python, manifest.Item1, lines, clock, null);
+                context.RequireThread(); Deadline(clock);
+                ActivationAssemblyAccess.OpenFiles("lpac", assemblyPaths, lines, () => Deadline(clock));
                 context.RequireThread(); Deadline(clock);
             }
             catch (Exception failure) { primary = failure; throw; }
@@ -105,14 +109,16 @@ namespace ScientificSecurity
                 Finish(primary, failures);
             }
         }
-        static bool ObserveOne(string label, string python, ushort language, List<string> lines, Stopwatch clock)
+        static bool ObserveOne(string label, string python, ushort language, List<string> lines, Stopwatch clock, List<Tuple<string, string>> assemblyPaths)
         {
             Deadline(clock); ActCtx context = Fixed(python, language);
             IntPtr handle = CreateActCtxW(ref context);
             uint error = handle == Native.InvalidHandle ? unchecked((uint)Marshal.GetLastWin32Error()) : 0;
             try {
                 lines.Add(Outcome(label, handle, error)); Deadline(clock);
-                return handle != Native.InvalidHandle;
+                if (assemblyPaths != null && handle != Native.InvalidHandle)
+                    assemblyPaths.AddRange(ActivationAssemblyAccess.Query(handle, python));
+                Deadline(clock); return handle != Native.InvalidHandle;
             }
             finally { if (handle != Native.InvalidHandle && handle != IntPtr.Zero) ReleaseActCtx(handle); }
         }

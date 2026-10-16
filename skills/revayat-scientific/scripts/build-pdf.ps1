@@ -297,11 +297,17 @@ foreach ($sidecar in @($Terms, $Manifest)) {
         exit 1
     }
 }
-$available = @()
-if (Test-XeLaTeX) { $available += 'tex' }
-if ((Find-Chromium) -and (Invoke-Tool $python @('-c', 'import playwright.sync_api, pymupdf')).ExitCode -eq 0) { $available += 'chromium' }
-if ((Invoke-Tool $python @('-c', 'from weasyprint import HTML; from weasyprint.urls import URLFetcher, URLFetcherResponse, FatalURLFetchingError; import pymupdf')).ExitCode -eq 0) { $available += 'weasyprint' }
+function Get-AvailableEngines([string]$Requested) {
+    $available = @()
+    if (($Requested -eq 'auto' -or $Requested -eq 'tex') -and (Test-XeLaTeX)) { $available += 'tex' }
+    if (($Requested -eq 'auto' -or $Requested -eq 'chromium') -and (Find-Chromium) -and
+        (Invoke-Tool $python @('-c', 'import playwright.sync_api, pymupdf')).ExitCode -eq 0) { $available += 'chromium' }
+    if (($Requested -eq 'auto' -or $Requested -eq 'weasyprint') -and
+        (Invoke-Tool $python @('-c', 'from weasyprint import HTML; from weasyprint.urls import URLFetcher, URLFetcherResponse, FatalURLFetchingError; import pymupdf')).ExitCode -eq 0) { $available += 'weasyprint' }
+    return $available
+}
 $requestedEngine = if ($Engine) { $Engine } else { 'auto' }
+$available = @(Get-AvailableEngines $requestedEngine)
 $r = Invoke-Tool $python @((Join-Path $PSScriptRoot 'build-support.py'), 'select',
     $srcItem.FullName, '--engine', $requestedEngine, '--available', ($available -join ','))
 if ($r.ExitCode -ne 0) { Write-ToolOutput $r.Output; exit 1 }

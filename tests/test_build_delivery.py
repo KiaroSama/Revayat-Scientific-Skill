@@ -189,6 +189,16 @@ raise SystemExit(subprocess.call([''' + repr(real) + ''', *sys.argv[1:]]))
 
 @unittest.skipUnless(sys.platform == 'win32', 'native PowerShell 5.1 and 7 input admission')
 class WindowsBuildDeliveryTest(DeliveryFixture):
+    def test_explicit_engine_discovery_does_not_probe_other_backends(self):
+        for name in ('powershell', 'pwsh'):
+            with self.subTest(shell=name):
+                shell = shutil.which(name)
+                self.assertIsNotNone(shell, 'both supported Windows shells are required')
+                result = run([shell, '-NoProfile', '-NonInteractive', '-File',
+                    str(ROOT / 'tests/Check-EngineDiscovery.ps1'), '-Root', str(ROOT)], timeout=15)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('ENGINE_DISCOVERY_OK native_tools_invoked=false', result.stdout)
+
     def test_both_native_shells_preserve_colliding_source_inputs(self):
         asset = self.asset('verify-article-first.png')
         for name in ('powershell', 'pwsh'):
