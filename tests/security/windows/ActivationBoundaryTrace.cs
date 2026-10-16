@@ -48,11 +48,11 @@ namespace ScientificSecurity
             byte[] scalar = new byte[DebugContext.Size]; Put(scalar, 120, 1); Put(scalar, 144, 0x12345678C0000022UL);
             Need(Raw(U64(scalar, 144)) == "raw_ebx=0xC0000022" && !Raw(U64(scalar, 144)).Contains("raw_eax"));
             Need(Complete(5, true, false) && !Complete(4, true, false) && !Complete(5, false, false) && !Complete(5, true, true));
-            Put(scalar, 120, UInt64.MaxValue);
-            Need(ResourceResult(scalar) == "sentinel_equal=True");
-            foreach (ulong value in new ulong[] { 0, 1, UInt32.MaxValue, 0x12345678FFFFFFFFUL, UInt64.MaxValue - 1 }) {
-                Put(scalar, 120, value); Put(scalar, 144, UInt64.MaxValue);
-                Need(ResourceResult(scalar) == "sentinel_equal=False");
+            ulong[] callerValues = { 0, 1, 0x7FFFFFFF, 0x80000000, 0xC0000022, UInt32.MaxValue, 0x12345678C0000022UL };
+            string[] callerExpected = { "00000000", "00000001", "7FFFFFFF", "80000000", "C0000022", "FFFFFFFF", "C0000022" };
+            for (int index = 0; index < callerValues.Length; index++) {
+                Put(scalar, 120, callerValues[index]); Put(scalar, 144, 0x123456789ABCDEF0UL);
+                Need(GenerationResult(scalar) == "raw_eax=0x" + callerExpected[index] && Next(3, 0, unchecked((uint)callerValues[index])) == 4);
             }
             ulong[] resource = { 0x4000, 0x3000 };
             byte[] replaced = Desired(sites, baseline, resource, two, false);
@@ -191,7 +191,7 @@ namespace ScientificSecurity
         static ulong U64(byte[] value, int offset) { return BitConverter.ToUInt64(value, offset); }
         static void Put(byte[] value, int offset, ulong number) { BitConverter.GetBytes(number).CopyTo(value, offset); }
         static string Raw(ulong value) { return "raw_ebx=0x" + unchecked((uint)value).ToString("X8"); }
-        static string ResourceResult(byte[] context) { return "sentinel_equal=" + (U64(context, 120) == UInt64.MaxValue); }
+        static string GenerationResult(byte[] context) { return "raw_eax=0x" + unchecked((uint)U64(context, 120)).ToString("X8"); }
         static int Next(int stage, int slot, uint raw)
         {
             if (stage == 1 && slot == 0) return 2;
@@ -321,26 +321,26 @@ namespace ScientificSecurity
                     emit("phase=activation-entry-hit " + DebugContext.TrapQualifiers(status) + " worker_sites_armed=True control_integer_unchanged=True");
                 }
                 else if (stage == 2) {
-                    RequireExecutable(kernel, KernelImage.ResourceResultRva, 4);
-                    addresses[0] = kernel.Address(KernelImage.ResourceResultRva);
+                    RequireExecutable(kernel, KernelImage.GenerationResultRva, 2);
+                    addresses[0] = kernel.Address(KernelImage.GenerationResultRva);
                     Need(addresses[0] != addresses[1] && addresses[0] != fixture.Address(fixture.Entry));
                     stage = next; Apply(before, false);
                     emit("phase=activation-worker-entry " + DebugContext.TrapQualifiers(status) +
-                        " slot_replaced=True resource_result_armed=True scalar_read=False dispatch_route_verified=False control_integer_unchanged=True");
+                        " slot_replaced=True generation_result_armed=True scalar_read=False dispatch_route_verified=False control_integer_unchanged=True");
                 }
                 else {
-                    string result = stage == 3 ? ResourceResult(before) : null;
+                    string result = stage == 3 ? GenerationResult(before) : null;
                     addresses[slot] = 0; enabled[slot] = false; stage = next;
                     if (stage == 5) {
                         Restore();
                         emit("phase=activation-caller-site site=worker-failure-funnel " + Raw(U64(before, 144)) + " " + DebugContext.TrapQualifiers(status) +
                             " caller_local=True producer_verified=False invocation_pair_claimed=False control_integer_unchanged=True");
-                        emit("phase=activation-sites-complete restored=True worker_entry_observed=True resource_result_observed=True funnel_observed=True branch_claimed=False cause_claimed=False");
+                        emit("phase=activation-sites-complete restored=True worker_entry_observed=True generation_result_observed=True funnel_observed=True branch_claimed=False cause_claimed=False");
                     }
                     else {
                         Apply(before, false);
-                        emit("phase=activation-resource-result " + result + " " + DebugContext.TrapQualifiers(status) +
-                            " slot_disabled=True raw_value_emitted=False producer_verified=False control_integer_unchanged=True");
+                        emit("phase=activation-generation-result " + result + " " + DebugContext.TrapQualifiers(status) +
+                            " slot_disabled=True caller_local=True producer_verified=False invocation_pair_claimed=False control_integer_unchanged=True");
                     }
                 }
                 return true;
