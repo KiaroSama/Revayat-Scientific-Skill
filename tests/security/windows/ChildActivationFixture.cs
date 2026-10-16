@@ -178,8 +178,9 @@ namespace ScientificSecurity
         public static string CompareTraceResult(string ordinary, string traced)
         {
             string first = RequireResult(ordinary), second = RequireResult(traced);
-            return "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=" + String.Equals(first, second, StringComparison.Ordinal) +
-                " debug_equivalence_claimed=False cause_claimed=False";
+            if (!String.Equals(first, second, StringComparison.Ordinal))
+                throw new InvalidOperationException("fixed activation returned results differ");
+            return "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=True debug_equivalence_claimed=False cause_claimed=False";
         }
         internal static string RequireTransport(uint exit, string text, string errors)
         {
@@ -231,8 +232,16 @@ namespace ScientificSecurity
             if (RequireTransport(0, success, "") != success.TrimEnd('\n') || RequireTransport(0, denied, "") != denied.TrimEnd('\n'))
                 throw new InvalidOperationException("child activation literal result differs");
             if (CompareTraceResult(denied, denied) != "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=True debug_equivalence_claimed=False cause_claimed=False" ||
-                CompareTraceResult(denied, success) != "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=False debug_equivalence_claimed=False cause_claimed=False")
+                CompareTraceResult(success, success) != "WINDOWS_ACTIVATION_COMPARISON returned_result_equal=True debug_equivalence_claimed=False cause_claimed=False")
                 throw new InvalidOperationException("activation comparison lost its noncausal result contract");
+            foreach (Action mismatch in new Action[] { () => CompareTraceResult(denied, success), () => CompareTraceResult(success, denied) }) {
+                bool refused = false;
+                try { mismatch(); } catch (InvalidOperationException failure) {
+                    if (failure.Message != "fixed activation returned results differ") throw;
+                    refused = true;
+                }
+                if (!refused) throw new InvalidOperationException("activation result mismatch was accepted");
+            }
             foreach (Action invalid in new Action[] {
                 () => RequireTransport(0, success, "\n"), () => RequireTransport(0, success, " "),
                 () => RequireTransport(1, success, ""), () => RequireTransport(1, "private-sentinel", "private-sentinel"),

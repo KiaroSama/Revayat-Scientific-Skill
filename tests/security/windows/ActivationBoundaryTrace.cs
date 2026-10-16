@@ -23,14 +23,14 @@ namespace ScientificSecurity
                 catch (ArgumentException) { refused = true; }
                 Need(refused);
             }
-            Need(Next(1, 0, 0) == 2 && Next(2, 0, 0) == 3 && Next(3, 1, 0xC0000022) == 4);
-            Need(Next(3, 1, 0x80000000) == 4 && Next(3, 1, UInt32.MaxValue) == 4);
+            Need(Next(1, 0, 0) == 2 && Next(2, 0, 0) == 3 && Next(3, 0, 0) == 4 && Next(4, 1, 0xC0000022) == 5);
+            Need(Next(4, 1, 0x80000000) == 5 && Next(4, 1, UInt32.MaxValue) == 5);
             foreach (uint value in new uint[] { 0, 1, 0x7FFFFFFF }) {
                 bool refused = false;
-                try { Next(3, 1, value); } catch (InvalidOperationException) { refused = true; }
+                try { Next(4, 1, value); } catch (InvalidOperationException) { refused = true; }
                 Need(refused);
             }
-            foreach (int[] item in new [] { new [] {0,0}, new [] {1,1}, new [] {2,1}, new [] {3,0}, new [] {4,0}, new [] {4,1} }) {
+            foreach (int[] item in new [] { new [] {0,0}, new [] {1,1}, new [] {2,1}, new [] {3,1}, new [] {4,0}, new [] {5,0}, new [] {5,1} }) {
                 bool refused = false;
                 try { Next(item[0], item[1], 0); } catch (InvalidOperationException) { refused = true; }
                 Need(refused);
@@ -47,7 +47,21 @@ namespace ScientificSecurity
             Need(Raw(0x12345678C0000022UL) == "raw_ebx=0xC0000022" && Raw(UInt64.MaxValue) == "raw_ebx=0xFFFFFFFF");
             byte[] scalar = new byte[DebugContext.Size]; Put(scalar, 120, 1); Put(scalar, 144, 0x12345678C0000022UL);
             Need(Raw(U64(scalar, 144)) == "raw_ebx=0xC0000022" && !Raw(U64(scalar, 144)).Contains("raw_eax"));
-            Need(Complete(4, true, false) && !Complete(3, true, false) && !Complete(4, false, false) && !Complete(4, true, true));
+            Need(Complete(5, true, false) && !Complete(4, true, false) && !Complete(5, false, false) && !Complete(5, true, true));
+            Put(scalar, 120, UInt64.MaxValue);
+            Need(ResourceResult(scalar) == "sentinel_equal=True");
+            foreach (ulong value in new ulong[] { 0, 1, UInt32.MaxValue, 0x12345678FFFFFFFFUL, UInt64.MaxValue - 1 }) {
+                Put(scalar, 120, value); Put(scalar, 144, UInt64.MaxValue);
+                Need(ResourceResult(scalar) == "sentinel_equal=False");
+            }
+            ulong[] resource = { 0x4000, 0x3000 };
+            byte[] replaced = Desired(sites, baseline, resource, two, false);
+            Need(U64(replaced, 72) == 0x4000 && U64(replaced, 80) == 0x3000 && U64(replaced, 112) == 0x405);
+            resource[0] = 0;
+            byte[] disabled = Desired(replaced, baseline, resource, new [] { false, true }, false);
+            Need(U64(disabled, 72) == 0 && U64(disabled, 80) == 0x3000 && U64(disabled, 112) == 0x404);
+            Need(DebugContext.RawDebugEqual(Desired(disabled, baseline, resource, two, true), baseline) &&
+                DebugContext.UnchangedControlInteger(sites, replaced) && DebugContext.UnchangedControlInteger(replaced, disabled));
             Need(Software(1, false, 7, 7, true) && !Software(2, false, 7, 7, true) &&
                 !Software(1, true, 7, 7, true) && !Software(1, false, 8, 7, true) && !Software(1, false, 7, 7, false));
             var info = new MemoryInfo { address = new IntPtr(0x1000), allocation = new IntPtr(0x1000),
@@ -58,7 +72,7 @@ namespace ScientificSecurity
                 info.protect = access; Need(!ExecutableRegion(info, 0x1100, 2, 0x1000));
             }
             var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { });
-            observer.stage = 4; observer.restored = true; observer.RequireComplete(); observer.Invalidate();
+            observer.stage = 5; observer.restored = true; observer.RequireComplete(); observer.Invalidate();
             bool incomplete = false;
             try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
             Need(incomplete);
@@ -72,7 +86,7 @@ namespace ScientificSecurity
             observer.original = new byte[DebugContext.Size]; observer.eventCode = 0x80000003;
             observer.eventCreator = observer.eventFirst = true;
             string metadata = observer.RefusalMetadata("software-ownership", observer.original);
-            Need(metadata.Contains("check=software-ownership stage=4 event_code=0x80000003 creator=True first_chance=True") &&
+            Need(metadata.Contains("check=software-ownership stage=5 event_code=0x80000003 creator=True first_chance=True") &&
                 metadata.Contains("raw_dr6=0x0000000000000000") && metadata.Contains("raw_dr7=0x0000000000000000") &&
                 !metadata.Contains("raw_eax") && !metadata.Contains("digest") && metadata.Length < 768);
             bool reported = false;
@@ -177,14 +191,16 @@ namespace ScientificSecurity
         static ulong U64(byte[] value, int offset) { return BitConverter.ToUInt64(value, offset); }
         static void Put(byte[] value, int offset, ulong number) { BitConverter.GetBytes(number).CopyTo(value, offset); }
         static string Raw(ulong value) { return "raw_ebx=0x" + unchecked((uint)value).ToString("X8"); }
+        static string ResourceResult(byte[] context) { return "sentinel_equal=" + (U64(context, 120) == UInt64.MaxValue); }
         static int Next(int stage, int slot, uint raw)
         {
             if (stage == 1 && slot == 0) return 2;
             if (stage == 2 && slot == 0) return 3;
-            if (stage == 3 && slot == 1 && (raw & 0x80000000) != 0) return 4;
+            if (stage == 3 && slot == 0) return 4;
+            if (stage == 4 && slot == 1 && (raw & 0x80000000) != 0) return 5;
             throw new InvalidOperationException("fixed activation observation order is invalid");
         }
-        static bool Complete(int state, bool restoration, bool invalid) { return state == 4 && restoration && !invalid; }
+        static bool Complete(int state, bool restoration, bool invalid) { return state == 5 && restoration && !invalid; }
         static bool Software(int state, bool seen, uint eventThread, uint creator, bool first)
         { return state == 1 && !seen && eventThread == creator && first; }
         internal void Stop(uint eventPid, uint eventThread, uint kind)
@@ -286,7 +302,7 @@ namespace ScientificSecurity
         internal bool SingleStep(uint eventThread, uint code, bool first, IntPtr exceptionAddress)
         {
             if (code != 0x80000004) return false;
-            Check(!invalidated && stage >= 1 && stage <= 3 && first && eventThread == tid && original != null, "hardware-stage");
+            Check(!invalidated && stage >= 1 && stage <= 4 && first && eventThread == tid && original != null, "hardware-stage");
             byte[] before = Read();
             try {
                 ulong status = U64(before, 104), cause = status & 0xE00FUL;
@@ -295,7 +311,7 @@ namespace ScientificSecurity
                 Check(slot >= 0 && DebugContext.OwnedTrapSite(eventThread, tid, first, enabled[slot], U64(before, 248), addresses[slot]) &&
                     unchecked((ulong)exceptionAddress.ToInt64()) == U64(before, 248) &&
                     DebugContext.OwnedTrapStatus(status, U64(before, 112), Control(), slot), "hardware-trap", before);
-                int next = Next(stage, slot, stage == 3 ? unchecked((uint)U64(before, 144)) : 0);
+                int next = Next(stage, slot, stage == 4 ? unchecked((uint)U64(before, 144)) : 0);
                 if (stage == 1) {
                     Check(initial && kernel != null, "entry-prerequisites", before);
                     RequireExecutable(kernel, KernelImage.WorkerEntryRva, 15); RequireExecutable(kernel, KernelImage.FailureFunnelRva, 2);
@@ -304,18 +320,27 @@ namespace ScientificSecurity
                     enabled[0] = enabled[1] = true; stage = next; Apply(before, false);
                     emit("phase=activation-entry-hit " + DebugContext.TrapQualifiers(status) + " worker_sites_armed=True control_integer_unchanged=True");
                 }
+                else if (stage == 2) {
+                    RequireExecutable(kernel, KernelImage.ResourceResultRva, 4);
+                    addresses[0] = kernel.Address(KernelImage.ResourceResultRva);
+                    Need(addresses[0] != addresses[1] && addresses[0] != fixture.Address(fixture.Entry));
+                    stage = next; Apply(before, false);
+                    emit("phase=activation-worker-entry " + DebugContext.TrapQualifiers(status) +
+                        " slot_replaced=True resource_result_armed=True scalar_read=False dispatch_route_verified=False control_integer_unchanged=True");
+                }
                 else {
+                    string result = stage == 3 ? ResourceResult(before) : null;
                     addresses[slot] = 0; enabled[slot] = false; stage = next;
-                    if (stage == 4) {
+                    if (stage == 5) {
                         Restore();
                         emit("phase=activation-caller-site site=worker-failure-funnel " + Raw(U64(before, 144)) + " " + DebugContext.TrapQualifiers(status) +
                             " caller_local=True producer_verified=False invocation_pair_claimed=False control_integer_unchanged=True");
-                        emit("phase=activation-sites-complete restored=True worker_entry_observed=True funnel_observed=True branch_claimed=False cause_claimed=False");
+                        emit("phase=activation-sites-complete restored=True worker_entry_observed=True resource_result_observed=True funnel_observed=True branch_claimed=False cause_claimed=False");
                     }
                     else {
                         Apply(before, false);
-                        emit("phase=activation-worker-entry " + DebugContext.TrapQualifiers(status) +
-                            " slot_disabled=True scalar_read=False dispatch_route_verified=False control_integer_unchanged=True");
+                        emit("phase=activation-resource-result " + result + " " + DebugContext.TrapQualifiers(status) +
+                            " slot_disabled=True raw_value_emitted=False producer_verified=False control_integer_unchanged=True");
                     }
                 }
                 return true;
