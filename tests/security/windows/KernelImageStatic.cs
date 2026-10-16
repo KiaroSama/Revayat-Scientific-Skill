@@ -7,7 +7,7 @@ namespace ScientificSecurity
 {
     public sealed partial class KernelImage
     {
-        internal struct StaticSlice { internal ulong Start; internal uint Length; internal int Raw; }
+        internal struct StaticSlice { internal ulong Start; internal uint Rva, Length; internal int Raw; }
         internal sealed class StaticView
         {
             internal readonly string Text;
@@ -18,21 +18,30 @@ namespace ScientificSecurity
         internal StaticSlice EntrySlice()
         {
             Need(Name == "kernelbase.dll" && Entry != 0);
+            return StaticSliceAt(Entry);
+        }
+        StaticSlice StaticSliceAt(uint rva)
+        {
+            Need(rva != 0);
             ulong optional = (ulong)U32(0x3C) + 24; Range(optional + 24, 8);
             ulong preferred = BitConverter.ToUInt64(data, (int)optional + 24);
             Need(preferred != 0 && preferred <= 0x7FFFFFFFFFFFFFFFUL - imageSize && U32(optional + 112 + 14 * 8) == 0 && U32(optional + 116 + 14 * 8) == 0);
             int matches = 0; uint length = 0;
             foreach (var section in sections) {
                 ulong span = Math.Min(section.size, section.rawSize);
-                if ((section.flags & 0x20000000) == 0 || Entry < section.rva || (ulong)Entry >= (ulong)section.rva + span) continue;
+                if ((section.flags & 0x20000000) == 0 || rva < section.rva || (ulong)rva >= (ulong)section.rva + span) continue;
                 Need(section.raw >= headers); matches++;
-                length = (uint)Math.Min(4096UL, Math.Min((ulong)section.rva + span - Entry, (ulong)imageSize - Entry));
+                length = (uint)Math.Min(4096UL, Math.Min((ulong)section.rva + span - rva, (ulong)imageSize - rva));
             }
             Need(matches == 1 && length != 0);
-            return new StaticSlice { Start = preferred + Entry, Length = length, Raw = Map(Entry, length) };
+            return new StaticSlice { Start = preferred + rva, Rva = rva, Length = length, Raw = Map(rva, length) };
         }
         internal StaticView QualifyStatic(string text)
+        { return QualifyStatic(text, EntrySlice()); }
+        internal StaticView QualifyStatic(string text, StaticSlice slice)
         {
+            var expected = StaticSliceAt(slice.Rva);
+            Need(slice.Start == expected.Start && slice.Length == expected.Length && slice.Raw == expected.Raw);
             var output = new StringBuilder(); int records = 0, unsupported = 0, lines = 0;
             int textChars = text == null ? 0 : text.Length;
             Action<bool, string> require = (condition, stage) => {
@@ -41,7 +50,6 @@ namespace ScientificSecurity
                     " output_chars=" + output.Length + " text_chars=" + textChars);
             };
             require(text != null && text.Length <= 1048576, "input-bound");
-            var slice = EntrySlice();
             ulong previousEnd = slice.Start; string pending = null;
             Action finalize = () => {
                 if (pending == null) return;
@@ -84,14 +92,14 @@ namespace ScientificSecurity
                     ulong operand;
                     if (Regex.IsMatch(operands, @"^[0-9A-Fa-f]{16}$", RegexOptions.CultureInvariant) &&
                         UInt64.TryParse(operands, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out operand)) {
-                        ulong preferred = slice.Start - Entry;
+                        ulong preferred = slice.Start - slice.Rva;
                         if (operand >= preferred && operand - preferred < imageSize) safe = "rva:0x" + (operand - preferred).ToString("X8", CultureInfo.InvariantCulture);
                     }
                     if (safe == "withheld" && Regex.IsMatch(operands,
                         @"^(?:rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r(?:8|9|1[0-5])|eax|ebx|ecx|edx|esi|edi|ebp|esp|r(?:8|9|1[0-5])d|ax|bx|cx|dx|al|bl|cl|dl)(?:,(?:rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r(?:8|9|1[0-5])|eax|ebx|ecx|edx|esi|edi|ebp|esp|r(?:8|9|1[0-5])d|ax|bx|cx|dx|al|bl|cl|dl|[01]h?))?$",
                         RegexOptions.CultureInvariant)) safe = operands;
                     if (safe == "withheld") unsupported++;
-                    pending = "rva=0x" + (Entry + address - slice.Start).ToString("X8", CultureInfo.InvariantCulture) +
+                    pending = "rva=0x" + (slice.Rva + address - slice.Start).ToString("X8", CultureInfo.InvariantCulture) +
                         " bytes=" + hex + " mnemonic=" + instruction.Groups[3].Value + " operands=" + safe + "\n";
                 }
             }

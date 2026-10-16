@@ -165,7 +165,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationWorker.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
     [ScientificSecurity.Profile]::CheckRegistryMasks()
     [ScientificSecurity.LoaderSnaps]::CheckValidation()
@@ -174,6 +174,7 @@ try {
     [ScientificSecurity.KernelImage]::CheckCheckpointValidation()
     [ScientificSecurity.KernelImage]::CheckImportValidation()
     [ScientificSecurity.KernelImage]::CheckManifestValidation()
+    [ScientificSecurity.KernelImage]::CheckActivationWorkerValidation()
     [ScientificSecurity.StartupActivationAccess]::CheckValidation()
     [ScientificSecurity.ActivationAssemblyAccess]::CheckValidation($state)
     [ScientificSecurity.StartupTokenAccess]::CheckValidation()
@@ -323,6 +324,8 @@ try {
     $env:SCIENTIFIC_AMBIENT_CANARY = 'dummy-never-forwarded'
     Write-RunLog INFO 'fixed same-run static KernelBase entrypoint inspection starts; never execution or cause proof'
     [ScientificSecurity.StaticKernelInspection]::RunFixed($state)
+    Write-RunLog INFO 'fixed same-run candidate activation-worker static inspection starts; never runtime host or cause proof'
+    [ScientificSecurity.StaticKernelInspection]::RunActivationWorker($state)
     Write-RunLog INFO 'single fixed trusted-host debugger control starts; never normalization or admission proof'
     [ScientificSecurity.DebugControl]::RunFixed($runId, $state)
     Write-RunLog INFO 'fixed no-CRT native startup differential starts; never an admission control'
@@ -372,12 +375,25 @@ try {
 catch {
     $failure = $_
     $cause = $_.Exception
-    while ($cause) {
-        $detail = 'failed type=' + $cause.GetType().Name + ' message=' + $cause.Message
-        if ($cause -is [ComponentModel.Win32Exception]) { $detail += ' native_error=' + $cause.NativeErrorCode }
-        Write-RunLog ERROR $detail
-        [Console]::Error.WriteLine($detail)
-        $cause = $cause.InnerException
+    $staticReport = if ('ScientificSecurity.StaticKernelInspection' -as [type]) {
+        [ScientificSecurity.StaticKernelInspection]::ActivationFailureReport($cause)
+    } else { $null }
+    if ($null -ne $staticReport) {
+        foreach ($line in $staticReport.Split([char]10)) {
+            try { Write-RunLog ERROR $line }
+            catch { [ScientificSecurity.StaticKernelInspection]::RetainActivationReportingFailure($cause, $_.Exception) }
+            try { [Console]::Error.WriteLine($line) }
+            catch { [ScientificSecurity.StaticKernelInspection]::RetainActivationReportingFailure($cause, $_.Exception) }
+        }
+    }
+    else {
+        while ($cause) {
+            $detail = 'failed type=' + $cause.GetType().Name + ' message=' + $cause.Message
+            if ($cause -is [ComponentModel.Win32Exception]) { $detail += ' native_error=' + $cause.NativeErrorCode }
+            Write-RunLog ERROR $detail
+            [Console]::Error.WriteLine($detail)
+            $cause = $cause.InnerException
+        }
     }
 }
 finally {
