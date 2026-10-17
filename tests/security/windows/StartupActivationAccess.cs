@@ -65,7 +65,7 @@ namespace ScientificSecurity
         }
         static void Deadline(Stopwatch clock)
         { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed activation comparison exceeded 10 seconds"); }
-        internal static void Observe(Native.ProcessInfo child, string python, string package)
+        internal static int Observe(Native.ProcessInfo child, string python, string package)
         {
             CheckValidation();
             using (WindowsIdentity current = WindowsIdentity.GetCurrent(true))
@@ -109,11 +109,12 @@ namespace ScientificSecurity
                 var context = new RegistryContext(token, duplicate, package);
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter exact activation LPAC context");
                 impersonating = true; context.RequireThread();
-                StartupRegistryAccess.Observe("lpac", lines, () => Deadline(clock), context.RequireThread);
+                int registryStatus = StartupRegistryAccess.Observe("lpac", lines, () => Deadline(clock), context.RequireThread);
                 ObserveOne("lpac", python, manifest.Item1, lines, clock, null);
                 context.RequireThread(); Deadline(clock);
                 ActivationAssemblyAccess.OpenFiles("lpac", assemblyPaths, lines, () => Deadline(clock));
                 context.RequireThread(); Deadline(clock);
+                return registryStatus;
             }
             catch (Exception failure) { primary = failure; throw; }
             finally {

@@ -134,6 +134,51 @@ class BootstrapCaptureTest(unittest.TestCase):
         self.assertEqual(output, 'WINDOWS_FIXED_PHASE before-stall\n')
         self.assertEqual(error, 'fixed stderr\n')
 
+    def test_primary_and_recovery_failures_remain_ordered_in_sanitized_report(self):
+        primary = TimeoutError('private primary')
+        recovery = OSError('private recovery')
+        recovery.winerror = 5
+        for outcome in (recovery, 7):
+            with self.subTest(outcome=type(outcome).__name__):
+                with patch.object(bootstrap, 'run_owned', side_effect=[primary, outcome]) as run:
+                    with self.assertRaises(BaseExceptionGroup) as caught:
+                        bootstrap.run_with_recovery(lambda: bootstrap.run_owned(),
+                                                    lambda _: bootstrap.run_owned(), {'reaped': False})
+                self.assertEqual(run.call_count, 2)
+                self.assertIs(caught.exception.exceptions[0], primary)
+                self.assertEqual(len(caught.exception.exceptions), 2)
+                categories = bootstrap.failure_categories(caught.exception)['causes']
+                self.assertEqual(categories[0], {'category': 'timeout'})
+                self.assertEqual(categories[1], {'category': 'os_error', 'winerror': 5} if outcome is recovery
+                                 else {'category': 'unknown_failure'})
+                self.assertNotIn('private', str(bootstrap.failure_categories(caught.exception)))
+
+    def test_outer_recovery_requires_reaping_and_handle_cleanup(self):
+        for cleanup_failure in (False, True):
+            kernel = KernelFixture(cleanup_failure=cleanup_failure)
+            qualification = {'reaped': False}
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                try:
+                    bootstrap.run_owned(kernel, 'fixed-pwsh', Path('fixed-entry'), Path('fixed-python'),
+                                        Path('.'), 'a' * 32, qualification=qualification)
+                except BaseExceptionGroup:
+                    self.assertTrue(cleanup_failure)
+            self.assertEqual(qualification, {'reaped': not cleanup_failure})
+        kernel = KernelFixture()
+        arguments = []
+        original = kernel.CreateProcessW
+
+        def capture(*args):
+            arguments.append(args[1].value)
+            return original(*args)
+
+        kernel.CreateProcessW = capture
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            bootstrap.run_owned(kernel, 'fixed-pwsh', Path('fixed-entry'), Path('fixed-python'),
+                                Path('.'), 'a' * 32, cleanup=True, outer_reaped=True)
+        self.assertIn('-CleanupOnly', arguments[0])
+        self.assertIn('-OuterOwnerReaped', arguments[0])
+
     def test_success_keeps_capture_once(self):
         result, failure, output, error = self.invoke(KernelFixture())
         self.assertEqual(result, 0)

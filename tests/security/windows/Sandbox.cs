@@ -24,6 +24,47 @@ namespace ScientificSecurity
         public static string Run(string python, string root, string scratch, string powershell,
                                  string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false, bool pythonClone = false, bool activationProbe = false, bool activationTrace = false)
         {
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, preflight, tcpPort, udpPort,
+                wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, false, null);
+        }
+        public static string ObserveActivation(string python, string root, string scratch, string powershell,
+                                               string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
+        {
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, true, false, false, expectedRegistryStatus);
+        }
+        public static uint ObservePreflightExit(string python, string root, string scratch, string powershell,
+                                               string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
+        {
+            try {
+                RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                    false, false, false, false, false, false, true, expectedRegistryStatus);
+                return 0;
+            }
+            catch (PreflightExit failure) { return failure.Code; }
+        }
+        sealed class PreflightExit : InvalidOperationException
+        {
+            internal readonly uint Code;
+            internal PreflightExit(uint code) : base("fixed ordinary preflight returned a nonzero exit") { Code = code; }
+        }
+        static void RequireRegistryCondition(int actual, int expected)
+        {
+            if ((expected != 0 && expected != unchecked((int)0xC0000022)) || (expected == 0 ? actual < 0 : actual != expected))
+                throw new InvalidOperationException("fixed registry differential condition was not observed");
+        }
+        static void RequireExit(uint exit, string phase, bool observe, string errors, string text)
+        {
+            if (exit == 0) return;
+            if (observe) { if (phase != "preflight") throw new InvalidOperationException("exit observation is not ordinary preflight"); throw new PreflightExit(exit); }
+            throw new InvalidOperationException("Windows " + phase + " failed exit=" + exit + " " + errors + " " + text);
+        }
+        static string RunFixed(string python, string root, string scratch, string powershell,
+                               string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus)
+        {
+            if (observeExit && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe || activationTrace))
+                throw new ArgumentException("exit observation requires fixed ordinary trusted preflight");
             ChildActivationFixture.RequireDiagnosticRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace);
             if (loaderProbe && (!preflight || wallProbe))
                 throw new ArgumentException("loader tracing is restricted to the separate fixed trusted pass phase");
@@ -154,7 +195,8 @@ namespace ScientificSecurity
                 if (preflight && !wallProbe && !loaderProbe) {
                     StartupAccess.Observe(process, python);
                     StartupImageAccess.Observe(process, python, package);
-                    StartupActivationAccess.Observe(process, python, package);
+                    int registryStatus = StartupActivationAccess.Observe(process, python, package);
+                    if (expectedRegistryStatus.HasValue) RequireRegistryCondition(registryStatus, expectedRegistryStatus.Value);
                     StartupAccess.RequireOwnQueries(process, false);
                 }
                 OwnProcessAccess.Repair(process);
@@ -213,7 +255,7 @@ namespace ScientificSecurity
                     ChildActivationFixture.RequireTransport(exit, text, errors);
                     return text;
                 }
-                if (exit != 0) throw new InvalidOperationException("Windows " + phase + " failed exit=" + exit + " " + errors + " " + text);
+                RequireExit(exit, phase, observeExit, errors, text);
                 if (!String.IsNullOrWhiteSpace(errors)) throw new InvalidOperationException("unexpected worker error output: " + errors);
                 if (wallProbe) throw new InvalidOperationException("wall negative control exited before owned deadline");
                 return text;
@@ -281,6 +323,20 @@ namespace ScientificSecurity
         { return Native.ExtendedStartup | Native.Suspended | 8U | Native.UnicodeEnvironment | (debug ? 2U : 0U); }
         internal static void CheckCleanupValidation()
         {
+            RequireExit(0, "preflight", false, "", ""); RequireExit(0, "preflight", true, "", "");
+            foreach (uint code in new uint[] { 1, 0xC0000022, UInt32.MaxValue }) {
+                bool ordinary = false, typed = false;
+                try { RequireExit(code, "preflight", false, "", ""); } catch (PreflightExit) { throw; } catch (InvalidOperationException) { ordinary = true; }
+                try { RequireExit(code, "preflight", true, "", ""); } catch (PreflightExit failure) { typed = failure.Code == code; }
+                if (!ordinary || !typed) throw new InvalidOperationException("ordinary exit observation weakened failure semantics");
+            }
+            foreach (int status in new [] { 0, 1, 0x40000003 }) RequireRegistryCondition(status, 0);
+            RequireRegistryCondition(unchecked((int)0xC0000022), unchecked((int)0xC0000022));
+            foreach (int[] item in new [] { new [] { -1, 0 }, new [] { 0, unchecked((int)0xC0000022) }, new [] { 0, 1 } }) {
+                bool refused = false;
+                try { RequireRegistryCondition(item[0], item[1]); } catch (InvalidOperationException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("registry differential condition was not qualified");
+            }
             if (CreationFlags(false) != 0x0008040C || CreationFlags(true) != 0x0008040E)
                 throw new InvalidOperationException("contained launch lost detached, suspended, Unicode or fixed debug flags");
             var primary = new InvalidOperationException("fixed primary fixture");

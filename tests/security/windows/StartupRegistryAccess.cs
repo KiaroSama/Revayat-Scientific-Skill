@@ -132,7 +132,7 @@ namespace ScientificSecurity
             if (primary != null) failures.Insert(0, primary);
             throw new AggregateException("fixed registry operation/cleanup failed", failures);
         }
-        static void ObserveOne(string label, Action<string> record, Action deadline, Action qualify, OpenKey open, Action<IntPtr> close)
+        static int ObserveOne(string label, Action<string> record, Action deadline, Action qualify, OpenKey open, Action<IntPtr> close)
         {
             IntPtr key = IntPtr.Zero; Exception primary = null;
             try {
@@ -141,6 +141,7 @@ namespace ScientificSecurity
                 qualify(); deadline();
                 record(Outcome(label, status, key));
                 if (label == "host" && status < 0) throw new InvalidOperationException("host fixed registry positive control failed");
+                return status;
             }
             catch (Exception failure) { primary = failure; throw; }
             finally {
@@ -166,9 +167,9 @@ namespace ScientificSecurity
         }
         static void Closed(int status)
         { if (status < 0) throw new InvalidOperationException("close fixed registry read handle failed"); }
-        internal static void Observe(string label, List<string> lines, Action deadline, Action qualify)
+        internal static int Observe(string label, List<string> lines, Action deadline, Action qualify)
         {
-            ObserveOne(label, lines.Add, deadline, qualify, OpenFixed, key => Closed(NtClose(key)));
+            return ObserveOne(label, lines.Add, deadline, qualify, OpenFixed, key => Closed(NtClose(key)));
         }
     }
 }

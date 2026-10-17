@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Root,
       [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId = ([Guid]::NewGuid().ToString('N')),
-      [switch]$CleanupOnly)
+      [switch]$CleanupOnly, [switch]$OuterOwnerReaped)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -14,22 +14,20 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Required prep
 $runId = $RunId
 $state = [IO.Path]::GetFullPath((Join-Path (Join-Path $Root '.scratch') "security-windows-$runId"))
 if ($CleanupOnly) {
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'Profile.cs'))
-    $profileCleanupFailure = $null
-    $snapsCleanupFailure = $null
-    try { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) }
-    catch { $snapsCleanupFailure = $_ }
-    try { [ScientificSecurity.Profile]::DeleteOwned('Scientific.Security.' + $runId, (Join-Path $state 'profile.receipt')) }
-    catch { $profileCleanupFailure = $_ }
-    $ownedVhd = Join-Path $state 'scratch.vhdx'
-    if (Test-Path -LiteralPath $ownedVhd -PathType Leaf) {
-        if ((Get-Item -LiteralPath $ownedVhd -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Owned cleanup disk is a reparse point' }
-        $disk = Get-VHD -Path $ownedVhd -ErrorAction Stop
-        if ($disk.Attached) { Dismount-VHD -Path $ownedVhd -ErrorAction Stop }
-    }
-    if ($snapsCleanupFailure) { throw $snapsCleanupFailure }
-    if ($profileCleanupFailure) { throw $profileCleanupFailure }
-    if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop }
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'))
+    [ScientificSecurity.RegistryPolicyLease]::CleanupOwned(
+        [Action]{ [ScientificSecurity.RegistryPolicyLease]::Recover($runId, $state, $OuterOwnerReaped.IsPresent) },
+        [Action]{ [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) },
+        [Action]{ [ScientificSecurity.Profile]::DeleteOwned('Scientific.Security.' + $runId, (Join-Path $state 'profile.receipt')) },
+        [Action]{
+            $ownedVhd = Join-Path $state 'scratch.vhdx'
+            if (Test-Path -LiteralPath $ownedVhd -PathType Leaf) {
+                if ((Get-Item -LiteralPath $ownedVhd -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Owned cleanup disk is a reparse point' }
+                $disk = Get-VHD -Path $ownedVhd -ErrorAction Stop
+                if ($disk.Attached) { Dismount-VHD -Path $ownedVhd -ErrorAction Stop }
+            }
+        },
+        [Action]{ if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop } })
     [Console]::Out.WriteLine('WINDOWS_OWNED_STATE_CLEANED')
     exit 0
 }
@@ -165,7 +163,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'StartupRegistryAccess.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationWorker.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationBoundary.cs'), (Join-Path $PSScriptRoot 'ActivationBoundaryTrace.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'StartupRegistryAccess.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'), (Join-Path $PSScriptRoot 'RegistryCausalComparison.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationWorker.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationBoundary.cs'), (Join-Path $PSScriptRoot 'ActivationBoundaryTrace.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
     [ScientificSecurity.Profile]::CheckRegistryMasks()
     [ScientificSecurity.LoaderSnaps]::CheckValidation()
@@ -177,6 +175,8 @@ try {
     [ScientificSecurity.KernelImage]::CheckActivationWorkerValidation()
     [ScientificSecurity.StartupActivationAccess]::CheckValidation()
     [ScientificSecurity.StartupRegistryAccess]::CheckValidation()
+    [ScientificSecurity.RegistryPolicyLease]::CheckValidation()
+    [ScientificSecurity.RegistryCausalComparison]::CheckValidation()
     [ScientificSecurity.ActivationAssemblyAccess]::CheckValidation($state)
     [ScientificSecurity.StartupTokenAccess]::CheckValidation()
     [ScientificSecurity.ChildActivationFixture]::CheckValidation($state)
@@ -363,8 +363,11 @@ try {
     $tracedActivationText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $false, $false, $false, $false, $true)
     [Console]::Out.WriteLine([ScientificSecurity.ChildActivationFixture]::CompareTraceResult($activationText, $tracedActivationText))
     [Console]::Out.Flush()
+    Write-RunLog INFO 'reversible fixed registry causal comparison starts; no target admission under intervention'
+    $originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
     $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
+    [ScientificSecurity.RegistryCausalComparison]::RequireAdmission($originalAdmissionExit)
     $preflight = $preflightText | ConvertFrom-Json
     if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }
     $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $true)
@@ -404,7 +407,12 @@ catch {
 }
 finally {
     $cleanupErrors = [Collections.Generic.List[string]]::new()
+    $registryRestored = $true
     try {
+        if ('ScientificSecurity.RegistryPolicyLease' -as [type]) {
+            try { [ScientificSecurity.RegistryPolicyLease]::Recover($runId, $state) }
+            catch { $registryRestored = $false; $cleanupErrors.Add('fixed registry-policy recovery failed'); if (-not $failure) { $failure = $_ } }
+        }
         if ('ScientificSecurity.LoaderSnaps' -as [type]) {
             try { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) }
             catch { $cleanupErrors.Add('owned loader-snaps cleanup failed'); if (-not $failure) { $failure = $_ } }
@@ -425,14 +433,15 @@ finally {
     }
     finally {
         try {
-            if ($profileOwned) { [ScientificSecurity.Profile]::DeleteOwned($moniker, (Join-Path $state 'profile.receipt')); $profileOwned = $false }
+            if ($profileOwned -and $registryRestored) { [ScientificSecurity.Profile]::DeleteOwned($moniker, (Join-Path $state 'profile.receipt')); $profileOwned = $false }
         }
         catch { $cleanupErrors.Add('owned profile cleanup failed'); if (-not $failure) { $failure = $_ } }
         finally {
         try {
             if ($mounted) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
             # Retain the log; remove only this run's detached disposable state.
-            if (-not $profileOwned -and -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps.receipt')) -and
+            if ($registryRestored -and -not $profileOwned -and -not (Test-Path -LiteralPath (Join-Path $state 'registry-policy.receipt')) -and
+                -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps.receipt')) -and
                 -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps-python.receipt'))) {
                 Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop
             }

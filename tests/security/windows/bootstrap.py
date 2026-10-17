@@ -84,17 +84,20 @@ def check(value, operation):
         raise ctypes.WinError(ctypes.get_last_error(), operation)
 
 
-def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
+def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False, qualification=None, outer_reaped=False):
     arguments = [pwsh, '-NoLogo', '-NoProfile', '-NonInteractive', '-File', str(entry),
                  '-Python', str(python), '-Root', str(root), '-RunId', run_id]
     if cleanup:
         arguments.append('-CleanupOnly')
+        if outer_reaped:
+            arguments.append('-OuterOwnerReaped')
     child, job, attributes = ProcessInfo(), None, None
     handles, readers, threads = [], [], []
     chunks, errors = [bytearray(), bytearray()], []
     lock = threading.Lock()
     last_progress = [time.monotonic()]
     started = resumed = False
+    reaped = [False]
     primary_failure = None
     sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), None, True)
 
@@ -127,6 +130,7 @@ def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
             while True:
                 check(kernel.QueryInformationJobObject(job, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None), 'observe outer active processes')
                 if not accounting.active:
+                    reaped[0] = True
                     break
                 if time.monotonic() >= deadline:
                     raise TimeoutError('outer owned job did not reap')
@@ -167,7 +171,7 @@ def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
         check(kernel.AssignProcessToJobObject(job, child.process), 'own bootstrap before resume')
         check(kernel.ResumeThread(child.thread) != 0xFFFFFFFF, 'resume owned bootstrap'); resumed = True
         for handle in [stdin, *writers]:
-            kernel.CloseHandle(handle); handles.remove(handle)
+            check(kernel.CloseHandle(handle), 'close outer inherited handle'); handles.remove(handle)
         start = time.monotonic()
         while True:
             state = kernel.WaitForSingleObject(child.process, 100)
@@ -208,7 +212,7 @@ def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
         for handle in handles:
             if handle in readers:
                 attempt(lambda handle=handle: kernel.CancelIoEx(handle, None))
-            attempt(lambda handle=handle: kernel.CloseHandle(handle))
+            attempt(lambda handle=handle: check(kernel.CloseHandle(handle), 'close outer capture handle'))
         for thread in threads:
             attempt(lambda thread=thread: thread.join(5))
         if any(thread.is_alive() for thread in threads):
@@ -228,10 +232,35 @@ def run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=False):
             cleanup_errors.extend(errors)
         for handle in (child.thread, child.process, job):
             if handle:
-                attempt(lambda handle=handle: kernel.CloseHandle(handle))
+                attempt(lambda handle=handle: check(kernel.CloseHandle(handle), 'close outer owned handle'))
+        if qualification is not None:
+            qualification['reaped'] = reaped[0] and not cleanup_errors and not errors
         if cleanup_errors:
             failures = ([primary_failure] if primary_failure is not None else []) + cleanup_errors
             raise BaseExceptionGroup('outer bootstrap operation/cleanup failed', failures) from None
+
+
+def run_with_recovery(run, recover, qualification):
+    primary = None
+    status = None
+    try:
+        status = run()
+    except BaseException as failure:
+        primary = failure
+    cleanup_failure = None
+    try:
+        cleanup = recover(qualification['reaped'])
+        if cleanup:
+            raise RuntimeError('outer owned virtual-disk cleanup failed exit=' + str(cleanup))
+    except BaseException as failure:
+        cleanup_failure = failure
+    if primary is not None and cleanup_failure is not None:
+        raise BaseExceptionGroup('outer bootstrap and recovery failed', [primary, cleanup_failure])
+    if primary is not None:
+        raise primary
+    if cleanup_failure is not None:
+        raise cleanup_failure
+    return status
 
 
 def main():
@@ -249,13 +278,11 @@ def main():
     if not pwsh:
         raise RuntimeError('existing PowerShell 7 prerequisite unavailable')
     kernel, run_id = bind(), uuid.uuid4().hex
-    try:
-        status = run_owned(kernel, pwsh, entry, python, root, run_id)
-    finally:
-        cleanup = run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=True)
-        if cleanup:
-            raise RuntimeError('outer owned virtual-disk cleanup failed exit=' + str(cleanup))
-    return status
+    qualification = {'reaped': False}
+    return run_with_recovery(
+        lambda: run_owned(kernel, pwsh, entry, python, root, run_id, qualification=qualification),
+        lambda reaped: run_owned(kernel, pwsh, entry, python, root, run_id, cleanup=True, outer_reaped=reaped),
+        qualification)
 
 
 def failure_categories(error):
