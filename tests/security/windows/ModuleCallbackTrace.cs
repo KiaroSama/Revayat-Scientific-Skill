@@ -136,6 +136,37 @@ namespace ScientificSecurity
             }
             KernelImage.CheckModuleCallbackProfileValidation();
             CheckCallbackDrainValidation();
+            CheckCallbackHeaderValidation();
+        }
+        string CallbackStopHeader(uint eventPid, uint eventThread, uint kind, bool cleanup)
+        {
+            return "phase=module-callback-stop-refusal kind=" + kind.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " process_match=" + (eventPid == pid) + " creator=" + (eventThread == tid) + " cleanup=" + cleanup +
+                " stage=" + stage.ToString(System.Globalization.CultureInfo.InvariantCulture) + " context_read=False";
+        }
+        static void CheckCallbackHeaderValidation()
+        {
+            string reported = null;
+            var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", line => reported = line, true);
+            observer.stage = 2; observer.stopped = observer.changed = true;
+            bool refused = false;
+            try { observer.Stop(7, 12, 2); } catch (InvalidOperationException) { refused = true; }
+            Need(refused && observer.invalidated && !observer.RestorationAllowed && reported ==
+                "phase=module-callback-stop-refusal kind=2 process_match=True creator=False cleanup=False stage=2 context_read=False");
+            reported = null; observer.Stop(7, 12, 4, true); Need(reported == null && !observer.RestorationAllowed);
+            observer.Stop(7, 11, 6, true); Need(reported == null && observer.RestorationAllowed);
+            refused = false;
+            try { observer.Stop(8, 11, 5, true); } catch (InvalidOperationException) { refused = true; }
+            Need(refused && !observer.RestorationAllowed && reported ==
+                "phase=module-callback-stop-refusal kind=5 process_match=False creator=True cleanup=True stage=2 context_read=False");
+            var reporting = new InvalidOperationException("private-reporting");
+            observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", _ => { throw reporting; }, true);
+            AggregateException group = null;
+            try { observer.Stop(7, 12, UInt32.MaxValue); } catch (AggregateException failure) { group = failure; }
+            Need(group != null && group.InnerExceptions.Count == 2 && group.InnerExceptions[0].Message ==
+                "fixed activation observation refused check=callback-thread" && Object.ReferenceEquals(group.InnerExceptions[1], reporting));
+            Need(observer.invalidated && !observer.RestorationAllowed && observer.CallbackStopHeader(7, 12, UInt32.MaxValue, false) ==
+                "phase=module-callback-stop-refusal kind=4294967295 process_match=True creator=False cleanup=False stage=0 context_read=False");
         }
         static void CheckCallbackDrainValidation()
         {

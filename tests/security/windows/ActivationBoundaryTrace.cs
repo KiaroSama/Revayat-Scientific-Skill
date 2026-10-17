@@ -209,9 +209,12 @@ namespace ScientificSecurity
             if (moduleCallback) {
                 stopped = false; // A rejected foreign stop must never authorize creator-context access.
                 if (cleanup || eventPid != pid) Invalidate();
-                Need(eventPid == pid);
+                RequireCheck(eventPid == pid, "callback-process", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup)));
                 if (kind == 5 || (kind == 4 && eventThread == tid)) alive = false;
-                if (eventThread != tid) { if (!cleanup) OtherThread(); return; }
+                if (eventThread != tid) {
+                    if (!cleanup) { Invalidate(); RequireCheck(false, "callback-thread", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup))); }
+                    return;
+                }
                 stopped = alive;
                 return;
             }
