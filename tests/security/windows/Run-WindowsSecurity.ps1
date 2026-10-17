@@ -355,6 +355,8 @@ try {
     catch { $diagnosticFailure = $_.Exception; throw }
     finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure, $cloneLease) }
     [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
+    Write-RunLog INFO 'reversible fixed registry causal comparison starts; no target admission under intervention'
+    $originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'fixed child-process activation comparison starts; never Python causality or admission'
     $activationText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $false, $false, $false, $true)
     [Console]::Out.WriteLine([ScientificSecurity.ChildActivationFixture]::RequireResult($activationText))
@@ -363,8 +365,6 @@ try {
     $tracedActivationText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $false, $false, $false, $false, $true)
     [Console]::Out.WriteLine([ScientificSecurity.ChildActivationFixture]::CompareTraceResult($activationText, $tracedActivationText))
     [Console]::Out.Flush()
-    Write-RunLog INFO 'reversible fixed registry causal comparison starts; no target admission under intervention'
-    $originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
     $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
     [ScientificSecurity.RegistryCausalComparison]::RequireAdmission($originalAdmissionExit)
