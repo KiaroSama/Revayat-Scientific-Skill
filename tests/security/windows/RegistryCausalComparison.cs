@@ -45,20 +45,29 @@ namespace ScientificSecurity
         public static uint Run(string run, string state, string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
         {
-            int visit = 0;
-            return Execute(expected => {
+            int visit = 0; DateTime start = default(DateTime), end = default(DateTime);
+            return AfterRestoration(() => Execute(expected => {
                 string condition = new [] { "original", "modified", "restored" }[visit++];
                 string activation = ChildActivationFixture.RequireResult(Sandbox.ObserveActivation(python, root, scratch,
                     powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected));
+                if (condition == "modified") start = DateTime.UtcNow;
                 uint exit = Sandbox.ObservePreflightExit(python, root, scratch, powershell, chromium, moniker, profileFolder,
                     tcpPort, udpPort, expected);
+                if (condition == "modified") end = DateTime.UtcNow;
                 Console.Out.WriteLine(Condition(condition, activation, exit));
                 Console.Out.Flush();
                 return new Observation { activation = activation, exit = exit };
             }, () => {
                 var lease = RegistryPolicyLease.Begin(run, state);
                 return new Trial(lease.Dispose, lease.DeferRecovery);
-            }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
+            }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
+                () => StartupActivationEvents.Observe(python, start, end));
+        }
+        static uint AfterRestoration(Func<uint> comparison, Action evidence)
+        {
+            uint originalExit = comparison();
+            evidence();
+            return originalExit;
         }
         public static void RequireAdmission(uint originalExit)
         { if (originalExit != 0) throw new InvalidOperationException("original ordinary admission failure remains batch-fatal"); }
@@ -92,17 +101,25 @@ namespace ScientificSecurity
             }
             var primary = new InvalidOperationException("fixed operation"); var recovery = new InvalidOperationException("fixed recovery");
             foreach (bool cleanupFails in new [] { false, true }) {
-                int visits = 0, restores = 0, deferred = 0, emissions = 0; Exception caught = null;
+                int visits = 0, restores = 0, deferred = 0, emissions = 0, queries = 0; Exception caught = null;
                 try {
-                    Execute(_ => { if (++visits == 2) throw primary; return new Observation { activation = ActivationDenied, exit = 0xC0000022 }; },
-                        () => new Trial(() => restores++, () => { deferred++; if (cleanupFails) throw recovery; }), _ => emissions++);
+                    AfterRestoration(() => Execute(_ => { if (++visits == 2) throw primary; return new Observation { activation = ActivationDenied, exit = 0xC0000022 }; },
+                        () => new Trial(() => restores++, () => { deferred++; if (cleanupFails) throw recovery; }), _ => emissions++), () => queries++);
                 }
                 catch (Exception failure) { caught = failure; }
                 var aggregate = caught as AggregateException;
-                Need(visits == 2 && restores == 0 && deferred == 1 && emissions == 0 && (cleanupFails ?
+                Need(visits == 2 && restores == 0 && deferred == 1 && emissions == 0 && queries == 0 && (cleanupFails ?
                     aggregate != null && aggregate.InnerExceptions.Count == 2 && Object.ReferenceEquals(aggregate.InnerExceptions[0], primary) &&
                         Object.ReferenceEquals(aggregate.InnerExceptions[1], recovery) : Object.ReferenceEquals(caught, primary)));
             }
+            var ordering = new List<string>(); int observed = 0; Exception evidenceFailure = null;
+            try {
+                AfterRestoration(() => Execute(_ => { ordering.Add("child" + ++observed); return new Observation { activation = ActivationDenied, exit = 0xC0000022 }; },
+                    () => new Trial(() => ordering.Add("restore"), () => ordering.Add("defer")), _ => ordering.Add("comparison")),
+                    () => { ordering.Add("query"); throw primary; });
+            }
+            catch (Exception error) { evidenceFailure = error; }
+            Need(Object.ReferenceEquals(evidenceFailure, primary) && String.Join(",", ordering) == "child1,child2,restore,child3,comparison,query");
             foreach (bool wrongActivation in new [] { false, true }) {
                 int begins = 0; bool refused = false;
                 try { Execute(_ => new Observation { activation = wrongActivation ? "other" : ActivationDenied,
