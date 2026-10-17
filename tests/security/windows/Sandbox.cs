@@ -49,6 +49,12 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, expectedRegistryStatus, true);
         }
+        internal static string ObserveModuleActivation(string python, string root, string scratch, string powershell,
+                                                      string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus, bool manifest)
+        {
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, false, false, false, expectedRegistryStatus, false, manifest ? 2 : 1);
+        }
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
@@ -67,8 +73,10 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0)
         {
+            if (moduleRole < 0 || moduleRole > 2) throw new ArgumentException("unsupported fixed module activation role");
+            if (moduleRole != 0) ModuleActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, observeExit, defaultActivation);
             if (defaultActivation) DefaultActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, observeExit);
             if (observeExit && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe || activationTrace))
                 throw new ArgumentException("exit observation requires fixed ordinary trusted preflight");
@@ -107,6 +115,11 @@ namespace ScientificSecurity
                 arguments = new List<string> { executable };
                 phase = "default-activation";
             }
+            if (moduleRole != 0) {
+                executable = ModuleActivationFixture.PreparedImage(python, moduleRole == 2);
+                arguments = new List<string> { executable }; launchCwd = Path.GetDirectoryName(executable);
+                phase = moduleRole == 2 ? "module-id2" : "module-plain";
+            }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
             var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
@@ -133,6 +146,7 @@ namespace ScientificSecurity
             {
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
+                if (moduleRole != 0) activationLease = ModuleActivationFixture.Hold(python, moduleRole == 2);
                 job = Native.CreateJobObject(IntPtr.Zero, null);
                 Native.Check(job != IntPtr.Zero, "create owned job");
                 var limits = new Native.ExtendedLimits();
@@ -220,7 +234,7 @@ namespace ScientificSecurity
                     string metadata = TokenDefaultMetadata.Observe(process.process);
                     Console.Out.WriteLine(metadata); Console.Out.Flush();
                 }
-                if (activationProbe || defaultActivation) activationClock.Start();
+                if (activationProbe || defaultActivation || moduleRole != 0) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
@@ -243,7 +257,7 @@ namespace ScientificSecurity
                 long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
                 {
-                    if ((activationProbe || defaultActivation) && activationClock.Elapsed.TotalSeconds > 10)
+                    if ((activationProbe || defaultActivation || moduleRole != 0) && activationClock.Elapsed.TotalSeconds > 10)
                         throw new TimeoutException("fixed child activation exceeded 10 seconds");
                     long length = outputCapture.Length() + errorCapture.Length();
                     if (length > 1048576) throw new InvalidOperationException("worker standard output exceeded 1 MiB");
@@ -271,6 +285,10 @@ namespace ScientificSecurity
                 if (defaultActivation) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed default activation exceeded 10 seconds");
                     return DefaultActivationFixture.Result(exit, text, errors);
+                }
+                if (moduleRole != 0) {
+                    if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed module activation exceeded 10 seconds");
+                    return ModuleActivationFixture.Result(moduleRole == 2, exit, text, errors);
                 }
                 RequireExit(exit, phase, observeExit, errors, text);
                 if (!String.IsNullOrWhiteSpace(errors)) throw new InvalidOperationException("unexpected worker error output: " + errors);

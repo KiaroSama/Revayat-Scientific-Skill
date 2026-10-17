@@ -18,7 +18,17 @@ namespace ScientificSecurity
             return Tuple.Create(metadata.Item1, payload);
         }
         Tuple<ushort, uint> Manifest(bool sole, out int offset)
+        { return Manifest(sole, 1, out offset); }
+        internal static Tuple<ushort, byte[]> ModuleManifest(byte[] bytes, bool sole)
         {
+            var image = new KernelImage(bytes, 1, "fixed-module-manifest"); int offset;
+            var metadata = image.Manifest(sole, 2, out offset);
+            var payload = new byte[metadata.Item2]; Array.Copy(bytes, offset, payload, 0, payload.Length);
+            return Tuple.Create(metadata.Item1, payload);
+        }
+        Tuple<ushort, uint> Manifest(bool sole, uint resource, out int offset)
+        {
+            Need(resource == 1 || resource == 2);
             ulong optional = (ulong)U32(0x3C) + 24;
             uint rva = U32(optional + 128), size = U32(optional + 132);
             Need(rva != 0 && size >= 16 && size <= 1048576);
@@ -28,7 +38,7 @@ namespace ScientificSecurity
             uint type = ResourceEntry(root, size, 0, 24, 128, spans);
             Need((type & 0x80000000) != 0);
             if (sole) Need(U16((ulong)root + (type & 0x7FFFFFFF) + 14) == 1);
-            uint name = ResourceEntry(root, size, type & 0x7FFFFFFF, 1, 16, spans);
+            uint name = ResourceEntry(root, size, type & 0x7FFFFFFF, resource, 16, spans);
             Need((name & 0x80000000) != 0);
             uint languageTable = name & 0x7FFFFFFF;
             ResourceSpan(size, languageTable, 24, spans);
@@ -82,6 +92,11 @@ namespace ScientificSecurity
             var payload = DefaultManifest(bytes, true);
             Need(payload.Item1 == 1033 && payload.Item2.Length == 4 && payload.Item2[0] == 1 && payload.Item2[3] == 4);
             payload.Item2[0] = 9; Need(bytes[0x280] == 1);
+            byte[] module = (byte[])bytes.Clone(); Put(module, 0x230, 2);
+            var modulePayload = ModuleManifest(module, true);
+            Need(modulePayload.Item1 == 1033 && modulePayload.Item2.Length == 4 && modulePayload.Item2[0] == 1 && modulePayload.Item2[3] == 4);
+            bool wrongId = false; try { PythonManifest(module); } catch (InvalidOperationException) { wrongId = true; } Need(wrongId);
+            wrongId = false; try { ModuleManifest(bytes, false); } catch (InvalidOperationException) { wrongId = true; } Need(wrongId);
             foreach (bool extraType in new [] { true, false }) {
                 byte[] extra = (byte[])bytes.Clone();
                 if (extraType) { Put16(extra, 0x20E, 2); Put(extra, 0x218, 25); Put(extra, 0x21C, 0x80000020); }

@@ -52,13 +52,16 @@ namespace ScientificSecurity
                     powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected));
                 uint exit = ObserveStartup(condition,
                     () => Sandbox.ObserveDefaultActivation(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected),
-                    () => {
-                        if (condition == "modified") start = DateTime.UtcNow;
-                        uint code = Sandbox.ObservePreflightExit(python, root, scratch, powershell, chromium, moniker, profileFolder,
-                            tcpPort, udpPort, expected);
-                        if (condition == "modified") end = DateTime.UtcNow;
-                        return code;
-                    }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
+                    () => ObserveModules(condition,
+                        manifest => Sandbox.ObserveModuleActivation(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected, manifest),
+                        () => {
+                            if (condition == "modified") start = DateTime.UtcNow;
+                            uint code = Sandbox.ObservePreflightExit(python, root, scratch, powershell, chromium, moniker, profileFolder,
+                                tcpPort, udpPort, expected);
+                            if (condition == "modified") end = DateTime.UtcNow;
+                            return code;
+                        }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
+                    line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
                 Console.Out.WriteLine(Condition(condition, activation, exit));
                 Console.Out.Flush();
                 return new Observation { activation = activation, exit = exit };
@@ -73,6 +76,44 @@ namespace ScientificSecurity
             string result = control(); // Sandbox returns only after its complete owned cleanup.
             emit(DefaultActivationFixture.Condition(condition, result));
             return ordinary();
+        }
+        static uint ObserveModules(string condition, Func<bool, string> control, Func<uint> ordinary, Action<string> emit)
+        {
+            foreach (bool manifest in new [] { false, true }) {
+                string result = control(manifest);
+                emit(ModuleActivationFixture.Condition(condition, manifest, result));
+            }
+            return ordinary();
+        }
+        static void CheckModuleOrdering()
+        {
+            const string success = "entry_observed=True association_proved=True exit=0x00000000 WINDOWS_MODULE_ACTIVATION attach=1 query_succeeded=1 root_evaluated=1 root_is_module=1 win32_error=0x00000000 returned_bytes=0x00000080 assembly_count=0x00000003";
+            var order = new List<string>(); int visits = 0;
+            uint exit = AfterRestoration(() => Execute(expected => {
+                string condition = new [] { "original", "modified", "restored" }[visits++];
+                uint code = ObserveModules(condition, manifest => { order.Add(condition + (manifest ? ":id2" : ":plain")); return success; },
+                    () => { order.Add(condition + ":ordinary"); return 0xC0000022; }, _ => order.Add("emit"));
+                return new Observation { activation = ActivationDenied, exit = code };
+            }, () => { order.Add("begin"); return new Trial(() => order.Add("restore"), () => order.Add("defer")); }, _ => order.Add("comparison")), () => order.Add("query"));
+            Need(exit == 0xC0000022 && String.Join(",", order) == "original:plain,emit,original:id2,emit,original:ordinary,begin,modified:plain,emit,modified:id2,emit,modified:ordinary,restore,restored:plain,emit,restored:id2,emit,restored:ordinary,comparison,query");
+            foreach (int failAt in new [] { 1, 2 }) {
+                int calls = 0, ordinary = 0, restore = 0, defer = 0, query = 0, observed = 0;
+                var primary = new AggregateException(new InvalidOperationException("fixed module cleanup")); Exception caught = null;
+                try {
+                    AfterRestoration(() => Execute(_ => {
+                        bool modified = ++observed == 2;
+                        uint code = ObserveModules(modified ? "modified" : "original", manifest => {
+                            if (modified && ++calls == failAt) throw primary; return success;
+                        }, () => { ordinary++; return 0xC0000022; }, _line => { });
+                        return new Observation { activation = ActivationDenied, exit = code };
+                    }, () => new Trial(() => restore++, () => defer++), _line => { }), () => query++);
+                } catch (Exception failure) { caught = failure; }
+                Need(Object.ReferenceEquals(caught, primary) && calls == failAt && ordinary == 1 && restore == 0 && defer == 1 && query == 0);
+            }
+            int later = 0; bool refused = false;
+            try { ObserveModules("original", _ => "private-sentinel", () => { later++; return 0; }, _ => { }); }
+            catch (InvalidOperationException) { refused = true; }
+            Need(refused && later == 0);
         }
         static void CheckStartupOrdering()
         {
@@ -149,6 +190,7 @@ namespace ScientificSecurity
                 Need(refused && !admitted);
             }
             CheckStartupOrdering();
+            CheckModuleOrdering();
             var primary = new InvalidOperationException("fixed operation"); var recovery = new InvalidOperationException("fixed recovery");
             foreach (bool cleanupFails in new [] { false, true }) {
                 int visits = 0, restores = 0, deferred = 0, emissions = 0, queries = 0; Exception caught = null;

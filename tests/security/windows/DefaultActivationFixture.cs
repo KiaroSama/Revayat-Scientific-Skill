@@ -151,7 +151,7 @@ namespace ScientificSecurity
         static string ResourceScript(ushort language)
         { return "LANGUAGE " + (language & 1023).ToString(CultureInfo.InvariantCulture) + "," +
             (language >> 10).ToString(CultureInfo.InvariantCulture) + "\n1 24 \"default-activation-payload.bin\"\n"; }
-        static string ResourceCompiler(string library)
+        internal static string ResourceCompiler(string library)
         {
             Need(Path.IsPathFullyQualified(library) && Path.GetFileName(library) == "kernel32.lib");
             string x64 = Path.GetDirectoryName(library), um = Path.GetDirectoryName(x64), version = Path.GetDirectoryName(um);
@@ -177,7 +177,7 @@ namespace ScientificSecurity
                 (exit & 0x80000000) != 0 && result == Result(exit, "", ""));
             return "WINDOWS_DEFAULT_ACTIVATION condition=" + condition + " " + result + " cause_claimed=False python_equivalence_claimed=False";
         }
-        static void Missing(string path)
+        internal static void Missing(string path)
         {
             NativeFixture.Plain(path, true);
             try { File.GetAttributes(path); }
@@ -185,7 +185,7 @@ namespace ScientificSecurity
             catch (DirectoryNotFoundException) { return; }
             throw new InvalidOperationException("fixed default activation output or override already exists");
         }
-        static void NoOverrides(string image)
+        internal static void NoOverrides(string image)
         {
             foreach (string path in new [] { image + ".manifest", Path.ChangeExtension(image, ".manifest"),
                 image + ".config", Path.ChangeExtension(image, ".config") }) Missing(path);
