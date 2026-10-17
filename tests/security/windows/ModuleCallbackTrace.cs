@@ -135,6 +135,71 @@ namespace ScientificSecurity
                     !observer.CallbackLoadStage() && !CallbackComplete(state, true, false));
             }
             KernelImage.CheckModuleCallbackProfileValidation();
+            CheckCallbackDrainValidation();
+        }
+        static void CheckCallbackDrainValidation()
+        {
+            foreach (int mode in new [] { 0, 1, 2, 3, 4, 5, 6 }) {
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, true);
+                observer.changed = true; observer.stopped = true; observer.stage = 2;
+                Exception primary = null; uint eventProcess = mode == 6 ? 8U : 7U;
+                try { observer.Stop(eventProcess, 12, 2); } catch (InvalidOperationException failure) { primary = failure; }
+                Need(primary != null && observer.invalidated && !observer.RestorationAllowed);
+                bool pending = true, exited = false; int received = 0, continued = 0, releases = 0, contextAccesses = 0;
+                uint kind = 2;
+                var failures = new System.Collections.Generic.List<Exception>();
+                var close = new InvalidOperationException("fixed close failure");
+                var continuation = new InvalidOperationException("fixed continuation failure");
+                Action finish = () => {
+                    LoaderTrace.RequireCallbackEventProcess(eventProcess, 7);
+                    try {
+                        LoaderTrace.ActivationEvent(() => { if (kind == 5) exited = true; },
+                            () => { if (observer.RestorationAllowed) contextAccesses++; observer.Restore(); },
+                            new Action[] { () => { releases++; if (mode == 1 && releases == 1) throw close; } },
+                            () => { continued++; if (mode == 2) throw continuation; pending = false; observer.Continued(); });
+                    } catch (Exception failure) { failures.Add(failure); }
+                };
+                try {
+                    LoaderTrace.DrainCallbackEvents(() => exited, () => pending,
+                        () => mode == 3 ? 0U : 5000U,
+                        milliseconds => {
+                            Need(milliseconds <= 100);
+                            if (pending) throw new InvalidOperationException("fixed pending continuation");
+                            received++; kind = mode == 4 ? 6U : (received == 3 ? 5U : 4U);
+                            uint eventThread = kind == 5 ? 11U : 12U + (uint)received;
+                            pending = true;
+                            eventProcess = mode == 5 ? 8U : 7U;
+                            observer.Stop(eventProcess, eventThread, kind, true);
+                            Need(observer.invalidated && !observer.RestorationAllowed);
+                            return true;
+                        }, finish);
+                } catch (Exception failure) { failures.Add(failure); }
+                Need(observer.invalidated && contextAccesses == 0);
+                if (mode == 0 || mode == 1) Need(exited && !pending && received == 3 && continued == 4 && releases == 4);
+                if (mode == 0) {
+                    Need(failures.Count == 0);
+                    LoaderTrace.ConfirmActivationDestruction(exited, pending, true, 0, _ => 0, () => { });
+                    var qualified = Sandbox.CompletionFailure(primary, failures, true, true) as QualifiedModuleCallbackFailure;
+                    Need(qualified != null && Object.ReferenceEquals(qualified.Original, primary));
+                } else {
+                    Need(failures.Count != 0);
+                    var group = Sandbox.CompletionFailure(primary, failures, true, false) as AggregateException;
+                    Need(group != null && Object.ReferenceEquals(group.InnerExceptions[0], primary));
+                    if (mode == 1) Need(Object.ReferenceEquals(group.InnerExceptions[1], close));
+                    if (mode == 2) Need(pending && received == 0 && continued == 1 && !exited);
+                    if (mode == 3) Need(received == 0 && !exited);
+                    if (mode == 4) Need(received == 128 && !exited);
+                    if (mode == 5) Need(received == 1 && continued == 1 && pending && !observer.RestorationAllowed);
+                    if (mode == 6) Need(received == 0 && continued == 0 && releases == 0 && pending && !exited);
+                }
+                foreach (uint wait in new uint[] { 258, UInt32.MaxValue }) {
+                    bool refused = false;
+                    try { LoaderTrace.ConfirmActivationDestruction(true, false, true, 0, _ => wait, () => { }); }
+                    catch (InvalidOperationException) { refused = true; }
+                    Need(refused);
+                }
+                Need(!CallbackComplete(observer.stage, observer.restored, observer.invalidated));
+            }
         }
     }
 }

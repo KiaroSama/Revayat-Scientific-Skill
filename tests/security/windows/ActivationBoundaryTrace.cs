@@ -204,10 +204,18 @@ namespace ScientificSecurity
         static bool Complete(int state, bool restoration, bool invalid) { return state == 5 && restoration && !invalid; }
         static bool Software(int state, bool seen, uint eventThread, uint creator, bool first)
         { return state == 1 && !seen && eventThread == creator && first; }
-        internal void Stop(uint eventPid, uint eventThread, uint kind)
+        internal void Stop(uint eventPid, uint eventThread, uint kind, bool cleanup = false)
         {
+            if (moduleCallback) {
+                stopped = false; // A rejected foreign stop must never authorize creator-context access.
+                if (cleanup || eventPid != pid) Invalidate();
+                Need(eventPid == pid);
+                if (kind == 5 || (kind == 4 && eventThread == tid)) alive = false;
+                if (eventThread != tid) { if (!cleanup) OtherThread(); return; }
+                stopped = alive;
+                return;
+            }
             Need(eventPid == pid); stopped = true;
-            if (moduleCallback && eventThread != tid) OtherThread();
             if (kind == 5 || (kind == 4 && eventThread == tid)) alive = false;
         }
         internal void Continued() { stopped = false; }
@@ -363,9 +371,10 @@ namespace ScientificSecurity
         }
         internal void Invalidate() { invalidated = true; }
         internal void RequireComplete() { Need(moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated)); }
+        internal bool RestorationAllowed { get { return changed && alive && stopped; } }
         internal void Restore()
         {
-            if (!changed || !alive || !stopped) return;
+            if (!RestorationAllowed) return;
             byte[] before = Read();
             try { Apply(before, true); }
             finally { Array.Clear(before, 0, before.Length); }

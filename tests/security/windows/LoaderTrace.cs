@@ -176,7 +176,7 @@ namespace ScientificSecurity
             IntPtr value = original; original = IntPtr.Zero;
             if (value != IntPtr.Zero && value != osOwned) Native.Check(Native.CloseHandle(value), "close distinct original creation handle");
         }
-        bool Receive(uint milliseconds = 100)
+        bool Receive(uint milliseconds = 100, bool cleanup = false)
         {
             ThreadCheck();
             if (pending) throw new InvalidOperationException("loader debug event was not continued");
@@ -189,7 +189,7 @@ namespace ScientificSecurity
             }
             pending = true;
             if (hardware != null) hardware.Stop(current.pid, current.tid, current.code);
-            if (activation != null) activation.Stop(current.pid, current.tid, current.code);
+            if (activation != null) activation.Stop(current.pid, current.tid, current.code, moduleCallback && cleanup);
             if (current.pid != pid) throw new InvalidOperationException("loader event is not from the fixed owned child");
             return true;
         }
@@ -373,7 +373,7 @@ namespace ScientificSecurity
                 throw new InvalidOperationException("activation cleanup deadline was not started");
             return RemainingActivationCleanup(activationCleanup.ElapsedMilliseconds);
         }
-        static void ConfirmActivationDestruction(bool exitReceived, bool eventPending, bool handlePresent, long elapsed,
+        internal static void ConfirmActivationDestruction(bool exitReceived, bool eventPending, bool handlePresent, long elapsed,
             Func<uint, uint> wait, Action destroyed)
         {
             if (!exitReceived || eventPending || !handlePresent)
@@ -526,6 +526,23 @@ namespace ScientificSecurity
             if (activation != null) activation.RequireComplete();
             return current.data.exit.code;
         }
+        internal static void RequireCallbackEventProcess(uint actual, uint expected)
+        {
+            if (actual != expected) throw new InvalidOperationException("callback cleanup event is not from the fixed owned child");
+        }
+        internal static void DrainCallbackEvents(Func<bool> hasExited, Func<bool> hasPending, Func<uint> remaining,
+            Func<uint, bool> receive, Action finish)
+        {
+            if (hasPending()) finish();
+            int count = 0;
+            while (!hasExited() && remaining() != 0 && count < 128) {
+                if (hasPending()) throw new InvalidOperationException("callback cleanup event was not continued");
+                if (!receive(Math.Min(100U, remaining()))) continue;
+                count++; finish();
+            }
+            if (!hasExited() || hasPending())
+                throw new TimeoutException("owned callback EXIT drain exceeded finite cleanup ceiling");
+        }
         internal void TerminateAndDrain(IntPtr job, Native.ProcessInfo child)
         {
             ThreadCheck(); memoryProcess = IntPtr.Zero; // Borrowed read reference; never own/close the duplicated process here.
@@ -536,7 +553,10 @@ namespace ScientificSecurity
                 try { hardware.Restore(); } catch (Exception failure) { failures.Add(failure); }
             }
             if (pending && activation != null) {
-                try { activation.Restore(); } catch (Exception failure) { failures.Add(failure); }
+                try {
+                    if (moduleCallback) RequireCallbackEventProcess(current.pid, pid);
+                    activation.Restore();
+                } catch (Exception failure) { failures.Add(failure); }
             }
             if (!exited) {
                 IntPtr process = child.process != IntPtr.Zero ? child.process : originalProcess;
@@ -547,14 +567,19 @@ namespace ScientificSecurity
             }
             // Termination failures must not abandon a pending event or the bounded EXIT drain.
             try {
-                if (pending) FinishCleanupEvent(failures);
-                var cleanup = activationMode ? activationCleanup : Stopwatch.StartNew(); int count = 0;
-                while (!exited && cleanup.Elapsed.TotalSeconds < 5 && count < 128) {
-                    if (!Receive(activationMode ? Math.Min(100U, RemainingActivationCleanup()) : 100U)) continue;
-                    count++;
-                    FinishCleanupEvent(failures);
+                if (moduleCallback) {
+                    DrainCallbackEvents(() => exited, () => pending, RemainingActivationCleanup,
+                        milliseconds => Receive(milliseconds, true), () => FinishCleanupEvent(failures));
+                } else {
+                    if (pending) FinishCleanupEvent(failures);
+                    var cleanup = activationMode ? activationCleanup : Stopwatch.StartNew(); int count = 0;
+                    while (!exited && cleanup.Elapsed.TotalSeconds < 5 && count < 128) {
+                        if (!Receive(activationMode ? Math.Min(100U, RemainingActivationCleanup()) : 100U)) continue;
+                        count++;
+                        FinishCleanupEvent(failures);
+                    }
+                    if (!exited) failures.Add(new TimeoutException("owned loader EXIT drain exceeded finite cleanup ceiling"));
                 }
-                if (!exited) failures.Add(new TimeoutException("owned loader EXIT drain exceeded finite cleanup ceiling"));
                 if (originalProcess != IntPtr.Zero || originalThread != IntPtr.Zero)
                     failures.Add(new InvalidOperationException("loader creation-handle ownership was not resolved"));
             }
@@ -585,6 +610,7 @@ namespace ScientificSecurity
         }
         void FinishCleanupEvent(System.Collections.Generic.List<Exception> failures)
         {
+            if (moduleCallback) RequireCallbackEventProcess(current.pid, pid);
             if (activation != null) {
                 try {
                     ActivationEvent(() => { if (current.code == 5) exited = true; },
