@@ -6,6 +6,10 @@ A destination cannot alias a checked source, included fragment, explicit image,
 terms ledger or figure manifest, even through a hardlink. Source extension alone
 does not decide whether a path is protected: a TSV supplied as `terms.pdf` is
 still an input. Linked output paths and case/name collisions remain refused.
+The shared publisher checks lexical ancestors with `lstat`, including Windows
+reparse attributes on Python 3.11; it does not rely on `Path.is_junction`, which
+was added in Python 3.12. Missing future paths remain usable; inspection errors
+fail closed. This source policy is separate from observed native CI enforcement.
 
 The record fingerprints the selected source closure, sidecars, explicit assets
 and original requested source when engine selection chooses a sibling. The HTML

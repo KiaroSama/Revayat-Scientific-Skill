@@ -9,9 +9,14 @@ WeasyPrint rendering requires its fatal URL-fetcher API (version68 or newer;
 version70 is exercised in CI), installed in that same interpreter.
 Automatic TeX requires local Docker/Podman and the prebuilt toolchain image;
 follow the [isolated TeX setup](../skills/revayat-scientific/references/pdf-output.md).
-The helper never installs a container runtime or pulls an image automatically.
+The helper never installs a container runtime or pulls an image automatically. The Windows PDF adapter checks only the explicitly requested engine's prerequisites; automatic selection still discovers every supported engine. Selecting Chromium does not probe a container daemon or import WeasyPrint, and a selected engine's failure never falls back. An empty availability list remains an explicit value on both PowerShell 5.1 and 7, so a missing selected prerequisite reports that engine as unavailable.
 OCR requires Tesseract and the requested language data; `TESSERACT_CMD` can name
 an explicitly configured absolute executable. Helpers never install these tools.
+
+The [security regression CI controllers](security-testing.md) are repository development
+infrastructure, not installed skill prerequisites. Their Windows virtual disk, quotas
+and LPAC setup are owned by a disposable hosted job; ordinary installation never
+configures these controls on the user's system.
 
 No separate DOCX or PDF Processing Pro skill installation is required. Parallel
 translation/editing uses available host subagents only after affirmative user
