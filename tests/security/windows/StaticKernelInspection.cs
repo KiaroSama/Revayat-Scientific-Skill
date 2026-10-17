@@ -64,6 +64,7 @@ namespace ScientificSecurity
                     phase = "post-path"; NativeFixture.Plain(path);
                     phase = "posthash"; RequireSame(identity, KernelImage.FromActivationWorker(ReadHeld(stream)).ActivationWorkerIdentity());
                     phase = "qualifier"; var view = image.QualifyStatic(text, slice);
+                    phase = "module-callback-profile"; image.RequireModuleCallbackProfile();
                     expectedActivationIdentity = identity;
                     phase = "evidence-output";
                     Console.Out.WriteLine("WINDOWS_STATIC_ACTIVATION " + identity);

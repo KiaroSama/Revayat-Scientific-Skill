@@ -9,6 +9,18 @@ namespace ScientificSecurity
         const int Denied = unchecked((int)0xC0000022);
         const string ActivationDenied = "WINDOWS_CHILD_ACTIVATION created=False win32_error=0x00000005 cause_claimed=False child_equivalence_claimed=False";
         sealed class Observation { internal string activation; internal uint exit; }
+        static Exception callbackFailure;
+        static void RetainCallbackFailure(Exception failure)
+        {
+            Need(failure is QualifiedModuleCallbackFailure && callbackFailure == null);
+            callbackFailure = failure;
+        }
+        public static Exception PreserveCallbackFailure(Exception later)
+        {
+            Exception retained = callbackFailure; callbackFailure = null;
+            if (retained == null) return later;
+            return later == null ? retained : new AggregateException("fixed callback diagnostic and subsequent operation failed", retained, later);
+        }
         static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed registry causal comparison contract failed"); }
         static void Baseline(Observation value)
@@ -45,6 +57,7 @@ namespace ScientificSecurity
         public static uint Run(string run, string state, string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
         {
+            Need(callbackFailure == null);
             int visit = 0; DateTime start = default(DateTime), end = default(DateTime);
             return AfterRestoration(() => Execute(expected => {
                 string condition = new [] { "original", "modified", "restored" }[visit++];
@@ -60,7 +73,9 @@ namespace ScientificSecurity
                                 tcpPort, udpPort, expected);
                             if (condition == "modified") end = DateTime.UtcNow;
                             return code;
-                        }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
+                        }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); },
+                        expectedExit => Sandbox.ObserveModuleCallback(python, root, scratch, powershell, chromium, moniker,
+                            profileFolder, tcpPort, udpPort, expectedExit), RetainCallbackFailure),
                     line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
                 Console.Out.WriteLine(Condition(condition, activation, exit));
                 Console.Out.Flush();
@@ -77,11 +92,29 @@ namespace ScientificSecurity
             emit(DefaultActivationFixture.Condition(condition, result));
             return ordinary();
         }
-        static uint ObserveModules(string condition, Func<bool, string> control, Func<uint> ordinary, Action<string> emit)
+        static uint ObserveModules(string condition, Func<bool, string> control, Func<uint> ordinary, Action<string> emit,
+            Func<uint, string> trace = null, Action<Exception> latch = null)
         {
+            string id2 = null;
             foreach (bool manifest in new [] { false, true }) {
                 string result = control(manifest);
                 emit(ModuleActivationFixture.Condition(condition, manifest, result));
+                if (manifest) id2 = result;
+            }
+            if (trace != null && condition == "modified") {
+                Need(latch != null);
+                uint expected;
+                try { expected = ModuleActivationFixture.RequireUnentered(id2); }
+                catch (InvalidOperationException failure) {
+                    latch(new QualifiedModuleCallbackFailure(failure));
+                    emit("WINDOWS_MODULE_CALLBACK diagnostic_failed=True cleanup_qualified=True method_applicable=False");
+                    return ordinary();
+                }
+                try { emit(trace(expected)); }
+                catch (QualifiedModuleCallbackFailure failure) {
+                    latch(failure);
+                    emit("WINDOWS_MODULE_CALLBACK diagnostic_failed=True cleanup_qualified=True observation_only=True");
+                }
             }
             return ordinary();
         }
@@ -114,6 +147,67 @@ namespace ScientificSecurity
             try { ObserveModules("original", _ => "private-sentinel", () => { later++; return 0; }, _ => { }); }
             catch (InvalidOperationException) { refused = true; }
             Need(refused && later == 0);
+        }
+        static void CheckCallbackOrdering()
+        {
+            const string entered = "entry_observed=True association_proved=True exit=0x00000000 WINDOWS_MODULE_ACTIVATION attach=1 query_succeeded=1 root_evaluated=1 root_is_module=1 win32_error=0x00000000 returned_bytes=0x00000080 assembly_count=0x00000003";
+            var primary = new InvalidOperationException("fixed diagnostic");
+            var qualified = new QualifiedModuleCallbackFailure(primary);
+            Exception unqualified = LoaderTrace.CheckCallbackCleanupValidation();
+            foreach (int mode in new [] { 0, 1, 2, 3, 4 }) {
+                Need(callbackFailure == null);
+                var order = new List<string>(); int visits = 0;
+                Exception caught = null;
+                try {
+                    uint original = AfterRestoration(() => Execute(expected => {
+                        string condition = new [] { "original", "modified", "restored" }[visits++];
+                        uint code = ObserveModules(condition, manifest => {
+                            order.Add(condition + (manifest ? ":id2" : ":plain"));
+                            return manifest && !(mode == 3 && condition == "modified") ?
+                                ModuleActivationFixture.Result(true, expected == 0 ? 0xC0150002U : 0xC0000022U, "", "") : entered;
+                        }, () => { order.Add(condition + ":ordinary"); return 0xC0000022U; }, _ => { },
+                        exit => {
+                            Need(condition == "modified" && exit == 0xC0150002);
+                            order.Add("trace");
+                            if (mode == 1) throw qualified;
+                            if (mode == 2) throw primary;
+                            if (mode == 4) throw Sandbox.CompletionFailure(primary, new List<Exception> { unqualified }, true, true);
+                            return "fixed trace";
+                        }, RetainCallbackFailure);
+                        return new Observation { activation = ActivationDenied, exit = code };
+                    }, () => { order.Add("begin"); return new Trial(() => order.Add("restore"), () => order.Add("defer")); }, _ => order.Add("comparison")),
+                        () => order.Add("query"));
+                    Need(original == 0xC0000022); order.Add("fresh-ordinary");
+                    RequireAdmission(0); // Even a later successful gate cannot erase the diagnostic.
+                } catch (Exception failure) { caught = failure; }
+                if (mode == 2 || mode == 4) {
+                    Need(callbackFailure == null && String.Join(",", order) ==
+                        "original:plain,original:id2,original:ordinary,begin,modified:plain,modified:id2,trace,defer");
+                    if (mode == 2) Need(Object.ReferenceEquals(caught, primary));
+                    else {
+                        var group = caught as AggregateException;
+                        Need(group != null && group.InnerExceptions.Count == 2 &&
+                            Object.ReferenceEquals(group.InnerExceptions[0], primary) && Object.ReferenceEquals(group.InnerExceptions[1], unqualified));
+                    }
+                } else {
+                    Need(String.Join(",", order) == "original:plain,original:id2,original:ordinary,begin,modified:plain,modified:id2," +
+                        (mode == 3 ? "" : "trace,") + "modified:ordinary,restore,restored:plain,restored:id2,restored:ordinary,comparison,query,fresh-ordinary");
+                    Need(mode == 0 ? caught == null : caught is QualifiedModuleCallbackFailure);
+                    if (mode == 1) Need(Object.ReferenceEquals(caught, qualified) && Object.ReferenceEquals(qualified.Original, primary));
+                }
+                Need(callbackFailure == null);
+            }
+            foreach (Exception later in new Exception[] { null, new InvalidOperationException("fixed subsequent") }) {
+                RetainCallbackFailure(qualified);
+                Exception result = PreserveCallbackFailure(later);
+                if (later == null) Need(Object.ReferenceEquals(result, qualified));
+                else {
+                    var group = result as AggregateException;
+                    Need(group != null && group.InnerExceptions.Count == 2 && Object.ReferenceEquals(group.InnerExceptions[0], qualified) &&
+                        Object.ReferenceEquals(group.InnerExceptions[1], later));
+                }
+                Need(callbackFailure == null && PreserveCallbackFailure(later) == later);
+            }
         }
         static void CheckStartupOrdering()
         {
@@ -160,7 +254,11 @@ namespace ScientificSecurity
             return originalExit;
         }
         public static void RequireAdmission(uint originalExit)
-        { if (originalExit != 0) throw new InvalidOperationException("original ordinary admission failure remains batch-fatal"); }
+        {
+            Exception failure = originalExit == 0 ? null : new InvalidOperationException("original ordinary admission failure remains batch-fatal");
+            failure = PreserveCallbackFailure(failure);
+            if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        }
         sealed class Trial
         {
             internal readonly Action restore, defer;
@@ -191,6 +289,7 @@ namespace ScientificSecurity
             }
             CheckStartupOrdering();
             CheckModuleOrdering();
+            CheckCallbackOrdering();
             var primary = new InvalidOperationException("fixed operation"); var recovery = new InvalidOperationException("fixed recovery");
             foreach (bool cleanupFails in new [] { false, true }) {
                 int visits = 0, restores = 0, deferred = 0, emissions = 0, queries = 0; Exception caught = null;

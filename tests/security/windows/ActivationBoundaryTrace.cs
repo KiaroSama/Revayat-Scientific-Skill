@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace ScientificSecurity
 {
     // Fixed caller-local observations on the existing trusted child; no stack or child-content reads.
-    public sealed class ActivationBoundaryTrace
+    public sealed partial class ActivationBoundaryTrace
     {
         public static void CheckValidation()
         {
@@ -156,8 +156,9 @@ namespace ScientificSecurity
         bool eventCreator, eventFirst;
         bool stopped, initial, changed, restored, invalidated, alive = true;
         internal ActivationBoundaryTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId,
-            string executable, string imageDigest, Action<string> output)
+            string executable, string imageDigest, Action<string> output, bool callback = false)
         {
+            moduleCallback = callback;
             Need(IntPtr.Size == 8 && Marshal.SizeOf(typeof(MemoryInfo)) == 48 &&
                 processHandle != IntPtr.Zero && threadHandle != IntPtr.Zero);
             process = processHandle; thread = threadHandle; pid = processId; tid = threadId;
@@ -206,6 +207,7 @@ namespace ScientificSecurity
         internal void Stop(uint eventPid, uint eventThread, uint kind)
         {
             Need(eventPid == pid); stopped = true;
+            if (moduleCallback && eventThread != tid) OtherThread();
             if (kind == 5 || (kind == 4 && eventThread == tid)) alive = false;
         }
         internal void Continued() { stopped = false; }
@@ -272,6 +274,7 @@ namespace ScientificSecurity
         }
         internal void Creation(IntPtr file, IntPtr imageBase)
         {
+            if (moduleCallback) { CallbackCreation(file, imageBase); return; }
             Need(stage == 0 && stopped && alive);
             fixture = KernelImage.FromActivationCreation(file, imageBase, path, digest);
             RequireExecutable(fixture, fixture.Entry, 1);
@@ -282,6 +285,7 @@ namespace ScientificSecurity
         }
         internal void Load(IntPtr file, IntPtr imageBase)
         {
+            if (moduleCallback) { CallbackLoad(file, imageBase); return; }
             Need(stopped && alive && stage != 0);
             KernelImage candidate = KernelImage.FromActivationSystemLoad(file, imageBase);
             if (candidate == null) return;
@@ -292,6 +296,7 @@ namespace ScientificSecurity
         { eventCode = code; eventCreator = eventThread == tid; eventFirst = first; }
         internal bool AcceptSoftware(uint eventThread, uint code, bool first)
         {
+            if (moduleCallback) return CallbackSoftware(eventThread, code, first);
             if (code != 0x80000003) return false;
             Check(Software(stage, initial, eventThread, tid, first), "software-stage");
             byte[] before = Read(); string qualifiers;
@@ -301,6 +306,7 @@ namespace ScientificSecurity
         }
         internal bool SingleStep(uint eventThread, uint code, bool first, IntPtr exceptionAddress)
         {
+            if (moduleCallback) return CallbackSingleStep(eventThread, code, first, exceptionAddress);
             if (code != 0x80000004) return false;
             Check(!invalidated && stage >= 1 && stage <= 4 && first && eventThread == tid && original != null, "hardware-stage");
             byte[] before = Read();
@@ -356,7 +362,7 @@ namespace ScientificSecurity
             }
         }
         internal void Invalidate() { invalidated = true; }
-        internal void RequireComplete() { Need(Complete(stage, restored, invalidated)); }
+        internal void RequireComplete() { Need(moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated)); }
         internal void Restore()
         {
             if (!changed || !alive || !stopped) return;

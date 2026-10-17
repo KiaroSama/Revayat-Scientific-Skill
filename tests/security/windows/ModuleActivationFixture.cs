@@ -81,6 +81,13 @@ namespace ScientificSecurity
             Need(Result(true, 0, good, "").Contains("association_proved=True"));
             Need(Result(false, 0, failure, "").Contains("association_proved=False"));
             Need(Result(true, 0xC0150002, "", "") == "entry_observed=False association_proved=False exit=0xC0150002");
+            Need(RequireUnentered(Result(true, 0xC0150002, "", "")) == 0xC0150002);
+            Need(CompareCallback(0xC0150002, 0xC0150002, "", "") == "WINDOWS_MODULE_CALLBACK returned_exit_equal=True observation_only=True cause_claimed=False");
+            Refused(() => RequireUnentered(Result(true, 0, good, "")));
+            foreach (uint code in new uint[] { 0, 1, 0xC0000022 })
+                Refused(() => CompareCallback(0xC0150002, code, "", ""));
+            Refused(() => CompareCallback(0xC0150002, 0xC0150002, good, ""));
+            Refused(() => CompareCallback(0xC0150002, 0xC0150002, "", "private-sentinel"));
             Refused(() => Result(false, 0xC0150002, "", "")); Refused(() => Result(true, 0, failure, ""));
             foreach (string bad in new [] { good + good, good.TrimEnd('\n'), good.Replace("attach=1", "attach=0"), good.Replace("root_is_module=1", "root_is_module=0"),
                 good.Replace("00000080", "00010001"), good.Replace("00000003", "00000011"), good.Replace("00000000", "00000005"),
@@ -209,6 +216,26 @@ namespace ScientificSecurity
         }
         internal static string PreparedImage(string python, bool manifest)
         { Need(prepared != null && python == prepared.python); return prepared.hosts[manifest ? 1 : 0]; }
+        internal static uint RequireUnentered(string result)
+        {
+            Condition("modified", true, result);
+            const string prefix = "entry_observed=False association_proved=False exit=0x";
+            Need(result.StartsWith(prefix, StringComparison.Ordinal) && result.Length == prefix.Length + 8);
+            uint code = UInt32.Parse(result.Substring(prefix.Length), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            Need((code & 0x80000000) != 0); return code;
+        }
+        internal static string CompareCallback(uint expected, uint actual, string text, string errors)
+        {
+            Need((expected & 0x80000000) != 0 && expected == actual);
+            string result = Result(true, actual, text, errors); RequireUnentered(result);
+            return "WINDOWS_MODULE_CALLBACK returned_exit_equal=True observation_only=True cause_claimed=False";
+        }
+        internal static ActivationBoundaryTrace Observer(Native.ProcessInfo child, Action<string> emit)
+        {
+            Need(prepared != null);
+            return new ActivationBoundaryTrace(child.process, child.thread, child.pid, child.tid,
+                prepared.hosts[1], prepared.hashes[2], emit, true);
+        }
         internal static IDisposable Hold(string python, bool manifest)
         {
             string image = PreparedImage(python, manifest); int index = manifest ? 1 : 0;

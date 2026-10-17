@@ -55,10 +55,24 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, expectedRegistryStatus, false, manifest ? 2 : 1);
         }
+        internal static string ObserveModuleCallback(string python, string root, string scratch, string powershell,
+                                                     string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, uint expectedExit)
+        {
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, false, false, false, 0, false, 3, expectedExit);
+        }
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
             internal PreflightExit(uint code) : base("fixed ordinary preflight returned a nonzero exit") { Code = code; }
+        }
+        static bool RequireModuleRole(int role, int? expectedRegistry, uint? expectedExit)
+        {
+            bool callback = role == 3;
+            if (role < 0 || role > 3 || callback != expectedExit.HasValue ||
+                callback && (expectedRegistry != 0 || (expectedExit.Value & 0x80000000) == 0))
+                throw new ArgumentException("unsupported fixed module activation role");
+            return callback;
         }
         static void RequireRegistryCondition(int actual, int expected)
         {
@@ -73,9 +87,9 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null)
         {
-            if (moduleRole < 0 || moduleRole > 2) throw new ArgumentException("unsupported fixed module activation role");
+            bool callback = RequireModuleRole(moduleRole, expectedRegistryStatus, callbackExit);
             if (moduleRole != 0) ModuleActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, observeExit, defaultActivation);
             if (defaultActivation) DefaultActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, observeExit);
             if (observeExit && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe || activationTrace))
@@ -116,9 +130,9 @@ namespace ScientificSecurity
                 phase = "default-activation";
             }
             if (moduleRole != 0) {
-                executable = ModuleActivationFixture.PreparedImage(python, moduleRole == 2);
+                executable = ModuleActivationFixture.PreparedImage(python, moduleRole >= 2);
                 arguments = new List<string> { executable }; launchCwd = Path.GetDirectoryName(executable);
-                phase = moduleRole == 2 ? "module-id2" : "module-plain";
+                phase = callback ? "module-callback-trace" : (moduleRole == 2 ? "module-id2" : "module-plain");
             }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
@@ -136,17 +150,17 @@ namespace ScientificSecurity
             var values = new List<IntPtr>();
             var handles = new List<IntPtr>();
             Native.ProcessInfo process = new Native.ProcessInfo();
-            bool started = false, resumed = false, wallExpired = false;
+            bool started = false, resumed = false, wallExpired = false, callbackStarted = false;
             Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
-            LoaderTrace loader = loaderProbe || activationTrace ? new LoaderTrace(nativeFixture, pythonClone, activationTrace) : null;
+            LoaderTrace loader = loaderProbe || activationTrace || callback ? new LoaderTrace(nativeFixture, pythonClone, activationTrace, callback) : null;
             IDisposable activationLease = null;
             var activationClock = new Stopwatch();
             try
             {
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
-                if (moduleRole != 0) activationLease = ModuleActivationFixture.Hold(python, moduleRole == 2);
+                if (moduleRole != 0) activationLease = ModuleActivationFixture.Hold(python, moduleRole >= 2);
                 job = Native.CreateJobObject(IntPtr.Zero, null);
                 Native.Check(job != IntPtr.Zero, "create owned job");
                 var limits = new Native.ExtendedLimits();
@@ -208,7 +222,7 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 using (OwnedToken restricted = OwnedToken.Create()) {
                     bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, executable, new StringBuilder(command), processAttributes, processAttributes, true,
-                        CreationFlags(loaderProbe || activationTrace),
+                        CreationFlags(loaderProbe || activationTrace || callback),
                         env, launchCwd, ref startup, out process);
                     started = created;
                     if (created && loader != null) loader.Arm(process);
@@ -241,9 +255,11 @@ namespace ScientificSecurity
                 foreach (IntPtr handle in handles) Native.CloseHandle(handle);
                 handles.Clear(); outputCapture.CloseWriter(); errorCapture.CloseWriter();
                 if (loader != null) {
+                    callbackStarted = callback;
                     uint tracedExit = loader.Observe();
-                    Native.Check(Native.WaitForSingleObject(process.process, 5000) == 0, "wait for continued loader diagnostic process exit");
+                    if (!callback) Native.Check(Native.WaitForSingleObject(process.process, 5000) == 0, "wait for continued loader diagnostic process exit");
                     string capturedOutput = outputCapture.Read(), capturedErrors = errorCapture.Read();
+                    if (callback) return ModuleActivationFixture.CompareCallback(callbackExit.Value, tracedExit, capturedOutput, capturedErrors);
                     if (activationTrace) {
                         ChildActivationFixture.RequireTransport(tracedExit, capturedOutput, capturedErrors);
                         return capturedOutput; // The existing finally qualifies Job-zero, destruction and all owned cleanup before return.
@@ -314,11 +330,12 @@ namespace ScientificSecurity
                 });
                 bool reaped = false;
                 AttemptCleanup(cleanupFailures, () => {
-                    if (job != IntPtr.Zero) ReapJob(job, activationTrace && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
+                    if (job != IntPtr.Zero) ReapJob(job, (activationTrace || callback) && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
                     reaped = true;
                 });
+                bool destroyed = false;
                 if (reaped && started && loader != null)
-                    AttemptCleanup(cleanupFailures, () => loader.ConfirmDestroyed());
+                    AttemptCleanup(cleanupFailures, () => { loader.ConfirmDestroyed(); destroyed = true; });
                 AttemptCleanup(cleanupFailures, () => { if (outputCapture != null) outputCapture.Dispose(); });
                 AttemptCleanup(cleanupFailures, () => { if (errorCapture != null) errorCapture.Dispose(); });
                 AttemptCleanup(cleanupFailures, () => { if (process.thread != IntPtr.Zero) Native.Check(Native.CloseHandle(process.thread), "close owned child thread"); });
@@ -339,12 +356,18 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("owned package SID cleanup failed"); });
                 AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) Native.Check(Native.CloseHandle(job), "close owned job"); });
                 AttemptCleanup(cleanupFailures, () => { if (activationLease != null) activationLease.Dispose(); });
-                if (cleanupFailures.Count != 0) throw CleanupFailure(primaryFailure, cleanupFailures);
+                Exception completionFailure = CompletionFailure(primaryFailure, cleanupFailures, callbackStarted, destroyed);
+                if (completionFailure != null) throw completionFailure;
             }
         }
         static void AttemptCleanup(List<Exception> failures, Action action)
         {
             try { action(); } catch (Exception failure) { failures.Add(failure); }
+        }
+        internal static Exception CompletionFailure(Exception primary, List<Exception> cleanup, bool callbackStarted, bool destroyed)
+        {
+            if (cleanup.Count != 0) return CleanupFailure(primary, cleanup);
+            return callbackStarted && destroyed && primary != null ? new QualifiedModuleCallbackFailure(primary) : null;
         }
         static AggregateException CleanupFailure(Exception primary, List<Exception> cleanup)
         {
@@ -374,7 +397,39 @@ namespace ScientificSecurity
             }
             if (CreationFlags(false) != 0x0008040C || CreationFlags(true) != 0x0008040E)
                 throw new InvalidOperationException("contained launch lost detached, suspended, Unicode or fixed debug flags");
+            if (!RequireModuleRole(3, 0, 0xC0150002) || RequireModuleRole(0, null, null) ||
+                RequireModuleRole(1, 0, null) || RequireModuleRole(2, 0, null))
+                throw new InvalidOperationException("fixed module role separation failed");
+            foreach (int role in new [] { -1, 0, 1, 2, 4 }) {
+                bool refused = false;
+                try { RequireModuleRole(role, 0, 0xC0150002); } catch (ArgumentException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("callback exit was accepted by an unrelated role");
+            }
+            foreach (uint? code in new uint?[] { null, 0, 121, 0x7FFFFFFF }) {
+                bool refused = false;
+                try { RequireModuleRole(3, 0, code); } catch (ArgumentException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("callback role accepted an unqualified exit");
+            }
+            foreach (int? registry in new int?[] { null, 1, unchecked((int)0xC0000022) }) {
+                bool refused = false;
+                try { RequireModuleRole(3, registry, 0xC0150002); } catch (ArgumentException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("callback role escaped the modified registry condition");
+            }
             var primary = new InvalidOperationException("fixed primary fixture");
+            foreach (bool callback in new [] { false, true })
+                foreach (bool destroyed in new [] { false, true }) {
+                    Exception result = CompletionFailure(primary, new List<Exception>(), callback, destroyed);
+                    var qualified = result as QualifiedModuleCallbackFailure;
+                    if (callback && destroyed ? qualified == null || !Object.ReferenceEquals(qualified.Original, primary) : result != null)
+                        throw new InvalidOperationException("diagnostic failure was not qualified by complete destruction");
+                    if (CompletionFailure(null, new List<Exception>(), callback, destroyed) != null)
+                        throw new InvalidOperationException("successful cleanup invented a diagnostic failure");
+                    var failure = new InvalidOperationException("fixed cleanup");
+                    var group = CompletionFailure(primary, new List<Exception> { failure }, callback, destroyed) as AggregateException;
+                    if (group == null || group.InnerExceptions.Count != 2 || !Object.ReferenceEquals(group.InnerExceptions[0], primary) ||
+                        !Object.ReferenceEquals(group.InnerExceptions[1], failure))
+                        throw new InvalidOperationException("uncertain cleanup became a qualified diagnostic result");
+                }
             var cleanup = new List<Exception>(); int attempts = 0;
             AttemptCleanup(cleanup, () => { attempts++; throw new InvalidOperationException("fixed cleanup one"); });
             AttemptCleanup(cleanup, () => { attempts++; throw new InvalidOperationException("fixed cleanup two"); });

@@ -57,15 +57,47 @@ namespace ScientificSecurity
         IntPtr originalProcess, originalThread, processAlias, threadAlias, memoryProcess, lifetimeProcess;
         readonly System.Collections.Generic.Dictionary<IntPtr, string> modules = new System.Collections.Generic.Dictionary<IntPtr, string>();
         const uint Continue = 0x10002, NotHandled = 0x80010001;
-        readonly bool nativeHardware, pythonSnaps, activationMode;
+        readonly bool nativeHardware, pythonSnaps, activationMode, moduleCallback;
+        readonly EventCleanupLedger callbackFiles;
+        sealed class EventCleanupLedger
+        {
+            readonly System.Collections.Generic.HashSet<IntPtr> unresolved = new System.Collections.Generic.HashSet<IntPtr>();
+            bool failed;
+            internal bool Overflowed { get; private set; }
+            internal int Count { get { return unresolved.Count; } }
+            internal void Close(ref IntPtr handle, Action<IntPtr> close)
+            {
+                IntPtr value = handle;
+                if (value == IntPtr.Zero || value == Native.InvalidHandle) { handle = IntPtr.Zero; return; }
+                if (unresolved.Contains(value)) {
+                    failed = true; handle = IntPtr.Zero;
+                    throw new InvalidOperationException("uncertain event handle cannot be closed twice");
+                }
+                // At most 128 observation + 128 cleanup events and two original aliases.
+                if (unresolved.Count >= 260) {
+                    failed = Overflowed = true; // Keep the caller's handle and refuse a new event that could overwrite it.
+                    throw new InvalidOperationException("callback event cleanup ownership exceeded its bound");
+                }
+                unresolved.Add(value); handle = IntPtr.Zero;
+                try { close(value); }
+                catch { failed = true; throw; }
+                unresolved.Remove(value);
+            }
+            internal void RequireClean()
+            {
+                if (failed || Overflowed || unresolved.Count != 0)
+                    throw new InvalidOperationException("callback event handle cleanup remains unqualified");
+            }
+        }
         int pythonStringEvents, requestedBytes;
         HardwareTrace hardware;
         ActivationBoundaryTrace activation;
-        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false)
+        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false, bool callback = false)
         {
-            if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) > 1)
+            if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) + (callback ? 1 : 0) > 1)
                 throw new ArgumentException("diagnostic roles cannot overlap");
-            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; activationMode = activationTrace;
+            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; activationMode = activationTrace || callback; moduleCallback = callback;
+            if (callback) callbackFiles = new EventCleanupLedger();
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
                 Marshal.SizeOf(typeof(ExceptionInfo)) != 160 || Marshal.OffsetOf(typeof(DebugEvent), "data").ToInt32() != 16 ||
                 Marshal.SizeOf(typeof(DebugEvent)) != 176 || Marshal.SizeOf(typeof(CreateProcessInfo)) != 72 ||
@@ -99,7 +131,7 @@ namespace ScientificSecurity
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
                 child.process = process; child.thread = thread; memoryProcess = lifetimeProcess = process; process = thread = IntPtr.Zero;
                 if (nativeHardware) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
-                if (activationMode) activation = ChildActivationFixture.Observer(child, Emit);
+                if (activationMode) activation = moduleCallback ? ModuleActivationFixture.Observer(child, Emit) : ChildActivationFixture.Observer(child, Emit);
             }
             finally {
                 if (thread != IntPtr.Zero) Native.CloseHandle(thread);
@@ -134,15 +166,22 @@ namespace ScientificSecurity
             finally { current.data.createProcess.file = IntPtr.Zero; CloseFile(file); }
             // Gates were completed before resume; validate CREATE before allowing user-mode execution.
         }
-        static void ReleaseOriginal(ref IntPtr original, IntPtr osOwned)
+        void ReleaseOriginal(ref IntPtr original, IntPtr osOwned)
         {
-            IntPtr handle = original; original = IntPtr.Zero;
-            if (handle != IntPtr.Zero && handle != osOwned) Native.Check(Native.CloseHandle(handle), "close distinct original creation handle");
+            if (moduleCallback) {
+                if (original == osOwned) { original = IntPtr.Zero; return; }
+                callbackFiles.Close(ref original, handle => Native.Check(Native.CloseHandle(handle), "close distinct original creation handle"));
+                return;
+            }
+            IntPtr value = original; original = IntPtr.Zero;
+            if (value != IntPtr.Zero && value != osOwned) Native.Check(Native.CloseHandle(value), "close distinct original creation handle");
         }
         bool Receive(uint milliseconds = 100)
         {
             ThreadCheck();
             if (pending) throw new InvalidOperationException("loader debug event was not continued");
+            if (moduleCallback && callbackFiles.Overflowed)
+                throw new InvalidOperationException("callback event cleanup overflow prevents another receive");
             if (!WaitForDebugEventEx(out current, milliseconds)) {
                 int error = Marshal.GetLastWin32Error();
                 if (error == 121) return false;
@@ -206,7 +245,7 @@ namespace ScientificSecurity
             }
             finally { Array.Clear(bytes, 0, bytes.Length); }
         }
-        static bool AcceptInitialBreakpoint(uint eventThread, uint creatorThread, uint code, bool first, bool seen, Action requireComplete)
+        internal static bool AcceptInitialBreakpoint(uint eventThread, uint creatorThread, uint code, bool first, bool seen, Action requireComplete)
         {
             if (eventThread != creatorThread || code != 0x80000003 || !first || seen) return false;
             if (requireComplete != null) requireComplete();
@@ -259,6 +298,39 @@ namespace ScientificSecurity
             if (continuation != null) attempt(continuation);
             if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
             if (failures.Count != 0) throw new AggregateException("fixed activation event operation/cleanup failed", failures);
+        }
+        internal static Exception CheckCallbackCleanupValidation()
+        {
+            var ledger = new EventCleanupLedger();
+            IntPtr handle = new IntPtr(17); int calls = 0;
+            var close = new InvalidOperationException("fixed event close"); Exception caught = null;
+            try { ledger.Close(ref handle, value => { calls++; throw close; }); }
+            catch (Exception failure) { caught = failure; }
+            if (handle != IntPtr.Zero || ledger.Count != 1 || !Object.ReferenceEquals(caught, close) || calls != 1)
+                throw new InvalidOperationException("callback close failure lost its ownership or primary error");
+            handle = new IntPtr(17); bool refused = false;
+            try { ledger.Close(ref handle, _ => calls++); } catch (InvalidOperationException) { refused = true; }
+            if (!refused || calls != 1 || handle != IntPtr.Zero || ledger.Count != 1)
+                throw new InvalidOperationException("callback uncertain close was retried");
+            handle = new IntPtr(18); ledger.Close(ref handle, _ => calls++);
+            if (calls != 2 || handle != IntPtr.Zero || ledger.Count != 1)
+                throw new InvalidOperationException("callback later successful close erased unresolved ownership");
+            Exception sticky = null;
+            try { ledger.RequireClean(); } catch (Exception failure) { sticky = failure; }
+            if (sticky == null) throw new InvalidOperationException("callback destruction erased a cleanup failure");
+            var clean = new EventCleanupLedger(); handle = new IntPtr(19);
+            clean.Close(ref handle, _ => calls++); clean.RequireClean();
+            if (handle != IntPtr.Zero || clean.Count != 0) throw new InvalidOperationException("callback successful close retained ownership");
+            var full = new EventCleanupLedger();
+            for (int index = 0; index < 260; index++) {
+                handle = new IntPtr(100 + index);
+                try { full.Close(ref handle, _ => { throw close; }); } catch (InvalidOperationException) { }
+            }
+            handle = new IntPtr(400); refused = false;
+            try { full.Close(ref handle, _ => calls++); } catch (InvalidOperationException) { refused = true; }
+            if (!refused || !full.Overflowed || handle != new IntPtr(400) || full.Count != 260 || calls != 3)
+                throw new InvalidOperationException("callback ownership overflow discarded an unresolved handle");
+            return new AggregateException("fixed callback event cleanup remains unqualified", close, sticky);
         }
         internal static void CheckActivationEventValidation()
         {
@@ -487,6 +559,9 @@ namespace ScientificSecurity
                     failures.Add(new InvalidOperationException("loader creation-handle ownership was not resolved"));
             }
             catch (Exception error) { failures.Add(error); }
+            if (moduleCallback) {
+                try { callbackFiles.RequireClean(); } catch (Exception failure) { failures.Add(failure); }
+            }
             if (failures.Count != 0) throw new AggregateException("owned loader cleanup failed", failures);
         }
         internal void ConfirmDestroyed()
@@ -537,6 +612,11 @@ namespace ScientificSecurity
         }
         void CloseCurrentFile()
         {
+            if (moduleCallback) {
+                if (current.code == 3) callbackFiles.Close(ref current.data.createProcess.file, CloseFile);
+                if (current.code == 6) callbackFiles.Close(ref current.data.loadDll.file, CloseFile);
+                return;
+            }
             if (current.code == 3) { IntPtr file = current.data.createProcess.file; current.data.createProcess.file = IntPtr.Zero; CloseFile(file); }
             if (current.code == 6) { IntPtr file = current.data.loadDll.file; current.data.loadDll.file = IntPtr.Zero; CloseFile(file); }
         }
