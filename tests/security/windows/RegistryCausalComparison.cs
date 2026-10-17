@@ -50,10 +50,15 @@ namespace ScientificSecurity
                 string condition = new [] { "original", "modified", "restored" }[visit++];
                 string activation = ChildActivationFixture.RequireResult(Sandbox.ObserveActivation(python, root, scratch,
                     powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected));
-                if (condition == "modified") start = DateTime.UtcNow;
-                uint exit = Sandbox.ObservePreflightExit(python, root, scratch, powershell, chromium, moniker, profileFolder,
-                    tcpPort, udpPort, expected);
-                if (condition == "modified") end = DateTime.UtcNow;
+                uint exit = ObserveStartup(condition,
+                    () => Sandbox.ObserveDefaultActivation(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected),
+                    () => {
+                        if (condition == "modified") start = DateTime.UtcNow;
+                        uint code = Sandbox.ObservePreflightExit(python, root, scratch, powershell, chromium, moniker, profileFolder,
+                            tcpPort, udpPort, expected);
+                        if (condition == "modified") end = DateTime.UtcNow;
+                        return code;
+                    }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
                 Console.Out.WriteLine(Condition(condition, activation, exit));
                 Console.Out.Flush();
                 return new Observation { activation = activation, exit = exit };
@@ -62,6 +67,50 @@ namespace ScientificSecurity
                 return new Trial(lease.Dispose, lease.DeferRecovery);
             }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
                 () => StartupActivationEvents.Observe(python, start, end));
+        }
+        static uint ObserveStartup(string condition, Func<string> control, Func<uint> ordinary, Action<string> emit)
+        {
+            string result = control(); // Sandbox returns only after its complete owned cleanup.
+            emit(DefaultActivationFixture.Condition(condition, result));
+            return ordinary();
+        }
+        static void CheckStartupOrdering()
+        {
+            const string result = "entry_observed=False exit=0xC0000022";
+            var order = new List<string>(); int visits = 0;
+            uint exit = AfterRestoration(() => Execute(expected => {
+                string condition = new [] { "original", "modified", "restored" }[visits++];
+                Need(expected == (visits == 2 ? 0 : Denied));
+                uint code = ObserveStartup(condition,
+                    () => { order.Add(condition + ":control-clean"); return result; },
+                    () => { order.Add(condition + ":ordinary"); return 0xC0000022; },
+                    line => { Need(line == DefaultActivationFixture.Condition(condition, result)); order.Add(condition + ":emit"); });
+                return new Observation { activation = ActivationDenied, exit = code };
+            }, () => { order.Add("begin"); return new Trial(() => order.Add("restore"), () => order.Add("defer")); },
+                _ => order.Add("comparison")), () => order.Add("query"));
+            Need(exit == 0xC0000022 && String.Join(",", order) ==
+                "original:control-clean,original:emit,original:ordinary,begin,modified:control-clean,modified:emit,modified:ordinary,restore,restored:control-clean,restored:emit,restored:ordinary,comparison,query");
+            foreach (bool cleanupAggregate in new [] { false, true }) {
+                int observed = 0, ordinary = 0, emitted = 0, restores = 0, deferred = 0, queries = 0;
+                Exception primary = cleanupAggregate ? (Exception)new AggregateException(new InvalidOperationException("fixed cleanup")) :
+                    new InvalidOperationException("fixed control");
+                Exception caught = null;
+                try {
+                    AfterRestoration(() => Execute(_ => {
+                        string condition = ++observed == 1 ? "original" : "modified";
+                        uint code = ObserveStartup(condition, () => { if (observed == 2) throw primary; return result; },
+                            () => { ordinary++; return 0xC0000022; }, _line => emitted++);
+                        return new Observation { activation = ActivationDenied, exit = code };
+                    }, () => new Trial(() => restores++, () => deferred++), _line => emitted++), () => queries++);
+                }
+                catch (Exception failure) { caught = failure; }
+                Need(Object.ReferenceEquals(caught, primary) && observed == 2 && ordinary == 1 && emitted == 1 &&
+                    restores == 0 && deferred == 1 && queries == 0);
+            }
+            int runs = 0; bool refused = false;
+            try { ObserveStartup("original", () => "private-sentinel", () => { runs++; return 0; }, _ => { }); }
+            catch (InvalidOperationException) { refused = true; }
+            Need(refused && runs == 0);
         }
         static uint AfterRestoration(Func<uint> comparison, Action evidence)
         {
@@ -99,6 +148,7 @@ namespace ScientificSecurity
                 catch (InvalidOperationException) { refused = true; }
                 Need(refused && !admitted);
             }
+            CheckStartupOrdering();
             var primary = new InvalidOperationException("fixed operation"); var recovery = new InvalidOperationException("fixed recovery");
             foreach (bool cleanupFails in new [] { false, true }) {
                 int visits = 0, restores = 0, deferred = 0, emissions = 0, queries = 0; Exception caught = null;

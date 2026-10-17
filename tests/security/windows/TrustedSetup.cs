@@ -19,7 +19,7 @@ namespace ScientificSecurity
             executable = Path.GetFullPath(executable);
             cwd = Path.GetFullPath(cwd);
             string name = Path.GetFileName(executable).ToLowerInvariant();
-            bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe" }.Contains(name);
+            bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe" }.Contains(name);
             if (compilerPreparation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
             if (!compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
@@ -149,7 +149,7 @@ namespace ScientificSecurity
         }
         static string Stage(string tool, string stage)
         {
-            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(tool) ||
+            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(tool) ||
                 !new [] { "prepare", "create-before", "create-after", "assign-before", "assign-after", "resume-before", "resume-after",
                     "wait-first", "wait-complete", "reap-before", "reap-after", "capture-after", "cleanup-before", "cleanup-after" }.Contains(stage))
                 throw new InvalidOperationException("unsupported trusted setup stage label");
@@ -161,6 +161,8 @@ namespace ScientificSecurity
         { writer.WriteLine(Stage(tool, stage)); writer.Flush(); }
         public static void CheckValidation()
         {
+            if (Stage("rc.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=rc.exe stage=create-before")
+                throw new InvalidOperationException("resource compiler stage literal differs");
             if (Stage("csc.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=csc.exe stage=create-before")
                 throw new InvalidOperationException("trusted setup stage literal differs");
             foreach (var bad in new [] { Tuple.Create("C:\\private\\csc.exe", "create-before"), Tuple.Create("csc.exe", "secret") }) {

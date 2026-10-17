@@ -9,14 +9,25 @@ namespace ScientificSecurity
         internal static Tuple<ushort, uint> PythonManifest(byte[] bytes)
         { return new KernelImage(bytes, 1, "python-manifest").Manifest(); }
         Tuple<ushort, uint> Manifest()
+        { int offset; return Manifest(false, out offset); }
+        internal static Tuple<ushort, byte[]> DefaultManifest(byte[] bytes, bool sole)
+        {
+            var image = new KernelImage(bytes, 1, "fixed-default-manifest"); int offset;
+            var metadata = image.Manifest(sole, out offset);
+            var payload = new byte[metadata.Item2]; Array.Copy(bytes, offset, payload, 0, payload.Length);
+            return Tuple.Create(metadata.Item1, payload);
+        }
+        Tuple<ushort, uint> Manifest(bool sole, out int offset)
         {
             ulong optional = (ulong)U32(0x3C) + 24;
             uint rva = U32(optional + 128), size = U32(optional + 132);
             Need(rva != 0 && size >= 16 && size <= 1048576);
             int root = Map(rva, size);
+            if (sole) Need(U16((ulong)root + 14) == 1);
             var spans = new List<Tuple<uint, uint>>();
             uint type = ResourceEntry(root, size, 0, 24, 128, spans);
             Need((type & 0x80000000) != 0);
+            if (sole) Need(U16((ulong)root + (type & 0x7FFFFFFF) + 14) == 1);
             uint name = ResourceEntry(root, size, type & 0x7FFFFFFF, 1, 16, spans);
             Need((name & 0x80000000) != 0);
             uint languageTable = name & 0x7FFFFFFF;
@@ -31,7 +42,7 @@ namespace ScientificSecurity
             Need(U32(dataEntry + 12) == 0 && length > 0 && length <= 65536 && payload >= rva);
             uint relative = payload - rva;
             ResourceSpan(size, relative, length, spans);
-            Need(Map(payload, length) == root + relative);
+            offset = Map(payload, length); Need(offset == root + relative);
             return Tuple.Create((ushort)language, length);
         }
         uint ResourceEntry(int root, uint size, uint offset, uint selected, uint maximum, List<Tuple<uint, uint>> spans)
@@ -68,6 +79,17 @@ namespace ScientificSecurity
             bytes[0x280] = 1; bytes[0x281] = 2; bytes[0x282] = 3; bytes[0x283] = 4;
             var actual = PythonManifest(bytes);
             Need(actual.Item1 == 1033 && actual.Item2 == 4);
+            var payload = DefaultManifest(bytes, true);
+            Need(payload.Item1 == 1033 && payload.Item2.Length == 4 && payload.Item2[0] == 1 && payload.Item2[3] == 4);
+            payload.Item2[0] = 9; Need(bytes[0x280] == 1);
+            foreach (bool extraType in new [] { true, false }) {
+                byte[] extra = (byte[])bytes.Clone();
+                if (extraType) { Put16(extra, 0x20E, 2); Put(extra, 0x218, 25); Put(extra, 0x21C, 0x80000020); }
+                else { Put16(extra, 0x22E, 2); Put(extra, 0x238, 2); Put(extra, 0x23C, 0x80000040); }
+                Need(PythonManifest(extra).Item2 == 4);
+                bool rejected = false; try { DefaultManifest(extra, true); } catch (InvalidOperationException) { rejected = true; }
+                Need(rejected);
+            }
             foreach (Action<byte[]> change in new Action<byte[]>[] {
                 b => Put(b, 0x98 + 128, 0), b => Put(b, 0x98 + 132, 15),
                 b => Put16(b, 0x20E, 129), b => Put16(b, 0x20C, 1), b => Put(b, 0x210, 23),
@@ -79,6 +101,8 @@ namespace ScientificSecurity
             }) {
                 byte[] bad = (byte[])bytes.Clone(); change(bad); bool refused = false;
                 try { PythonManifest(bad); } catch (InvalidOperationException) { refused = true; }
+                Need(refused); refused = false;
+                try { DefaultManifest(bad, true); } catch (InvalidOperationException) { refused = true; }
                 Need(refused);
             }
         }

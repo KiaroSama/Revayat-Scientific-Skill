@@ -10,13 +10,16 @@ namespace ScientificSecurity
         static readonly string[] ActivationImports = { "CreateActCtxW", "ExitProcess", "GetLastError", "GetStdHandle", "ReleaseActCtx", "WriteFile" };
         internal static void QualifyChildActivation(byte[] bytes)
         { new KernelImage(bytes, 1, "fixed-child-activation").ChildActivation(); }
-        void ChildActivation()
+        void ChildActivation() { ChildActivation(ActivationImports, false); }
+        void ChildActivation(string[] expected, bool manifest)
         {
             Need(data.Length <= 1048576);
             ulong nt = U32(0x3C), optional = nt + 24;
             Need((U16(nt + 22) & 0x2002) == 2 && U16(optional + 68) == 3 && Entry != 0);
-            foreach (int directory in new [] { 0, 2, 9, 13, 14 })
+            foreach (int directory in new [] { 0, 2, 9, 13, 14 }) {
+                if (manifest && directory == 2) continue;
                 Need(U32(optional + 112 + (ulong)directory * 8) == 0 && U32(optional + 116 + (ulong)directory * 8) == 0);
+            }
             uint rva = U32(optional + 120), size = U32(optional + 124);
             Need(rva != 0 && size >= 40 && size <= 128);
             int table = Map(rva, size);
@@ -25,12 +28,12 @@ namespace ScientificSecurity
             for (uint tail = 20; tail < size; tail++) Need(data[table + tail] == 0);
             Need(String.Equals(ActivationText(name), "KERNEL32.dll", StringComparison.OrdinalIgnoreCase));
             var imports = new HashSet<string>(StringComparer.Ordinal);
-            for (uint index = 0; index <= 6; index++) {
+            for (uint index = 0; index <= expected.Length; index++) {
                 Need(lookup <= UInt32.MaxValue - index * 8 && address <= UInt32.MaxValue - index * 8);
                 ulong symbol = BitConverter.ToUInt64(data, Map(lookup + index * 8, 8));
                 Need(symbol == BitConverter.ToUInt64(data, Map(address + index * 8, 8)));
-                if (symbol == 0) { Need(index == 6 && imports.SetEquals(ActivationImports)); return; }
-                Need(index < 6 && symbol <= UInt32.MaxValue - 2);
+                if (symbol == 0) { Need(index == expected.Length && imports.SetEquals(expected)); return; }
+                Need(index < expected.Length && symbol <= UInt32.MaxValue - 2);
                 Map((uint)symbol, 2);
                 Need(imports.Add(ActivationText((uint)symbol + 2)));
             }
