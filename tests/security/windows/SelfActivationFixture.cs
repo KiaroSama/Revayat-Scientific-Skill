@@ -30,13 +30,49 @@ namespace ScientificSecurity
         static string Script(ushort language)
         { return "LANGUAGE " + (language & 1023).ToString(CultureInfo.InvariantCulture) + "," + (language >> 10).ToString(CultureInfo.InvariantCulture) + "\n2 24 \"self-activation-payload.bin\"\n"; }
         internal static string Result(uint exit, string text, string errors)
+        { return Result(exit, text, errors, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }); }
+        static void RequireResult(bool valid, string stage, uint exit, string text, string errors, Action<string> emit)
         {
-            Need(exit == 0 && text != null && text.Length <= 128 && errors != null && errors.Length == 0);
+            if (valid) return;
+            var primary = new InvalidOperationException("fixed self activation contract failed");
+            try {
+                emit("WINDOWS_SELF_ACTIVATION_REFUSAL stage=" + stage + " raw_process_exit=0x" + exit.ToString("X8", CultureInfo.InvariantCulture) +
+                    " stdout_chars=" + (text == null ? -1 : text.Length).ToString(CultureInfo.InvariantCulture) + " stderr_present=" + (errors != null && errors.Length != 0));
+            } catch (Exception reporting) { throw new AggregateException("fixed self activation refusal/reporting failed", primary, reporting); }
+            throw primary;
+        }
+        static string Result(uint exit, string text, string errors, Action<string> emit)
+        {
+            RequireResult(exit == 0 && text != null && text.Length <= 128 && errors != null && errors.Length == 0, "transport", exit, text, errors, emit);
             var match = Regex.Match(text, @"\AWINDOWS_SELF_ACTIVATION entry_reached=True created=(True|False) win32_error=0x([0-9A-F]{8})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-            Need(match.Success);
+            RequireResult(match.Success, "grammar", exit, text, errors, emit);
             uint error = UInt32.Parse(match.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-            Need((match.Groups[1].Value == "True") == (error == 0));
+            RequireResult((match.Groups[1].Value == "True") == (error == 0), "consistency", exit, text, errors, emit);
             return text.TrimEnd('\n');
+        }
+        static void CheckResultRefusal()
+        {
+            int reports = 0;
+            Need(Result(0, Success, "", _ => reports++) == Success.TrimEnd('\n') && reports == 0);
+            foreach (var item in new [] {
+                Tuple.Create(0xC0000022U, "", "", "transport", "0xC0000022", "0", "False"),
+                Tuple.Create(UInt32.MaxValue, "private-sentinel", "private-sentinel", "transport", "0xFFFFFFFF", "16", "True"),
+                Tuple.Create(0U, new string('x', 128), "", "grammar", "0x00000000", "128", "False"),
+                Tuple.Create(0U, new string('x', 129), "", "transport", "0x00000000", "129", "False"),
+                Tuple.Create(0U, Success.Replace("00000000", "00000005"), "", "consistency", "0x00000000", "79", "False")
+            }) {
+                string line = null; int count = 0; Exception caught = null;
+                try { Result(item.Item1, item.Item2, item.Item3, value => { line = value; count++; }); }
+                catch (Exception failure) { caught = failure; }
+                Need(caught is InvalidOperationException && caught.Message == "fixed self activation contract failed" && count == 1 &&
+                    line == "WINDOWS_SELF_ACTIVATION_REFUSAL stage=" + item.Item4 + " raw_process_exit=" + item.Item5 +
+                        " stdout_chars=" + item.Item6 + " stderr_present=" + item.Item7);
+            }
+            var reporting = new IOException("fixed reporting fixture"); AggregateException group = null;
+            try { Result(1, "private-sentinel", "", _ => { throw reporting; }); }
+            catch (AggregateException failure) { group = failure; }
+            Need(group != null && group.InnerExceptions.Count == 2 && group.InnerExceptions[0] is InvalidOperationException &&
+                group.InnerExceptions[0].Message == "fixed self activation contract failed" && Object.ReferenceEquals(group.InnerExceptions[1], reporting));
         }
         static void RequireHost(string result)
         { Need(result == Success.TrimEnd('\n')); }
@@ -89,6 +125,7 @@ namespace ScientificSecurity
                 bool[] others = new bool[9]; if (index < 9) others[index] = true; bool refused = false;
                 try { RequireRole(index < 9, others); } catch (ArgumentException) { refused = true; } Need(refused);
             }
+            CheckResultRefusal();
             Need(Script(1033) == "LANGUAGE 9,1\n2 24 \"self-activation-payload.bin\"\n");
             const string denied = "WINDOWS_SELF_ACTIVATION entry_reached=True created=False win32_error=0x00000005\n";
             Need(Result(0, Success, "") == Success.TrimEnd('\n') && Result(0, denied, "") == denied.TrimEnd('\n'));
