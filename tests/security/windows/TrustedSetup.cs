@@ -19,9 +19,16 @@ namespace ScientificSecurity
             string executable = SelfActivationFixture.PreparedImage(python, role);
             return RunFixed(executable, new string[0], Path.GetDirectoryName(executable), true, role);
         }
-        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original)
+        internal static string RunExplicitEntry(string python, Action<string> retainMetadata)
+        {
+            string image = SelfActivationFixture.PreparedImage(python, SelfActivationRole.ExplicitId2);
+            return RunFixed(image, new string[0], Path.GetDirectoryName(image), true, SelfActivationRole.ExplicitId2, python, retainMetadata);
+        }
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null)
         {
             SelfActivationFixture.RequireKnownRole(role);
+            if (entryPython != null && (!selfActivation || role != SelfActivationRole.ExplicitId2 || retainMetadata == null) ||
+                entryPython == null && retainMetadata != null) throw new ArgumentException("entry host requires fixed ExplicitId2 metadata retention");
             if (!Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd))
                 throw new ArgumentException("trusted setup requires fully qualified executable and working directory");
             executable = Path.GetFullPath(executable);
@@ -47,6 +54,7 @@ namespace ScientificSecurity
             var child = new Native.ProcessInfo(); bool started = false, resumed = false;
             Exception primaryFailure = null;
             var clock = new Stopwatch();
+            LoaderTrace loader = entryPython == null ? null : new LoaderTrace(false, false, false, false, entryPython);
             try
             {
                 EmitStage(name, "prepare");
@@ -104,11 +112,13 @@ namespace ScientificSecurity
                 }
                 EmitStage(name, "create-before");
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
-                    true, selfActivation ? SelfCreationFlags() : Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
+                    true, selfActivation ? SelfCreationFlags() | (loader == null ? 0U : 2U) : Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
                     environment, cwd, ref startup, out child),
                     "create suspended trusted setup process tool=" + name + (name == "dumpbin.exe" || selfActivation ? "" : " cwd=" + cwd)); started = true;
+                if (loader != null) loader.Arm(child);
                 EmitStage(name, "create-after"); EmitStage(name, "assign-before");
                 Native.Check(Native.AssignProcessToJobObject(job, child.process), "own trusted setup process before resume");
+                if (loader != null) loader.PrepareHandles(ref child);
                 EmitStage(name, "assign-after"); EmitStage(name, "resume-before");
                 if (selfActivation) clock.Start();
                 if (Native.ResumeThread(child.thread) == UInt32.MaxValue)
@@ -117,6 +127,12 @@ namespace ScientificSecurity
                 output.CloseWriter(); error.CloseWriter();
                 if (selfActivation) { IntPtr owned = input; input = IntPtr.Zero; Native.Check(Native.CloseHandle(owned), "close fixed host activation stdin"); }
                 else { Native.CloseHandle(input); input = IntPtr.Zero; }
+                if (loader != null) {
+                    uint observedExit = loader.Observe();
+                    string captured = output.Read(), capturedError = error.Read();
+                    if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed entry host exceeded 10 seconds");
+                    return SelfActivationFixture.Result(observedExit, captured, capturedError, SelfActivationRole.ExplicitId2);
+                }
                 if (!selfActivation) clock.Start();
                 long previous = 0; double progress = 0;
                 uint wait; bool firstWait = true;
@@ -153,12 +169,23 @@ namespace ScientificSecurity
             {
                 FinishCleanup(primaryFailure,
                     () => EmitStage(name, "cleanup-before"),
-                    () => { if (started && !resumed) {
+                    () => { if (started && loader != null) {
+                        Native.ProcessInfo retained = child;
+                        loader.SuppressOriginalAliases(ref child); loader.TerminateAndDrain(job, retained);
+                    } else if (started && !resumed) {
                         bool terminated = Native.TerminateProcess(child.process, 125);
                         if (selfActivation) Native.Check(terminated, "terminate suspended fixed host activation");
                     } },
-                    () => { if (job != IntPtr.Zero) Reap(job); },
-                    () => { if (selfActivation && started) Native.Check(Native.WaitForSingleObject(child.process, 0) == 0, "qualify fixed host activation process destruction"); },
+                    () => { if (job != IntPtr.Zero) {
+                        if (loader == null) Reap(job);
+                        else {
+                            Native.Check(Native.TerminateJobObject(job, 125), "terminate fixed entry host Job");
+                            Sandbox.AwaitActivationJobZero(() => Native.QueryJob<Native.Accounting>(job, 1).activeProcesses,
+                                loader.RemainingActivationCleanup, Thread.Sleep);
+                        }
+                    } },
+                    () => { if (loader != null && started) loader.ConfirmDestroyed();
+                        else if (selfActivation && started) Native.Check(Native.WaitForSingleObject(child.process, 0) == 0, "qualify fixed host activation process destruction"); },
                     () => { if (output != null) output.Dispose(); },
                     () => { if (error != null) error.Dispose(); },
                     () => { if (child.thread != IntPtr.Zero) CloseOwned(child.thread, selfActivation); },
@@ -170,6 +197,13 @@ namespace ScientificSecurity
                     () => { if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment); },
                     () => { if (job != IntPtr.Zero) CloseOwned(job, selfActivation); },
                     () => EmitStage(name, "cleanup-after"));
+                if (loader != null) {
+                    try { retainMetadata(loader.EntryMetadata()); }
+                    catch (Exception reporting) {
+                        if (primaryFailure != null) throw new AggregateException("fixed entry host observation/reporting failed", primaryFailure, reporting);
+                        throw;
+                    }
+                }
             }
         }
         static void CloseOwned(IntPtr handle, bool strict)

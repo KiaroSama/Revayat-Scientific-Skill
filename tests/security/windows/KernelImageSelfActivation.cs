@@ -33,6 +33,7 @@ namespace ScientificSecurity
             QualifySelfActivation(bytes, 1033, payload);
             byte[] explicitId2 = (byte[])bytes.Clone(); Put16(explicitId2, 0x98 + 70, 0x0200);
             QualifySelfActivation(explicitId2, 1033, payload, SelfActivationRole.ExplicitId2);
+            ActivationBoundaryTrace.CheckEntryLifetimeValidation(new KernelImage(explicitId2, 0x10000000, "fixed-entry"));
             foreach (SelfActivationRole role in new [] { SelfActivationRole.Original, SelfActivationRole.Manual, SelfActivationRole.ExplicitId2 }) {
                 byte[] wrong = (byte[])bytes.Clone();
                 if (role == SelfActivationRole.Manual) Put(wrong, 0xB30, 101);
@@ -91,6 +92,16 @@ namespace ScientificSecurity
                     Need(refused);
                 }
             }
+        }
+        internal static KernelImage FromExplicitEntryCreation(IntPtr file, IntPtr imageBase, string expectedPath, string digest)
+        {
+            string actual = EventPath(file);
+            Need(actual != null && System.IO.Path.GetFileName(expectedPath) == "startup-explicit-id2.exe" &&
+                String.Equals(actual, expectedPath, StringComparison.OrdinalIgnoreCase));
+            var image = ReadEventImage(file, imageBase, "fixed-explicit-entry");
+            Need(Hash(image.data) == digest && image.FullExecutable(image.Entry, 1));
+            SelfActivationFixture.RequireExplicitEntryImage(expectedPath, image.data);
+            return image;
         }
         internal static void QualifySelfActivation(byte[] bytes, ushort language, byte[] expected, SelfActivationRole role = SelfActivationRole.Original)
         {

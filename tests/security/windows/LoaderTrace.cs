@@ -7,7 +7,7 @@ using System.Text;
 namespace ScientificSecurity
 {
     // Fixed trusted pass-code phase evidence only. Never an admission result or arbitrary debugger.
-    internal sealed class LoaderTrace
+    internal sealed partial class LoaderTrace
     {
         [StructLayout(LayoutKind.Sequential)] struct ExceptionParameters {
             internal ulong p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14;
@@ -59,45 +59,15 @@ namespace ScientificSecurity
         const uint Continue = 0x10002, NotHandled = 0x80010001;
         readonly bool nativeHardware, pythonSnaps, activationMode, moduleCallback;
         readonly EventCleanupLedger callbackFiles;
-        sealed class EventCleanupLedger
-        {
-            readonly System.Collections.Generic.HashSet<IntPtr> unresolved = new System.Collections.Generic.HashSet<IntPtr>();
-            bool failed;
-            internal bool Overflowed { get; private set; }
-            internal int Count { get { return unresolved.Count; } }
-            internal void Close(ref IntPtr handle, Action<IntPtr> close)
-            {
-                IntPtr value = handle;
-                if (value == IntPtr.Zero || value == Native.InvalidHandle) { handle = IntPtr.Zero; return; }
-                if (unresolved.Contains(value)) {
-                    failed = true; handle = IntPtr.Zero;
-                    throw new InvalidOperationException("uncertain event handle cannot be closed twice");
-                }
-                // At most 128 observation + 128 cleanup events and two original aliases.
-                if (unresolved.Count >= 260) {
-                    failed = Overflowed = true; // Keep the caller's handle and refuse a new event that could overwrite it.
-                    throw new InvalidOperationException("callback event cleanup ownership exceeded its bound");
-                }
-                unresolved.Add(value); handle = IntPtr.Zero;
-                try { close(value); }
-                catch { failed = true; throw; }
-                unresolved.Remove(value);
-            }
-            internal void RequireClean()
-            {
-                if (failed || Overflowed || unresolved.Count != 0)
-                    throw new InvalidOperationException("callback event handle cleanup remains unqualified");
-            }
-        }
         int pythonStringEvents, requestedBytes;
         HardwareTrace hardware;
         ActivationBoundaryTrace activation;
-        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false, bool callback = false)
+        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false, bool callback = false, string explicitEntryPython = null)
         {
-            if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) + (callback ? 1 : 0) > 1)
+            if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) + (callback ? 1 : 0) + (explicitEntryPython != null ? 1 : 0) > 1)
                 throw new ArgumentException("diagnostic roles cannot overlap");
-            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; activationMode = activationTrace || callback; moduleCallback = callback;
-            if (callback) callbackFiles = new EventCleanupLedger();
+            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; entryPython = explicitEntryPython; activationMode = activationTrace || callback || EntryMode; moduleCallback = callback;
+            if (StrictEventOwnership) callbackFiles = new EventCleanupLedger();
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
                 Marshal.SizeOf(typeof(ExceptionInfo)) != 160 || Marshal.OffsetOf(typeof(DebugEvent), "data").ToInt32() != 16 ||
                 Marshal.SizeOf(typeof(DebugEvent)) != 176 || Marshal.SizeOf(typeof(CreateProcessInfo)) != 72 ||
@@ -131,7 +101,8 @@ namespace ScientificSecurity
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
                 child.process = process; child.thread = thread; memoryProcess = lifetimeProcess = process; process = thread = IntPtr.Zero;
                 if (nativeHardware) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
-                if (activationMode) activation = moduleCallback ? ModuleActivationFixture.Observer(child, Emit) : ChildActivationFixture.Observer(child, Emit);
+                if (activationMode) activation = EntryMode ? SelfActivationFixture.EntryObserver(entryPython, child, Emit) :
+                    moduleCallback ? ModuleActivationFixture.Observer(child, Emit) : ChildActivationFixture.Observer(child, Emit);
             }
             finally {
                 if (thread != IntPtr.Zero) Native.CloseHandle(thread);
@@ -168,7 +139,7 @@ namespace ScientificSecurity
         }
         void ReleaseOriginal(ref IntPtr original, IntPtr osOwned)
         {
-            if (moduleCallback) {
+            if (StrictEventOwnership) {
                 if (original == osOwned) { original = IntPtr.Zero; return; }
                 callbackFiles.Close(ref original, handle => Native.Check(Native.CloseHandle(handle), "close distinct original creation handle"));
                 return;
@@ -180,7 +151,7 @@ namespace ScientificSecurity
         {
             ThreadCheck();
             if (pending) throw new InvalidOperationException("loader debug event was not continued");
-            if (moduleCallback && callbackFiles.Overflowed)
+            if (StrictEventOwnership && callbackFiles.Overflowed)
                 throw new InvalidOperationException("callback event cleanup overflow prevents another receive");
             if (!WaitForDebugEventEx(out current, milliseconds)) {
                 int error = Marshal.GetLastWin32Error();
@@ -189,7 +160,7 @@ namespace ScientificSecurity
             }
             pending = true;
             if (hardware != null) hardware.Stop(current.pid, current.tid, current.code);
-            if (activation != null) activation.Stop(current.pid, current.tid, current.code, moduleCallback && cleanup);
+            if (activation != null) activation.Stop(current.pid, current.tid, current.code, StrictEventOwnership && cleanup);
             if (current.pid != pid) throw new InvalidOperationException("loader event is not from the fixed owned child");
             return true;
         }
@@ -464,7 +435,7 @@ namespace ScientificSecurity
                 if (!Receive()) continue;
                 uint status = current.code == 1 ? NotHandled : Continue;
                 if (activation != null) {
-                    ObserveActivationEvent();
+                    if (EntryMode) ObserveEntryEvent(); else ObserveActivationEvent();
                     continue;
                 }
                 try {
@@ -554,7 +525,7 @@ namespace ScientificSecurity
             }
             if (pending && activation != null) {
                 try {
-                    if (moduleCallback) RequireCallbackEventProcess(current.pid, pid);
+                    if (StrictEventOwnership) RequireCallbackEventProcess(current.pid, pid);
                     activation.Restore();
                 } catch (Exception failure) { failures.Add(failure); }
             }
@@ -567,7 +538,7 @@ namespace ScientificSecurity
             }
             // Termination failures must not abandon a pending event or the bounded EXIT drain.
             try {
-                if (moduleCallback) {
+                if (StrictEventOwnership) {
                     DrainCallbackEvents(() => exited, () => pending, RemainingActivationCleanup,
                         milliseconds => Receive(milliseconds, true), () => FinishCleanupEvent(failures));
                 } else {
@@ -584,7 +555,7 @@ namespace ScientificSecurity
                     failures.Add(new InvalidOperationException("loader creation-handle ownership was not resolved"));
             }
             catch (Exception error) { failures.Add(error); }
-            if (moduleCallback) {
+            if (StrictEventOwnership) {
                 try { callbackFiles.RequireClean(); } catch (Exception failure) { failures.Add(failure); }
             }
             if (failures.Count != 0) throw new AggregateException("owned loader cleanup failed", failures);
@@ -610,8 +581,15 @@ namespace ScientificSecurity
         }
         void FinishCleanupEvent(System.Collections.Generic.List<Exception> failures)
         {
-            if (moduleCallback) RequireCallbackEventProcess(current.pid, pid);
+            if (StrictEventOwnership) RequireCallbackEventProcess(current.pid, pid);
             if (activation != null) {
+                if (EntryMode) {
+                    try { FinalizeEntryEvent(activation, current.code, IntPtr.Zero, true, () => { }, () => exited = true, new Action[] {
+                        () => { if (current.code == 3) ReleaseOriginal(ref originalProcess, current.data.createProcess.process); },
+                        () => { if (current.code == 3) ReleaseOriginal(ref originalThread, current.data.createProcess.thread); }, CloseCurrentFile }, ContinuePending); }
+                    catch (Exception failure) { failures.Add(failure); }
+                    return;
+                }
                 try {
                     ActivationEvent(() => { if (current.code == 5) exited = true; },
                         () => { activation.Invalidate(); activation.Restore(); }, new Action[] {
@@ -638,7 +616,7 @@ namespace ScientificSecurity
         }
         void CloseCurrentFile()
         {
-            if (moduleCallback) {
+            if (StrictEventOwnership) {
                 if (current.code == 3) callbackFiles.Close(ref current.data.createProcess.file, CloseFile);
                 if (current.code == 6) callbackFiles.Close(ref current.data.loadDll.file, CloseFile);
                 return;

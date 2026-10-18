@@ -25,6 +25,66 @@ namespace ScientificSecurity
             internal bool hostPositive;
         }
         static Identity prepared, manualPrepared, explicitPrepared;
+        static bool entryHostPositive;
+        internal static void RequireExplicitEntryImage(string image, byte[] bytes)
+        {
+            Need(explicitPrepared != null && image == explicitPrepared.image);
+            RequireIdentity(bytes, explicitPrepared.imageLength, explicitPrepared.imageHash);
+            var manifest = KernelImage.ModuleManifest(bytes, true);
+            try {
+                Need(manifest.Item1 == explicitPrepared.language);
+                RequireIdentity(manifest.Item2, explicitPrepared.payloadLength, explicitPrepared.payloadHash);
+                KernelImage.QualifySelfActivation(bytes, manifest.Item1, manifest.Item2, SelfActivationRole.ExplicitId2);
+            } finally { Array.Clear(manifest.Item2, 0, manifest.Item2.Length); }
+        }
+        internal static ActivationBoundaryTrace EntryObserver(string python, Native.ProcessInfo child, Action<string> emit)
+        {
+            Identity value = Prepared(python, SelfActivationRole.ExplicitId2);
+            return new ActivationBoundaryTrace(child.process, child.thread, child.pid, child.tid, value.image, value.imageHash, emit, false, true);
+        }
+        internal static void RequireEntryHostPositive(string python)
+        { RequireHostPositive(python, SelfActivationRole.ExplicitId2); Need(entryHostPositive); }
+        public static void RunEntryHost(string python)
+        {
+            RequireHostPositive(python, SelfActivationRole.ExplicitId2); Need(!entryHostPositive);
+            IDisposable held = Hold(python, SelfActivationRole.ExplicitId2);
+            CompleteEntryHost(retain => TrustedSetup.RunExplicitEntry(python, retain), held.Dispose,
+                line => { Console.Out.WriteLine(line); Console.Out.Flush(); }, () => entryHostPositive = true);
+        }
+        static void CompleteEntryHost(Func<Action<string>, string> run, Action close, Action<string> emit, Action accept)
+        {
+            string metadata = null;
+            CompleteHost(() => run(value => { Need(metadata == null && value != null); metadata = value; }), close, () => {
+                Need(metadata != null); emit(metadata);
+                emit("WINDOWS_EXPLICIT_ENTRY_HOST positive=True cleanup_complete=True cause_claimed=False");
+                accept();
+            }, SelfActivationRole.ExplicitId2);
+        }
+        internal static void CheckEntryHostValidation()
+        {
+            IOException operation = new IOException("fixed host observation"), cleanup = new IOException("fixed lease close"), reporting = new IOException("fixed report");
+            foreach (int mode in new [] { 0, 1, 2, 3, 4, 5 }) {
+                var order = new List<string>(); Exception caught = null;
+                try {
+                    CompleteEntryHost(retain => {
+                        order.Add("process-cleanup"); retain("fixed-metadata");
+                        if (mode == 1 || mode == 5) throw operation;
+                        return Success.Replace("WINDOWS_SELF_ACTIVATION", Label(SelfActivationRole.ExplicitId2)).TrimEnd('\n');
+                    }, () => { order.Add("lease-close"); if (mode == 2 || mode == 5) throw cleanup; },
+                    line => { bool metadata = line == "fixed-metadata"; order.Add(metadata ? "metadata" : "positive-report");
+                        if (mode == (metadata ? 3 : 4)) throw reporting;
+                    }, () => order.Add("latch"));
+                } catch (Exception failure) { caught = failure; }
+                Need(String.Join(",", order) == (mode == 0 ? "process-cleanup,lease-close,metadata,positive-report,latch" :
+                    mode == 3 ? "process-cleanup,lease-close,metadata" : mode == 4 ? "process-cleanup,lease-close,metadata,positive-report" : "process-cleanup,lease-close"));
+                if (mode == 0) Need(caught == null);
+                if (mode == 1 || mode == 2 || mode == 3 || mode == 4) Need(Object.ReferenceEquals(caught, mode == 1 ? operation : mode == 2 ? cleanup : reporting));
+                if (mode == 5) {
+                    var group = caught as AggregateException;
+                    Need(group != null && group.InnerExceptions.Count == 2 && Object.ReferenceEquals(group.InnerExceptions[0], operation) && Object.ReferenceEquals(group.InnerExceptions[1], cleanup));
+                }
+            }
+        }
         internal static void RequireKnownRole(SelfActivationRole role)
         {
             if (role != SelfActivationRole.Original && role != SelfActivationRole.Manual && role != SelfActivationRole.ExplicitId2)

@@ -156,9 +156,10 @@ namespace ScientificSecurity
         bool eventCreator, eventFirst;
         bool stopped, initial, changed, restored, invalidated, alive = true;
         internal ActivationBoundaryTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId,
-            string executable, string imageDigest, Action<string> output, bool callback = false)
+            string executable, string imageDigest, Action<string> output, bool callback = false, bool entry = false)
         {
-            moduleCallback = callback;
+            if (callback && entry) throw new ArgumentException("activation observation roles cannot overlap");
+            moduleCallback = callback; entryOnly = entry;
             Need(IntPtr.Size == 8 && Marshal.SizeOf(typeof(MemoryInfo)) == 48 &&
                 processHandle != IntPtr.Zero && threadHandle != IntPtr.Zero);
             process = processHandle; thread = threadHandle; pid = processId; tid = threadId;
@@ -206,6 +207,7 @@ namespace ScientificSecurity
         { return state == 1 && !seen && eventThread == creator && first; }
         internal void Stop(uint eventPid, uint eventThread, uint kind, bool cleanup = false)
         {
+            if (entryOnly) { EntryStop(eventPid, eventThread, kind, cleanup); return; }
             if (moduleCallback) {
                 stopped = false; // A rejected foreign stop must never authorize creator-context access.
                 if (cleanup || eventPid != pid) Invalidate();
@@ -285,6 +287,7 @@ namespace ScientificSecurity
         }
         internal void Creation(IntPtr file, IntPtr imageBase)
         {
+            if (entryOnly) { EntryCreation(file, imageBase); return; }
             if (moduleCallback) { CallbackCreation(file, imageBase); return; }
             Need(stage == 0 && stopped && alive);
             fixture = KernelImage.FromActivationCreation(file, imageBase, path, digest);
@@ -307,6 +310,7 @@ namespace ScientificSecurity
         { eventCode = code; eventCreator = eventThread == tid; eventFirst = first; }
         internal bool AcceptSoftware(uint eventThread, uint code, bool first)
         {
+            if (entryOnly) return EntrySoftware(eventThread, code, first);
             if (moduleCallback) return CallbackSoftware(eventThread, code, first);
             if (code != 0x80000003) return false;
             Check(Software(stage, initial, eventThread, tid, first), "software-stage");
@@ -317,6 +321,7 @@ namespace ScientificSecurity
         }
         internal bool SingleStep(uint eventThread, uint code, bool first, IntPtr exceptionAddress)
         {
+            if (entryOnly) return EntrySingleStep(eventThread, code, first, exceptionAddress);
             if (moduleCallback) return CallbackSingleStep(eventThread, code, first, exceptionAddress);
             if (code != 0x80000004) return false;
             Check(!invalidated && stage >= 1 && stage <= 4 && first && eventThread == tid && original != null, "hardware-stage");
@@ -373,7 +378,7 @@ namespace ScientificSecurity
             }
         }
         internal void Invalidate() { invalidated = true; }
-        internal void RequireComplete() { Need(moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated)); }
+        internal void RequireComplete() { Need(entryOnly ? EntryComplete() : moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated)); }
         internal bool RestorationAllowed { get { return changed && alive && stopped; } }
         internal void Restore()
         {
@@ -387,6 +392,7 @@ namespace ScientificSecurity
             alive = changed = stopped = false;
             if (original != null) Array.Clear(original, 0, original.Length);
             Array.Clear(addresses, 0, addresses.Length); Array.Clear(enabled, 0, enabled.Length);
+            if (entryOnly) { entryDestroyed = true; return; }
             emit("phase=activation-cleanup state_destroyed=True restored_claimed=False");
         }
     }
