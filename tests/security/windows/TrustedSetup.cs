@@ -13,6 +13,13 @@ namespace ScientificSecurity
     public static class TrustedSetup
     {
         public static string Run(string executable, string[] arguments, string cwd)
+        { return RunFixed(executable, arguments, cwd, false); }
+        internal static string RunSelfActivation(string python)
+        {
+            string executable = SelfActivationFixture.PreparedImage(python);
+            return RunFixed(executable, new string[0], Path.GetDirectoryName(executable), true);
+        }
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation)
         {
             if (!Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd))
                 throw new ArgumentException("trusted setup requires fully qualified executable and working directory");
@@ -20,12 +27,13 @@ namespace ScientificSecurity
             cwd = Path.GetFullPath(cwd);
             string name = Path.GetFileName(executable).ToLowerInvariant();
             bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe" }.Contains(name);
-            if (compilerPreparation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
-            if (!compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
+            if (selfActivation) RequireSelfLaunch(executable, arguments, cwd);
+            if (compilerPreparation || selfActivation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
+            if (!selfActivation && !compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
             bool executableExists = File.Exists(executable), cwdExists = Directory.Exists(cwd);
-            Console.Out.WriteLine(name == "dumpbin.exe" ?
-                "WINDOWS_SETUP_PATH tool=dumpbin.exe executable_exists=" + executableExists + " cwd_exists=" + cwdExists :
+            Console.Out.WriteLine(name == "dumpbin.exe" || selfActivation ?
+                "WINDOWS_SETUP_PATH tool=" + name + " executable_exists=" + executableExists + " cwd_exists=" + cwdExists :
                 "WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd)
                 + " executable_exists=" + executableExists + " cwd_exists=" + cwdExists);
             Console.Out.Flush();
@@ -36,15 +44,29 @@ namespace ScientificSecurity
             Capture output = null, error = null;
             var child = new Native.ProcessInfo(); bool started = false, resumed = false;
             Exception primaryFailure = null;
+            var clock = new Stopwatch();
             try
             {
                 EmitStage(name, "prepare");
                 job = Native.CreateJobObject(IntPtr.Zero, null); Native.Check(job != IntPtr.Zero, "create trusted setup job");
                 var limits = new Native.ExtendedLimits();
-                limits.basic.flags = 0x2000 | 8 | 4; limits.basic.processes = 16;
-                limits.basic.jobTime = 60L * 10000000L;
+                limits.basic.flags = 0x2000 | 8 | 4; limits.basic.processes = selfActivation ? 1U : 16U;
+                limits.basic.jobTime = (selfActivation ? 10L : 60L) * 10000000L;
+                if (selfActivation) {
+                    limits.basic.flags |= 0x200 | 0x100;
+                    limits.processMemory = new UIntPtr(384UL * 1024 * 1024);
+                    limits.jobMemory = new UIntPtr(512UL * 1024 * 1024);
+                }
                 Native.SetJob(job, 9, limits);
-                output = new Capture(); error = new Capture();
+                if (selfActivation) {
+                    Native.SetJob(job, 15, new Native.CpuLimits { flags = 5, rate = 1000 });
+                    var actual = Native.QueryJob<Native.ExtendedLimits>(job, 9);
+                    var cpu = Native.QueryJob<Native.CpuLimits>(job, 15);
+                    if (actual.basic.flags != limits.basic.flags || actual.basic.processes != 1 || actual.basic.jobTime != limits.basic.jobTime ||
+                        actual.processMemory != limits.processMemory || actual.jobMemory != limits.jobMemory || cpu.flags != 5 || cpu.rate != 1000)
+                        throw new InvalidOperationException("fixed host activation Job limits differ");
+                }
+                output = new Capture(selfActivation); error = new Capture(selfActivation);
                 var sa = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), inherit = 1 };
                 input = Native.CreateFileW("NUL", 0x80000000, 3, ref sa, 3, 0x80, IntPtr.Zero);
                 Native.Check(input != Native.InvalidHandle, "open trusted setup stdin");
@@ -61,7 +83,7 @@ namespace ScientificSecurity
                 startup.attributes = attrs; startup.startup.flags = 0x100; startup.startup.input = input;
                 startup.startup.output = output.Writer; startup.startup.error = error.Writer;
                 string command = String.Join(" ", new [] { executable }.Concat(arguments).Select(Quote));
-                if (compilerPreparation) {
+                if (compilerPreparation || selfActivation) {
                     string systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
                     if (String.IsNullOrEmpty(systemRoot) || !Path.IsPathFullyQualified(systemRoot))
                         throw new InvalidOperationException("compiler setup requires an absolute trusted Windows root");
@@ -80,17 +102,21 @@ namespace ScientificSecurity
                 }
                 EmitStage(name, "create-before");
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
-                    true, Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
+                    true, selfActivation ? SelfCreationFlags() : Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
                     environment, cwd, ref startup, out child),
-                    "create suspended trusted setup process tool=" + name + (name == "dumpbin.exe" ? "" : " cwd=" + cwd)); started = true;
+                    "create suspended trusted setup process tool=" + name + (name == "dumpbin.exe" || selfActivation ? "" : " cwd=" + cwd)); started = true;
                 EmitStage(name, "create-after"); EmitStage(name, "assign-before");
                 Native.Check(Native.AssignProcessToJobObject(job, child.process), "own trusted setup process before resume");
                 EmitStage(name, "assign-after"); EmitStage(name, "resume-before");
+                if (selfActivation) clock.Start();
                 if (Native.ResumeThread(child.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume trusted setup process");
                 resumed = true; EmitStage(name, "resume-after");
-                output.CloseWriter(); error.CloseWriter(); Native.CloseHandle(input); input = IntPtr.Zero;
-                var clock = Stopwatch.StartNew(); long previous = 0; double progress = 0;
+                output.CloseWriter(); error.CloseWriter();
+                if (selfActivation) { IntPtr owned = input; input = IntPtr.Zero; Native.Check(Native.CloseHandle(owned), "close fixed host activation stdin"); }
+                else { Native.CloseHandle(input); input = IntPtr.Zero; }
+                if (!selfActivation) clock.Start();
+                long previous = 0; double progress = 0;
                 uint wait; bool firstWait = true;
                 while ((wait = Native.WaitForSingleObject(child.process, 100)) == 0x102)
                 {
@@ -98,8 +124,8 @@ namespace ScientificSecurity
                     long count = output.Length() + error.Length();
                     if (count > 1048576) throw new InvalidOperationException("trusted setup output exceeded 1 MiB");
                     if (count != previous) { previous = count; progress = clock.Elapsed.TotalSeconds; }
-                    if (clock.Elapsed.TotalSeconds > 60 || clock.Elapsed.TotalSeconds - progress > 20)
-                        throw new TimeoutException("trusted setup command exceeded wall=60s idle=20s");
+                    if (clock.Elapsed.TotalSeconds > (selfActivation ? 10 : 60) || clock.Elapsed.TotalSeconds - progress > 20)
+                        throw new TimeoutException(selfActivation ? "fixed host activation exceeded 10 seconds" : "trusted setup command exceeded wall=60s idle=20s");
                 }
                 if (firstWait) EmitStage(name, "wait-first");
                 EmitStage(name, "wait-complete");
@@ -108,6 +134,10 @@ namespace ScientificSecurity
                 EmitStage(name, "reap-before"); Reap(job); EmitStage(name, "reap-after");
                 string text = output.Read(), diagnostics = error.Read();
                 EmitStage(name, "capture-after");
+                if (selfActivation) {
+                    if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed host activation exceeded 10 seconds");
+                    return SelfActivationFixture.Result(exit, text, diagnostics);
+                }
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(diagnostics) > 1048576)
                     throw new InvalidOperationException("combined trusted setup output exceeded 1 MiB");
                 if (name == "dumpbin.exe" && diagnostics.Length != 0)
@@ -121,20 +151,37 @@ namespace ScientificSecurity
             {
                 FinishCleanup(primaryFailure,
                     () => EmitStage(name, "cleanup-before"),
-                    () => { if (started && !resumed) Native.TerminateProcess(child.process, 125); },
+                    () => { if (started && !resumed) {
+                        bool terminated = Native.TerminateProcess(child.process, 125);
+                        if (selfActivation) Native.Check(terminated, "terminate suspended fixed host activation");
+                    } },
                     () => { if (job != IntPtr.Zero) Reap(job); },
+                    () => { if (selfActivation && started) Native.Check(Native.WaitForSingleObject(child.process, 0) == 0, "qualify fixed host activation process destruction"); },
                     () => { if (output != null) output.Dispose(); },
                     () => { if (error != null) error.Dispose(); },
-                    () => { if (child.thread != IntPtr.Zero) Native.CloseHandle(child.thread); },
-                    () => { if (child.process != IntPtr.Zero) Native.CloseHandle(child.process); },
-                    () => { if (input != IntPtr.Zero && input != Native.InvalidHandle) Native.CloseHandle(input); },
+                    () => { if (child.thread != IntPtr.Zero) CloseOwned(child.thread, selfActivation); },
+                    () => { if (child.process != IntPtr.Zero) CloseOwned(child.process, selfActivation); },
+                    () => { if (input != IntPtr.Zero && input != Native.InvalidHandle) CloseOwned(input, selfActivation); },
                     () => { if (attrs != IntPtr.Zero) Native.DeleteProcThreadAttributeList(attrs); },
                     () => { if (attrs != IntPtr.Zero) Marshal.FreeHGlobal(attrs); },
                     () => { if (list != IntPtr.Zero) Marshal.FreeHGlobal(list); },
                     () => { if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment); },
-                    () => { if (job != IntPtr.Zero) Native.CloseHandle(job); },
+                    () => { if (job != IntPtr.Zero) CloseOwned(job, selfActivation); },
                     () => EmitStage(name, "cleanup-after"));
             }
+        }
+        static void CloseOwned(IntPtr handle, bool strict)
+        {
+            bool closed = Native.CloseHandle(handle);
+            if (strict) Native.Check(closed, "close fixed host activation handle");
+        }
+        static uint SelfCreationFlags()
+        { return Native.ExtendedStartup | Native.Suspended | Native.UnicodeEnvironment | 8U; }
+        static void RequireSelfLaunch(string executable, string[] arguments, string cwd)
+        {
+            if (arguments == null || arguments.Length != 0 || Path.GetFileName(executable) != "startup-self-activation.exe" ||
+                Path.GetDirectoryName(executable) != cwd || Path.GetFileName(cwd) != "python")
+                throw new ArgumentException("unsupported fixed host activation launch");
         }
         static void FinishCleanup(Exception primary, params Action[] actions)
         {
@@ -149,7 +196,7 @@ namespace ScientificSecurity
         }
         static string Stage(string tool, string stage)
         {
-            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(tool) ||
+            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe" }.Contains(tool) ||
                 !new [] { "prepare", "create-before", "create-after", "assign-before", "assign-after", "resume-before", "resume-after",
                     "wait-first", "wait-complete", "reap-before", "reap-after", "capture-after", "cleanup-before", "cleanup-after" }.Contains(stage))
                 throw new InvalidOperationException("unsupported trusted setup stage label");
@@ -161,6 +208,25 @@ namespace ScientificSecurity
         { writer.WriteLine(Stage(tool, stage)); writer.Flush(); }
         public static void CheckValidation()
         {
+            Capture.CheckStrictCleanup();
+            string image = Path.Combine(Path.GetFullPath("."), "python", "startup-self-activation.exe");
+            RequireSelfLaunch(image, new string[0], Path.GetDirectoryName(image));
+            if (SelfCreationFlags() != 0x0008040C || Stage("startup-self-activation.exe", "create-before") !=
+                "WINDOWS_SETUP_STAGE tool=startup-self-activation.exe stage=create-before")
+                throw new InvalidOperationException("fixed host activation launch contract differs");
+            foreach (Action invalid in new Action[] {
+                () => RequireSelfLaunch(image, new [] { "private-sentinel" }, Path.GetDirectoryName(image)),
+                () => RequireSelfLaunch(image, new string[0], Path.GetDirectoryName(Path.GetDirectoryName(image))),
+                () => RequireSelfLaunch(Path.ChangeExtension(image, ".dll"), new string[0], Path.GetDirectoryName(image)),
+                () => RequireSelfLaunch(image, null, Path.GetDirectoryName(image))
+            }) {
+                bool refused = false;
+                try { invalid(); } catch (ArgumentException failure) {
+                    if (failure.Message.Contains("private-sentinel")) throw;
+                    refused = true;
+                }
+                if (!refused) throw new InvalidOperationException("fixed host activation accepted an unrelated launch");
+            }
             if (Stage("rc.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=rc.exe stage=create-before")
                 throw new InvalidOperationException("resource compiler stage literal differs");
             if (Stage("csc.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=csc.exe stage=create-before")

@@ -61,6 +61,13 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, 0, false, 3, expectedExit);
         }
+        internal static string ObserveSelfActivation(string python, string root, string scratch, string powershell,
+                                                    string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
+        {
+            SelfActivationFixture.RequireHostPositive(python);
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, false, false, false, expectedRegistryStatus, false, 0, null, true);
+        }
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
@@ -87,9 +94,11 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false)
         {
             bool callback = RequireModuleRole(moduleRole, expectedRegistryStatus, callbackExit);
+            if (selfActivation) SelfActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone,
+                activationProbe, activationTrace, observeExit, defaultActivation, moduleRole != 0);
             if (moduleRole != 0) ModuleActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, observeExit, defaultActivation);
             if (defaultActivation) DefaultActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, observeExit);
             if (observeExit && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe || activationTrace))
@@ -134,6 +143,11 @@ namespace ScientificSecurity
                 arguments = new List<string> { executable }; launchCwd = Path.GetDirectoryName(executable);
                 phase = callback ? "module-callback-trace" : (moduleRole == 2 ? "module-id2" : "module-plain");
             }
+            if (selfActivation) {
+                executable = SelfActivationFixture.PreparedImage(python);
+                arguments = new List<string> { executable };
+                phase = "self-activation";
+            }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
             var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
@@ -160,6 +174,7 @@ namespace ScientificSecurity
             {
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
+                if (selfActivation) activationLease = SelfActivationFixture.Hold(python);
                 if (moduleRole != 0) activationLease = ModuleActivationFixture.Hold(python, moduleRole >= 2);
                 job = Native.CreateJobObject(IntPtr.Zero, null);
                 Native.Check(job != IntPtr.Zero, "create owned job");
@@ -190,7 +205,7 @@ namespace ScientificSecurity
                 IntPtr lpac = Marshal.AllocHGlobal(4); values.Add(lpac); Marshal.WriteInt32(lpac, 1);
                 Attribute(attrs, 0x2000F, lpac, 4);
                 var sa = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), inherit = 1 };
-                outputCapture = new Capture(); errorCapture = new Capture();
+                outputCapture = new Capture(selfActivation); errorCapture = new Capture(selfActivation);
                 IntPtr output = outputCapture.Writer, error = errorCapture.Writer;
                 IntPtr input = Native.CreateFileW("NUL", 0x80000000, 3, ref sa, 3, 0x80, IntPtr.Zero);
                 Native.Check(input != Native.InvalidHandle, "open standard input"); handles.Add(input);
@@ -248,12 +263,17 @@ namespace ScientificSecurity
                     string metadata = TokenDefaultMetadata.Observe(process.process);
                     Console.Out.WriteLine(metadata); Console.Out.Flush();
                 }
-                if (activationProbe || defaultActivation || moduleRole != 0) activationClock.Start();
+                if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
-                foreach (IntPtr handle in handles) Native.CloseHandle(handle);
-                handles.Clear(); outputCapture.CloseWriter(); errorCapture.CloseWriter();
+                if (selfActivation) {
+                    while (handles.Count != 0) {
+                        IntPtr owned = handles[handles.Count - 1]; handles.RemoveAt(handles.Count - 1);
+                        Native.Check(Native.CloseHandle(owned), "close fixed contained activation stdin");
+                    }
+                } else { foreach (IntPtr handle in handles) Native.CloseHandle(handle); handles.Clear(); }
+                outputCapture.CloseWriter(); errorCapture.CloseWriter();
                 if (loader != null) {
                     callbackStarted = callback;
                     uint tracedExit = loader.Observe();
@@ -273,7 +293,7 @@ namespace ScientificSecurity
                 long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
                 {
-                    if ((activationProbe || defaultActivation || moduleRole != 0) && activationClock.Elapsed.TotalSeconds > 10)
+                    if ((activationProbe || defaultActivation || moduleRole != 0 || selfActivation) && activationClock.Elapsed.TotalSeconds > 10)
                         throw new TimeoutException("fixed child activation exceeded 10 seconds");
                     long length = outputCapture.Length() + errorCapture.Length();
                     if (length > 1048576) throw new InvalidOperationException("worker standard output exceeded 1 MiB");
@@ -301,6 +321,10 @@ namespace ScientificSecurity
                 if (defaultActivation) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed default activation exceeded 10 seconds");
                     return DefaultActivationFixture.Result(exit, text, errors);
+                }
+                if (selfActivation) {
+                    if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed self activation exceeded 10 seconds");
+                    return SelfActivationFixture.Result(exit, text, errors);
                 }
                 if (moduleRole != 0) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed module activation exceeded 10 seconds");

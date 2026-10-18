@@ -133,7 +133,7 @@ namespace ScientificSecurity
             internal CheckResource(string name, List<string> order, Exception failure) { this.name = name; this.order = order; this.failure = failure; }
             public void Dispose() { order.Add(name); if (failure != null) throw failure; }
         }
-        static byte[] Read(FileStream stream, int maximum)
+        internal static byte[] Read(FileStream stream, int maximum)
         {
             Need(stream.Length > 0 && stream.Length <= maximum); stream.Position = 0;
             byte[] bytes = new byte[(int)stream.Length]; int position = 0;
@@ -142,12 +142,12 @@ namespace ScientificSecurity
                 Need(stream.ReadByte() == -1); return bytes;
             } catch { Array.Clear(bytes, 0, bytes.Length); throw; }
         }
-        static string Digest(byte[] bytes)
+        internal static string Digest(byte[] bytes)
         { using (var hash = SHA256.Create()) return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); }
-        static void Same(FileStream stream, byte[] expected)
+        internal static void Same(FileStream stream, byte[] expected)
         { byte[] actual = Read(stream, 1048576); try { Need(actual.SequenceEqual(expected)); } finally { Array.Clear(actual, 0, actual.Length); } }
-        static FileStream Open(string path) { NativeFixture.Plain(path); return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); }
-        static FileStream Create(string path, byte[] bytes)
+        internal static FileStream Open(string path) { NativeFixture.Plain(path); return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); }
+        internal static FileStream Create(string path, byte[] bytes)
         {
             DefaultActivationFixture.Missing(path);
             using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) { output.Write(bytes, 0, bytes.Length); output.Flush(true); Same(output, bytes); }
@@ -253,14 +253,14 @@ namespace ScientificSecurity
                 } finally { foreach (byte[] bytes in new [] { source, payload, host, dll }) if (bytes != null) Array.Clear(bytes, 0, bytes.Length); }
             });
         }
-        static IDisposable Acquire(Func<IDisposable>[] opens, Action<List<IDisposable>> qualify)
+        internal static IDisposable Acquire(Func<IDisposable>[] opens, Action<List<IDisposable>> qualify)
         {
             var held = new List<IDisposable>(); Exception primary = null;
             try { foreach (var open in opens) held.Add(open()); qualify(held); var lease = new Lease(held); held = null; return lease; }
             catch (Exception error) { primary = error; throw; }
             finally { if (held != null) Finish(primary, held, new List<byte[]>()); }
         }
-        static void Finish(Exception primary, List<IDisposable> held, List<byte[]> buffers)
+        internal static void Finish(Exception primary, List<IDisposable> held, List<byte[]> buffers)
         {
             var failures = new List<Exception>();
             for (int index = held.Count - 1; index >= 0; index--) try { held[index].Dispose(); } catch (Exception error) { failures.Add(error); }

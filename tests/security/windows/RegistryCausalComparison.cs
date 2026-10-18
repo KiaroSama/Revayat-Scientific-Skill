@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ScientificSecurity
 {
@@ -65,7 +66,9 @@ namespace ScientificSecurity
                     powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected));
                 uint exit = ObserveStartup(condition,
                     () => Sandbox.ObserveDefaultActivation(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected),
-                    () => ObserveModules(condition,
+                    () => ObserveSelf(condition,
+                        () => Sandbox.ObserveSelfActivation(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected),
+                        () => ObserveModules(condition,
                         manifest => Sandbox.ObserveModuleActivation(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected, manifest),
                         () => {
                             if (condition == "modified") start = DateTime.UtcNow;
@@ -76,6 +79,7 @@ namespace ScientificSecurity
                         }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); },
                         expectedExit => Sandbox.ObserveModuleCallback(python, root, scratch, powershell, chromium, moniker,
                             profileFolder, tcpPort, udpPort, expectedExit), RetainCallbackFailure),
+                        line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
                     line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
                 Console.Out.WriteLine(Condition(condition, activation, exit));
                 Console.Out.Flush();
@@ -85,6 +89,46 @@ namespace ScientificSecurity
                 return new Trial(lease.Dispose, lease.DeferRecovery);
             }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
                 () => StartupActivationEvents.Observe(python, start, end));
+        }
+        static uint ObserveSelf(string condition, Func<string> control, Func<uint> later, Action<string> emit)
+        {
+            string result = control(); // Result and cleanup must both finish before later module or Python observations.
+            emit(SelfActivationFixture.Condition(condition, result));
+            return later();
+        }
+        static void CheckSelfOrdering()
+        {
+            const string success = "WINDOWS_SELF_ACTIVATION entry_reached=True created=True win32_error=0x00000000";
+            var order = new List<string>(); int visits = 0;
+            uint exit = AfterRestoration(() => Execute(expected => {
+                string condition = new [] { "original", "modified", "restored" }[visits++];
+                uint code = ObserveStartup(condition, () => { order.Add(condition + ":default"); return "entry_observed=True exit=0x00000000"; },
+                    () => ObserveSelf(condition, () => { order.Add(condition + ":self-clean"); return success; },
+                        () => { order.Add(condition + ":modules-ordinary"); return 0xC0000022; }, _ => order.Add(condition + ":self-emit")),
+                    _ => order.Add(condition + ":default-emit"));
+                return new Observation { activation = ActivationDenied, exit = code };
+            }, () => { order.Add("begin"); return new Trial(() => order.Add("restore"), () => order.Add("defer")); }, _ => order.Add("comparison")), () => order.Add("query"));
+            Need(exit == 0xC0000022 && String.Join(",", order) ==
+                "original:default,original:default-emit,original:self-clean,original:self-emit,original:modules-ordinary,begin," +
+                "modified:default,modified:default-emit,modified:self-clean,modified:self-emit,modified:modules-ordinary,restore," +
+                "restored:default,restored:default-emit,restored:self-clean,restored:self-emit,restored:modules-ordinary,comparison,query");
+            foreach (int mode in new [] { 0, 1, 2 }) {
+                int observed = 0, later = 0, restores = 0, deferred = 0, queries = 0; Exception caught = null;
+                Exception primary = mode == 0 ? (Exception)new InvalidOperationException("fixed self operation") : Capture.CheckStrictCleanup();
+                Need(primary != null);
+                try {
+                    AfterRestoration(() => Execute(_ => {
+                        string condition = ++observed == 1 ? "original" : "modified";
+                        uint code = ObserveSelf(condition, () => {
+                            if (observed == 2 && mode != 2) throw primary;
+                            return observed == 2 ? "private-sentinel" : success;
+                        }, () => { later++; return 0xC0000022; }, _line => { });
+                        return new Observation { activation = ActivationDenied, exit = code };
+                    }, () => new Trial(() => restores++, () => deferred++), _line => { }), () => queries++);
+                } catch (Exception failure) { caught = failure; }
+                Need(observed == 2 && later == 1 && restores == 0 && deferred == 1 && queries == 0 &&
+                    (mode == 2 ? caught is InvalidOperationException : Object.ReferenceEquals(caught, primary)));
+            }
         }
         static uint ObserveStartup(string condition, Func<string> control, Func<uint> ordinary, Action<string> emit)
         {
@@ -288,6 +332,7 @@ namespace ScientificSecurity
                 Need(refused && !admitted);
             }
             CheckStartupOrdering();
+            CheckSelfOrdering();
             CheckModuleOrdering();
             CheckCallbackOrdering();
             var primary = new InvalidOperationException("fixed operation"); var recovery = new InvalidOperationException("fixed recovery");
