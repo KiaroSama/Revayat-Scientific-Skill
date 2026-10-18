@@ -26,9 +26,16 @@ namespace ScientificSecurity
             var payload = new byte[metadata.Item2]; Array.Copy(bytes, offset, payload, 0, payload.Length);
             return Tuple.Create(metadata.Item1, payload);
         }
+        internal static Tuple<ushort, byte[]> ManualManifest(byte[] bytes)
+        {
+            var image = new KernelImage(bytes, 1, "fixed-manual-manifest"); int offset;
+            var metadata = image.Manifest(true, 101, out offset);
+            var payload = new byte[metadata.Item2]; Array.Copy(bytes, offset, payload, 0, payload.Length);
+            return Tuple.Create(metadata.Item1, payload);
+        }
         Tuple<ushort, uint> Manifest(bool sole, uint resource, out int offset)
         {
-            Need(resource == 1 || resource == 2);
+            Need(resource == 1 || resource == 2 || resource == 101 && sole);
             ulong optional = (ulong)U32(0x3C) + 24;
             uint rva = U32(optional + 128), size = U32(optional + 132);
             Need(rva != 0 && size >= 16 && size <= 1048576);

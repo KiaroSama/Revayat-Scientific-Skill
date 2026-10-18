@@ -68,6 +68,13 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, expectedRegistryStatus, false, 0, null, true);
         }
+        internal static string ObserveManualActivation(string python, string root, string scratch, string powershell,
+                                                      string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
+        {
+            SelfActivationFixture.RequireHostPositive(python, true);
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, false, false, false, expectedRegistryStatus, false, 0, null, true, true);
+        }
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
@@ -94,8 +101,9 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, bool manualActivation = false)
         {
+            if (manualActivation && !selfActivation) throw new ArgumentException("manual activation requires the fixed self role");
             bool callback = RequireModuleRole(moduleRole, expectedRegistryStatus, callbackExit);
             if (selfActivation) SelfActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone,
                 activationProbe, activationTrace, observeExit, defaultActivation, moduleRole != 0);
@@ -144,9 +152,9 @@ namespace ScientificSecurity
                 phase = callback ? "module-callback-trace" : (moduleRole == 2 ? "module-id2" : "module-plain");
             }
             if (selfActivation) {
-                executable = SelfActivationFixture.PreparedImage(python);
+                executable = SelfActivationFixture.PreparedImage(python, manualActivation);
                 arguments = new List<string> { executable };
-                phase = "self-activation";
+                phase = manualActivation ? "manual-activation" : "self-activation";
             }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
@@ -174,7 +182,7 @@ namespace ScientificSecurity
             {
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
-                if (selfActivation) activationLease = SelfActivationFixture.Hold(python);
+                if (selfActivation) activationLease = SelfActivationFixture.Hold(python, manualActivation);
                 if (moduleRole != 0) activationLease = ModuleActivationFixture.Hold(python, moduleRole >= 2);
                 job = Native.CreateJobObject(IntPtr.Zero, null);
                 Native.Check(job != IntPtr.Zero, "create owned job");
@@ -324,7 +332,7 @@ namespace ScientificSecurity
                 }
                 if (selfActivation) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed self activation exceeded 10 seconds");
-                    return SelfActivationFixture.Result(exit, text, errors);
+                    return SelfActivationFixture.Result(exit, text, errors, manualActivation);
                 }
                 if (moduleRole != 0) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed module activation exceeded 10 seconds");
