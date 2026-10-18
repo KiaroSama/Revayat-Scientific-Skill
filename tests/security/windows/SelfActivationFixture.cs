@@ -16,6 +16,7 @@ namespace ScientificSecurity
         const string Image = "startup-self-activation.exe";
         const string SourceHash = "d6a12cdd2c9ef78e29c5c43af7527f4d74260a01ca15475b3ad83e6bcc49ca3e";
         const string Success = "WINDOWS_SELF_ACTIVATION entry_reached=True created=True win32_error=0x00000000\n";
+        const string PreCallReceipt = "EXPLICIT_ID2_BEFORE_CALL\n";
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
         sealed class Identity {
             internal string python, source, sourceHash, generated, generatedHash, dll, dllHash, payloadHash, image, imageHash;
@@ -61,10 +62,17 @@ namespace ScientificSecurity
             if (role == SelfActivationRole.Manual)
                 text = ReplaceOnce(text, "context.resource = (const WORD *)2;", "context.resource = (const WORD *)101;");
             text = ReplaceOnce(text, "WINDOWS_SELF_ACTIVATION", Label(role));
+            if (role == SelfActivationRole.ExplicitId2) {
+                text = ReplaceOnce(text, "    output = GetStdHandle((DWORD)-11);", "    written = 0;");
+                text = ReplaceOnce(text, "    context.module = own;",
+                    "    context.module = own;\n    output = GetStdHandle((DWORD)-11);\n" +
+                    "    if (!output || output == (HANDLE)-1 ||\n" +
+                    "        !WriteFile(output, \"EXPLICIT_ID2_BEFORE_CALL\\n\", 25, &written, 0) || written != 25) ExitProcess(122);");
+            }
             byte[] bytes = Utf8.GetBytes(text);
             Need(Digest(bytes) == (role == SelfActivationRole.Manual ?
                 "23c0950197918b9f6e34fe5910d7fedae7c33ad34d38b3b90758bcf815413303" :
-                "7941d72073d3795d637118360ed8da67ea83c606c19450c06825114b879d1d51"));
+                "1d15f2532ba99e4bf0ba66ca6dde536f90c7299b5ad40b853d4cc9b85a15ab7b"));
             return bytes;
         }
         static void Need(bool value)
@@ -81,19 +89,37 @@ namespace ScientificSecurity
             var primary = new InvalidOperationException("fixed self activation contract failed");
             try {
                 emit(Label(role) + "_REFUSAL stage=" + stage + " raw_process_exit=0x" + exit.ToString("X8", CultureInfo.InvariantCulture) +
-                    " stdout_chars=" + (text == null ? -1 : text.Length).ToString(CultureInfo.InvariantCulture) + " stderr_present=" + (errors != null && errors.Length != 0));
+                    " stdout_chars=" + (text == null ? -1 : text.Length).ToString(CultureInfo.InvariantCulture) + " stderr_present=" + (errors != null && errors.Length != 0) +
+                    (role == SelfActivationRole.ExplicitId2 ? " pre_call_receipt_observed=" + ObservedPreCall(text) : ""));
             } catch (Exception reporting) { throw new AggregateException("fixed self activation refusal/reporting failed", primary, reporting); }
             throw primary;
+        }
+        static bool ObservedPreCall(string text)
+        {
+            if (text == null) return false;
+            int end = text.IndexOf('\n');
+            return end == 24 && String.Equals(text.Substring(0, end + 1), PreCallReceipt, StringComparison.Ordinal);
+        }
+        static Match Completed(string text, SelfActivationRole role)
+        { return Regex.Match(text, @"\A" + Label(role) + @" entry_reached=True created=(True|False) win32_error=0x([0-9A-F]{8})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)); }
+        static bool Consistent(Match match)
+        {
+            uint error = UInt32.Parse(match.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            return (match.Groups[1].Value == "True") == (error == 0);
         }
         static string Result(uint exit, string text, string errors, Action<string> emit, SelfActivationRole role = SelfActivationRole.Original)
         {
             RequireKnownRole(role);
             RequireResult(exit == 0 && text != null && text.Length <= 128 && errors != null && errors.Length == 0, "transport", exit, text, errors, emit, role);
-            var match = Regex.Match(text, @"\A" + Label(role) + @" entry_reached=True created=(True|False) win32_error=0x([0-9A-F]{8})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+            string completed = text;
+            if (role == SelfActivationRole.ExplicitId2) {
+                RequireResult(ObservedPreCall(text), "grammar", exit, text, errors, emit, role);
+                completed = text.Substring(PreCallReceipt.Length);
+            }
+            var match = Completed(completed, role);
             RequireResult(match.Success, "grammar", exit, text, errors, emit, role);
-            uint error = UInt32.Parse(match.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-            RequireResult((match.Groups[1].Value == "True") == (error == 0), "consistency", exit, text, errors, emit, role);
-            return text.TrimEnd('\n');
+            RequireResult(Consistent(match), "consistency", exit, text, errors, emit, role);
+            return completed.TrimEnd('\n');
         }
         static void CheckResultRefusal()
         {
@@ -140,7 +166,10 @@ namespace ScientificSecurity
         internal static string Condition(string condition, string result, SelfActivationRole role = SelfActivationRole.Original)
         {
             Need(condition == "original" || condition == "modified" || condition == "restored");
-            Need(Result(0, result + "\n", "", role) == result);
+            RequireKnownRole(role);
+            Need(result != null && result.Length <= 127);
+            var match = Completed(result + "\n", role);
+            Need(match.Success && Consistent(match));
             return Label(role) + "_CONDITION condition=" + condition + " " + result +
                 " python_equivalence_claimed=False cause_claimed=False production_grant=False";
         }
@@ -160,7 +189,22 @@ namespace ScientificSecurity
                         .Replace("WINDOWS_SELF_ACTIVATION", "WINDOWS_MANUAL_ACTIVATION"));
                     Array.Clear(normalized, 0, normalized.Length);
                     normalized = SourceBytes(text, SelfActivationRole.ExplicitId2);
-                    Need(Utf8.GetString(normalized) == text.Replace("WINDOWS_SELF_ACTIVATION", "WINDOWS_EXPLICIT_ID2_ACTIVATION"));
+                    string explicitText = Utf8.GetString(normalized);
+                    Need(explicitText.Count(c => c == '\n') == 67 &&
+                        Digest(normalized) == "1d15f2532ba99e4bf0ba66ca6dde536f90c7299b5ad40b853d4cc9b85a15ab7b");
+                    string[] explicitLines = explicitText.Split('\n');
+                    Need(explicitLines[45] == "    context.module = own;" &&
+                        explicitLines[46] == "    output = GetStdHandle((DWORD)-11);" &&
+                        explicitLines[47] == "    if (!output || output == (HANDLE)-1 ||" &&
+                        explicitLines[48] == "        !WriteFile(output, \"EXPLICIT_ID2_BEFORE_CALL\\n\", 25, &written, 0) || written != 25) ExitProcess(122);" &&
+                        explicitLines[49] == "    result = CreateActCtxW(&context);" &&
+                        explicitLines[50] == "    error = result == (HANDLE)-1 ? GetLastError() : 0;" &&
+                        explicitLines[52] == "    if (success) ReleaseActCtx(result);" &&
+                        explicitLines[62] == "    written = 0;");
+                    foreach (string literal in new [] { "    context.module = own;", "    output = GetStdHandle((DWORD)-11);", "WINDOWS_SELF_ACTIVATION" }) {
+                        Refused(() => ReplaceOnce("unrelated", literal, "fixed"));
+                        Refused(() => ReplaceOnce(literal + "\n" + literal, literal, "fixed"));
+                    }
                     Refused(() => SourceBytes(text + " ", SelfActivationRole.ExplicitId2));
                     Refused(() => SourceBytes(text.Replace("(const WORD *)2", "(const WORD *)101"), SelfActivationRole.ExplicitId2));
                     Refused(() => SourceBytes(text + " ", SelfActivationRole.Manual));
@@ -176,11 +220,19 @@ namespace ScientificSecurity
         static void CheckExplicitId2Validation()
         {
             const SelfActivationRole role = SelfActivationRole.ExplicitId2;
-            const string success = "WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=True win32_error=0x00000000\n";
-            const string denied = "WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=False win32_error=0x00000005\n";
+            const string marker = "EXPLICIT_ID2_BEFORE_CALL\n";
+            const string completed = "WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=True win32_error=0x00000000";
+            const string failed = "WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=False win32_error=0x00000005";
+            const string success = marker + completed + "\n";
+            const string denied = marker + failed + "\n";
+            Need(marker.Length == 25 && success.Length == 112 && denied.Length == 113);
+            foreach (string text in new [] { marker, marker.Substring(0, 24), completed + "\n", completed + "\n" + marker,
+                marker + success, success + marker, marker + completed, marker.Replace("\n", "\r\n") + completed + "\n",
+                marker + "WINDOWS_MANUAL_ACTIVATION entry_reached=True created=True win32_error=0x00000000\n", success + "x" })
+                Refused(() => Result(0, text, "", role));
             Need(Script(1033, role) == "LANGUAGE 9,1\n2 24 \"explicit-id2-payload.bin\"\n");
             Need(Stem(role) == "explicit-id2" && ImageName(role) == "startup-explicit-id2.exe");
-            Need(Result(0, success, "", role) == success.TrimEnd('\n') && Result(0, denied, "", role) == denied.TrimEnd('\n'));
+            Need(Result(0, success, "", role) == completed.TrimEnd('\n') && Result(0, denied, "", role) == failed.TrimEnd('\n'));
             foreach (SelfActivationRole other in new [] { SelfActivationRole.Original, SelfActivationRole.Manual }) {
                 Refused(() => Result(0, success, "", other));
                 Refused(() => Result(0, Success.Replace("WINDOWS_SELF_ACTIVATION", Label(other)), "", role));
@@ -188,23 +240,45 @@ namespace ScientificSecurity
             foreach (string text in new [] { "", success + success, success.TrimEnd('\n'), success.Replace("\n", "\r\n"),
                 success.Replace("00000000", "00000005"), denied.Replace("00000005", "00000000"), "private-sentinel", new string('x', 129) })
                 Refused(() => Result(0, text, "", role));
-            foreach (uint exit in new uint[] { 1, 120, 121, 0xC0000022, UInt32.MaxValue }) Refused(() => Result(exit, success, "", role));
+            foreach (uint exit in new uint[] { 1, 120, 121, 122, 0xC0000022, UInt32.MaxValue }) Refused(() => Result(exit, success, "", role));
+            Refused(() => Result(0, null, "", role)); Refused(() => Result(0, success, null, role));
             Refused(() => Result(0, success, "private-sentinel", role));
-            int reports = 0; Need(Result(0, success, "", _ => reports++, role) == success.TrimEnd('\n') && reports == 0);
+            int reports = 0; Need(Result(0, success, "", _ => reports++, role) == completed.TrimEnd('\n') && reports == 0);
             string refusal = null;
             Refused(() => Result(0xC0000022, "", "", line => refusal = line, role));
-            Need(refusal == "WINDOWS_EXPLICIT_ID2_ACTIVATION_REFUSAL stage=transport raw_process_exit=0xC0000022 stdout_chars=0 stderr_present=False");
+            Need(refusal == "WINDOWS_EXPLICIT_ID2_ACTIVATION_REFUSAL stage=transport raw_process_exit=0xC0000022 stdout_chars=0 stderr_present=False pre_call_receipt_observed=False");
+            foreach (var item in new [] {
+                Tuple.Create(marker, true), Tuple.Create(marker + "private-sentinel", true),
+                Tuple.Create(marker.Substring(0, 24), false), Tuple.Create("private-sentinel" + marker, false),
+                Tuple.Create(marker.Replace("\n", "\r\n"), false), Tuple.Create(completed + "\n" + marker, false)
+            }) {
+                string metadata = null;
+                Refused(() => Result(0xC0000022, item.Item1, "", line => metadata = line, role));
+                Need(metadata == "WINDOWS_EXPLICIT_ID2_ACTIVATION_REFUSAL stage=transport raw_process_exit=0xC0000022 stdout_chars=" +
+                    item.Item1.Length.ToString(CultureInfo.InvariantCulture) + " stderr_present=False pre_call_receipt_observed=" + item.Item2);
+            }
+            foreach (string text in new [] { success.TrimEnd('\n'), marker, completed + "\n", completed + completed,
+                completed.Replace("True", "true"), completed.Replace("00000000", "00000005"), new string('x', 128) })
+                Refused(() => Condition("original", text, role));
+            Refused(() => Condition("original", null, role));
+            foreach (int length in new [] { 128, 129 }) {
+                string metadata = null;
+                Refused(() => Result(0, new string('x', length), "", line => metadata = line, role));
+                Need(metadata == "WINDOWS_EXPLICIT_ID2_ACTIVATION_REFUSAL stage=" + (length == 128 ? "grammar" : "transport") +
+                    " raw_process_exit=0x00000000 stdout_chars=" + length.ToString(CultureInfo.InvariantCulture) +
+                    " stderr_present=False pre_call_receipt_observed=False");
+            }
             var reporting = new IOException("fixed explicit ID2 reporting"); AggregateException reportingFailure = null;
             try { Result(1, "private-sentinel", "", _ => { throw reporting; }, role); }
             catch (AggregateException failure) { reportingFailure = failure; }
             Need(reportingFailure != null && reportingFailure.InnerExceptions.Count == 2 &&
                 reportingFailure.InnerExceptions[0].Message == "fixed self activation contract failed" && Object.ReferenceEquals(reportingFailure.InnerExceptions[1], reporting));
-            Need(Condition("original", success.TrimEnd('\n'), role) ==
+            Need(Condition("original", completed.TrimEnd('\n'), role) ==
                 "WINDOWS_EXPLICIT_ID2_ACTIVATION_CONDITION condition=original WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=True win32_error=0x00000000 python_equivalence_claimed=False cause_claimed=False production_grant=False");
             Refused(() => Condition("original", Success.TrimEnd('\n'), role));
-            RequireHost(success.TrimEnd('\n'), role); Refused(() => RequireHost(denied.TrimEnd('\n'), role));
+            RequireHost(completed.TrimEnd('\n'), role); Refused(() => RequireHost(failed.TrimEnd('\n'), role));
             var close = Capture.CheckStrictCleanup(); bool accepted = false; Exception caught = null;
-            try { CompleteHost(() => success.TrimEnd('\n'), () => { throw close; }, () => accepted = true, role); }
+            try { CompleteHost(() => completed.TrimEnd('\n'), () => { throw close; }, () => accepted = true, role); }
             catch (Exception failure) { caught = failure; }
             Need(!accepted && Object.ReferenceEquals(caught, close));
             foreach (int invalid in new [] { -1, 3, Int32.MaxValue }) {
