@@ -69,11 +69,13 @@ namespace ScientificSecurity
                 false, false, false, false, false, false, false, expectedRegistryStatus, false, 0, null, true);
         }
         internal static string ObserveManualActivation(string python, string root, string scratch, string powershell,
-                                                      string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
+                                                      string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus, SelfActivationRole role = SelfActivationRole.Manual)
         {
-            SelfActivationFixture.RequireHostPositive(python, true);
+            SelfActivationFixture.RequireKnownRole(role);
+            if (role == SelfActivationRole.Original) throw new ArgumentException("independent activation requires a distinct fixed role");
+            SelfActivationFixture.RequireHostPositive(python, role);
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
-                false, false, false, false, false, false, false, expectedRegistryStatus, false, 0, null, true, true);
+                false, false, false, false, false, false, false, expectedRegistryStatus, false, 0, null, true, role);
         }
         sealed class PreflightExit : InvalidOperationException
         {
@@ -101,9 +103,10 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, bool manualActivation = false)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original)
         {
-            if (manualActivation && !selfActivation) throw new ArgumentException("manual activation requires the fixed self role");
+            SelfActivationFixture.RequireKnownRole(selfRole);
+            if (selfRole != SelfActivationRole.Original && !selfActivation) throw new ArgumentException("activation role requires the fixed self diagnostic");
             bool callback = RequireModuleRole(moduleRole, expectedRegistryStatus, callbackExit);
             if (selfActivation) SelfActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone,
                 activationProbe, activationTrace, observeExit, defaultActivation, moduleRole != 0);
@@ -152,9 +155,9 @@ namespace ScientificSecurity
                 phase = callback ? "module-callback-trace" : (moduleRole == 2 ? "module-id2" : "module-plain");
             }
             if (selfActivation) {
-                executable = SelfActivationFixture.PreparedImage(python, manualActivation);
+                executable = SelfActivationFixture.PreparedImage(python, selfRole);
                 arguments = new List<string> { executable };
-                phase = manualActivation ? "manual-activation" : "self-activation";
+                phase = SelfActivationFixture.Stem(selfRole);
             }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
@@ -182,7 +185,7 @@ namespace ScientificSecurity
             {
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
-                if (selfActivation) activationLease = SelfActivationFixture.Hold(python, manualActivation);
+                if (selfActivation) activationLease = SelfActivationFixture.Hold(python, selfRole);
                 if (moduleRole != 0) activationLease = ModuleActivationFixture.Hold(python, moduleRole >= 2);
                 job = Native.CreateJobObject(IntPtr.Zero, null);
                 Native.Check(job != IntPtr.Zero, "create owned job");
@@ -332,7 +335,7 @@ namespace ScientificSecurity
                 }
                 if (selfActivation) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed self activation exceeded 10 seconds");
-                    return SelfActivationFixture.Result(exit, text, errors, manualActivation);
+                    return SelfActivationFixture.Result(exit, text, errors, selfRole);
                 }
                 if (moduleRole != 0) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed module activation exceeded 10 seconds");
@@ -413,6 +416,12 @@ namespace ScientificSecurity
         { return Native.ExtendedStartup | Native.Suspended | 8U | Native.UnicodeEnvironment | (debug ? 2U : 0U); }
         internal static void CheckCleanupValidation()
         {
+            foreach (int invalid in new [] { -1, 3, Int32.MaxValue }) {
+                bool refused = false;
+                try { ObserveManualActivation(null, null, null, null, null, null, null, 0, 0, 0, (SelfActivationRole)invalid); }
+                catch (ArgumentException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("undefined activation role reached contained launch effects");
+            }
             RequireExit(0, "preflight", false, "", ""); RequireExit(0, "preflight", true, "", "");
             foreach (uint code in new uint[] { 1, 0xC0000022, UInt32.MaxValue }) {
                 bool ordinary = false, typed = false;

@@ -31,11 +31,35 @@ namespace ScientificSecurity
             Put(bytes, 0xB60, 0x1980); Put(bytes, 0xB64, 4);
             byte[] payload = { 1, 2, 3, 4 }; payload.CopyTo(bytes, 0xB80);
             QualifySelfActivation(bytes, 1033, payload);
+            byte[] explicitId2 = (byte[])bytes.Clone(); Put16(explicitId2, 0x98 + 70, 0x0200);
+            QualifySelfActivation(explicitId2, 1033, payload, SelfActivationRole.ExplicitId2);
+            foreach (SelfActivationRole role in new [] { SelfActivationRole.Original, SelfActivationRole.Manual, SelfActivationRole.ExplicitId2 }) {
+                byte[] wrong = (byte[])bytes.Clone();
+                if (role == SelfActivationRole.Manual) Put(wrong, 0xB30, 101);
+                Put16(wrong, 0x98 + 70, role == SelfActivationRole.ExplicitId2 ? (ushort)0 : (ushort)0x0200);
+                bool refused = false;
+                try { QualifySelfActivation(wrong, 1033, payload, role); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            foreach (int invalid in new [] { -1, 3, Int32.MaxValue }) {
+                bool refused = false;
+                try { QualifySelfActivation(bytes, 1033, payload, (SelfActivationRole)invalid); } catch (ArgumentException) { refused = true; }
+                Need(refused);
+            }
+            foreach (uint resource in new uint[] { 1, 3, 16, 101, 65535 }) {
+                byte[] wrong = (byte[])explicitId2.Clone(); Put(wrong, 0xB30, resource); bool refused = false;
+                try { QualifySelfActivation(wrong, 1033, payload, SelfActivationRole.ExplicitId2); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            byte[] wrongBit = (byte[])explicitId2.Clone(); Put16(wrongBit, 0x98 + 70, 0x1000);
+            bool bitRefused = false;
+            try { QualifySelfActivation(wrongBit, 1033, payload, SelfActivationRole.ExplicitId2); } catch (InvalidOperationException) { bitRefused = true; }
+            Need(bitRefused);
             byte[] manual = (byte[])bytes.Clone(); Put(manual, 0xB30, 101);
-            QualifySelfActivation(manual, 1033, payload, true);
+            QualifySelfActivation(manual, 1033, payload, SelfActivationRole.Manual);
             foreach (uint resource in new uint[] { 1, 2, 3, 16, 100, 102, 65535 }) {
                 byte[] wrong = (byte[])manual.Clone(); Put(wrong, 0xB30, resource); bool rejected = false;
-                try { QualifySelfActivation(wrong, 1033, payload, true); } catch (InvalidOperationException) { rejected = true; }
+                try { QualifySelfActivation(wrong, 1033, payload, SelfActivationRole.Manual); } catch (InvalidOperationException) { rejected = true; }
                 Need(rejected);
             }
             bool crossRole = false;
@@ -47,7 +71,7 @@ namespace ScientificSecurity
             Need(crossRole);
             byte[] extra = (byte[])manual.Clone(); Put16(extra, 0xB2E, 2); Put(extra, 0xB30, 2); Put(extra, 0xB38, 101); Put(extra, 0xB3C, 0x80000040);
             crossRole = false;
-            try { QualifySelfActivation(extra, 1033, payload, true); } catch (InvalidOperationException) { crossRole = true; }
+            try { QualifySelfActivation(extra, 1033, payload, SelfActivationRole.Manual); } catch (InvalidOperationException) { crossRole = true; }
             Need(crossRole);
             foreach (Action<byte[]> change in new Action<byte[]>[] {
                 b => Put16(b, 0x96, 0x2002), b => Put16(b, 0x98 + 68, 2), b => Put(b, 0x98 + 16, 0),
@@ -61,18 +85,20 @@ namespace ScientificSecurity
                 b => Put(b, 0x98 + 112, 0x1000), b => Put(b, 0x98 + 112 + 9 * 8, 0x1000),
                 b => Put(b, 0x98 + 112 + 13 * 8, 0x1000), b => Put(b, 0x98 + 112 + 14 * 8, 0x1000)
             }) {
-                foreach (bool manualRole in new [] { false, true }) {
-                    byte[] bad = (byte[])(manualRole ? manual : bytes).Clone(); change(bad); bool refused = false;
-                    try { QualifySelfActivation(bad, 1033, payload, manualRole); } catch (InvalidOperationException) { refused = true; }
+                foreach (SelfActivationRole role in new [] { SelfActivationRole.Original, SelfActivationRole.Manual, SelfActivationRole.ExplicitId2 }) {
+                    byte[] bad = (byte[])(role == SelfActivationRole.Manual ? manual : role == SelfActivationRole.ExplicitId2 ? explicitId2 : bytes).Clone(); change(bad); bool refused = false;
+                    try { QualifySelfActivation(bad, 1033, payload, role); } catch (InvalidOperationException) { refused = true; }
                     Need(refused);
                 }
             }
         }
-        internal static void QualifySelfActivation(byte[] bytes, ushort language, byte[] expected, bool manual = false)
+        internal static void QualifySelfActivation(byte[] bytes, ushort language, byte[] expected, SelfActivationRole role = SelfActivationRole.Original)
         {
+            SelfActivationFixture.RequireKnownRole(role);
             var image = new KernelImage(bytes, 1, "fixed-self-activation");
             image.ChildActivation(SelfActivationImports, true);
-            var manifest = manual ? ManualManifest(bytes) : ModuleManifest(bytes, true);
+            Need(((image.U16((ulong)image.U32(0x3C) + 24 + 70) & 0x0200) != 0) == (role == SelfActivationRole.ExplicitId2));
+            var manifest = role == SelfActivationRole.Manual ? ManualManifest(bytes) : ModuleManifest(bytes, true);
             try { Need(manifest.Item1 == language && manifest.Item2.SequenceEqual(expected)); }
             finally { Array.Clear(manifest.Item2, 0, manifest.Item2.Length); }
         }

@@ -14,21 +14,22 @@ namespace ScientificSecurity
     {
         public static string Run(string executable, string[] arguments, string cwd)
         { return RunFixed(executable, arguments, cwd, false); }
-        internal static string RunSelfActivation(string python, bool manual = false)
+        internal static string RunSelfActivation(string python, SelfActivationRole role = SelfActivationRole.Original)
         {
-            string executable = SelfActivationFixture.PreparedImage(python, manual);
-            return RunFixed(executable, new string[0], Path.GetDirectoryName(executable), true, manual);
+            string executable = SelfActivationFixture.PreparedImage(python, role);
+            return RunFixed(executable, new string[0], Path.GetDirectoryName(executable), true, role);
         }
-        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, bool manual = false)
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original)
         {
+            SelfActivationFixture.RequireKnownRole(role);
             if (!Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd))
                 throw new ArgumentException("trusted setup requires fully qualified executable and working directory");
             executable = Path.GetFullPath(executable);
             cwd = Path.GetFullPath(cwd);
             string name = Path.GetFileName(executable).ToLowerInvariant();
             bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe" }.Contains(name);
-            if (manual && !selfActivation) throw new ArgumentException("manual activation requires the fixed internal launch");
-            if (selfActivation) RequireSelfLaunch(executable, arguments, cwd, manual);
+            if (role != SelfActivationRole.Original && !selfActivation) throw new ArgumentException("activation role requires the fixed internal launch");
+            if (selfActivation) RequireSelfLaunch(executable, arguments, cwd, role);
             if (compilerPreparation || selfActivation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
             if (!selfActivation && !compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
@@ -137,7 +138,7 @@ namespace ScientificSecurity
                 EmitStage(name, "capture-after");
                 if (selfActivation) {
                     if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed host activation exceeded 10 seconds");
-                    return SelfActivationFixture.Result(exit, text, diagnostics, manual);
+                    return SelfActivationFixture.Result(exit, text, diagnostics, role);
                 }
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(diagnostics) > 1048576)
                     throw new InvalidOperationException("combined trusted setup output exceeded 1 MiB");
@@ -178,9 +179,10 @@ namespace ScientificSecurity
         }
         static uint SelfCreationFlags()
         { return Native.ExtendedStartup | Native.Suspended | Native.UnicodeEnvironment | 8U; }
-        static void RequireSelfLaunch(string executable, string[] arguments, string cwd, bool manual = false)
+        static void RequireSelfLaunch(string executable, string[] arguments, string cwd, SelfActivationRole role = SelfActivationRole.Original)
         {
-            if (arguments == null || arguments.Length != 0 || Path.GetFileName(executable) != (manual ? "startup-manual-activation.exe" : "startup-self-activation.exe") ||
+            SelfActivationFixture.RequireKnownRole(role);
+            if (arguments == null || arguments.Length != 0 || Path.GetFileName(executable) != SelfActivationFixture.ImageName(role) ||
                 Path.GetDirectoryName(executable) != cwd || Path.GetFileName(cwd) != "python")
                 throw new ArgumentException("unsupported fixed host activation launch");
         }
@@ -197,7 +199,7 @@ namespace ScientificSecurity
         }
         static string Stage(string tool, string stage)
         {
-            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe", "startup-manual-activation.exe" }.Contains(tool) ||
+            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe", "startup-manual-activation.exe", "startup-explicit-id2.exe" }.Contains(tool) ||
                 !new [] { "prepare", "create-before", "create-after", "assign-before", "assign-after", "resume-before", "resume-after",
                     "wait-first", "wait-complete", "reap-before", "reap-after", "capture-after", "cleanup-before", "cleanup-after" }.Contains(stage))
                 throw new InvalidOperationException("unsupported trusted setup stage label");
@@ -213,16 +215,41 @@ namespace ScientificSecurity
             string image = Path.Combine(Path.GetFullPath("."), "python", "startup-self-activation.exe");
             RequireSelfLaunch(image, new string[0], Path.GetDirectoryName(image));
             string manualImage = Path.Combine(Path.GetDirectoryName(image), "startup-manual-activation.exe");
-            RequireSelfLaunch(manualImage, new string[0], Path.GetDirectoryName(image), true);
+            RequireSelfLaunch(manualImage, new string[0], Path.GetDirectoryName(image), SelfActivationRole.Manual);
             foreach (Action crossRole in new Action[] {
-                () => RequireSelfLaunch(image, new string[0], Path.GetDirectoryName(image), true),
+                () => RequireSelfLaunch(image, new string[0], Path.GetDirectoryName(image), SelfActivationRole.Manual),
                 () => RequireSelfLaunch(manualImage, new string[0], Path.GetDirectoryName(image)),
-                () => RequireSelfLaunch(manualImage, new [] { "private-sentinel" }, Path.GetDirectoryName(image), true),
-                () => RequireSelfLaunch(manualImage, new string[0], Path.GetDirectoryName(Path.GetDirectoryName(image)), true)
+                () => RequireSelfLaunch(manualImage, new [] { "private-sentinel" }, Path.GetDirectoryName(image), SelfActivationRole.Manual),
+                () => RequireSelfLaunch(manualImage, new string[0], Path.GetDirectoryName(Path.GetDirectoryName(image)), SelfActivationRole.Manual)
             }) {
                 bool refused = false; try { crossRole(); } catch (ArgumentException) { refused = true; }
                 if (!refused) throw new InvalidOperationException("fixed activation accepted a different role");
             }
+            string explicitImage = Path.Combine(Path.GetDirectoryName(image), "startup-explicit-id2.exe");
+            RequireSelfLaunch(explicitImage, new string[0], Path.GetDirectoryName(image), SelfActivationRole.ExplicitId2);
+            foreach (SelfActivationRole role in new [] { SelfActivationRole.Original, SelfActivationRole.Manual, SelfActivationRole.ExplicitId2 }) {
+                foreach (string other in new [] { image, manualImage, explicitImage }) {
+                    if (Path.GetFileName(other) == SelfActivationFixture.ImageName(role)) continue;
+                    bool refused = false;
+                    try { RequireSelfLaunch(other, new string[0], Path.GetDirectoryName(image), role); } catch (ArgumentException) { refused = true; }
+                    if (!refused) throw new InvalidOperationException("fixed activation cross-role launch accepted");
+                }
+            }
+            foreach (Action invalid in new Action[] {
+                () => RequireSelfLaunch(explicitImage, null, Path.GetDirectoryName(image), SelfActivationRole.ExplicitId2),
+                () => RequireSelfLaunch(explicitImage, new [] { "private-sentinel" }, Path.GetDirectoryName(image), SelfActivationRole.ExplicitId2),
+                () => RequireSelfLaunch(explicitImage, new string[0], Path.GetDirectoryName(Path.GetDirectoryName(image)), SelfActivationRole.ExplicitId2)
+            }) {
+                bool refused = false; try { invalid(); } catch (ArgumentException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("explicit ID2 activation accepted an unrelated launch");
+            }
+            foreach (int invalid in new [] { -1, 3, Int32.MaxValue }) {
+                bool refused = false;
+                try { RunFixed(null, null, null, true, (SelfActivationRole)invalid); } catch (ArgumentException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("undefined activation role reached launch effects");
+            }
+            if (Stage("startup-explicit-id2.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=startup-explicit-id2.exe stage=create-before")
+                throw new InvalidOperationException("fixed explicit ID2 activation stage differs");
             if (Stage("startup-manual-activation.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=startup-manual-activation.exe stage=create-before")
                 throw new InvalidOperationException("fixed manual activation stage differs");
             if (SelfCreationFlags() != 0x0008040C || Stage("startup-self-activation.exe", "create-before") !=

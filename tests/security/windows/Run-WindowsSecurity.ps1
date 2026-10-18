@@ -371,6 +371,8 @@ try {
     [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
     Write-RunLog INFO 'fixed nonreserved manual activation comparison starts; no target admission or Python causality'
     [ScientificSecurity.ManualActivationComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    Write-RunLog INFO 'fixed explicit ID2 activation comparison starts; automatic lookup disabled only in the distinct diagnostic image'
+    [ScientificSecurity.ManualActivationComparison]::RunExplicitId2($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'reversible fixed registry causal comparison starts; no target admission under intervention'
     $originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'fixed child-process activation comparison starts; never Python causality or admission'
