@@ -79,6 +79,8 @@ namespace ScientificSecurity
             registry.Stop(7, 11, 1, false); Exception restoration = null;
             try { registry.Capture(11, true, new IntPtr(0x8000), 0x10000000); } catch (AggregateException failure) { restoration = failure; }
             Need(restoration != null && restoredAttempts == 2 && !registry.CaptureRestored);
+            Array.Clear(contexts[handleFor(11)], 72, 48);
+            refuse(() => registry.Software(11, true));
             registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
             AggregateException destruction = null;
             try { registry.Destroyed(); } catch (AggregateException failure) { destruction = failure; }
@@ -109,10 +111,10 @@ namespace ScientificSecurity
                     Need(writes == 1 && U64(context, 72) == 0x8000);
                 }
             }
-            foreach (bool captured in new [] { false, true }) {
-                byte[] context = new byte[1232];
+            foreach (bool captured in new [] { false, true }) foreach (bool canonical in new [] { false, true }) {
+                byte[] context = new byte[1232]; int writes = 0;
                 var registry = new ResourceThreads(7, 11, _ => (byte[])context.Clone(),
-                    (_, bytes) => context = (byte[])bytes.Clone(), _ => { }, () => { });
+                    (_, bytes) => { writes++; context = (byte[])bytes.Clone(); }, _ => { }, () => { });
                 registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
                 registry.Stop(7, 11, 6, false); registry.Arm(0x8000); registry.Continued();
                 if (captured) {
@@ -122,10 +124,20 @@ namespace ScientificSecurity
                 }
                 Put(context, 104, 0); Put(context, 112, 0);
                 registry.Stop(7, 11, 1, false); bool rejected = false;
+                if (captured) Put(context, 104, 0x10); // Restored state must still match every DEBUG field.
                 try { registry.Software(11, true); } catch (InvalidOperationException) { rejected = true; }
                 Need(rejected);
-                Put(context, 104, 0xFFFF0FF0); Put(context, 112, captured ? 0UL : 0x401UL);
-                Need(registry.Software(11, true));
+                if (captured) {
+                    int beforeWrites = writes;
+                    Put(context, 104, canonical ? 0xFFFF0FF0UL : 0UL); Need(registry.Software(11, true));
+                    Need(writes == beforeWrites);
+                    rejected = false;
+                    try { registry.Software(11, true); } catch (InvalidOperationException) { rejected = true; }
+                    Need(rejected);
+                } else {
+                    Put(context, 104, 0xFFFF0FF0); Put(context, 112, 0x401);
+                    Need(registry.Software(11, true));
+                }
             }
         }
         static void CheckResourceRefusal()

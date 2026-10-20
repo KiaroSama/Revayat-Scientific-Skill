@@ -149,7 +149,8 @@ namespace ScientificSecurity
                     ulong expected = U64(value.baseline, 112) | (value.changed ? 1UL : 0UL);
                     for (int index = 0; index < 4; index++) ResourceCheck(U64(context, 72 + index * 8) == (index == 0 && value.changed ? site : U64(value.baseline, 72 + index * 8)), "software-address-ownership");
                     bool qualified = site == 0 && !value.changed ? DebugContext.RawDebugEqual(value.baseline, context) :
-                        SoftwareStatus(U64(context, 104), U64(context, 112), expected);
+                        SoftwareStatus(U64(context, 104), U64(context, 112), expected) ||
+                        Captured && BaseEqual && captureRestored && !failed && !value.changed && DebugContext.RawDebugEqual(value.baseline, context);
                     if (!qualified)
                         throw new InvalidOperationException("fixed resource observation refused check=software-control-ownership " +
                             DebugContext.TrapQualifiers(U64(context, 104)) + " raw_dr7=0x" + U64(context, 112).ToString("X16"));
