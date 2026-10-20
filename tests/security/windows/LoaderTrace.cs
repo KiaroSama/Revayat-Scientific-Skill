@@ -62,11 +62,12 @@ namespace ScientificSecurity
         int pythonStringEvents, requestedBytes;
         HardwareTrace hardware;
         ActivationBoundaryTrace activation;
-        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false, bool callback = false, string explicitEntryPython = null)
+        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false, bool callback = false, string explicitEntryPython = null, string automaticResourcePython = null)
         {
-            if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) + (callback ? 1 : 0) + (explicitEntryPython != null ? 1 : 0) > 1)
+            if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) + (callback ? 1 : 0) + (explicitEntryPython != null ? 1 : 0) + (automaticResourcePython != null ? 1 : 0) > 1)
                 throw new ArgumentException("diagnostic roles cannot overlap");
-            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; entryPython = explicitEntryPython; activationMode = activationTrace || callback || EntryMode; moduleCallback = callback;
+            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; entryPython = explicitEntryPython; resourcePython = automaticResourcePython;
+            activationMode = activationTrace || callback || EntryMode || ResourceMode; moduleCallback = callback;
             if (StrictEventOwnership) callbackFiles = new EventCleanupLedger();
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
                 Marshal.SizeOf(typeof(ExceptionInfo)) != 160 || Marshal.OffsetOf(typeof(DebugEvent), "data").ToInt32() != 16 ||
@@ -101,7 +102,8 @@ namespace ScientificSecurity
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
                 child.process = process; child.thread = thread; memoryProcess = lifetimeProcess = process; process = thread = IntPtr.Zero;
                 if (nativeHardware) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
-                if (activationMode) activation = EntryMode ? SelfActivationFixture.EntryObserver(entryPython, child, Emit) :
+                if (activationMode) activation = ResourceMode ? SelfActivationFixture.ResourceObserver(resourcePython, child, Emit, ResourceDeadline) :
+                    EntryMode ? SelfActivationFixture.EntryObserver(entryPython, child, Emit) :
                     moduleCallback ? ModuleActivationFixture.Observer(child, Emit) : ChildActivationFixture.Observer(child, Emit);
             }
             finally {
@@ -153,6 +155,7 @@ namespace ScientificSecurity
             if (pending) throw new InvalidOperationException("loader debug event was not continued");
             if (StrictEventOwnership && callbackFiles.Overflowed)
                 throw new InvalidOperationException("callback event cleanup overflow prevents another receive");
+            if (ResourceMode && activation != null) activation.ResourceClearEpoch();
             if (!WaitForDebugEventEx(out current, milliseconds)) {
                 int error = Marshal.GetLastWin32Error();
                 if (error == 121) return false;
@@ -168,7 +171,8 @@ namespace ScientificSecurity
         {
             ThreadCheck();
             if (!pending) return;
-            Native.Check(ContinueDebugEvent(current.pid, current.tid, status), "continue exact owned loader event");
+            Action continuation = () => Native.Check(ContinueDebugEvent(current.pid, current.tid, status), "continue exact owned loader event");
+            if (ResourceMode) resourceContinuation.Run(continuation); else continuation();
             pending = false;
             if (hardware != null) hardware.Continued();
             if (activation != null) activation.Continued();
@@ -435,7 +439,8 @@ namespace ScientificSecurity
                 if (!Receive()) continue;
                 uint status = current.code == 1 ? NotHandled : Continue;
                 if (activation != null) {
-                    if (EntryMode) ObserveEntryEvent(); else ObserveActivationEvent();
+                    if (ResourceMode) ObserveResourceEvent(false, new Action[] { CloseCurrentFile });
+                    else if (EntryMode) ObserveEntryEvent(); else ObserveActivationEvent();
                     continue;
                 }
                 try {
@@ -565,7 +570,10 @@ namespace ScientificSecurity
             if (activation != null) {
                 if (!activationCleanup.IsRunning) throw new InvalidOperationException("activation cleanup deadline was not started");
                 ConfirmActivationDestruction(exited, pending, lifetimeProcess != IntPtr.Zero, activationCleanup.ElapsedMilliseconds,
-                    milliseconds => Native.WaitForSingleObject(lifetimeProcess, milliseconds), activation.Destroyed);
+                    milliseconds => Native.WaitForSingleObject(lifetimeProcess, milliseconds), () => {
+                        activation.Destroyed();
+                        if (ResourceMode) resourceContinuation.RequireClean();
+                    });
                 return;
             }
             // Caller has reaped the Job to zero; the independent duplicate must already be signaled.
@@ -583,6 +591,13 @@ namespace ScientificSecurity
         {
             if (StrictEventOwnership) RequireCallbackEventProcess(current.pid, pid);
             if (activation != null) {
+                if (ResourceMode) {
+                    try { activation.Stop(current.pid, current.tid, current.code, true); ObserveResourceEvent(true, new Action[] {
+                        () => { if (current.code == 3) ReleaseOriginal(ref originalProcess, current.data.createProcess.process); },
+                        () => { if (current.code == 3) ReleaseOriginal(ref originalThread, current.data.createProcess.thread); }, CloseCurrentFile }); }
+                    catch (Exception failure) { failures.Add(failure); }
+                    return;
+                }
                 if (EntryMode) {
                     try { FinalizeEntryEvent(activation, current.code, IntPtr.Zero, true, () => { }, () => exited = true, new Action[] {
                         () => { if (current.code == 3) ReleaseOriginal(ref originalProcess, current.data.createProcess.process); },

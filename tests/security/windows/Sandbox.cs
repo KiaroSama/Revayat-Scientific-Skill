@@ -84,6 +84,13 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, unchecked((int)0xC0000022), false, 0, null, true, SelfActivationRole.ExplicitId2, true);
         }
+        internal static string ObserveAutomaticResource(string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
+        {
+            SelfActivationFixture.RequireResourceHostPositive(python);
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, false, false, false, unchecked((int)0xC0000022), false, 0, null, true, SelfActivationRole.ExplicitId2, false, true);
+        }
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
@@ -110,10 +117,11 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false)
         {
             SelfActivationFixture.RequireKnownRole(selfRole);
-            if (selfEntry && (!selfActivation || selfRole != SelfActivationRole.ExplicitId2)) throw new ArgumentException("entry observation requires fixed ExplicitId2");
+            if (selfEntry && selfResource || (selfEntry || selfResource) && (!selfActivation || selfRole != SelfActivationRole.ExplicitId2))
+                throw new ArgumentException("entry/resource observation requires a separate fixed ExplicitId2 mode");
             if (selfRole != SelfActivationRole.Original && !selfActivation) throw new ArgumentException("activation role requires the fixed self diagnostic");
             bool callback = RequireModuleRole(moduleRole, expectedRegistryStatus, callbackExit);
             if (selfActivation) SelfActivationFixture.RequireRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone,
@@ -186,7 +194,8 @@ namespace ScientificSecurity
             bool started = false, resumed = false, wallExpired = false, callbackStarted = false, entryStarted = false;
             Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
-            LoaderTrace loader = loaderProbe || activationTrace || callback || selfEntry ? new LoaderTrace(nativeFixture, pythonClone, activationTrace, callback, selfEntry ? python : null) : null;
+            LoaderTrace loader = loaderProbe || activationTrace || callback || selfEntry || selfResource ?
+                new LoaderTrace(nativeFixture, pythonClone, activationTrace, callback, selfEntry ? python : null, selfResource ? python : null) : null;
             IDisposable activationLease = null;
             var activationClock = new Stopwatch();
             try
@@ -256,7 +265,7 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 using (OwnedToken restricted = OwnedToken.Create()) {
                     bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, executable, new StringBuilder(command), processAttributes, processAttributes, true,
-                        CreationFlags(loaderProbe || activationTrace || callback || selfEntry),
+                        CreationFlags(loaderProbe || activationTrace || callback || selfEntry || selfResource),
                         env, launchCwd, ref startup, out process);
                     started = created;
                     if (created && loader != null) loader.Arm(process);
@@ -294,9 +303,9 @@ namespace ScientificSecurity
                 } else { foreach (IntPtr handle in handles) Native.CloseHandle(handle); handles.Clear(); }
                 outputCapture.CloseWriter(); errorCapture.CloseWriter();
                 if (loader != null) {
-                    callbackStarted = callback; entryStarted = selfEntry;
+                    callbackStarted = callback; entryStarted = selfEntry || selfResource;
                     uint tracedExit = loader.Observe();
-                    if (selfEntry) {
+                    if (selfEntry || selfResource) {
                         string entryOutput = outputCapture.Read(), entryError = errorCapture.Read();
                         if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed entry child exceeded 10 seconds");
                         return SelfActivationFixture.Result(tracedExit, entryOutput, entryError, SelfActivationRole.ExplicitId2);
@@ -378,7 +387,7 @@ namespace ScientificSecurity
                 });
                 bool reaped = false;
                 AttemptCleanup(cleanupFailures, () => {
-                    if (job != IntPtr.Zero) ReapJob(job, (activationTrace || callback || selfEntry) && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
+                    if (job != IntPtr.Zero) ReapJob(job, (activationTrace || callback || selfEntry || selfResource) && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
                     reaped = true;
                 });
                 bool destroyed = false;
@@ -404,8 +413,8 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("owned package SID cleanup failed"); });
                 AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) Native.Check(Native.CloseHandle(job), "close owned job"); });
                 AttemptCleanup(cleanupFailures, () => { if (activationLease != null) activationLease.Dispose(); });
-                Exception completionFailure = selfEntry ? ExplicitEntryComparison.FinishTrace(primaryFailure, cleanupFailures, entryStarted, destroyed,
-                    loader.EntryMetadata, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }) : CompletionFailure(primaryFailure, cleanupFailures, callbackStarted, destroyed);
+                Exception completionFailure = selfEntry || selfResource ? ExplicitEntryComparison.FinishTrace(primaryFailure, cleanupFailures, entryStarted, destroyed,
+                    selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }) : CompletionFailure(primaryFailure, cleanupFailures, callbackStarted, destroyed);
                 if (completionFailure != null) throw completionFailure;
             }
         }

@@ -36,7 +36,7 @@ namespace ScientificSecurity
         }
         readonly string entryPython;
         bool EntryMode { get { return entryPython != null; } }
-        bool StrictEventOwnership { get { return moduleCallback || EntryMode; } }
+        bool StrictEventOwnership { get { return moduleCallback || EntryMode || ResourceMode; } }
         internal string EntryMetadata()
         {
             ThreadCheck();

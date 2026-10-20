@@ -24,10 +24,15 @@ namespace ScientificSecurity
             string image = SelfActivationFixture.PreparedImage(python, SelfActivationRole.ExplicitId2);
             return RunFixed(image, new string[0], Path.GetDirectoryName(image), true, SelfActivationRole.ExplicitId2, python, retainMetadata);
         }
-        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null)
+        internal static string RunAutomaticResource(string python, Action<string> retainMetadata)
+        {
+            string image = SelfActivationFixture.PreparedImage(python, SelfActivationRole.ExplicitId2);
+            return RunFixed(image, new string[0], Path.GetDirectoryName(image), true, SelfActivationRole.ExplicitId2, python, retainMetadata, true);
+        }
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false)
         {
             SelfActivationFixture.RequireKnownRole(role);
-            if (entryPython != null && (!selfActivation || role != SelfActivationRole.ExplicitId2 || retainMetadata == null) ||
+            if (resource && entryPython == null || entryPython != null && (!selfActivation || role != SelfActivationRole.ExplicitId2 || retainMetadata == null) ||
                 entryPython == null && retainMetadata != null) throw new ArgumentException("entry host requires fixed ExplicitId2 metadata retention");
             if (!Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd))
                 throw new ArgumentException("trusted setup requires fully qualified executable and working directory");
@@ -54,7 +59,7 @@ namespace ScientificSecurity
             var child = new Native.ProcessInfo(); bool started = false, resumed = false;
             Exception primaryFailure = null;
             var clock = new Stopwatch();
-            LoaderTrace loader = entryPython == null ? null : new LoaderTrace(false, false, false, false, entryPython);
+            LoaderTrace loader = entryPython == null ? null : new LoaderTrace(false, false, false, false, resource ? null : entryPython, resource ? entryPython : null);
             try
             {
                 EmitStage(name, "prepare");
@@ -198,7 +203,7 @@ namespace ScientificSecurity
                     () => { if (job != IntPtr.Zero) CloseOwned(job, selfActivation); },
                     () => EmitStage(name, "cleanup-after"));
                 if (loader != null) {
-                    try { retainMetadata(loader.EntryMetadata()); }
+                    try { retainMetadata(resource ? loader.ResourceMetadata() : loader.EntryMetadata()); }
                     catch (Exception reporting) {
                         if (primaryFailure != null) throw new AggregateException("fixed entry host observation/reporting failed", primaryFailure, reporting);
                         throw;

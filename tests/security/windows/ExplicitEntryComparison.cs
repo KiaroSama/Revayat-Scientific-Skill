@@ -72,7 +72,7 @@ namespace ScientificSecurity
             catch (Exception reporting) { primary = primary == null ? reporting : new AggregateException("fixed entry observation/reporting failed", primary, reporting); }
             return primary == null ? null : new QualifiedFailure(primary);
         }
-        static void Execute(Action trace, Action undebugged)
+        internal static void Execute(Action trace, Action undebugged)
         {
             Exception retained = null;
             try { trace(); } catch (QualifiedFailure failure) { retained = failure.Original; }

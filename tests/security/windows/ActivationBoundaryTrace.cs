@@ -156,14 +156,18 @@ namespace ScientificSecurity
         bool eventCreator, eventFirst;
         bool stopped, initial, changed, restored, invalidated, alive = true;
         internal ActivationBoundaryTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId,
-            string executable, string imageDigest, Action<string> output, bool callback = false, bool entry = false)
+            string executable, string imageDigest, Action<string> output, bool callback = false, bool entry = false,
+            bool resource = false, Action resourceDeadline = null)
         {
-            if (callback && entry) throw new ArgumentException("activation observation roles cannot overlap");
-            moduleCallback = callback; entryOnly = entry;
+            if ((callback ? 1 : 0) + (entry ? 1 : 0) + (resource ? 1 : 0) > 1 || resource != (resourceDeadline != null))
+                throw new ArgumentException("activation observation roles cannot overlap");
+            moduleCallback = callback; entryOnly = entry; automaticResource = resource;
             Need(IntPtr.Size == 8 && Marshal.SizeOf(typeof(MemoryInfo)) == 48 &&
                 processHandle != IntPtr.Zero && threadHandle != IntPtr.Zero);
             process = processHandle; thread = threadHandle; pid = processId; tid = threadId;
             path = executable; digest = imageDigest; emit = output;
+            if (resource) resourceThreads = new ResourceThreads(pid, tid, DebugContext.Read, DebugContext.Write,
+                handle => Native.Check(Native.CloseHandle(handle), "close owned resource thread duplicate"), resourceDeadline);
         }
         static void Need(bool value) { if (!value) throw new InvalidOperationException("fixed activation caller-site observation is inconclusive"); }
         static void RequireCheck(bool value, string check, Action report)
@@ -207,6 +211,7 @@ namespace ScientificSecurity
         { return state == 1 && !seen && eventThread == creator && first; }
         internal void Stop(uint eventPid, uint eventThread, uint kind, bool cleanup = false)
         {
+            if (automaticResource) { resourceThreads.Stop(eventPid, eventThread, kind, cleanup); return; }
             if (entryOnly) { EntryStop(eventPid, eventThread, kind, cleanup); return; }
             if (moduleCallback) {
                 stopped = false; // A rejected foreign stop must never authorize creator-context access.
@@ -223,7 +228,7 @@ namespace ScientificSecurity
             Need(eventPid == pid); stopped = true;
             if (kind == 5 || (kind == 4 && eventThread == tid)) alive = false;
         }
-        internal void Continued() { stopped = false; }
+        internal void Continued() { stopped = false; if (automaticResource) resourceThreads.Continued(); }
         byte[] Read() { Need(stopped && alive); return DebugContext.Read(thread); }
         static bool Free(byte[] context)
         {
@@ -287,6 +292,7 @@ namespace ScientificSecurity
         }
         internal void Creation(IntPtr file, IntPtr imageBase)
         {
+            if (automaticResource) { ResourceCreation(file, imageBase); return; }
             if (entryOnly) { EntryCreation(file, imageBase); return; }
             if (moduleCallback) { CallbackCreation(file, imageBase); return; }
             Need(stage == 0 && stopped && alive);
@@ -299,6 +305,7 @@ namespace ScientificSecurity
         }
         internal void Load(IntPtr file, IntPtr imageBase)
         {
+            if (automaticResource) { ResourceLoad(file, imageBase); return; }
             if (moduleCallback) { CallbackLoad(file, imageBase); return; }
             Need(stopped && alive && stage != 0);
             KernelImage candidate = KernelImage.FromActivationSystemLoad(file, imageBase);
@@ -310,6 +317,7 @@ namespace ScientificSecurity
         { eventCode = code; eventCreator = eventThread == tid; eventFirst = first; }
         internal bool AcceptSoftware(uint eventThread, uint code, bool first)
         {
+            if (automaticResource) return code == 0x80000003 && resourceThreads.Software(eventThread, first);
             if (entryOnly) return EntrySoftware(eventThread, code, first);
             if (moduleCallback) return CallbackSoftware(eventThread, code, first);
             if (code != 0x80000003) return false;
@@ -321,6 +329,7 @@ namespace ScientificSecurity
         }
         internal bool SingleStep(uint eventThread, uint code, bool first, IntPtr exceptionAddress)
         {
+            if (automaticResource) return code == 0x80000004 && resourceThreads.Capture(eventThread, first, exceptionAddress, fixture.Base);
             if (entryOnly) return EntrySingleStep(eventThread, code, first, exceptionAddress);
             if (moduleCallback) return CallbackSingleStep(eventThread, code, first, exceptionAddress);
             if (code != 0x80000004) return false;
@@ -377,11 +386,12 @@ namespace ScientificSecurity
                 Invalidate(); throw new InvalidOperationException("fixed activation diagnostic image unloaded");
             }
         }
-        internal void Invalidate() { invalidated = true; }
-        internal void RequireComplete() { Need(entryOnly ? EntryComplete() : moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated)); }
+        internal void Invalidate() { invalidated = true; if (automaticResource) resourceThreads.Invalidate(); }
+        internal void RequireComplete() { Need(automaticResource ? ResourceComplete() : entryOnly ? EntryComplete() : moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated)); }
         internal bool RestorationAllowed { get { return changed && alive && stopped; } }
         internal void Restore()
         {
+            if (automaticResource) { resourceThreads.RestoreAll(); return; }
             if (!RestorationAllowed) return;
             byte[] before = Read();
             try { Apply(before, true); }
@@ -389,6 +399,7 @@ namespace ScientificSecurity
         }
         internal void Destroyed()
         {
+            if (automaticResource) { resourceThreads.Destroyed(); resourceDestroyed = true; return; }
             alive = changed = stopped = false;
             if (original != null) Array.Clear(original, 0, original.Length);
             Array.Clear(addresses, 0, addresses.Length); Array.Clear(enabled, 0, enabled.Length);
