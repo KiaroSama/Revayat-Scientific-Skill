@@ -91,6 +91,13 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, unchecked((int)0xC0000022), false, 0, null, true, SelfActivationRole.ExplicitId2, false, true);
         }
+        internal static string ObserveDllRequest(string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
+        {
+            ChildActivationFixture.RequireDllHostPositive(python);
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, false, false, false, expectedRegistryStatus, dllRequest: true);
+        }
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
@@ -117,9 +124,12 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false)
         {
             SelfActivationFixture.RequireKnownRole(selfRole);
+            if (dllRequest) ChildActivationFixture.RequireDllRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone,
+                activationProbe, activationTrace, observeExit, defaultActivation, moduleRole != 0, callbackExit.HasValue,
+                selfActivation, selfRole != SelfActivationRole.Original, selfEntry, selfResource);
             if (selfEntry && selfResource || (selfEntry || selfResource) && (!selfActivation || selfRole != SelfActivationRole.ExplicitId2))
                 throw new ArgumentException("entry/resource observation requires a separate fixed ExplicitId2 mode");
             if (selfRole != SelfActivationRole.Original && !selfActivation) throw new ArgumentException("activation role requires the fixed self diagnostic");
@@ -175,6 +185,11 @@ namespace ScientificSecurity
                 arguments = new List<string> { executable };
                 phase = SelfActivationFixture.Stem(selfRole);
             }
+            if (dllRequest) {
+                ChildActivationFixture.RequireDllHostPositive(python);
+                executable = ChildActivationFixture.DllPreparedImage(python);
+                arguments = new List<string> { executable }; phase = "dll-resource-request";
+            }
             string command = String.Join(" ", arguments.Select(Quote));
             string home = Path.Combine(scratch, "home"), temp = Path.Combine(scratch, "temp");
             var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
@@ -200,6 +215,7 @@ namespace ScientificSecurity
             var activationClock = new Stopwatch();
             try
             {
+                if (dllRequest) activationLease = ChildActivationFixture.HoldDllRequest(python);
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
                 if (selfActivation) activationLease = SelfActivationFixture.Hold(python, selfRole);
@@ -233,7 +249,7 @@ namespace ScientificSecurity
                 IntPtr lpac = Marshal.AllocHGlobal(4); values.Add(lpac); Marshal.WriteInt32(lpac, 1);
                 Attribute(attrs, 0x2000F, lpac, 4);
                 var sa = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), inherit = 1 };
-                outputCapture = new Capture(selfActivation); errorCapture = new Capture(selfActivation);
+                outputCapture = new Capture(selfActivation || dllRequest); errorCapture = new Capture(selfActivation || dllRequest);
                 IntPtr output = outputCapture.Writer, error = errorCapture.Writer;
                 IntPtr input = Native.CreateFileW("NUL", 0x80000000, 3, ref sa, 3, 0x80, IntPtr.Zero);
                 Native.Check(input != Native.InvalidHandle, "open standard input"); handles.Add(input);
@@ -291,11 +307,11 @@ namespace ScientificSecurity
                     string metadata = TokenDefaultMetadata.Observe(process.process);
                     Console.Out.WriteLine(metadata); Console.Out.Flush();
                 }
-                if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation) activationClock.Start();
+                if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
-                if (selfActivation) {
+                if (selfActivation || dllRequest) {
                     while (handles.Count != 0) {
                         IntPtr owned = handles[handles.Count - 1]; handles.RemoveAt(handles.Count - 1);
                         Native.Check(Native.CloseHandle(owned), "close fixed contained activation stdin");
@@ -326,7 +342,7 @@ namespace ScientificSecurity
                 long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
                 {
-                    if ((activationProbe || defaultActivation || moduleRole != 0 || selfActivation) && activationClock.Elapsed.TotalSeconds > 10)
+                    if ((activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest) && activationClock.Elapsed.TotalSeconds > 10)
                         throw new TimeoutException("fixed child activation exceeded 10 seconds");
                     long length = outputCapture.Length() + errorCapture.Length();
                     if (length > 1048576) throw new InvalidOperationException("worker standard output exceeded 1 MiB");
@@ -346,6 +362,10 @@ namespace ScientificSecurity
                 string text = outputCapture.Read(), errors = errorCapture.Read();
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(errors) > 1048576)
                     throw new InvalidOperationException("combined worker output exceeded 1 MiB");
+                if (dllRequest) {
+                    if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed DLL request exceeded 10 seconds");
+                    return ChildActivationFixture.DllResult(exit, text, errors);
+                }
                 if (activationProbe) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed child activation exceeded 10 seconds");
                     ChildActivationFixture.RequireTransport(exit, text, errors);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ScientificSecurity
 {
@@ -22,6 +23,22 @@ namespace ScientificSecurity
         {
             RunFixed(run, state, python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, SelfActivationRole.ExplicitId2);
         }
+        public static void RunDllRequest(string run, string state, string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
+        {
+            ChildActivationFixture.RequireDllHostPositive(python);
+            ExecuteDll((condition, expected) => Sandbox.ObserveDllRequest(python, root, scratch, powershell, chromium, moniker,
+                profileFolder, tcpPort, udpPort, expected), () => {
+                    var lease = RegistryPolicyLease.Begin(run, state);
+                    return Tuple.Create<Action, Action>(lease.Dispose, lease.DeferRecovery);
+                }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
+        }
+        static void ExecuteDll(Func<string, int, string> observe, Func<Tuple<Action, Action>> begin, Action<string> emit)
+        {
+            ExecuteSweep(observe, begin, emit, ChildActivationFixture.DllCondition, (original, modified) =>
+                "WINDOWS_DLL_RESOURCE_ACTIVATION_DIFFERENTIAL original_restored_equal=True result_changed=" + (original != modified) +
+                " dll_file_request_only=True target_admitted=False cause_claimed=False python_equivalence_claimed=False production_grant=False");
+        }
         static void RequireIndependentRole(SelfActivationRole role)
         {
             SelfActivationFixture.RequireKnownRole(role);
@@ -42,12 +59,20 @@ namespace ScientificSecurity
                             SelfActivationRole role = SelfActivationRole.Manual)
         {
             RequireIndependentRole(role);
+            ExecuteSweep(observe, begin, emit, (condition, result) => SelfActivationFixture.Condition(condition, result, role),
+                (original, modified) => SelfActivationFixture.Label(role) + "_DIFFERENTIAL original_restored_equal=True result_changed=" + (original != modified) +
+                    (role == SelfActivationRole.Manual ? " manual_only=True" : " explicit_id2_only=True") +
+                    " target_admitted=False cause_claimed=False python_equivalence_claimed=False production_grant=False");
+        }
+        internal static void ExecuteSweep(Func<string, int, string> observe, Func<Tuple<Action, Action>> begin, Action<string> emit,
+            Func<string, string, string> conditionLine, Func<string, string, string> differential)
+        {
             string original = observe("original", Denied);
-            emit(SelfActivationFixture.Condition("original", original, role));
+            emit(conditionLine("original", original));
             var lease = begin(); Exception primary = null; bool cleanupQualified = false; string modified;
             try {
                 modified = observe("modified", 0);
-                emit(SelfActivationFixture.Condition("modified", modified, role));
+                emit(conditionLine("modified", modified));
                 cleanupQualified = true;
             }
             catch (Exception failure) { primary = failure; throw; }
@@ -60,19 +85,61 @@ namespace ScientificSecurity
             }
             string restored = observe("restored", Denied);
             Need(original == restored);
-            emit(SelfActivationFixture.Condition("restored", restored, role));
-            emit(SelfActivationFixture.Label(role) + "_DIFFERENTIAL original_restored_equal=True result_changed=" + (original != modified) +
-                (role == SelfActivationRole.Manual ? " manual_only=True" : " explicit_id2_only=True") +
-                " target_admitted=False cause_claimed=False python_equivalence_claimed=False production_grant=False");
+            emit(conditionLine("restored", restored));
+            emit(differential(original, modified));
         }
         public static void CheckValidation()
         {
             foreach (SelfActivationRole role in new [] { SelfActivationRole.Manual, SelfActivationRole.ExplicitId2 }) CheckSweep(role);
+            CheckDllSweep();
             foreach (int invalid in new [] { -1, 0, 3, Int32.MaxValue }) {
                 int effects = 0; bool refused = false;
                 try { Execute((_, __) => { effects++; return Denial; }, () => { effects++; return null; }, _ => effects++, (SelfActivationRole)invalid); }
                 catch (ArgumentException) { refused = true; }
                 Need(refused && effects == 0);
+            }
+        }
+        static void CheckDllSweep()
+        {
+            const string success = "WINDOWS_DLL_RESOURCE_ACTIVATION created=True win32_error=0x00000000 cause_claimed=False child_equivalence_claimed=False";
+            const string denial = "WINDOWS_DLL_RESOURCE_ACTIVATION created=False win32_error=0x00000005 cause_claimed=False child_equivalence_claimed=False";
+            foreach (bool positive in new [] { false, true }) foreach (bool changed in new [] { false, true }) {
+                var order = new List<string>(); string original = positive ? success : denial;
+                ExecuteDll((condition, expected) => {
+                    Need(expected == (condition == "modified" ? 0 : Denied)); order.Add(condition);
+                    return condition == "modified" && changed ? (positive ? denial : success) : original;
+                }, () => { order.Add("begin"); return Tuple.Create<Action, Action>(() => order.Add("restore"), () => order.Add("defer")); }, line => {
+                    order.Add("emit");
+                    if (line.StartsWith("WINDOWS_DLL_RESOURCE_ACTIVATION_DIFFERENTIAL ", StringComparison.Ordinal))
+                        Need(line == "WINDOWS_DLL_RESOURCE_ACTIVATION_DIFFERENTIAL original_restored_equal=True result_changed=" + changed +
+                            " dll_file_request_only=True target_admitted=False cause_claimed=False python_equivalence_claimed=False production_grant=False");
+                });
+                Need(String.Join(",", order) == "original,emit,begin,modified,emit,restore,restored,emit,emit");
+            }
+            for (int mode = 0; mode < 12; mode++) {
+                int visits = 0, begins = 0, restores = 0, defers = 0, emits = 0, later = 0; Exception caught = null;
+                var primary = new IOException("fixed DLL sweep operation"); var recovery = new IOException("fixed DLL sweep recovery");
+                try {
+                    ExecuteDll((condition, expected) => {
+                        visits++; Need(expected == (condition == "modified" ? 0 : Denied));
+                        if (mode == 0 && visits == 1 || mode == 3 && visits == 2 || mode == 8 && visits == 3 || mode == 11 && visits == 2) throw primary;
+                        if (mode == 4 && visits == 2) return "private-sentinel";
+                        if (mode == 5 && visits == 2) throw Capture.CheckStrictCleanup();
+                        return mode == 9 && visits == 3 ? success : denial;
+                    }, () => { begins++; if (mode == 2) throw primary;
+                        return Tuple.Create<Action, Action>(() => { restores++; if (mode == 7) throw recovery; },
+                            () => { defers++; if (mode == 11) throw recovery; });
+                    }, _ => { emits++; if (mode == 1 && emits == 1 || mode == 6 && emits == 2 || mode == 10 && emits == 4) throw primary; });
+                    later++;
+                } catch (Exception failure) { caught = failure; }
+                Need(caught != null && later == 0);
+                if (mode <= 2) Need(visits == 1 && begins == (mode == 2 ? 1 : 0) && restores == 0 && defers == 0);
+                if (mode >= 3 && mode <= 6 || mode == 11) Need(visits == 2 && begins == 1 && restores == 0 && defers == 1);
+                if (mode >= 7 && mode <= 10) Need(begins == 1 && restores == 1 && defers == 0 && visits == (mode == 7 ? 2 : 3));
+                if (mode == 0 || mode == 1 || mode == 2 || mode == 3 || mode == 6 || mode == 8 || mode == 10) Need(Object.ReferenceEquals(caught, primary));
+                if (mode == 7) Need(Object.ReferenceEquals(caught, recovery));
+                if (mode == 11) { var group = caught as AggregateException;
+                    Need(group != null && group.InnerExceptions.Count == 2 && Object.ReferenceEquals(group.InnerExceptions[0], primary) && Object.ReferenceEquals(group.InnerExceptions[1], recovery)); }
             }
         }
         static void CheckSweep(SelfActivationRole role)

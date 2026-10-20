@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 
 namespace ScientificSecurity
 {
-    public static class ChildActivationFixture
+    public static partial class ChildActivationFixture
     {
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
         static readonly UnicodeEncoding Unicode = new UnicodeEncoding(false, false, true);

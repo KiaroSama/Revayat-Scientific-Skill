@@ -29,9 +29,19 @@ namespace ScientificSecurity
             string image = SelfActivationFixture.PreparedImage(python, SelfActivationRole.ExplicitId2);
             return RunFixed(image, new string[0], Path.GetDirectoryName(image), true, SelfActivationRole.ExplicitId2, python, retainMetadata, true);
         }
-        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false)
+        internal static string RunDllRequest(string python)
+        {
+            string image = ChildActivationFixture.DllPreparedImage(python);
+            return RunFixed(image, new string[0], Path.GetDirectoryName(image), false, dllRequest: true);
+        }
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false, bool dllRequest = false)
         {
             SelfActivationFixture.RequireKnownRole(role);
+            if (dllRequest) {
+                ChildActivationFixture.RequireDllRole(true, selfActivation, role != SelfActivationRole.Original, entryPython != null, resource, retainMetadata != null);
+                RequireDllLaunch(executable, arguments, cwd);
+                selfActivation = true; // Reuse the same strict fixed-diagnostic process/cleanup limits.
+            }
             if (resource && entryPython == null || entryPython != null && (!selfActivation || role != SelfActivationRole.ExplicitId2 || retainMetadata == null) ||
                 entryPython == null && retainMetadata != null) throw new ArgumentException("entry host requires fixed ExplicitId2 metadata retention");
             if (!Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd))
@@ -41,7 +51,7 @@ namespace ScientificSecurity
             string name = Path.GetFileName(executable).ToLowerInvariant();
             bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe" }.Contains(name);
             if (role != SelfActivationRole.Original && !selfActivation) throw new ArgumentException("activation role requires the fixed internal launch");
-            if (selfActivation) RequireSelfLaunch(executable, arguments, cwd, role);
+            if (selfActivation && !dllRequest) RequireSelfLaunch(executable, arguments, cwd, role);
             if (compilerPreparation || selfActivation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
             if (!selfActivation && !compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
@@ -159,7 +169,7 @@ namespace ScientificSecurity
                 EmitStage(name, "capture-after");
                 if (selfActivation) {
                     if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed host activation exceeded 10 seconds");
-                    return SelfActivationFixture.Result(exit, text, diagnostics, role);
+                    return dllRequest ? ChildActivationFixture.DllResult(exit, text, diagnostics) : SelfActivationFixture.Result(exit, text, diagnostics, role);
                 }
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(diagnostics) > 1048576)
                     throw new InvalidOperationException("combined trusted setup output exceeded 1 MiB");
@@ -225,6 +235,13 @@ namespace ScientificSecurity
                 Path.GetDirectoryName(executable) != cwd || Path.GetFileName(cwd) != "python")
                 throw new ArgumentException("unsupported fixed host activation launch");
         }
+        static void RequireDllLaunch(string executable, string[] arguments, string cwd)
+        {
+            if (executable == null || cwd == null || !Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd) ||
+                arguments == null || arguments.Length != 0 || Path.GetFileName(executable) != "startup-dll-resource.exe" ||
+                Path.GetDirectoryName(executable) != cwd || Path.GetFileName(cwd) != "python")
+                throw new ArgumentException("unsupported fixed DLL resource host launch");
+        }
         static void FinishCleanup(Exception primary, params Action[] actions)
         {
             var failures = new List<Exception>();
@@ -238,7 +255,7 @@ namespace ScientificSecurity
         }
         static string Stage(string tool, string stage)
         {
-            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe", "startup-manual-activation.exe", "startup-explicit-id2.exe" }.Contains(tool) ||
+            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe", "startup-manual-activation.exe", "startup-explicit-id2.exe", "startup-dll-resource.exe" }.Contains(tool) ||
                 !new [] { "prepare", "create-before", "create-after", "assign-before", "assign-after", "resume-before", "resume-after",
                     "wait-first", "wait-complete", "reap-before", "reap-after", "capture-after", "cleanup-before", "cleanup-after" }.Contains(stage))
                 throw new InvalidOperationException("unsupported trusted setup stage label");
@@ -251,6 +268,22 @@ namespace ScientificSecurity
         public static void CheckValidation()
         {
             Capture.CheckStrictCleanup();
+            string dllImage = Path.Combine(Path.GetFullPath("."), "python", "startup-dll-resource.exe");
+            RequireDllLaunch(dllImage, new string[0], Path.GetDirectoryName(dllImage));
+            foreach (Action invalid in new Action[] {
+                () => RequireDllLaunch(dllImage, new [] { "private-sentinel" }, Path.GetDirectoryName(dllImage)),
+                () => RequireDllLaunch(dllImage, null, Path.GetDirectoryName(dllImage)),
+                () => RequireDllLaunch(dllImage, new string[0], Path.GetDirectoryName(Path.GetDirectoryName(dllImage))),
+                () => RequireDllLaunch(dllImage.Replace("startup-dll-resource", "startup-activation"), new string[0], Path.GetDirectoryName(dllImage)),
+                () => RunFixed(dllImage, new string[0], Path.GetDirectoryName(dllImage), true, dllRequest: true),
+                () => Run(dllImage, new string[0], Path.GetDirectoryName(dllImage))
+            }) {
+                bool refused = false;
+                try { invalid(); } catch (ArgumentException) { refused = true; } catch (InvalidOperationException) { refused = true; }
+                if (!refused) throw new InvalidOperationException("DLL request escaped its closed internal host route");
+            }
+            if (Stage("startup-dll-resource.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=startup-dll-resource.exe stage=create-before")
+                throw new InvalidOperationException("fixed DLL request stage differs");
             string image = Path.Combine(Path.GetFullPath("."), "python", "startup-self-activation.exe");
             RequireSelfLaunch(image, new string[0], Path.GetDirectoryName(image));
             string manualImage = Path.Combine(Path.GetDirectoryName(image), "startup-manual-activation.exe");
