@@ -84,10 +84,49 @@ namespace ScientificSecurity
             try { registry.Destroyed(); } catch (AggregateException failure) { destruction = failure; }
             Need(destruction != null && registry.Failed && !registry.CaptureRestored);
             int beforeReads = reads; registry.Stop(7, 11, 6, true); registry.RestoreAll(); Need(reads == beforeReads);
+            CheckResourcePreArm();
             CheckResourceRefusal();
             CheckResourceFinalization();
             // An unsupported event clears authority before any context access.
             registry = create(); refuse(() => registry.Stop(8, 11, 6, false)); refuse(() => registry.Enroll(11, handleFor(11), false));
+        }
+        static void CheckResourcePreArm()
+        {
+            foreach (int variant in new [] { 0, 1, 2, 3, 4 }) {
+                byte[] context = new byte[1232]; int writes = 0;
+                var registry = new ResourceThreads(7, 11, _ => (byte[])context.Clone(),
+                    (_, bytes) => { writes++; context = (byte[])bytes.Clone(); }, _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                if (variant == 1) Put(context, 104, 0x10);
+                registry.Stop(7, 11, 1, false); bool rejected = false;
+                try {
+                    registry.Software(variant == 2 ? 12U : 11U, variant != 3);
+                    if (variant == 4) registry.Software(11, true);
+                } catch (InvalidOperationException) { rejected = true; }
+                Need(rejected == (variant != 0) && writes == 0 && !registry.Captured);
+                if (variant == 0) {
+                    registry.Continued(); registry.Stop(7, 11, 6, false); registry.Arm(0x8000);
+                    Need(writes == 1 && U64(context, 72) == 0x8000);
+                }
+            }
+            foreach (bool captured in new [] { false, true }) {
+                byte[] context = new byte[1232];
+                var registry = new ResourceThreads(7, 11, _ => (byte[])context.Clone(),
+                    (_, bytes) => context = (byte[])bytes.Clone(), _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 11, 6, false); registry.Arm(0x8000); registry.Continued();
+                if (captured) {
+                    Put(context, 104, 0xFFFF0FF1); Put(context, 112, 0x401);
+                    Put(context, 176, 0x10000000); Put(context, 248, 0x8000);
+                    registry.Stop(7, 11, 1, false); registry.Capture(11, true, new IntPtr(0x8000), 0x10000000); registry.Continued();
+                }
+                Put(context, 104, 0); Put(context, 112, 0);
+                registry.Stop(7, 11, 1, false); bool rejected = false;
+                try { registry.Software(11, true); } catch (InvalidOperationException) { rejected = true; }
+                Need(rejected);
+                Put(context, 104, 0xFFFF0FF0); Put(context, 112, captured ? 0UL : 0x401UL);
+                Need(registry.Software(11, true));
+            }
         }
         static void CheckResourceRefusal()
         {
