@@ -49,11 +49,11 @@ namespace ScientificSecurity
             internal void Stop(uint actualPid, uint actualThread, uint eventKind, bool draining)
             {
                 epoch = false;
-                Need(actualPid == pid);
+                ResourceCheck(actualPid == pid, "event-process");
                 if (!draining) {
-                    Need(!processDead && (eventKind >= 1 && eventKind <= 8 && eventKind != 3 ||
-                        generations.Count == 0 && eventKind == 3 && actualThread == creator));
-                    if (eventKind == 2) foreach (var value in generations) Need(value.retired || value.id != actualThread);
+                    ResourceCheck(!processDead && (eventKind >= 1 && eventKind <= 8 && eventKind != 3 ||
+                        generations.Count == 0 && eventKind == 3 && actualThread == creator), "event-lifetime-kind");
+                    if (eventKind == 2) foreach (var value in generations) ResourceCheck(value.retired || value.id != actualThread, "duplicate-live-thread");
                     if (eventKind == 1 || !Captured && eventKind != 2 && eventKind != 3) Live(actualThread);
                 }
                 eventThread = actualThread; kind = eventKind; cleanup = draining;
@@ -71,12 +71,12 @@ namespace ScientificSecurity
                 ValidateEnrollment(id, handle);
                 var record = new Generation { id = id, handle = handle, owned = owned };
                 generations.Add(record); // Ownership transfers before the first operation that can fail.
-                deadline(); record.baseline = read(handle); Need(Free(record.baseline));
+                deadline(); record.baseline = read(handle); ResourceCheck(Free(record.baseline), "free-thread-baseline");
                 if (site != 0) Apply(record, false);
             }
             internal void Continued()
             {
-                Need(epoch); epoch = false;
+                ResourceCheck(epoch, "continue-epoch"); epoch = false;
                 var failures = new List<Exception>();
                 if (kind == 4) foreach (var value in generations) if (value.id == eventThread && value.dead && !value.retired) {
                     Attempt(failures, () => Retire(value));
@@ -85,7 +85,7 @@ namespace ScientificSecurity
             }
             void Retire(Generation value)
             {
-                Need(value.dead && !value.retired);
+                ResourceCheck(value.dead && !value.retired, "retire-lifetime");
                 value.retired = true; Retired++;
                 if (!Captured && !processDead) PriorDeadRetired++;
                 if (value.baseline != null) Array.Clear(value.baseline, 0, value.baseline.Length);
@@ -94,21 +94,21 @@ namespace ScientificSecurity
             }
             internal void Arm(ulong address)
             {
-                Need(epoch && !cleanup && !processDead && !Captured && site == 0 && address != 0);
+                ResourceCheck(epoch && !cleanup && !processDead && !Captured && site == 0 && address != 0, "arm-state");
                 site = address;
                 foreach (var value in generations) if (!value.dead && !value.retired) Apply(value, false);
             }
             void Apply(Generation value, bool restore)
             {
-                Need(epoch && !value.dead && !value.retired && value.baseline != null);
+                ResourceCheck(epoch && !value.dead && !value.retired && value.baseline != null, "setter-lifetime");
                 deadline(); byte[] before = null, desired = null, after = null;
                 try {
                     before = read(value.handle);
-                    if (!restore) Need(DebugContext.RawDebugEqual(value.baseline, before));
+                    if (!restore) ResourceCheck(DebugContext.RawDebugEqual(value.baseline, before), "arm-baseline-equality");
                     desired = Desired(before, value.baseline, new ulong[] { site, 0 }, new [] { !restore, false }, restore);
                     value.changed = true;
                     write(value.handle, desired); after = read(value.handle);
-                    Need(DebugContext.RawDebugEqual(desired, after) && DebugContext.UnchangedControlInteger(before, after));
+                    ResourceCheck(DebugContext.RawDebugEqual(desired, after) && DebugContext.UnchangedControlInteger(before, after), "setter-readback");
                     if (restore) value.changed = false;
                 } catch (Exception error) {
                     failed = true;
@@ -127,28 +127,28 @@ namespace ScientificSecurity
             }
             internal bool Capture(uint id, bool first, IntPtr exception, ulong imageBase)
             {
-                Need(epoch && !cleanup && !Captured && site != 0 && !processDead);
+                ResourceCheck(epoch && !cleanup && !Captured && site != 0 && !processDead, "capture-state");
                 deadline(); Generation value = Live(id); byte[] context = read(value.handle);
                 try {
-                    Need(first && value.changed && unchecked((ulong)exception.ToInt64()) == site && U64(context, 248) == site);
-                    for (int index = 0; index < 4; index++) Need(U64(context, 72 + index * 8) == (index == 0 ? site : U64(value.baseline, 72 + index * 8)));
-                    Need(DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), U64(value.baseline, 112) | 1, 0));
+                    ResourceCheck(first && value.changed && unchecked((ulong)exception.ToInt64()) == site && U64(context, 248) == site, "capture-site");
+                    for (int index = 0; index < 4; index++) ResourceCheck(U64(context, 72 + index * 8) == (index == 0 ? site : U64(value.baseline, 72 + index * 8)), "capture-address-ownership");
+                    ResourceCheck(DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), U64(value.baseline, 112) | 1, 0), "capture-trap-ownership");
                     Captured = true; CreatorCapture = id == creator;
                     RawEax = unchecked((uint)U64(context, 120)); BaseEqual = U64(context, 176) == imageBase;
                     Trap = DebugContext.TrapQualifiers(U64(context, 104));
                     RestoreAll(); captureRestored = true;
-                    Need(BaseEqual); return true;
+                    ResourceCheck(BaseEqual, "first-base-equality"); return true;
                 } catch { failed = true; throw; }
                 finally { Array.Clear(context, 0, context.Length); }
             }
             internal bool Software(uint id, bool first)
             {
-                Need(epoch && !cleanup && id == creator && first && !initial && !processDead);
+                ResourceCheck(epoch && !cleanup && id == creator && first && !initial && !processDead, "software-state");
                 Generation value = Live(id); byte[] context = read(value.handle);
                 try {
                     ulong expected = U64(value.baseline, 112) | (value.changed ? 1UL : 0UL);
-                    for (int index = 0; index < 4; index++) Need(U64(context, 72 + index * 8) == (index == 0 && value.changed ? site : U64(value.baseline, 72 + index * 8)));
-                    Need(SoftwareStatus(U64(context, 104), U64(context, 112), expected)); initial = true; return true;
+                    for (int index = 0; index < 4; index++) ResourceCheck(U64(context, 72 + index * 8) == (index == 0 && value.changed ? site : U64(value.baseline, 72 + index * 8)), "software-address-ownership");
+                    ResourceCheck(SoftwareStatus(U64(context, 104), U64(context, 112), expected), "software-control-ownership"); initial = true; return true;
                 } finally { Array.Clear(context, 0, context.Length); }
             }
             internal void Invalidate() { failed = true; }
@@ -161,13 +161,13 @@ namespace ScientificSecurity
             }
             void ValidateEnrollment(uint id, IntPtr handle)
             {
-                Need(epoch && !cleanup && !Captured && !processDead && (kind == 2 || kind == 3) && eventThread == id);
-                Need(generations.Count < 128 && handle != IntPtr.Zero && handle != Native.InvalidHandle);
-                foreach (var value in generations) Need(value.retired || value.id != id && value.handle != handle);
+                ResourceCheck(epoch && !cleanup && !Captured && !processDead && (kind == 2 || kind == 3) && eventThread == id, "enrollment-state");
+                ResourceCheck(generations.Count < 128 && handle != IntPtr.Zero && handle != Native.InvalidHandle, "enrollment-capacity-handle");
+                foreach (var value in generations) ResourceCheck(value.retired || value.id != id && value.handle != handle, "enrollment-generation");
             }
             internal void Destroyed()
             {
-                Need(processDead && !epoch);
+                ResourceCheck(processDead && !epoch, "destruction-state");
                 var failures = new List<Exception>();
                 foreach (var value in generations) if (!value.retired) Attempt(failures, () => Retire(value));
                 destroyed = true;
@@ -177,19 +177,21 @@ namespace ScientificSecurity
             static void Attempt(List<Exception> failures, Action action)
             { try { action(); } catch (Exception failure) { failures.Add(failure); } }
         }
+        static void ResourceCheck(bool value, string check)
+        { if (!value) throw new InvalidOperationException("fixed resource observation refused check=" + check); }
         void ResourceCreation(IntPtr file, IntPtr imageBase)
         {
-            Need(resourceThreads != null && fixture == null && !invalidated);
+            ResourceCheck(resourceThreads != null && fixture == null && !invalidated, "creation-state");
             fixture = KernelImage.FromExplicitEntryCreation(file, imageBase, path, digest);
             RequireExecutable(fixture, fixture.Entry, 1);
             resourceThreads.Enroll(tid, thread, false);
         }
         void ResourceLoad(IntPtr file, IntPtr imageBase)
         {
-            Need(fixture != null && !invalidated);
+            ResourceCheck(fixture != null && !invalidated, "load-state");
             KernelImage candidate = KernelImage.FromActivationSystemLoad(file, imageBase);
             if (candidate == null) return;
-            Need(kernel == null); candidate.RequireModuleCallbackProfile();
+            ResourceCheck(kernel == null, "duplicate-kernel-load"); candidate.RequireModuleCallbackProfile();
             RequireExecutable(candidate, 0x25C1D, 5); kernel = candidate;
             resourceThreads.Arm(kernel.Address(0x25C1D));
         }
@@ -201,9 +203,15 @@ namespace ScientificSecurity
         { if (!cleanup) resourceNaturalExit = true; }
         bool ResourceComplete()
         { return resourceThreads.Captured && resourceThreads.BaseEqual && resourceThreads.CaptureRestored && !resourceThreads.Failed && resourceNaturalExit && !invalidated; }
+        void RequireResourceComplete()
+        {
+            if (!ResourceComplete()) throw new InvalidOperationException("fixed resource observation incomplete captured=" + resourceThreads.Captured +
+                " register_base_equal=" + resourceThreads.BaseEqual + " capture_live_restored=" + resourceThreads.CaptureRestored +
+                " failed=" + resourceThreads.Failed + " natural_exit=" + resourceNaturalExit + " invalidated=" + invalidated);
+        }
         internal string ResourceMetadata()
         {
-            Need(automaticResource && resourceDestroyed);
+            ResourceCheck(automaticResource && resourceDestroyed, "metadata-destruction");
             return "WINDOWS_AUTOMATIC_RESOURCE traced=True process_scope=True first_delivery=" + resourceThreads.Captured + " captured=" + resourceThreads.Captured +
                 " creator=" + resourceThreads.CreatorCapture + (resourceThreads.Captured ? " raw_eax=0x" + resourceThreads.RawEax.ToString("X8") : "") +
                 " register_base_equal=" + resourceThreads.BaseEqual + " capture_live_restored=" + resourceThreads.CaptureRestored +

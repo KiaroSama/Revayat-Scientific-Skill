@@ -84,9 +84,35 @@ namespace ScientificSecurity
             try { registry.Destroyed(); } catch (AggregateException failure) { destruction = failure; }
             Need(destruction != null && registry.Failed && !registry.CaptureRestored);
             int beforeReads = reads; registry.Stop(7, 11, 6, true); registry.RestoreAll(); Need(reads == beforeReads);
+            CheckResourceRefusal();
             CheckResourceFinalization();
             // An unsupported event clears authority before any context access.
             registry = create(); refuse(() => registry.Stop(8, 11, 6, false)); refuse(() => registry.Enroll(11, handleFor(11), false));
+        }
+        static void CheckResourceRefusal()
+        {
+            var contexts = new Dictionary<IntPtr, byte[]> { { new IntPtr(11), new byte[1232] } };
+            var registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(),
+                (handle, bytes) => contexts[handle] = (byte[])bytes.Clone(), _ => { }, () => { });
+            Exception caught = null;
+            try { registry.Arm(0x8000); } catch (InvalidOperationException error) { caught = error; }
+            Need(caught != null && caught.Message == "fixed resource observation refused check=arm-state");
+            registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+            registry.Stop(7, 11, 6, false); registry.Arm(0x8000); registry.Continued();
+            byte[] trap = contexts[new IntPtr(11)]; Put(trap, 104, 0xFFFF0FF1); Put(trap, 112, 0x401);
+            Put(trap, 248, 0x8000); Put(trap, 176, 0x20000000);
+            registry.Stop(7, 11, 1, false); caught = null;
+            try { registry.Capture(11, true, new IntPtr(0x8000), 0x10000000); }
+            catch (InvalidOperationException error) { caught = error; }
+            Need(caught != null && caught.Message == "fixed resource observation refused check=first-base-equality" &&
+                registry.Captured && registry.CaptureRestored && registry.Failed && !registry.BaseEqual);
+            Need(BitConverter.ToUInt64(contexts[new IntPtr(11)], 72) == 0);
+            var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11,
+                "private-path", "private-digest", _ => { }, false, false, true, () => { });
+            caught = null;
+            try { observer.RequireComplete(); } catch (InvalidOperationException error) { caught = error; }
+            Need(caught != null && caught.Message == "fixed resource observation incomplete captured=False" +
+                " register_base_equal=False capture_live_restored=False failed=False natural_exit=False invalidated=False");
         }
         static void CheckResourceFinalization()
         {

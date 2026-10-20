@@ -387,7 +387,11 @@ namespace ScientificSecurity
             }
         }
         internal void Invalidate() { invalidated = true; if (automaticResource) resourceThreads.Invalidate(); }
-        internal void RequireComplete() { Need(automaticResource ? ResourceComplete() : entryOnly ? EntryComplete() : moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated)); }
+        internal void RequireComplete()
+        {
+            if (automaticResource) { RequireResourceComplete(); return; }
+            Need(entryOnly ? EntryComplete() : moduleCallback ? CallbackComplete(stage, restored, invalidated) : Complete(stage, restored, invalidated));
+        }
         internal bool RestorationAllowed { get { return changed && alive && stopped; } }
         internal void Restore()
         {
