@@ -148,7 +148,10 @@ namespace ScientificSecurity
                 try {
                     ulong expected = U64(value.baseline, 112) | (value.changed ? 1UL : 0UL);
                     for (int index = 0; index < 4; index++) ResourceCheck(U64(context, 72 + index * 8) == (index == 0 && value.changed ? site : U64(value.baseline, 72 + index * 8)), "software-address-ownership");
-                    ResourceCheck(SoftwareStatus(U64(context, 104), U64(context, 112), expected), "software-control-ownership"); initial = true; return true;
+                    if (!SoftwareStatus(U64(context, 104), U64(context, 112), expected))
+                        throw new InvalidOperationException("fixed resource observation refused check=software-control-ownership " +
+                            DebugContext.TrapQualifiers(U64(context, 104)) + " raw_dr7=0x" + U64(context, 112).ToString("X16"));
+                    initial = true; return true;
                 } finally { Array.Clear(context, 0, context.Length); }
             }
             internal void Invalidate() { failed = true; }

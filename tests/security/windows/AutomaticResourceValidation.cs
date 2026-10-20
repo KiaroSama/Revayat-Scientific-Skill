@@ -113,6 +113,16 @@ namespace ScientificSecurity
             try { observer.RequireComplete(); } catch (InvalidOperationException error) { caught = error; }
             Need(caught != null && caught.Message == "fixed resource observation incomplete captured=False" +
                 " register_base_equal=False capture_live_restored=False failed=False natural_exit=False invalidated=False");
+            contexts[new IntPtr(11)] = new byte[1232];
+            registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(),
+                (handle, bytes) => contexts[handle] = (byte[])bytes.Clone(), _ => { }, () => { });
+            registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+            registry.Stop(7, 11, 6, false); registry.Arm(0x8000); registry.Continued();
+            Put(contexts[new IntPtr(11)], 104, 0xFFFE07F0); Put(contexts[new IntPtr(11)], 112, 0x401);
+            registry.Stop(7, 11, 1, false); caught = null;
+            try { registry.Software(11, true); } catch (InvalidOperationException error) { caught = error; }
+            Need(caught != null && caught.Message == "fixed resource observation refused check=software-control-ownership " +
+                "raw_dr6=0x00000000FFFE07F0 rtm_bit_set=False bld_bit_set=False transaction_context=unknown raw_dr7=0x0000000000000401");
         }
         static void CheckResourceFinalization()
         {
