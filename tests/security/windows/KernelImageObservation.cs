@@ -32,7 +32,15 @@ namespace ScientificSecurity
             }
         }
         internal void RequireObservationStatic(StaticView view)
-        { RequireObservationProfile(); RequireObservationRecords(view); }
+        { QualifyObservation(() => RequireObservationIdentity(KernelBaseIdentity()), () => ObservationBytes(), () => RequireObservationRecords(view)); }
+        static void QualifyObservation(Action identity, Action bytes, Action records)
+        {
+            string phase = "identity";
+            try { identity(); phase = "bytes"; bytes(); phase = "records"; records(); }
+            catch (InvalidOperationException failure) {
+                throw new InvalidOperationException("fixed KernelBase observation profile refused check=" + phase, failure);
+            }
+        }
         bool FullExecutable(uint rva, uint length)
         {
             int matches = 0;
@@ -120,6 +128,19 @@ namespace ScientificSecurity
             bool fakeIdentityRefused = false;
             try { image.RequireObservationProfile(); } catch (InvalidOperationException) { fakeIdentityRefused = true; }
             Need(fakeIdentityRefused);
+            foreach (string failedPhase in new [] { "identity", "bytes", "records" }) {
+                string order = ""; var original = new InvalidOperationException("fixed qualification fixture");
+                Action<string> check = phase => { order += phase + ","; if (phase == failedPhase) throw original; };
+                InvalidOperationException observed = null;
+                try { QualifyObservation(() => check("identity"), () => check("bytes"), () => check("records")); }
+                catch (InvalidOperationException failure) { observed = failure; }
+                Need(observed != null && observed.Message == "fixed KernelBase observation profile refused check=" + failedPhase &&
+                    Object.ReferenceEquals(observed.InnerException, original));
+                Need(order == (failedPhase == "identity" ? "identity," : failedPhase == "bytes" ? "identity,bytes," : "identity,bytes,records,"));
+            }
+            string completed = "";
+            QualifyObservation(() => completed += "identity,", () => completed += "bytes,", () => completed += "records,");
+            Need(completed == "identity,bytes,records,");
         }
         static byte[] ObservationFixture()
         {

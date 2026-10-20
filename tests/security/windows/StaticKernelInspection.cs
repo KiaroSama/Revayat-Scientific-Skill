@@ -30,7 +30,9 @@ namespace ScientificSecurity
                     phase = "post-path"; NativeFixture.Plain(path);
                     phase = "posthash"; RequireSame(identity, KernelImage.FromStatic(ReadHeld(stream)).KernelBaseIdentity());
                     phase = "qualifier"; var view = image.QualifyStatic(text);
-                    phase = "observation-profile"; image.RequireObservationStatic(view);
+                    phase = "observation-profile";
+                    try { image.RequireObservationStatic(view); }
+                    catch (Exception failure) { ReportObservationFailure(failure, identity, line => { Console.Error.WriteLine(line); Console.Error.Flush(); }); throw; }
                     expectedIdentity = identity; // Bind only after successful post-tool same-held-file and fixed-profile checks.
                     phase = "evidence-output";
                     Console.Out.WriteLine("WINDOWS_STATIC_KERNEL phase=entry-slice module=kernelbase.dll records=" + view.Records +
@@ -139,6 +141,11 @@ namespace ScientificSecurity
                 .Append(" truncated=").Append(truncated || pending.Count != 0);
             return output.ToString();
         }
+        static void ReportObservationFailure(Exception primary, string identity, Action<string> emit)
+        {
+            try { emit("WINDOWS_STATIC_KERNEL profile_accepted=False " + identity); }
+            catch (Exception reporting) { throw new AggregateException("static profile qualification/reporting failed", primary, reporting); }
+        }
         static bool ReportFailurePhase(string phase)
         {
             Console.Error.WriteLine("WINDOWS_STATIC_KERNEL failure_phase=" + phase); Console.Error.Flush();
@@ -227,6 +234,18 @@ namespace ScientificSecurity
                 try { RequireSame(identity, invalid); } catch (InvalidOperationException) { refused = true; }
                 if (!refused) throw new InvalidOperationException("static same-run image binding accepted a missing or changed identity");
             }
+            var qualification = new InvalidOperationException("fixed profile refusal");
+            var reportFailure = new IOException("fixed identity reporting");
+            string reported = null;
+            ReportObservationFailure(qualification, identity, line => reported = line);
+            if (reported != "WINDOWS_STATIC_KERNEL profile_accepted=False " + identity)
+                throw new InvalidOperationException("refused static identity metadata differs");
+            AggregateException combined = null;
+            try { ReportObservationFailure(qualification, identity, _ => { throw reportFailure; }); }
+            catch (AggregateException failure) { combined = failure; }
+            if (combined == null || combined.InnerExceptions.Count != 2 ||
+                !Object.ReferenceEquals(combined.InnerExceptions[0], qualification) || !Object.ReferenceEquals(combined.InnerExceptions[1], reportFailure))
+                throw new InvalidOperationException("static identity reporting replaced qualification failure");
             bool missing = false;
             try { RequireSame(null, identity); } catch (InvalidOperationException) { missing = true; }
             if (!missing) throw new InvalidOperationException("static image binding accepted an absent preparation identity");
