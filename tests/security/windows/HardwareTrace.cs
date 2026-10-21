@@ -201,7 +201,7 @@ namespace ScientificSecurity
                 try { scalar = RawSiteValue(before) + " " + RawCheckpoint(ReadCheckpoint()); }
                 catch { Invalidate(); throw; }
                 ConsumeSite(addresses, enabled); Apply(before, false); siteConsumed = true;
-                emit("phase=hardware-site site=KernelBaseEarlierByteCompare rva=0x000BD0E3 " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
+                emit("phase=hardware-site site=KernelBaseEarlierByteCompare rva=0x" + (entries[1] - images["kernelbase.dll"].Base).ToString("X8") + " " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
                     " observation_scope=attach_window provisional=True slot_disabled=True control_integer_unchanged=True");
                 return true;
             }
@@ -243,7 +243,7 @@ namespace ScientificSecurity
             if (!images.TryGetValue("kernelbase.dll", out image))
                 throw new InvalidOperationException("checkpoint read lacks its matched KernelBase image");
             ulong address = image.RequireCheckpointAddress();
-            RequireCheckpointRegion(Region(address, 2), address, image.Base);
+            RequireCheckpointRegion(Region(address, 2), address, image.Base, checked((uint)(address - image.Base)));
             byte[] bytes = new byte[2];
             try {
                 UIntPtr read;
@@ -253,11 +253,11 @@ namespace ScientificSecurity
             }
             finally { Array.Clear(bytes, 0, bytes.Length); }
         }
-        static void RequireCheckpointRegion(MemoryInfo info, ulong address, ulong imageBase)
+        static void RequireCheckpointRegion(MemoryInfo info, ulong address, ulong imageBase, uint expectedRva)
         {
             ulong start = unchecked((ulong)info.address.ToInt64()), length = info.size.ToUInt64();
-            if (imageBase == 0 || imageBase > 0x7FFFFFFFFFFFFFFFUL - KernelImage.CheckpointRva - 2 ||
-                address != imageBase + KernelImage.CheckpointRva || start > address || start > 0x7FFFFFFFFFFFFFFFUL ||
+            if (imageBase == 0 || imageBase > 0x7FFFFFFFFFFFFFFFUL - expectedRva - 2 ||
+                address != imageBase + expectedRva || start > address || start > 0x7FFFFFFFFFFFFFFFUL ||
                 length > 0x7FFFFFFFFFFFFFFFUL - start || address - start > length || 2UL > length - (address - start) ||
                 info.state != 0x1000 || info.type != 0x1000000 || unchecked((ulong)info.allocationBase.ToInt64()) != imageBase ||
                 (info.protect != 4 && info.protect != 8))
@@ -336,11 +336,12 @@ namespace ScientificSecurity
         }
         static void CheckCheckpointReadValidation()
         {
+            const uint expectedRva = 0x39A7E8;
             const ulong imageBase = 0x180000000, address = 0x18039A7E8;
             var info = new MemoryInfo { address = new IntPtr(0x18039A000L), allocationBase = new IntPtr((long)imageBase),
                 size = new UIntPtr(0x1000), state = 0x1000, type = 0x1000000, protect = 4 };
-            RequireCheckpointRegion(info, address, imageBase);
-            MemoryInfo copy = info; copy.protect = 8; RequireCheckpointRegion(copy, address, imageBase);
+            RequireCheckpointRegion(info, address, imageBase, expectedRva);
+            MemoryInfo copy = info; copy.protect = 8; RequireCheckpointRegion(copy, address, imageBase, expectedRva);
             foreach (uint protection in new uint[] { 0, 1, 2, 0x10, 0x20, 0x40, 0x80, 0x104, 0x204, 0x404, 0x80000004 }) {
                 copy = info; copy.protect = protection; RequireCheckpointRegionRefused(copy, address, imageBase);
             }
@@ -354,6 +355,10 @@ namespace ScientificSecurity
             RequireCheckpointRegionRefused(info, address + 1, imageBase);
             RequireCheckpointRegionRefused(info, 0x18039B8F8, imageBase);
             RequireCheckpointRegionRefused(info, address, 0);
+            var historical = info; historical.address = new IntPtr(0x18039B000L);
+            RequireCheckpointRegion(historical, 0x18039B8F8, imageBase, 0x39B8F8);
+            RequireCheckpointRegionRefused(historical, 0x18039B8F8, imageBase, 0x39A7E8);
+            RequireCheckpointRegionRefused(info, address, imageBase, 0x39B8F8);
             byte[][] bytes = { new byte[] { 0, 0 }, new byte[] { 0x58, 0x02 }, new byte[] { 0x12, 0x34 }, new byte[] { 0xFF, 0xFF } };
             string[] expected = { "raw_checkpoint=0x0000", "raw_checkpoint=0x0258", "raw_checkpoint=0x3412", "raw_checkpoint=0xFFFF" };
             for (int index = 0; index < bytes.Length; index++) {
@@ -378,10 +383,10 @@ namespace ScientificSecurity
                 if (malformed != null) RequireCheckpointCleared(malformed);
             }
         }
-        static void RequireCheckpointRegionRefused(MemoryInfo info, ulong address, ulong imageBase)
+        static void RequireCheckpointRegionRefused(MemoryInfo info, ulong address, ulong imageBase, uint expectedRva = 0x39A7E8)
         {
             bool refused = false;
-            try { RequireCheckpointRegion(info, address, imageBase); } catch (InvalidOperationException) { refused = true; }
+            try { RequireCheckpointRegion(info, address, imageBase, expectedRva); } catch (InvalidOperationException) { refused = true; }
             if (!refused) throw new InvalidOperationException("checkpoint read accepted an unqualified image region");
         }
         static void RequireCheckpointCleared(byte[] bytes)

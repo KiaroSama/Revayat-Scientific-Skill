@@ -241,6 +241,11 @@ namespace ScientificSecurity
                 try { RequireSame(identity, invalid); } catch (InvalidOperationException) { refused = true; }
                 if (!refused) throw new InvalidOperationException("static same-run image binding accepted a missing or changed identity");
             }
+            bool crossProfileRefused = false;
+            try { RequireSame("phase=image-identity module=kernelbase.dll sha256=f4acdac5f1dc54b20c84a51ad0f507f421f5d1170e276a5a75d4e7dcf88750e2 pdb_guid=0b01ed22-aa49-026d-b0b3-95e011af2a5e pdb_age=1 pdb_name=kernelbase.pdb pe_timestamp=2900858579 image_size=4120576 file_size=4129456",
+                "phase=image-identity module=kernelbase.dll sha256=96c0459f0d73d728e5c13a10d83d840f56913ef7281d17370a5e1eb197faa450 pdb_guid=cabdac12-ca43-8c8b-4dc4-b60b7499c804 pdb_age=1 pdb_name=kernelbase.pdb pe_timestamp=1038034819 image_size=4116480 file_size=4171392"); }
+            catch (InvalidOperationException) { crossProfileRefused = true; }
+            if (!crossProfileRefused) throw new InvalidOperationException("static LOAD binding switched supported profiles");
             var qualification = new InvalidOperationException("fixed profile refusal");
             var reportFailure = new IOException("fixed identity reporting");
             string reported = null;
