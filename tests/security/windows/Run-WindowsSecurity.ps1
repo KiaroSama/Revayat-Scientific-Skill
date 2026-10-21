@@ -343,6 +343,20 @@ try {
     [ScientificSecurity.StaticKernelInspection]::RunFixed($state)
     Write-RunLog INFO 'fixed same-run candidate activation-worker static inspection starts; never runtime host or cause proof'
     [ScientificSecurity.StaticKernelInspection]::RunActivationWorker($state)
+    Write-RunLog INFO 'separate bounded trusted pass-code loader trace starts; never an admission control'
+    $loaderDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true)
+    Write-RunLog INFO $loaderDiagnostic
+    Write-RunLog INFO 'fixed byte-identical Python clone loader snaps starts; rename and debug perturbation remain noncausal'
+    $diagnosticFailure = $null
+    $cloneLease = [ScientificSecurity.PythonStartupFixture]::Hold($runId, $state)
+    try {
+        [ScientificSecurity.LoaderSnaps]::EnablePython($runId, $state)
+        $cloneDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $false, $true)
+        Write-RunLog INFO $cloneDiagnostic
+    }
+    catch { $diagnosticFailure = $_.Exception; throw }
+    finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure, $cloneLease) }
+    [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
     Write-RunLog INFO 'single fixed trusted-host debugger control starts; never normalization or admission proof'
     [ScientificSecurity.DebugControl]::RunFixed($runId, $state)
     Write-RunLog INFO 'fixed own-image activation host positive starts; never LPAC or Python equivalence'
@@ -361,20 +375,6 @@ try {
     finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure) }
     [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
     [Console]::Out.WriteLine('WINDOWS_INTERNAL_OBSERVATION site=KernelBaseEarlierByteCompare profile_bound=True checkpoint_bytes=2 raw_checkpoint_captured=True observation_scope=attach_window site_consumed=True outer_pair=True restored=True sandbox_process_job_handle_cleanup=True global_cleanup=pending qualified_window=True cause_claimed=False abi_claimed=False')
-    Write-RunLog INFO 'separate bounded trusted pass-code loader trace starts; never an admission control'
-    $loaderDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true)
-    Write-RunLog INFO $loaderDiagnostic
-    Write-RunLog INFO 'fixed byte-identical Python clone loader snaps starts; rename and debug perturbation remain noncausal'
-    $diagnosticFailure = $null
-    $cloneLease = [ScientificSecurity.PythonStartupFixture]::Hold($runId, $state)
-    try {
-        [ScientificSecurity.LoaderSnaps]::EnablePython($runId, $state)
-        $cloneDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $false, $true)
-        Write-RunLog INFO $cloneDiagnostic
-    }
-    catch { $diagnosticFailure = $_.Exception; throw }
-    finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure, $cloneLease) }
-    [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
     Write-RunLog INFO 'fixed nonreserved manual activation comparison starts; no target admission or Python causality'
     [ScientificSecurity.ManualActivationComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'fixed public DLL-file resource comparison starts; no automatic-loader equivalence or target admission'
