@@ -100,12 +100,135 @@ namespace ScientificSecurity
             if (!PythonEvidence("Activation context generation failed; Dependent Assembly public could not be found")
                 .Contains("message_kind=activation_context_failure,assembly_resolution_failure"))
                 throw new InvalidOperationException("multiple fixed Python message kinds were hidden");
+            CheckFailureTemplates();
             string unknown = Classify(Encoding.ASCII.GetBytes("C:\\host\\secret.dll arbitraryRoutine 0xFFFFFFFF\0"), 0);
             if (unknown != "phase=unknown format_valid=True")
                 throw new InvalidOperationException("unknown loader debug string disclosed non-allowlisted content");
             foreach (string trap in new [] { "passwordstatus=0xDEADBEEF", "status 0xDEADBEEF", "status=0xDEADBEEFprivate" })
                 if (Classify(Encoding.ASCII.GetBytes(trap + "\0"), 0) != "phase=unknown format_valid=True")
                     throw new InvalidOperationException("loader status classifier accepted a non-label or embedded identifier");
+        }
+        static void CheckFailureTemplates()
+        {
+            string[] records = {
+                "Probing for the manifest of DLL \"C:\\private-canary\\hidden.dll\" failed with status 0xc0000022",
+                "Querying the active activation context failed with status 0x00000001",
+                "SXS: Unable to open registry key \\Registry\\private-canary Status = 0xC0000034",
+                "SXS: Unable to open storage root subkey private-canary; Status = 0xFFFFFFFF",
+                "SXS: RtlGetAssemblyStorageRoot() unable to resolve storage map entry.  Status = 0x80000000",
+                "Initializing the current directory to \"C:\\private-canary\" failed with status 0x00000000",
+                "Calling LdrpInitializeKernel32Functions failed with status 0xC0000022",
+                "LdrpCodeAuthzInitialize failed with status 0xDEADBEEF"
+            };
+            string[] ids = { "dll_manifest_probe_failed", "active_actctx_query_failed", "sxs_registry_key_open_failed",
+                "sxs_storage_root_subkey_open_failed", "sxs_storage_map_resolution_failed", "current_directory_init_failed",
+                "kernel32_functions_init_failed", "code_authz_init_failed" };
+            string[] statuses = { "C0000022", "00000001", "C0000034", "FFFFFFFF", "80000000", "00000000", "C0000022", "DEADBEEF" };
+            for (int index = 0; index < records.Length; index++) {
+                string expected = " diagnostic_template=" + ids[index] + " diagnostic_status32=0x" + statuses[index] + " diagnostic_cause_claimed=False";
+                foreach (string prefix in new [] { "", "12ab:34CD @ 00000001 - LdrpInitializeProcess - ERROR: ",
+                    "12345678:ABCDEF01 @ 1234567890 - LdrpProcessWork - ERROR: " })
+                    foreach (string ending in new [] { "", "\n", "\r\n" })
+                        foreach (ushort format in new ushort[] { 0, 1 }) {
+                            string text = prefix + records[index] + ending;
+                            byte[] payload = format == 0 ? Encoding.ASCII.GetBytes(text + "\0") : Encoding.Unicode.GetBytes(text + "\0");
+                            string python = Classify(payload, format, true), native = Classify(payload, format);
+                            if (!python.EndsWith(expected, StringComparison.Ordinal) || python.Contains("private-canary") ||
+                                python.Contains("12ab") || native.Contains("diagnostic_template="))
+                                throw new InvalidOperationException("loader failure template parity or privacy fixture failed");
+                        }
+                string valid = records[index];
+                foreach (string invalid in new [] { " " + valid, valid + " ", valid + "extra", valid + "\r", valid + "\n\n",
+                    valid + "\n" + valid, valid.Replace("0x", "0X"), valid.Substring(0, valid.Length - 1),
+                    valid + "0", valid.Substring(0, valid.Length - 1) + "G", valid.ToLowerInvariant(),
+                    "12ab:34cd @ 00000001 - LdrpInit - WARNING: " + valid,
+                    "123:34cd @ 00000001 - LdrpInit - ERROR: " + valid,
+                    "12ab:34cd @ 0000001 - LdrpInit - ERROR: " + valid,
+                    "12ab:34cd @ 00000001 - LdrpInit - ERROR: 12ab:34cd @ 00000001 - LdrpInit - ERROR: " + valid }) {
+                    if (FailureTemplateEvidence(invalid).Length != 0)
+                        throw new InvalidOperationException("malformed loader failure template was accepted");
+                }
+            }
+            foreach (string decoy in new [] { "", "private 0xC0000022", records[0].Replace("private-canary", "0xDEADBEEF"),
+                records[0].Replace("private-canary", "Calling LdrpInitializeKernel32Functions failed with status "),
+                records[2].Replace("private-canary", "one Status = two"), records[0].Replace("hidden.dll", "bad\"name"),
+                records[2].Replace("private-canary", "one\ttwo"), records[0].Replace("private-canary", "one\u2028two") }) {
+                if (FailureTemplateEvidence(decoy).Length != 0)
+                    throw new InvalidOperationException("loader failure substitution decoy was accepted");
+            }
+            if (FailureTemplateEvidence(new string('x', 4097)).Length != 0)
+                throw new InvalidOperationException("oversized loader failure record was accepted");
+        }
+        static readonly string[][] FailureTemplates = {
+            new [] { "dll_manifest_probe_failed", "Probing for the manifest of DLL \"", "\" failed with status " },
+            new [] { "active_actctx_query_failed", "Querying the active activation context failed with status ", "" },
+            new [] { "sxs_registry_key_open_failed", "SXS: Unable to open registry key ", " Status = " },
+            new [] { "sxs_storage_root_subkey_open_failed", "SXS: Unable to open storage root subkey ", "; Status = " },
+            new [] { "sxs_storage_map_resolution_failed", "SXS: RtlGetAssemblyStorageRoot() unable to resolve storage map entry.  Status = ", "" },
+            new [] { "current_directory_init_failed", "Initializing the current directory to \"", "\" failed with status " },
+            new [] { "kernel32_functions_init_failed", "Calling LdrpInitializeKernel32Functions failed with status ", "" },
+            new [] { "code_authz_init_failed", "LdrpCodeAuthzInitialize failed with status ", "" }
+        };
+        static bool Digits(string text, int minimum, int maximum, bool hex)
+        {
+            if (text.Length < minimum || text.Length > maximum) return false;
+            foreach (char value in text)
+                if (!(value >= '0' && value <= '9') && !(hex && (value >= 'a' && value <= 'f' || value >= 'A' && value <= 'F')))
+                    return false;
+            return true;
+        }
+        static string FailureRecord(string text)
+        {
+            if (text == null || text.Length == 0 || text.Length > 4096) return null;
+            if (text.EndsWith("\r\n", StringComparison.Ordinal)) text = text.Substring(0, text.Length - 2);
+            else if (text.EndsWith("\n", StringComparison.Ordinal)) text = text.Substring(0, text.Length - 1);
+            if (text.IndexOfAny(new [] { '\r', '\n', '\0' }) >= 0) return null;
+            const string boundary = " - ERROR: ";
+            int end = text.IndexOf(boundary, StringComparison.Ordinal);
+            if (end < 0) return text;
+            string wrapper = text.Substring(0, end);
+            string[] parts = wrapper.Split(new [] { " @ ", " - " }, StringSplitOptions.None);
+            if (parts.Length != 3) return null;
+            string[] ids = parts[0].Split(':');
+            if (ids.Length != 2 || !Digits(ids[0], 4, 8, true) || !Digits(ids[1], 4, 8, true) ||
+                !Digits(parts[1], 8, 10, false) || parts[2].Length < 1 || parts[2].Length > 96) return null;
+            foreach (char value in parts[2])
+                if (!(value >= 'a' && value <= 'z') && !(value >= 'A' && value <= 'Z') &&
+                    !(value >= '0' && value <= '9') && value != '_') return null;
+            text = text.Substring(end + boundary.Length);
+            return text.IndexOf(boundary, StringComparison.Ordinal) < 0 ? text : null;
+        }
+        static bool OpaqueField(string text, bool quoted)
+        {
+            if (text.Length == 0 || text.IndexOf("0x", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            foreach (char value in text)
+                if (Char.IsControl(value) || value == 0x2028 || value == 0x2029 || quoted && value == '"') return false;
+            foreach (string[] template in FailureTemplates)
+                if (text.IndexOf(template[1], StringComparison.Ordinal) >= 0 || template[2].Length != 0 &&
+                    text.IndexOf(template[2], StringComparison.Ordinal) >= 0) return false;
+            return true;
+        }
+        static string FailureTemplateEvidence(string text)
+        {
+            string record = FailureRecord(text);
+            if (record == null || record.Length < 10) return "";
+            string number = record.Substring(record.Length - 10);
+            if (!number.StartsWith("0x", StringComparison.Ordinal) || !Digits(number.Substring(2), 8, 8, true)) return "";
+            string body = record.Substring(0, record.Length - 10), selected = null;
+            foreach (string[] template in FailureTemplates) {
+                bool matched = template[2].Length == 0 ? body == template[1] :
+                    body.StartsWith(template[1], StringComparison.Ordinal) && body.EndsWith(template[2], StringComparison.Ordinal) &&
+                    body.Length > template[1].Length + template[2].Length &&
+                    OpaqueField(body.Substring(template[1].Length, body.Length - template[1].Length - template[2].Length), template[1].EndsWith("\"", StringComparison.Ordinal));
+                if (!matched) continue;
+                if (selected != null) return "";
+                selected = template[0];
+            }
+            if (selected == null) return "";
+            uint status;
+            if (!UInt32.TryParse(number.Substring(2), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out status)) return "";
+            return " diagnostic_template=" + selected + " diagnostic_status32=0x" + status.ToString("X8") + " diagnostic_cause_claimed=False";
         }
         internal static string Classify(byte[] bytes, ushort unicode, bool python = false)
         {
@@ -165,7 +288,8 @@ namespace ScientificSecurity
             // A DLL message also names its parent. Mentions never identify the failed DLL.
             return (kinds.Count == 0 ? "" : " message_kind=" + String.Join(",", kinds))
                 + (mentions.Count == 0 ? "" : " module_mentioned=" + String.Join(",", mentions))
-                + " access_denied_literal_present=" + (HasToken(text, "C0000022") || HasToken(text, "0xC0000022"));
+                + " access_denied_literal_present=" + (HasToken(text, "C0000022") || HasToken(text, "0xC0000022"))
+                + FailureTemplateEvidence(text);
         }
         static bool Ordered(string text, string first, string second)
         {
