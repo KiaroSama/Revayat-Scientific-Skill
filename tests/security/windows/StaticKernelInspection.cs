@@ -66,8 +66,9 @@ namespace ScientificSecurity
                     phase = "post-path"; NativeFixture.Plain(path);
                     phase = "posthash"; RequireSame(identity, KernelImage.FromActivationWorker(ReadHeld(stream)).ActivationWorkerIdentity());
                     phase = "qualifier"; var view = image.QualifyStatic(text, slice);
-                    phase = "module-callback-profile"; image.RequireModuleCallbackProfile();
-                    expectedActivationIdentity = identity;
+                    phase = "module-callback-profile";
+                    QualifyActivation(() => image.RequireModuleCallbackProfile(), identity,
+                        line => { Console.Error.WriteLine(line); Console.Error.Flush(); }, () => expectedActivationIdentity = identity);
                     phase = "evidence-output";
                     Console.Out.WriteLine("WINDOWS_STATIC_ACTIVATION " + identity);
                     Console.Out.WriteLine("WINDOWS_STATIC_ACTIVATION phase=worker-slice module=kernel32.dll export=CreateActCtxWWorker records=" + view.Records +
@@ -141,9 +142,15 @@ namespace ScientificSecurity
                 .Append(" truncated=").Append(truncated || pending.Count != 0);
             return output.ToString();
         }
-        static void ReportObservationFailure(Exception primary, string identity, Action<string> emit)
+        static void QualifyActivation(Action qualify, string identity, Action<string> emit, Action bind)
         {
-            try { emit("WINDOWS_STATIC_KERNEL profile_accepted=False " + identity); }
+            try { qualify(); }
+            catch (Exception failure) { ReportObservationFailure(failure, identity, emit, true); throw; }
+            bind();
+        }
+        static void ReportObservationFailure(Exception primary, string identity, Action<string> emit, bool activation = false)
+        {
+            try { emit((activation ? "WINDOWS_STATIC_ACTIVATION" : "WINDOWS_STATIC_KERNEL") + " profile_accepted=False " + identity); }
             catch (Exception reporting) { throw new AggregateException("static profile qualification/reporting failed", primary, reporting); }
         }
         static bool ReportFailurePhase(string phase)
@@ -246,6 +253,23 @@ namespace ScientificSecurity
             if (combined == null || combined.InnerExceptions.Count != 2 ||
                 !Object.ReferenceEquals(combined.InnerExceptions[0], qualification) || !Object.ReferenceEquals(combined.InnerExceptions[1], reportFailure))
                 throw new InvalidOperationException("static identity reporting replaced qualification failure");
+            string order = ""; bool bound = false; Exception propagatedQualification = null;
+            try { QualifyActivation(() => { order += "qualify,"; throw qualification; }, workerIdentity,
+                line => { reported = line; order += "report,"; }, () => bound = true); }
+            catch (Exception failure) { propagatedQualification = failure; }
+            if (bound || order != "qualify,report," || !Object.ReferenceEquals(propagatedQualification, qualification) ||
+                reported != "WINDOWS_STATIC_ACTIVATION profile_accepted=False " + workerIdentity)
+                throw new InvalidOperationException("refused activation profile was bound or lost exact metadata");
+            combined = null;
+            try { QualifyActivation(() => { throw qualification; }, workerIdentity, _ => { throw reportFailure; }, () => bound = true); }
+            catch (AggregateException failure) { combined = failure; }
+            if (bound || combined == null || combined.InnerExceptions.Count != 2 ||
+                !Object.ReferenceEquals(combined.InnerExceptions[0], qualification) || !Object.ReferenceEquals(combined.InnerExceptions[1], reportFailure))
+                throw new InvalidOperationException("activation refusal reporting lost primary failure or bound identity");
+            order = "";
+            QualifyActivation(() => order += "qualify,", workerIdentity, _ => { throw new InvalidOperationException("unexpected success report"); },
+                () => { order += "bind,"; bound = true; });
+            if (!bound || order != "qualify,bind,") throw new InvalidOperationException("activation identity binding preceded qualification");
             bool missing = false;
             try { RequireSame(null, identity); } catch (InvalidOperationException) { missing = true; }
             if (!missing) throw new InvalidOperationException("static image binding accepted an absent preparation identity");
