@@ -101,6 +101,7 @@ namespace ScientificSecurity
                 .Contains("message_kind=activation_context_failure,assembly_resolution_failure"))
                 throw new InvalidOperationException("multiple fixed Python message kinds were hidden");
             CheckFailureTemplates();
+            CheckPhrasePresence();
             string unknown = Classify(Encoding.ASCII.GetBytes("C:\\host\\secret.dll arbitraryRoutine 0xFFFFFFFF\0"), 0);
             if (unknown != "phase=unknown format_valid=True")
                 throw new InvalidOperationException("unknown loader debug string disclosed non-allowlisted content");
@@ -158,6 +159,80 @@ namespace ScientificSecurity
             }
             if (FailureTemplateEvidence(new string('x', 4097)).Length != 0)
                 throw new InvalidOperationException("oversized loader failure record was accepted");
+        }
+        static void CheckPhrasePresence()
+        {
+            string[] phrases = {
+                "Probing for the manifest of DLL ", "Querying the active activation context failed with status ",
+                "SXS: Unable to open registry key ", "SXS: Unable to open storage root subkey ",
+                "SXS: RtlGetAssemblyStorageRoot() unable to resolve storage map entry.", "Initializing the current directory to ",
+                "Calling LdrpInitializeKernel32Functions failed with status ", "LdrpCodeAuthzInitialize failed with status ",
+                "LDR:MRDATA: Process initialization failed with status ", "Process initialization failed with status ",
+                "Querying the known DLL directory link object failed with status ",
+                "Walking the import tables of the executable and its static imports failed with status ",
+                "Running the init routines of the executable", "Initializing TLS slots failed with status ",
+                "Calling KernelbasePostInit failed with status ", "SXS: Attempt to get storage location from subkey ",
+                "SXS: Storage resolution failed to insert entry to storage map; Status = ",
+                "SXS: Attempt to probe known root of assembly storage (", "Unable to load DLL: ",
+                "SXS: Unable to resolve storage root for assembly directory "
+            };
+            string[] ids = { "manifest_probe", "active_actctx", "sxs_registry", "sxs_storage_subkey", "sxs_storage_map",
+                "current_directory", "kernel32_init", "code_authz", "mrdata_init", "process_init", "known_dll_link",
+                "import_walk", "import_init", "tls_init", "kernelbase_postinit", "sxs_storage_location",
+                "sxs_storage_insert", "sxs_known_root", "dll_load", "sxs_storage_resolve" };
+            for (int index = 0; index < phrases.Length; index++) {
+                string expectedIds = index == 8 ? "mrdata_init,process_init" : ids[index];
+                string expected = " diagnostic_phrase_ids=" + expectedIds + " phrase_presence_only=True";
+                if (PhrasePresence(phrases[index]) != expected || PhrasePresence(phrases[index] + phrases[index]) != expected ||
+                    PhrasePresence(phrases[index].ToLowerInvariant()).Length != 0)
+                    throw new InvalidOperationException("fixed phrase presence, deduplication or case fixture failed");
+                foreach (ushort format in new ushort[] { 0, 1 }) {
+                    string embedded = "opaque-private-canary[" + phrases[index] + "] 0xDEADBEEF";
+                    byte[] payload = format == 0 ? Encoding.ASCII.GetBytes(embedded + "\0") : Encoding.Unicode.GetBytes(embedded + "\0");
+                    string python = Classify(payload, format, true), native = Classify(payload, format);
+                    if (!python.EndsWith(expected, StringComparison.Ordinal) || python.Contains("private-canary") ||
+                        python.Contains("DEADBEEF") || python.Contains("diagnostic_template=") || python.Contains("diagnostic_status32=") ||
+                        native.Contains("diagnostic_phrase_ids="))
+                        throw new InvalidOperationException("phrase presence gained attribution or leaked opaque data");
+                }
+            }
+            string all = PhrasePresence(String.Join("|", phrases.Reverse()));
+            if (all != " diagnostic_phrase_ids=" + String.Join(",", ids) + " phrase_presence_only=True" || all.Length > 1024 ||
+                all.Any(value => value > 127) || PhrasePresence("failed error SXS status private-canary").Length != 0)
+                throw new InvalidOperationException("phrase presence ordering, output bound or unknown fixture failed");
+            foreach (int index in new [] { 12, 15, 17 }) {
+                string output = Classify(Encoding.ASCII.GetBytes(phrases[index] + "\0"), 0, true);
+                if (!output.StartsWith("phase=unknown format_valid=True", StringComparison.Ordinal))
+                    throw new InvalidOperationException("nonfailure phrase changed diagnostic phase");
+            }
+        }
+        static readonly string[][] DiagnosticPhrases = {
+            new [] { "manifest_probe", "Probing for the manifest of DLL " },
+            new [] { "active_actctx", "Querying the active activation context failed with status " },
+            new [] { "sxs_registry", "SXS: Unable to open registry key " },
+            new [] { "sxs_storage_subkey", "SXS: Unable to open storage root subkey " },
+            new [] { "sxs_storage_map", "SXS: RtlGetAssemblyStorageRoot() unable to resolve storage map entry." },
+            new [] { "current_directory", "Initializing the current directory to " },
+            new [] { "kernel32_init", "Calling LdrpInitializeKernel32Functions failed with status " },
+            new [] { "code_authz", "LdrpCodeAuthzInitialize failed with status " },
+            new [] { "mrdata_init", "LDR:MRDATA: Process initialization failed with status " },
+            new [] { "process_init", "Process initialization failed with status " },
+            new [] { "known_dll_link", "Querying the known DLL directory link object failed with status " },
+            new [] { "import_walk", "Walking the import tables of the executable and its static imports failed with status " },
+            new [] { "import_init", "Running the init routines of the executable" },
+            new [] { "tls_init", "Initializing TLS slots failed with status " },
+            new [] { "kernelbase_postinit", "Calling KernelbasePostInit failed with status " },
+            new [] { "sxs_storage_location", "SXS: Attempt to get storage location from subkey " },
+            new [] { "sxs_storage_insert", "SXS: Storage resolution failed to insert entry to storage map; Status = " },
+            new [] { "sxs_known_root", "SXS: Attempt to probe known root of assembly storage (" },
+            new [] { "dll_load", "Unable to load DLL: " },
+            new [] { "sxs_storage_resolve", "SXS: Unable to resolve storage root for assembly directory " }
+        };
+        static string PhrasePresence(string text)
+        {
+            string[] ids = DiagnosticPhrases.Where(value => text.IndexOf(value[1], StringComparison.Ordinal) >= 0)
+                .Select(value => value[0]).ToArray();
+            return ids.Length == 0 ? "" : " diagnostic_phrase_ids=" + String.Join(",", ids) + " phrase_presence_only=True";
         }
         static readonly string[][] FailureTemplates = {
             new [] { "dll_manifest_probe_failed", "Probing for the manifest of DLL \"", "\" failed with status " },
@@ -289,7 +364,7 @@ namespace ScientificSecurity
             return (kinds.Count == 0 ? "" : " message_kind=" + String.Join(",", kinds))
                 + (mentions.Count == 0 ? "" : " module_mentioned=" + String.Join(",", mentions))
                 + " access_denied_literal_present=" + (HasToken(text, "C0000022") || HasToken(text, "0xC0000022"))
-                + FailureTemplateEvidence(text);
+                + PhrasePresence(text) + FailureTemplateEvidence(text);
         }
         static bool Ordered(string text, string first, string second)
         {
