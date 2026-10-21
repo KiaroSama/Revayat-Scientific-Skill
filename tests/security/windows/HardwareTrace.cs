@@ -201,7 +201,7 @@ namespace ScientificSecurity
                 try { scalar = RawSiteValue(before) + " " + RawCheckpoint(ReadCheckpoint()); }
                 catch { Invalidate(); throw; }
                 ConsumeSite(addresses, enabled); Apply(before, false); siteConsumed = true;
-                emit("phase=hardware-site site=KernelBaseEarlierByteCompare rva=0x000BD243 " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
+                emit("phase=hardware-site site=KernelBaseEarlierByteCompare rva=0x000BD0E3 " + scalar + " " + DebugContext.TrapQualifiers(eventStatus) +
                     " observation_scope=attach_window provisional=True slot_disabled=True control_integer_unchanged=True");
                 return true;
             }
@@ -336,8 +336,8 @@ namespace ScientificSecurity
         }
         static void CheckCheckpointReadValidation()
         {
-            const ulong imageBase = 0x180000000, address = 0x18039B8F8;
-            var info = new MemoryInfo { address = new IntPtr(0x18039B000L), allocationBase = new IntPtr((long)imageBase),
+            const ulong imageBase = 0x180000000, address = 0x18039A7E8;
+            var info = new MemoryInfo { address = new IntPtr(0x18039A000L), allocationBase = new IntPtr((long)imageBase),
                 size = new UIntPtr(0x1000), state = 0x1000, type = 0x1000000, protect = 4 };
             RequireCheckpointRegion(info, address, imageBase);
             MemoryInfo copy = info; copy.protect = 8; RequireCheckpointRegion(copy, address, imageBase);
@@ -348,10 +348,11 @@ namespace ScientificSecurity
             copy = info; copy.type = 0x20000; RequireCheckpointRegionRefused(copy, address, imageBase);
             copy = info; copy.allocationBase = new IntPtr((long)imageBase + 1); RequireCheckpointRegionRefused(copy, address, imageBase);
             copy = info; copy.address = new IntPtr((long)address + 1); RequireCheckpointRegionRefused(copy, address, imageBase);
-            copy = info; copy.size = new UIntPtr(0x8F9); RequireCheckpointRegionRefused(copy, address, imageBase);
+            copy = info; copy.size = new UIntPtr(0x7E9); RequireCheckpointRegionRefused(copy, address, imageBase);
             copy = info; copy.size = UIntPtr.Zero; RequireCheckpointRegionRefused(copy, address, imageBase);
             copy = info; copy.size = new UIntPtr(UInt64.MaxValue); RequireCheckpointRegionRefused(copy, address, imageBase);
             RequireCheckpointRegionRefused(info, address + 1, imageBase);
+            RequireCheckpointRegionRefused(info, 0x18039B8F8, imageBase);
             RequireCheckpointRegionRefused(info, address, 0);
             byte[][] bytes = { new byte[] { 0, 0 }, new byte[] { 0x58, 0x02 }, new byte[] { 0x12, 0x34 }, new byte[] { 0xFF, 0xFF } };
             string[] expected = { "raw_checkpoint=0x0000", "raw_checkpoint=0x0258", "raw_checkpoint=0x3412", "raw_checkpoint=0xFFFF" };
