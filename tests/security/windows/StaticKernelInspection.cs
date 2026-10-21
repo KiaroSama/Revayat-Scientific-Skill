@@ -246,6 +246,11 @@ namespace ScientificSecurity
                 "phase=image-identity module=kernelbase.dll sha256=96c0459f0d73d728e5c13a10d83d840f56913ef7281d17370a5e1eb197faa450 pdb_guid=cabdac12-ca43-8c8b-4dc4-b60b7499c804 pdb_age=1 pdb_name=kernelbase.pdb pe_timestamp=1038034819 image_size=4116480 file_size=4171392"); }
             catch (InvalidOperationException) { crossProfileRefused = true; }
             if (!crossProfileRefused) throw new InvalidOperationException("static LOAD binding switched supported profiles");
+            crossProfileRefused = false;
+            try { RequireSame("phase=image-identity module=kernel32.dll sha256=347f1ac1b7dbec710cf06fb3f67d131bceebbc19076bc77daacd31cfe452b496 pe_timestamp=4227614027 image_size=823296 file_size=836208",
+                "phase=image-identity module=kernel32.dll sha256=601aaacb3bdcbea24aec832d08a2f12ec7046183b6f40d18d61458d5e7008991 pe_timestamp=1269129758 image_size=823296 file_size=853648"); }
+            catch (InvalidOperationException) { crossProfileRefused = true; }
+            if (!crossProfileRefused) throw new InvalidOperationException("static LOAD binding switched supported kernel32 profiles");
             var qualification = new InvalidOperationException("fixed profile refusal");
             var reportFailure = new IOException("fixed identity reporting");
             string reported = null;

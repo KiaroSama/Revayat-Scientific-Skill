@@ -39,12 +39,13 @@ namespace ScientificSecurity
             if (candidate == null) return;
             Need(CallbackLoadStage());
             candidate.RequireModuleCallbackProfile(); kernel = candidate;
-            RequireExecutable(kernel, KernelImage.ModuleCallbackResultRva, 5);
+            uint site = kernel.ActivationCallbackSite;
+            RequireExecutable(kernel, site, 5);
             byte[] before = Read();
             try {
                 if (initial) Ownership(before, false);
                 else Need(DebugContext.RawDebugEqual(original, before));
-                addresses[0] = kernel.Address(KernelImage.ModuleCallbackResultRva);
+                addresses[0] = kernel.Address(site);
                 enabled[0] = true; stage = 2; Apply(before, false);
             }
             finally { Array.Clear(before, 0, before.Length); }

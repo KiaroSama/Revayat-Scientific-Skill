@@ -100,47 +100,38 @@ namespace ScientificSecurity
             }
             return bytes;
         }
-        static void RequireActivationBoundaryIdentity(string identity)
-        {
-            Need(identity == "phase=image-identity module=kernel32.dll sha256=347f1ac1b7dbec710cf06fb3f67d131bceebbc19076bc77daacd31cfe452b496 pe_timestamp=4227614027 image_size=823296 file_size=836208");
-        }
-        void ActivationBoundaryBytes()
+        static void RequireActivationBoundaryIdentity(string identity) { SelectActivation(identity); }
+        void ActivationBoundaryBytes() { ActivationBoundaryBytes(ActivationProfiles.Original); }
+        void ActivationBoundaryBytes(ActivationProfile profile)
         {
             Need(Name == "kernel32.dll");
-            for (int index = 0; index < activationRvas.Length; index++) {
-                uint rva = activationRvas[index], size = (uint)activationBytes[index].Length / 2;
+            RequireActivationCode(profile.Code, profile.Bytes);
+            int[] records = { 0,7,4,12,14,17,21,22,25,27,31,32,36,38,40,45,46,52,53,58,60,64 };
+            int[] offsets = { 3,3,1,1,1,3,1,1,2,3,2,3,1,1,3,2,1,2,3,1,3,2 };
+            for (int index = 0; index < records.Length; index++) {
+                int record = records[index], offset = offsets[index];
+                uint rva = profile.Code[record], size = (uint)profile.Bytes[record].Length / 2;
+                Need(size - offset == 1 || size - offset == 4);
+                long displacement = size - offset == 1 ? unchecked((sbyte)data[Map(rva + (uint)offset, 1)]) :
+                    BitConverter.ToInt32(data, Map(rva + (uint)offset, 4));
+                Need(checked((long)rva + size + displacement) == profile.Edges[index]);
+            }
+            Need(FullExecutable(profile.ExecutableTarget, 1)); Map(profile.ExecutableTarget, 1);
+        }
+        void RequireActivationCode(uint[] rvas, string[] bytes)
+        {
+            Need(rvas.Length == bytes.Length);
+            for (int index = 0; index < rvas.Length; index++) {
+                uint rva = rvas[index], size = (uint)bytes[index].Length / 2;
                 Need(FullExecutable(rva, size)); int raw = Map(rva, size);
                 for (int item = 0; item < size; item++)
-                    Need(data[raw + item] == Byte.Parse(activationBytes[index].Substring(item * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+                    Need(data[raw + item] == Byte.Parse(bytes[index].Substring(item * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
             }
-            Need(checked(0x24BB4L + BitConverter.ToInt32(data, Map(0x24BB0, 4))) == 0x8B7E0);
-            Need(checked(0x24BDCL + BitConverter.ToInt32(data, Map(0x24BD8, 4))) == 0x8B3C0);
-            Need(checked(0x24BBFL + unchecked((sbyte)data[Map(0x24BBE, 1)])) == 0x24C1C);
-            Need(checked(0x25A1AL + unchecked((sbyte)data[Map(0x25A19, 1)])) == 0x25A27);
-            Need(checked(0x25A21L + BitConverter.ToInt32(data, Map(0x25A1D, 4))) == 0xEAD0);
-            Need(checked(0x25868L + BitConverter.ToInt32(data, Map(0x25864, 4))) == 0x88F90);
-            Need(checked(0x25877L + unchecked((sbyte)data[Map(0x25876, 1)])) == 0x258AA);
-            Need(checked(0x258C9L + BitConverter.ToInt32(data, Map(0x258C5, 4))) == 0x25CEC);
-            Need(FullExecutable(0x25CEC, 1)); Map(0x25CEC, 1);
-            Need(checked(0x258D3L + BitConverter.ToInt32(data, Map(0x258CF, 4))) == 0x259EC);
-            Need(checked(0x2625EL + BitConverter.ToInt32(data, Map(0x2625A, 4))) == 0x8B310);
-            Need(checked(0x2626DL + BitConverter.ToInt32(data, Map(0x26269, 4))) == 0x26DD6);
-            Need(checked(0x272ADL + BitConverter.ToInt32(data, Map(0x272A9, 4))) == 0x8B818);
-            Need(checked(0x272BDL + unchecked((sbyte)data[Map(0x272BC, 1)])) == 0x272E1);
-            Need(checked(0x272C1L + unchecked((sbyte)data[Map(0x272C0, 1)])) == 0x272CF);
-            Need(checked(0x269AEL + BitConverter.ToInt32(data, Map(0x269AA, 4))) == 0x8B310);
-            Need(checked(0x269BFL + BitConverter.ToInt32(data, Map(0x269BB, 4))) == 0x26A48);
-            Need(checked(0x26B3CL + unchecked((sbyte)data[Map(0x26B3B, 1)])) == 0x26B72);
-            Need(checked(0x26B7AL + BitConverter.ToInt32(data, Map(0x26B76, 4))) == 0x26C64);
-            Need(checked(0x26BB3L + BitConverter.ToInt32(data, Map(0x26BAF, 4))) == 0x8B020);
-            Need(checked(0x26BC0L + unchecked((sbyte)data[Map(0x26BBF, 1)])) == 0x26BEB);
-            Need(checked(0x277A3L + BitConverter.ToInt32(data, Map(0x2779F, 4))) == 0x8B218);
-            Need(checked(0x277B2L + BitConverter.ToInt32(data, Map(0x277AE, 4))) == 0x27848);
         }
         internal void RequireActivationBoundaryProfile()
         {
-            RequireActivationBoundaryIdentity(ActivationWorkerIdentity());
-            Need(ActivationWorkerSlice().Rva == 0x24D20); ActivationBoundaryBytes();
+            var profile = SelectActivation(ActivationWorkerIdentity());
+            Need(ActivationWorkerSlice().Rva == profile.Worker); ActivationBoundaryBytes(profile);
         }
         internal static KernelImage FromActivationSystemLoad(IntPtr file, IntPtr imageBase)
         {

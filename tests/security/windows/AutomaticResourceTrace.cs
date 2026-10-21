@@ -198,8 +198,9 @@ namespace ScientificSecurity
             KernelImage candidate = KernelImage.FromActivationSystemLoad(file, imageBase);
             if (candidate == null) return;
             ResourceCheck(kernel == null, "duplicate-kernel-load"); candidate.RequireModuleCallbackProfile();
-            RequireExecutable(candidate, 0x25C1D, 5); kernel = candidate;
-            resourceThreads.Arm(kernel.Address(0x25C1D));
+            uint site = candidate.ActivationResourceSite;
+            RequireExecutable(candidate, site, 5); kernel = candidate;
+            resourceThreads.Arm(kernel.Address(site));
         }
         internal bool ResourceCaptured { get { return resourceThreads != null && resourceThreads.Captured; } }
         internal void ResourceClearEpoch() { resourceThreads.ClearEpoch(); }

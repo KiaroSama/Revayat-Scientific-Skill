@@ -34,6 +34,7 @@ namespace ScientificSecurity
             "33C0", "EB93", "65488B042530000000", "8B8050120000", "EB82" };
         public static void CheckModuleCallbackProfileValidation()
         {
+            CheckActivationProfiles();
             byte[] bytes = CallbackFixture(); var image = FromActivationWorker(bytes);
             image.ActivationBoundaryBytes(); image.CallbackBytes();
             Need(image.Entry == 0x2E1D0 && image.FullExecutable(ModuleCallbackResultRva, 5));
@@ -57,34 +58,34 @@ namespace ScientificSecurity
             ModuleRefuse(() => QualifyModuleCallbackHost(ModuleActivationFixtureImage(true, true), Hash(host)));
         }
         internal void RequireModuleCallbackProfile()
-        { RequireActivationBoundaryProfile(); CallbackBytes(); }
-        void CallbackBytes()
         {
-            Need(Name == "kernel32.dll" && Entry == 0x2E1D0 && callbackRvas.Length == callbackBytes.Length);
-            for (int index = 0; index < callbackRvas.Length; index++) {
-                uint rva = callbackRvas[index], length = (uint)callbackBytes[index].Length / 2;
-                Need(FullExecutable(rva, length)); int raw = Map(rva, length);
-                for (int item = 0; item < length; item++)
-                    Need(data[raw + item] == Byte.Parse(callbackBytes[index].Substring(item * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+            var profile = SelectActivation(ActivationWorkerIdentity());
+            Need(ActivationWorkerSlice().Rva == profile.Worker);
+            ActivationBoundaryBytes(profile); CallbackBytes(profile);
+        }
+        void CallbackBytes() { CallbackBytes(ActivationProfiles.Original); }
+        void CallbackBytes(ActivationProfile profile)
+        {
+            Need(Name == "kernel32.dll" && Entry == profile.Entry);
+            RequireActivationCode(profile.Callback, profile.CallbackBytes);
+            int[] records32 = { 0,1,2,3,25,38,62 }, offsets32 = { 3,3,3,3,1,3,3 };
+            for (int index = 0; index < records32.Length; index++) {
+                int record = records32[index]; uint rva = profile.Callback[record];
+                uint size = (uint)profile.CallbackBytes[record].Length / 2;
+                Need(checked((long)rva + size + BitConverter.ToInt32(data, Map(rva + (uint)offsets32[index], 4))) == profile.CallbackEdges[index]);
             }
-            uint[] signed32 = { 0x2E2B5, 0x2E2BC, 0x2E2C3, 0x2E2CA, 0x25BDF, 0x25C1D, 0x25C81 };
-            uint[] fields32 = { 0x2E2B1, 0x2E2B8, 0x2E2BF, 0x2E2C6, 0x25BDB, 0x25C19, 0x25C7D };
-            long[] targets32 = { 0x8A8D8, 0x61330, 0x25B90, 0x8B970, 0x25CAC, 0x8B040, 0x8A8D0 };
-            for (int index = 0; index < signed32.Length; index++)
-                Need(checked((long)signed32[index] + BitConverter.ToInt32(data, Map(fields32[index], 4))) == targets32[index]);
-            uint[] ends8 = { 0x25BD7, 0x25BE3, 0x25BF2, 0x25C26, 0x25C47, 0x25C4E, 0x25C5D, 0x25C5F, 0x25C8C, 0x25C93, 0x25CA4 };
-            long[] targets8 = { 0x25C47, 0x25C40, 0x25C4E, 0x25C5F, 0x25C26, 0x25C26, 0x25BF2, 0x25C40, 0x25C93, 0x25C26, 0x25C26 };
-            for (int index = 0; index < ends8.Length; index++)
-                Need(checked((long)ends8[index] + unchecked((sbyte)data[Map(ends8[index] - 1, 1)])) == targets8[index]);
+            int[] records8 = { 23,27,30,41,50,52,55,56,65,68,71 };
+            for (int index = 0; index < records8.Length; index++) {
+                int record = records8[index]; uint rva = profile.Callback[record];
+                uint size = (uint)profile.CallbackBytes[record].Length / 2;
+                Need(checked((long)rva + size + unchecked((sbyte)data[Map(rva + size - 1, 1)])) == profile.CallbackShortEdges[index]);
+            }
             ulong optional = (ulong)U32(0x3C) + 24;
-            Need(U32(optional + 120) == 0xB34BC && U32(optional + 124) == 0x834);
-            for (uint offset = 0; offset < 20; offset++) Need(data[Map(0xB3CDC + offset, 1)] == 0);
-            CallbackImports(0xB34E4, "ntdll.dll", 0xB5C88, 0x8AEB0, 365,
-                new uint[] { 344, 50 }, new uint[] { 0xB6A68, 0xB7616 }, new ushort[] { 0xA7, 0x9D },
-                new [] { "LdrSetDllManifestProber", "LdrResFindResourceDirectory" });
-            CallbackImports(0xB3B60, "api-ms-win-core-sidebyside-l1-1-0.dll", 0xB5660, 0x8A888, 11,
-                new uint[] { 9, 10 }, new uint[] { 0xBC2F8, 0xBC2E8 }, new ushort[] { 2, 9 },
-                new [] { "CreateActCtxW", "ReleaseActCtx" });
+            Need(U32(optional + 120) == profile.ImportDirectory && U32(optional + 124) == 0x834);
+            for (uint offset = 0; offset < 20; offset++) Need(data[Map(profile.NullDescriptor + offset, 1)] == 0);
+            foreach (var imports in profile.Imports)
+                CallbackImports(imports.Descriptor, imports.Owner, imports.Lookup, imports.Address, imports.Count,
+                    imports.Indices, imports.Records, imports.Hints, imports.Names);
         }
         void CallbackImports(uint descriptor, string owner, uint lookup, uint address, uint count,
             uint[] indices, uint[] records, ushort[] hints, string[] names)

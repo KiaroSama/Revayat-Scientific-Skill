@@ -345,15 +345,17 @@ namespace ScientificSecurity
                 int next = Next(stage, slot, stage == 4 ? unchecked((uint)U64(before, 144)) : 0);
                 if (stage == 1) {
                     Check(initial && kernel != null, "entry-prerequisites", before);
-                    RequireExecutable(kernel, KernelImage.WorkerEntryRva, 15); RequireExecutable(kernel, KernelImage.FailureFunnelRva, 2);
-                    addresses[0] = kernel.Address(KernelImage.WorkerEntryRva); addresses[1] = kernel.Address(KernelImage.FailureFunnelRva);
+                    uint worker = kernel.ActivationWorkerSite, funnel = kernel.ActivationFunnelSite;
+                    RequireExecutable(kernel, worker, 15); RequireExecutable(kernel, funnel, 2);
+                    addresses[0] = kernel.Address(worker); addresses[1] = kernel.Address(funnel);
                     Need(addresses[0] != addresses[1] && addresses[0] != fixture.Address(fixture.Entry) && addresses[1] != fixture.Address(fixture.Entry));
                     enabled[0] = enabled[1] = true; stage = next; Apply(before, false);
                     emit("phase=activation-entry-hit " + DebugContext.TrapQualifiers(status) + " worker_sites_armed=True control_integer_unchanged=True");
                 }
                 else if (stage == 2) {
-                    RequireExecutable(kernel, KernelImage.RegistryResultRva, 2);
-                    addresses[0] = kernel.Address(KernelImage.RegistryResultRva);
+                    uint registry = kernel.ActivationRegistrySite;
+                    RequireExecutable(kernel, registry, 2);
+                    addresses[0] = kernel.Address(registry);
                     Need(addresses[0] != addresses[1] && addresses[0] != fixture.Address(fixture.Entry));
                     stage = next; Apply(before, false);
                     emit("phase=activation-worker-entry " + DebugContext.TrapQualifiers(status) +
