@@ -174,12 +174,20 @@ namespace ScientificSecurity
                 "Calling KernelbasePostInit failed with status ", "SXS: Attempt to get storage location from subkey ",
                 "SXS: Storage resolution failed to insert entry to storage map; Status = ",
                 "SXS: Attempt to probe known root of assembly storage (", "Unable to load DLL: ",
-                "SXS: Unable to resolve storage root for assembly directory "
+                "SXS: Unable to resolve storage root for assembly directory ",
+                "BasepSxsCreateStreams() failed", "NtQueryInformationFile failed. Status = ",
+                "BaseDllMapResourceIdW failed", "SXS: RtlCreateActivationContext() failed ",
+                "NtCreateSection() failed. Status = ", "NtMapViewOfSection failed",
+                "Calling csrss server failed. Status = ", "Failure getting active activation context; ntstatus ",
+                "BaseDllMapResourceIdA failed", "CsrCaptureMessageMultiUnicodeStringsInPlace failed",
+                "ACTCTX_FLAG_RESOURCE_NAME_VALID set but lpResourceName == 0"
             };
             string[] ids = { "manifest_probe", "active_actctx", "sxs_registry", "sxs_storage_subkey", "sxs_storage_map",
                 "current_directory", "kernel32_init", "code_authz", "mrdata_init", "process_init", "known_dll_link",
                 "import_walk", "import_init", "tls_init", "kernelbase_postinit", "sxs_storage_location",
-                "sxs_storage_insert", "sxs_known_root", "dll_load", "sxs_storage_resolve" };
+                "sxs_storage_insert", "sxs_known_root", "dll_load", "sxs_storage_resolve", "sxs_streams", "sxs_file_info",
+                "sxs_resource_w", "sxs_create_context", "sxs_create_section", "sxs_map_section", "sxs_csr_server",
+                "sxs_active_context", "sxs_resource_a", "sxs_csr_capture", "sxs_resource_flag" };
             for (int index = 0; index < phrases.Length; index++) {
                 string expectedIds = index == 8 ? "mrdata_init,process_init" : ids[index];
                 string expected = " diagnostic_phrase_ids=" + expectedIds + " phrase_presence_only=True";
@@ -226,7 +234,18 @@ namespace ScientificSecurity
             new [] { "sxs_storage_insert", "SXS: Storage resolution failed to insert entry to storage map; Status = " },
             new [] { "sxs_known_root", "SXS: Attempt to probe known root of assembly storage (" },
             new [] { "dll_load", "Unable to load DLL: " },
-            new [] { "sxs_storage_resolve", "SXS: Unable to resolve storage root for assembly directory " }
+            new [] { "sxs_storage_resolve", "SXS: Unable to resolve storage root for assembly directory " },
+            new [] { "sxs_streams", "BasepSxsCreateStreams() failed" },
+            new [] { "sxs_file_info", "NtQueryInformationFile failed. Status = " },
+            new [] { "sxs_resource_w", "BaseDllMapResourceIdW failed" },
+            new [] { "sxs_create_context", "SXS: RtlCreateActivationContext() failed " },
+            new [] { "sxs_create_section", "NtCreateSection() failed. Status = " },
+            new [] { "sxs_map_section", "NtMapViewOfSection failed" },
+            new [] { "sxs_csr_server", "Calling csrss server failed. Status = " },
+            new [] { "sxs_active_context", "Failure getting active activation context; ntstatus " },
+            new [] { "sxs_resource_a", "BaseDllMapResourceIdA failed" },
+            new [] { "sxs_csr_capture", "CsrCaptureMessageMultiUnicodeStringsInPlace failed" },
+            new [] { "sxs_resource_flag", "ACTCTX_FLAG_RESOURCE_NAME_VALID set but lpResourceName == 0" }
         };
         static string PhrasePresence(string text)
         {
