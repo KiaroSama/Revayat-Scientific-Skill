@@ -16,17 +16,8 @@ class DiagnosticOrderTest(unittest.TestCase):
         python_block = """    Write-RunLog INFO 'separate bounded trusted pass-code loader trace starts; never an admission control'
     $loaderDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true)
     Write-RunLog INFO $loaderDiagnostic
-    Write-RunLog INFO 'fixed byte-identical Python clone loader snaps starts; rename and debug perturbation remain noncausal'
-    $diagnosticFailure = $null
-    $cloneLease = [ScientificSecurity.PythonStartupFixture]::Hold($runId, $state)
-    try {
-        [ScientificSecurity.LoaderSnaps]::EnablePython($runId, $state)
-        $cloneDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $false, $true)
-        Write-RunLog INFO $cloneDiagnostic
-    }
-    catch { $diagnosticFailure = $_.Exception; throw }
-    finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure, $cloneLease) }
-    [ScientificSecurity.LoaderSnaps]::RequireClean($runId, $state)
+    Write-RunLog INFO 'fixed three-condition Python clone loader comparison starts; diagnostic only and never admission'
+    [ScientificSecurity.PythonLoaderComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
 """
         anchors = (
             '[ScientificSecurity.PythonStartupFixture]::Prepare($runId, $state)',

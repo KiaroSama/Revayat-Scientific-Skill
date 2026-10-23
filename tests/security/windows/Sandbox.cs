@@ -27,6 +27,13 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, preflight, tcpPort, udpPort,
                 wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, false, null);
         }
+        internal static string ObservePythonLoader(string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, PythonLoaderComparison.Condition condition)
+        {
+            int expected = PythonLoaderComparison.Expected(condition);
+            return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, true, false, true, false, false, false, expected, pythonCondition: true);
+        }
         public static string ObserveActivation(string python, string root, string scratch, string powershell,
                                                string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
         {
@@ -124,8 +131,13 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false, bool pythonCondition = false)
         {
+            if (pythonCondition && (!preflight || wallProbe || !loaderProbe || nativeFixture || !pythonClone ||
+                activationProbe || activationTrace || observeExit || defaultActivation || moduleRole != 0 || callbackExit.HasValue ||
+                selfActivation || selfRole != SelfActivationRole.Original || selfEntry || selfResource || dllRequest ||
+                !expectedRegistryStatus.HasValue || (expectedRegistryStatus != 0 && expectedRegistryStatus != unchecked((int)0xC0000022))))
+                throw new ArgumentException("registry-qualified Python trace requires the fixed clone role");
             SelfActivationFixture.RequireKnownRole(selfRole);
             if (dllRequest) ChildActivationFixture.RequireDllRole(preflight, wallProbe, loaderProbe, nativeFixture, pythonClone,
                 activationProbe, activationTrace, observeExit, defaultActivation, moduleRole != 0, callbackExit.HasValue,
@@ -301,6 +313,8 @@ namespace ScientificSecurity
                 }
                 OwnProcessAccess.Repair(process);
                 StartupAccess.RequireOwnQueries(process, true);
+                if (pythonCondition)
+                    RequireRegistryCondition(StartupRegistryAccess.ObserveChild(process, package), expectedRegistryStatus.Value);
                 if (preflight && !wallProbe && !loaderProbe && !activationProbe && !activationTrace)
                     StartupTokenAccess.Observe(process, package);
                 if (nativeFixture) {

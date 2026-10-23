@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 
 namespace ScientificSecurity
@@ -96,6 +98,83 @@ namespace ScientificSecurity
             try { Cleanup(primary, () => { attempts++; throw cleanup; }, () => attempts++, () => attempts++); }
             catch (AggregateException failure) { aggregate = failure; }
             Need(attempts == 3 && aggregate != null && Object.ReferenceEquals(aggregate.InnerExceptions[0], primary));
+            CheckChildFinalization();
+        }
+        static void CheckChildFinalization()
+        {
+            var order = new List<string>();
+            FinalizeChild(null, true, () => { order.Add("revert"); return true; },
+                () => { throw new InvalidOperationException("unexpected fail-fast"); }, () => order.Add("emit"),
+                () => order.Add("duplicate"), () => order.Add("primary"));
+            Need(String.Join(",", order) == "revert,duplicate,primary,emit");
+            var fatal = new System.IO.IOException("fixed fail-fast");
+            foreach (bool throws in new [] { false, true }) {
+                order.Clear(); Exception caught = null;
+                try {
+                    FinalizeChild(null, true, () => { order.Add("revert"); if (throws) throw fatal; return false; },
+                        () => { order.Add("fail-fast"); throw fatal; }, () => order.Add("emit"), () => order.Add("close"));
+                } catch (Exception failure) { caught = failure; }
+                Need(Object.ReferenceEquals(caught, fatal) && String.Join(",", order) == "revert,fail-fast");
+            }
+            order.Clear(); Refuse(() => FinalizeChild(null, true, () => false, () => order.Add("fail-fast"),
+                () => order.Add("emit"), () => order.Add("close")));
+            Need(String.Join(",", order) == "fail-fast");
+            var primary = new System.IO.IOException("fixed operation"); var close = new System.IO.IOException("fixed close");
+            var report = new System.IO.IOException("fixed report");
+            foreach (bool impersonating in new [] { false, true }) {
+                order.Clear(); AggregateException caught = null;
+                try {
+                    FinalizeChild(primary, impersonating, () => { order.Add("revert"); return true; }, () => { throw fatal; },
+                        () => { order.Add("emit"); throw report; },
+                        () => { order.Add("duplicate"); throw close; }, () => order.Add("primary"));
+                } catch (AggregateException failure) { caught = failure; }
+                Need(caught != null && caught.InnerExceptions.Count == 3 && Object.ReferenceEquals(caught.InnerExceptions[0], primary) &&
+                    Object.ReferenceEquals(caught.InnerExceptions[1], close) && Object.ReferenceEquals(caught.InnerExceptions[2], report) &&
+                    String.Join(",", order) == (impersonating ? "revert," : "") + "duplicate,primary,emit");
+            }
+        }
+        static void FinalizeChild(Exception primary, bool impersonating, Func<bool> revert, Action failFast, Action emit, params Action[] close)
+        {
+            if (impersonating) {
+                bool reverted;
+                try { reverted = revert(); } catch { failFast(); throw; }
+                if (!reverted) { failFast(); throw new InvalidOperationException("registry identity restoration did not terminate"); }
+            }
+            var actions = new List<Action>(close); actions.Add(emit);
+            Cleanup(primary, actions.ToArray());
+        }
+        [DllImport("advapi32.dll", SetLastError = true)] static extern bool DuplicateTokenEx(
+            IntPtr token, uint access, IntPtr attributes, int level, int kind, out IntPtr duplicate);
+        [DllImport("advapi32.dll", SetLastError = true)] static extern bool ImpersonateLoggedOnUser(IntPtr token);
+        [DllImport("advapi32.dll", SetLastError = true)] static extern bool RevertToSelf();
+        static void Deadline(Stopwatch clock)
+        { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed child registry comparison exceeded 10 seconds"); }
+        internal static int ObserveChild(Native.ProcessInfo child, string package)
+        {
+            using (WindowsIdentity current = WindowsIdentity.GetCurrent(true))
+                if (current != null) throw new InvalidOperationException("registry host is already impersonating");
+            IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero;
+            bool impersonating = false; Exception primary = null;
+            var lines = new List<string>(); var clock = Stopwatch.StartNew();
+            try {
+                Observe("host", lines, () => Deadline(clock), () => { });
+                Native.Check(Native.OpenProcessToken(child.process, 0xA, out token), "open exact registry primary token");
+                Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate exact registry token");
+                var context = new RegistryContext(token, duplicate, package);
+                Native.Check(ImpersonateLoggedOnUser(duplicate), "enter exact registry LPAC context");
+                impersonating = true; context.RequireThread();
+                int status = Observe("lpac", lines, () => Deadline(clock), context.RequireThread);
+                context.RequireThread(); Deadline(clock);
+                return status;
+            }
+            catch (Exception failure) { primary = failure; throw; }
+            finally {
+                FinalizeChild(primary, impersonating, RevertToSelf,
+                    () => Environment.FailFast("Registry identity restoration failed; outer owner must reap and clean up."),
+                    () => { foreach (string line in lines) Console.Out.WriteLine(line); Console.Out.Flush(); },
+                    () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close registry duplicate token"); },
+                    () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close registry primary token"); });
+            }
         }
         [StructLayout(LayoutKind.Sequential)] struct UnicodeString { internal ushort length, maximum; internal IntPtr buffer; }
         [StructLayout(LayoutKind.Sequential)] struct ObjectAttributes {
