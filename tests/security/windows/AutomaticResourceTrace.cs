@@ -8,13 +8,14 @@ namespace ScientificSecurity
         readonly bool automaticResource;
         ResourceThreads resourceThreads;
         bool resourceNaturalExit, resourceDestroyed;
-        internal sealed class ResourceThreads
+        internal sealed partial class ResourceThreads
         {
             sealed class Generation
             {
                 internal uint id;
                 internal IntPtr handle;
                 internal byte[] baseline;
+                internal ulong[] dispatchState;
                 internal bool owned, dead, retired, changed;
             }
             readonly uint pid, creator;
@@ -72,7 +73,7 @@ namespace ScientificSecurity
                 var record = new Generation { id = id, handle = handle, owned = owned };
                 generations.Add(record); // Ownership transfers before the first operation that can fail.
                 deadline(); record.baseline = read(handle); ResourceCheck(Free(record.baseline), "free-thread-baseline");
-                if (site != 0) Apply(record, false);
+                if (site != 0 && (dispatchPair == null || !dispatchPair.Started)) Apply(record, false);
             }
             internal void Continued()
             {
@@ -89,6 +90,7 @@ namespace ScientificSecurity
                 value.retired = true; Retired++;
                 if (!Captured && !processDead) PriorDeadRetired++;
                 if (value.baseline != null) Array.Clear(value.baseline, 0, value.baseline.Length);
+                if (value.dispatchState != null) Array.Clear(value.dispatchState, 0, value.dispatchState.Length);
                 IntPtr handle = value.handle; value.handle = IntPtr.Zero;
                 if (value.owned && handle != IntPtr.Zero) close(handle);
             }
@@ -104,11 +106,18 @@ namespace ScientificSecurity
                 deadline(); byte[] before = null, desired = null, after = null;
                 try {
                     before = read(value.handle);
-                    if (!restore) ResourceCheck(DebugContext.RawDebugEqual(value.baseline, before), "arm-baseline-equality");
-                    desired = Desired(before, value.baseline, new ulong[] { site, 0 }, new [] { !restore, false }, restore);
+                    if (!restore && (dispatchPair == null || !dispatchPair.Started))
+                        ResourceCheck(DebugContext.RawDebugEqual(value.baseline, before), "arm-baseline-equality");
+                    if (dispatchPair != null && (restore || dispatchPair.Started)) RequireDispatchTransition(value, before);
+                    ulong[] sites = dispatchPair == null ? new ulong[] { site, 0 } : dispatchPair.Sites(generations.IndexOf(value));
+                    desired = Desired(before, value.baseline, sites, new [] { !restore && sites[0] != 0, !restore && sites[1] != 0 }, restore);
                     value.changed = true;
                     write(value.handle, desired); after = read(value.handle);
                     ResourceCheck(DebugContext.RawDebugEqual(desired, after) && DebugContext.UnchangedControlInteger(before, after), "setter-readback");
+                    if (dispatchPair != null) {
+                        if (value.dispatchState == null) value.dispatchState = new ulong[6];
+                        for (int index = 0; index < 6; index++) value.dispatchState[index] = U64(after, 72 + index * 8);
+                    }
                     if (restore) value.changed = false;
                 } catch (Exception error) {
                     failed = true;
@@ -177,6 +186,7 @@ namespace ScientificSecurity
                 var failures = new List<Exception>();
                 foreach (var value in generations) if (!value.retired) Attempt(failures, () => Retire(value));
                 destroyed = true;
+                if (dispatchPair != null) dispatchPair.Destroyed();
                 if (cleanupUncertainty != null) failures.Insert(0, cleanupUncertainty);
                 if (failures.Count != 0) { failed = true; throw new AggregateException("resource final thread retirement or restoration remains unqualified", failures); }
             }
@@ -195,6 +205,7 @@ namespace ScientificSecurity
         void ResourceLoad(IntPtr file, IntPtr imageBase)
         {
             ResourceCheck(fixture != null && !invalidated, "load-state");
+            if (csrDispatch) { LoadDispatch(file, imageBase); return; }
             KernelImage candidate = KernelImage.FromActivationSystemLoad(file, imageBase);
             if (candidate == null) return;
             ResourceCheck(kernel == null, "duplicate-kernel-load"); candidate.RequireModuleCallbackProfile();

@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace ScientificSecurity
 {
-    // Fixed caller-local observations on the existing trusted child; no stack or child-content reads.
+    // Fixed trusted-child observations; only the dedicated CSR mode reads its single IAT slot.
     public sealed partial class ActivationBoundaryTrace
     {
         public static void CheckValidation()
@@ -157,11 +157,11 @@ namespace ScientificSecurity
         bool stopped, initial, changed, restored, invalidated, alive = true;
         internal ActivationBoundaryTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId,
             string executable, string imageDigest, Action<string> output, bool callback = false, bool entry = false,
-            bool resource = false, Action resourceDeadline = null)
+            bool resource = false, Action resourceDeadline = null, bool dispatch = false)
         {
-            if ((callback ? 1 : 0) + (entry ? 1 : 0) + (resource ? 1 : 0) > 1 || resource != (resourceDeadline != null))
+            if (dispatch && !resource || (callback ? 1 : 0) + (entry ? 1 : 0) + (resource ? 1 : 0) > 1 || resource != (resourceDeadline != null))
                 throw new ArgumentException("activation observation roles cannot overlap");
-            moduleCallback = callback; entryOnly = entry; automaticResource = resource;
+            moduleCallback = callback; entryOnly = entry; automaticResource = resource; csrDispatch = dispatch;
             Need(IntPtr.Size == 8 && Marshal.SizeOf(typeof(MemoryInfo)) == 48 &&
                 processHandle != IntPtr.Zero && threadHandle != IntPtr.Zero);
             process = processHandle; thread = threadHandle; pid = processId; tid = threadId;
@@ -317,7 +317,7 @@ namespace ScientificSecurity
         { eventCode = code; eventCreator = eventThread == tid; eventFirst = first; }
         internal bool AcceptSoftware(uint eventThread, uint code, bool first)
         {
-            if (automaticResource) return code == 0x80000003 && resourceThreads.Software(eventThread, first);
+            if (automaticResource) return code == 0x80000003 && (csrDispatch ? resourceThreads.DispatchSoftware(eventThread, first) : resourceThreads.Software(eventThread, first));
             if (entryOnly) return EntrySoftware(eventThread, code, first);
             if (moduleCallback) return CallbackSoftware(eventThread, code, first);
             if (code != 0x80000003) return false;
@@ -329,7 +329,7 @@ namespace ScientificSecurity
         }
         internal bool SingleStep(uint eventThread, uint code, bool first, IntPtr exceptionAddress)
         {
-            if (automaticResource) return code == 0x80000004 && resourceThreads.Capture(eventThread, first, exceptionAddress, fixture.Base);
+            if (automaticResource) return code == 0x80000004 && (csrDispatch ? resourceThreads.CaptureDispatch(eventThread, first, exceptionAddress) : resourceThreads.Capture(eventThread, first, exceptionAddress, fixture.Base));
             if (entryOnly) return EntrySingleStep(eventThread, code, first, exceptionAddress);
             if (moduleCallback) return CallbackSingleStep(eventThread, code, first, exceptionAddress);
             if (code != 0x80000004) return false;
@@ -384,7 +384,8 @@ namespace ScientificSecurity
         internal void Unload(IntPtr imageBase)
         {
             ulong address = unchecked((ulong)imageBase.ToInt64());
-            if ((fixture != null && fixture.Base == address) || (kernel != null && kernel.Base == address)) {
+            if ((fixture != null && fixture.Base == address) || (kernel != null && kernel.Base == address) ||
+                (csrDispatch && dispatchNtdll != null && dispatchNtdll.Base == address)) {
                 Invalidate(); throw new InvalidOperationException("fixed activation diagnostic image unloaded");
             }
         }

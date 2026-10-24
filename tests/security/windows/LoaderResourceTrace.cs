@@ -5,6 +5,15 @@ namespace ScientificSecurity
     internal sealed partial class LoaderTrace
     {
         readonly string resourcePython;
+        readonly bool dispatchMode;
+        uint? dispatchExit;
+        internal uint? DispatchExit { get { ThreadCheck(); return dispatchExit; } }
+        internal string DispatchMetadata()
+        {
+            ThreadCheck();
+            if (!dispatchMode || activation == null) throw new InvalidOperationException("fixed dispatch observer is unavailable");
+            return activation.DispatchMetadata();
+        }
         readonly ResourceContinuation resourceContinuation = new ResourceContinuation();
         internal sealed class ResourceContinuation
         {
@@ -91,7 +100,9 @@ namespace ScientificSecurity
                             status = Continue; break;
                         case 2: ObserveResourceThread(); break;
                         case 4: case 8: break;
-                        case 5: activation.ResourceExit(false); exited = true; break;
+                        case 5:
+                            if (dispatchMode) dispatchExit = current.data.exit.code;
+                            activation.ResourceExit(false); exited = true; break;
                         case 6: if (!activation.ResourceCaptured) activation.Load(current.data.loadDll.file, current.data.loadDll.imageBase); break;
                         case 7: activation.Unload(current.data.unloadDll.imageBase); break;
                         default: throw new InvalidOperationException("unsupported resource observation event");

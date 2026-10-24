@@ -98,6 +98,15 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, unchecked((int)0xC0000022), false, 0, null, true, SelfActivationRole.ExplicitId2, false, true);
         }
+        internal static void ObserveCsrDispatch(string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, CsrDispatchObservation observation)
+        {
+            if (observation == null) throw new ArgumentNullException("observation");
+            SelfActivationFixture.RequireDispatchHostPositive(python);
+            RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                false, false, false, false, false, false, false, 0, selfActivation: true,
+                selfRole: SelfActivationRole.ExplicitId2, selfResource: observation.traced, dispatch: observation);
+        }
         internal static string ObserveDllRequest(string python, string root, string scratch, string powershell,
             string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
         {
@@ -146,8 +155,13 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false, bool pythonCondition = false, DefaultDaclComparison.Observation defaultDacl = null)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false, bool pythonCondition = false, DefaultDaclComparison.Observation defaultDacl = null, CsrDispatchObservation dispatch = null)
         {
+            if (dispatch != null && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe ||
+                activationTrace || observeExit || defaultActivation || moduleRole != 0 || callbackExit.HasValue || !selfActivation ||
+                selfRole != SelfActivationRole.ExplicitId2 || selfEntry || selfResource != dispatch.traced || dllRequest ||
+                pythonCondition || defaultDacl != null || expectedRegistryStatus != 0 || dispatch.recorded))
+                throw new ArgumentException("CSR dispatch requires its separate fixed readable-key ExplicitId2 role");
             if (defaultDacl != null && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe ||
                 activationTrace || observeExit || defaultActivation || moduleRole != 0 || callbackExit.HasValue || selfActivation ||
                 selfRole != SelfActivationRole.Original || selfEntry || selfResource || dllRequest || pythonCondition || expectedRegistryStatus != 0))
@@ -238,11 +252,11 @@ namespace ScientificSecurity
             var values = new List<IntPtr>();
             var handles = new List<IntPtr>();
             Native.ProcessInfo process = new Native.ProcessInfo();
-            bool started = false, resumed = false, wallExpired = false, callbackStarted = false, entryStarted = false;
+            bool started = false, resumed = false, wallExpired = false, callbackStarted = false, entryStarted = false, dispatchSignaled = false;
             Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
             LoaderTrace loader = loaderProbe || activationTrace || callback || selfEntry || selfResource ?
-                new LoaderTrace(nativeFixture, pythonClone, activationTrace, callback, selfEntry ? python : null, selfResource ? python : null) : null;
+                new LoaderTrace(nativeFixture, pythonClone, activationTrace, callback, selfEntry ? python : null, selfResource ? python : null, dispatch != null) : null;
             IDisposable activationLease = null;
             var activationClock = new Stopwatch();
             try
@@ -359,7 +373,19 @@ namespace ScientificSecurity
                 outputCapture.CloseWriter(); errorCapture.CloseWriter();
                 if (loader != null) {
                     callbackStarted = callback; entryStarted = selfEntry || selfResource;
-                    uint tracedExit = loader.Observe();
+                    uint tracedExit;
+                    try { tracedExit = loader.Observe(); }
+                    catch (Exception observationFailure) {
+                        if (dispatch != null && loader.DispatchExit.HasValue) {
+                            try { dispatch.Record(loader.DispatchExit.Value, outputCapture.Read(), errorCapture.Read()); }
+                            catch (Exception transportFailure) { throw new AggregateException("CSR dispatch observation/transport failed", observationFailure, transportFailure); }
+                        }
+                        throw;
+                    }
+                    if (dispatch != null) {
+                        if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed dispatch child exceeded 10 seconds");
+                        dispatch.Record(tracedExit, outputCapture.Read(), errorCapture.Read()); return "";
+                    }
                     if (selfEntry || selfResource) {
                         string entryOutput = outputCapture.Read(), entryError = errorCapture.Read();
                         if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed entry child exceeded 10 seconds");
@@ -396,6 +422,10 @@ namespace ScientificSecurity
                     if (clock.Elapsed.TotalSeconds > 60 || clock.Elapsed.TotalSeconds - progress > 20)
                         throw new TimeoutException("owned Windows worker wall/idle ceiling exceeded before verified wall-tree");
                 }
+                if (dispatch != null) {
+                    Native.Check(Native.WaitForSingleObject(process.process, 0) == 0, "qualify undebugged dispatch process signal");
+                    dispatchSignaled = true;
+                }
                 uint exit; Native.Check(Native.GetExitCodeProcess(process.process, out exit), "read worker exit");
                 ReapJob(job);
                 string text = outputCapture.Read(), errors = errorCapture.Read();
@@ -420,6 +450,10 @@ namespace ScientificSecurity
                 if (defaultActivation) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed default activation exceeded 10 seconds");
                     return DefaultActivationFixture.Result(exit, text, errors);
+                }
+                if (dispatch != null) {
+                    if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed dispatch pass exceeded 10 seconds");
+                    dispatch.Record(exit, text, errors); return "";
                 }
                 if (selfActivation) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed self activation exceeded 10 seconds");
@@ -480,7 +514,10 @@ namespace ScientificSecurity
                 AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) Native.Check(Native.CloseHandle(job), "close owned job"); });
                 AttemptCleanup(cleanupFailures, () => { if (activationLease != null) activationLease.Dispose(); });
                 Exception completionFailure = selfEntry || selfResource ? ExplicitEntryComparison.FinishTrace(primaryFailure, cleanupFailures, entryStarted, destroyed,
-                    selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }) : CompletionFailure(primaryFailure, cleanupFailures, callbackStarted, destroyed);
+                    dispatch != null ? (Func<string>)loader.DispatchMetadata : selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata,
+                    line => { Console.Out.WriteLine(line); Console.Out.Flush(); }) : dispatch != null ?
+                    CsrDispatchComparison.FinishUndebugged(primaryFailure, cleanupFailures, started, dispatchSignaled, reaped) :
+                    CompletionFailure(primaryFailure, cleanupFailures, callbackStarted, destroyed);
                 if (completionFailure != null) throw completionFailure;
             }
         }

@@ -29,14 +29,21 @@ namespace ScientificSecurity
             string image = SelfActivationFixture.PreparedImage(python, SelfActivationRole.ExplicitId2);
             return RunFixed(image, new string[0], Path.GetDirectoryName(image), true, SelfActivationRole.ExplicitId2, python, retainMetadata, true);
         }
+        internal static string RunCsrDispatch(string python, Action<string> retainMetadata)
+        {
+            string image = SelfActivationFixture.PreparedImage(python, SelfActivationRole.ExplicitId2);
+            return RunFixed(image, new string[0], Path.GetDirectoryName(image), true, SelfActivationRole.ExplicitId2,
+                python, retainMetadata, true, dispatch: true);
+        }
         internal static string RunDllRequest(string python)
         {
             string image = ChildActivationFixture.DllPreparedImage(python);
             return RunFixed(image, new string[0], Path.GetDirectoryName(image), false, dllRequest: true);
         }
-        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false, bool dllRequest = false)
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false, bool dllRequest = false, bool dispatch = false)
         {
             SelfActivationFixture.RequireKnownRole(role);
+            if (dispatch && !resource) throw new ArgumentException("dispatch host requires fixed resource transport");
             if (dllRequest) {
                 ChildActivationFixture.RequireDllRole(true, selfActivation, role != SelfActivationRole.Original, entryPython != null, resource, retainMetadata != null);
                 RequireDllLaunch(executable, arguments, cwd);
@@ -69,7 +76,7 @@ namespace ScientificSecurity
             var child = new Native.ProcessInfo(); bool started = false, resumed = false;
             Exception primaryFailure = null;
             var clock = new Stopwatch();
-            LoaderTrace loader = entryPython == null ? null : new LoaderTrace(false, false, false, false, resource ? null : entryPython, resource ? entryPython : null);
+            LoaderTrace loader = entryPython == null ? null : new LoaderTrace(false, false, false, false, resource ? null : entryPython, resource ? entryPython : null, dispatch);
             try
             {
                 EmitStage(name, "prepare");
@@ -213,7 +220,7 @@ namespace ScientificSecurity
                     () => { if (job != IntPtr.Zero) CloseOwned(job, selfActivation); },
                     () => EmitStage(name, "cleanup-after"));
                 if (loader != null) {
-                    try { retainMetadata(resource ? loader.ResourceMetadata() : loader.EntryMetadata()); }
+                    try { retainMetadata(dispatch ? loader.DispatchMetadata() : resource ? loader.ResourceMetadata() : loader.EntryMetadata()); }
                     catch (Exception reporting) {
                         if (primaryFailure != null) throw new AggregateException("fixed entry host observation/reporting failed", primaryFailure, reporting);
                         throw;

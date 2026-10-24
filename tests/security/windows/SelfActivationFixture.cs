@@ -11,7 +11,7 @@ namespace ScientificSecurity
 {
     internal enum SelfActivationRole { Original, Manual, ExplicitId2 }
     // A documented own-EXE call, not an equivalent of the automatic DLL callback.
-    public static class SelfActivationFixture
+    public static partial class SelfActivationFixture
     {
         const string Image = "startup-self-activation.exe";
         const string SourceHash = "d6a12cdd2c9ef78e29c5c43af7527f4d74260a01ca15475b3ad83e6bcc49ca3e";
@@ -42,11 +42,11 @@ namespace ScientificSecurity
             Identity value = Prepared(python, SelfActivationRole.ExplicitId2);
             return new ActivationBoundaryTrace(child.process, child.thread, child.pid, child.tid, value.image, value.imageHash, emit, false, true);
         }
-        internal static ActivationBoundaryTrace ResourceObserver(string python, Native.ProcessInfo child, Action<string> emit, Action deadline)
+        internal static ActivationBoundaryTrace ResourceObserver(string python, Native.ProcessInfo child, Action<string> emit, Action deadline, bool dispatch = false)
         {
             Identity value = Prepared(python, SelfActivationRole.ExplicitId2);
             return new ActivationBoundaryTrace(child.process, child.thread, child.pid, child.tid, value.image, value.imageHash, emit,
-                false, false, true, deadline);
+                false, false, true, deadline, dispatch);
         }
         internal static void RequireResourceHostPositive(string python)
         { RequireEntryHostPositive(python); Need(resourceHostPositive); }

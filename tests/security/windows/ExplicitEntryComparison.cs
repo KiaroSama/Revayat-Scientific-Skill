@@ -53,7 +53,7 @@ namespace ScientificSecurity
             } catch (Exception failure) { prerequisite = failure; }
             Need(Object.ReferenceEquals(prerequisite, primary) && String.Join(",", prerequisiteOrder) == "created");
         }
-        sealed class QualifiedFailure : Exception
+        internal sealed class QualifiedFailure : Exception
         {
             internal readonly Exception Original;
             internal QualifiedFailure(Exception original) : base("fixed entry diagnostic failed after qualified cleanup") { Original = original; }
