@@ -46,6 +46,7 @@ namespace ScientificSecurity
                 Need(closes == 2 && registry.DestroyedState && !registry.Failed);
             }
             CheckDispatchFailures(); CheckDispatchRestoreDrift(); CheckDispatchMetadata(); CheckDispatchGenerations();
+            CheckDispatchRefusalReporting();
         }
         static void DispatchFixtureTrap(byte[] context, bool post)
         {
@@ -138,6 +139,61 @@ namespace ScientificSecurity
                 registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
                 bool sticky = false; try { registry.Destroyed(); } catch (AggregateException) { sticky = true; }
                 Need(sticky && registry.Failed && registry.DestroyedState);
+            }
+        }
+        static void CheckDispatchRefusalReporting()
+        {
+            for (int mode = 0; mode < 4; mode++) {
+                var contexts = new Dictionary<IntPtr, byte[]> {
+                    { new IntPtr(11), new byte[DebugContext.Size] }, { new IntPtr(12), new byte[DebugContext.Size] }
+                };
+                int writes = 0, closes = 0;
+                var registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(),
+                    (handle, bytes) => { writes++; contexts[handle] = (byte[])bytes.Clone(); }, _ => closes++, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
+                registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => { }); registry.Continued();
+                if (mode != 0) {
+                    DispatchFixtureTrap(contexts[new IntPtr(11)], false);
+                    registry.Stop(7, 11, 1, false); registry.CaptureDispatch(11, true, new IntPtr(0x8000)); registry.Continued();
+                }
+                Put(contexts[new IntPtr(12)], mode == 1 ? 112 : 104, mode == 1 ? 0x9999UL : 0xFFFE0FF0UL);
+                if (mode == 0) DispatchFixtureTrap(contexts[new IntPtr(12)], false);
+                int before = writes; Exception caught = null;
+                if (mode < 2) {
+                    DispatchFixtureTrap(contexts[new IntPtr(11)], mode == 1);
+                    registry.Stop(7, 11, 1, false);
+                    try { registry.CaptureDispatch(11, true, new IntPtr(mode == 1 ? 0x8007 : 0x8000)); }
+                    catch (Exception failure) { caught = failure; }
+                } else {
+                    registry.Stop(7, mode == 3 ? 12U : 11U, mode == 3 ? 1U : 8U, true);
+                    try { registry.RestoreAll(); } catch (Exception failure) { caught = failure; }
+                }
+                string phase = mode == 0 ? "call-disarm" : mode == 1 ? "pair-restore" : "cleanup-restore";
+                string expected = "fixed resource observation refused check=dispatch-transition-control snapshot=first phase=" + phase +
+                    " event_kind=" + (mode == 2 ? "8" : "1") + " pair_started=True paired=" + (mode == 1) +
+                    " cleanup=" + (mode >= 2) + " event_thread_equal=" + (mode == 3) + " dr6_equal=" + (mode == 1) +
+                    " dr7_equal=" + (mode >= 2) + " call_site_match=" + (mode == 0) +
+                    " post_site_match=False call_status_match=" + (mode == 0) + " post_status_match=False" +
+                    " stored_dr6=0x0000000000000000 stored_dr7=0x" + (mode == 0 ? "0000000000000005" : "0000000000000000") +
+                    " current_dr6=0x" + (mode == 0 ? "00000000FFFF0FF1" : mode == 1 ? "0000000000000000" : "00000000FFFE0FF0") +
+                    " current_dr7=0x" + (mode == 1 ? "0000000000009999" : mode == 0 ? "0000000000000405" : "0000000000000000") +
+                    " transaction_context=unknown";
+                Exception first = caught;
+                while (first != null && first.InnerException != null) first = first.InnerException;
+                Need(first is InvalidOperationException && first.Message == expected && expected.Length <= 1024 && writes == before + 1);
+                Need(!expected.Contains("0000000000008000") && !expected.Contains("0000000000008007") &&
+                    !expected.Contains("0000000000009000") && Array.TrueForAll(expected.ToCharArray(), c => c <= 127));
+                Put(contexts[new IntPtr(12)], 104, UInt64.MaxValue); Put(contexts[new IntPtr(12)], 112, UInt64.MaxValue);
+                bool repeated = false;
+                try { registry.RestoreAll(); } catch (AggregateException failure) {
+                    repeated = failure.ToString().Contains(expected) && !failure.ToString().Contains("FFFFFFFFFFFFFFFF");
+                }
+                Need(repeated && registry.Failed && !registry.CaptureRestored && !registry.DestroyedState);
+                registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
+                bool sticky = false;
+                try { registry.Destroyed(); } catch (AggregateException failure) { sticky = failure.ToString().Contains(expected); }
+                Need(sticky && registry.DestroyedState && closes == 1);
             }
         }
         static void CheckDispatchReads()

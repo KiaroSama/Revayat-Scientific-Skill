@@ -108,7 +108,7 @@ namespace ScientificSecurity
                     before = read(value.handle);
                     if (!restore && (dispatchPair == null || !dispatchPair.Started))
                         ResourceCheck(DebugContext.RawDebugEqual(value.baseline, before), "arm-baseline-equality");
-                    if (dispatchPair != null && (restore || dispatchPair.Started)) RequireDispatchTransition(value, before);
+                    if (dispatchPair != null && (restore || dispatchPair.Started)) RequireDispatchTransition(value, before, restore);
                     ulong[] sites = dispatchPair == null ? new ulong[] { site, 0 } : dispatchPair.Sites(generations.IndexOf(value));
                     desired = Desired(before, value.baseline, sites, new [] { !restore && sites[0] != 0, !restore && sites[1] != 0 }, restore);
                     value.changed = true;

@@ -13,10 +13,10 @@ namespace ScientificSecurity
         {
             CsrDispatchPair dispatchPair;
             Action dispatchTarget;
-            string dispatchCallTrap;
+            string dispatchCallTrap, dispatchRefusal;
             internal string DispatchTraps { get { return (dispatchCallTrap == null ? "" : " call_" + dispatchCallTrap.Replace(" ", " call_")) +
                 (Trap == null ? "" : " return_" + Trap.Replace(" ", " return_")); } }
-            void RequireDispatchTransition(Generation value, byte[] context)
+            void RequireDispatchTransition(Generation value, byte[] context, bool restore)
             {
                 ResourceCheck(value.dispatchState != null && value.dispatchState.Length == 6, "dispatch-transition-baseline");
                 for (int index = 0; index < 4; index++)
@@ -29,7 +29,25 @@ namespace ScientificSecurity
                         ownedTrap |= value.dispatchState[slot] != 0 && U64(context, 248) == value.dispatchState[slot] &&
                             DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), control, slot);
                 }
-                ResourceCheck(exact || ownedTrap, "dispatch-transition-control");
+                if (!exact && !ownedTrap) {
+                    if (dispatchRefusal == null) {
+                        bool callSite = value.dispatchState[0] != 0 && U64(context, 248) == value.dispatchState[0];
+                        bool postSite = value.dispatchState[1] != 0 && U64(context, 248) == value.dispatchState[1];
+                        dispatchRefusal = "fixed resource observation refused check=dispatch-transition-control snapshot=first phase=" +
+                            (!restore ? "call-disarm" : cleanup || !dispatchPair.Paired ? "cleanup-restore" : "pair-restore") +
+                            " event_kind=" + kind.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                            " pair_started=" + dispatchPair.Started + " paired=" + dispatchPair.Paired + " cleanup=" + cleanup +
+                            " event_thread_equal=" + (eventThread == value.id) +
+                            " dr6_equal=" + (U64(context, 104) == value.dispatchState[4]) + " dr7_equal=" + (U64(context, 112) == control) +
+                            " call_site_match=" + callSite + " post_site_match=" + postSite +
+                            " call_status_match=" + DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), control, 0) +
+                            " post_status_match=" + DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), control, 1) +
+                            " stored_dr6=0x" + value.dispatchState[4].ToString("X16") + " stored_dr7=0x" + control.ToString("X16") +
+                            " current_dr6=0x" + U64(context, 104).ToString("X16") + " current_dr7=0x" + U64(context, 112).ToString("X16") +
+                            " transaction_context=unknown";
+                    }
+                    throw new InvalidOperationException(dispatchRefusal);
+                }
             }
             internal void ArmDispatch(ulong call, ulong post, Action qualifyTarget)
             {
