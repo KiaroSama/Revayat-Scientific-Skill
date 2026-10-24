@@ -105,6 +105,21 @@ namespace ScientificSecurity
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
                 false, false, false, false, false, false, false, expectedRegistryStatus, dllRequest: true);
         }
+        internal static DefaultDaclComparison.Observation ObserveDefaultDacl(string python, string root, string scratch,
+            string powershell, string chromium, string moniker, string profileFolder, int tcpPort, int udpPort,
+            DefaultDaclComparison.Condition condition)
+        {
+            var observation = new DefaultDaclComparison.Observation(condition);
+            try {
+                RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
+                    false, false, false, false, false, false, false, 0, defaultDacl: observation);
+                return observation;
+            }
+            catch {
+                if (observation.baseline != null) Array.Clear(observation.baseline, 0, observation.baseline.Length);
+                throw;
+            }
+        }
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
@@ -131,8 +146,12 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false, bool pythonCondition = false)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false, bool pythonCondition = false, DefaultDaclComparison.Observation defaultDacl = null)
         {
+            if (defaultDacl != null && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe ||
+                activationTrace || observeExit || defaultActivation || moduleRole != 0 || callbackExit.HasValue || selfActivation ||
+                selfRole != SelfActivationRole.Original || selfEntry || selfResource || dllRequest || pythonCondition || expectedRegistryStatus != 0))
+                throw new ArgumentException("default-DACL comparison requires its fixed undebugged pass-code role");
             if (pythonCondition && (!preflight || wallProbe || !loaderProbe || nativeFixture || !pythonClone ||
                 activationProbe || activationTrace || observeExit || defaultActivation || moduleRole != 0 || callbackExit.HasValue ||
                 selfActivation || selfRole != SelfActivationRole.Original || selfEntry || selfResource || dllRequest ||
@@ -167,7 +186,8 @@ namespace ScientificSecurity
             if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); arguments.Add(profileFolder); }
             if (wallProbe) arguments.Add("wall-tree");
             string executable = python;
-            if (loaderProbe) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
+            if (loaderProbe || defaultDacl != null) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
+            if (defaultDacl != null) phase = "child-default-dacl-pass";
             if (nativeFixture) {
                 executable = Path.Combine(Path.GetDirectoryName(python), "startup-native.exe");
                 NativeFixture.Validate(executable);
@@ -261,7 +281,8 @@ namespace ScientificSecurity
                 IntPtr lpac = Marshal.AllocHGlobal(4); values.Add(lpac); Marshal.WriteInt32(lpac, 1);
                 Attribute(attrs, 0x2000F, lpac, 4);
                 var sa = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), inherit = 1 };
-                outputCapture = new Capture(selfActivation || dllRequest); errorCapture = new Capture(selfActivation || dllRequest);
+                outputCapture = new Capture(selfActivation || dllRequest || defaultDacl != null);
+                errorCapture = new Capture(selfActivation || dllRequest || defaultDacl != null);
                 IntPtr output = outputCapture.Writer, error = errorCapture.Writer;
                 IntPtr input = Native.CreateFileW("NUL", 0x80000000, 3, ref sa, 3, 0x80, IntPtr.Zero);
                 Native.Check(input != Native.InvalidHandle, "open standard input"); handles.Add(input);
@@ -304,7 +325,7 @@ namespace ScientificSecurity
                 Profile.SealRegistry(process.process, moniker, package);
                 TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
                 Profile.RequireReadOnlyRegistry(process.process, moniker, package);
-                if (preflight && !wallProbe && !loaderProbe) {
+                if (preflight && !wallProbe && !loaderProbe && defaultDacl == null) {
                     StartupAccess.Observe(process, python);
                     StartupImageAccess.Observe(process, python, package);
                     int registryStatus = StartupActivationAccess.Observe(process, python, package);
@@ -313,19 +334,23 @@ namespace ScientificSecurity
                 }
                 OwnProcessAccess.Repair(process);
                 StartupAccess.RequireOwnQueries(process, true);
-                if (pythonCondition)
+                Stopwatch defaultClock = defaultDacl == null ? null : Stopwatch.StartNew();
+                if (pythonCondition || defaultDacl != null)
                     RequireRegistryCondition(StartupRegistryAccess.ObserveChild(process, package), expectedRegistryStatus.Value);
-                if (preflight && !wallProbe && !loaderProbe && !activationProbe && !activationTrace)
+                if (defaultDacl != null)
+                    defaultDacl.opened = DefaultDaclControl.Prepare(process, package,
+                        defaultDacl.condition == DefaultDaclComparison.Condition.UserAllow, defaultClock, out defaultDacl.baseline);
+                if (preflight && !wallProbe && !loaderProbe && !activationProbe && !activationTrace && defaultDacl == null)
                     StartupTokenAccess.Observe(process, package);
                 if (nativeFixture) {
                     string metadata = TokenDefaultMetadata.Observe(process.process);
                     Console.Out.WriteLine(metadata); Console.Out.Flush();
                 }
-                if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest) activationClock.Start();
+                if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
-                if (selfActivation || dllRequest) {
+                if (selfActivation || dllRequest || defaultDacl != null) {
                     while (handles.Count != 0) {
                         IntPtr owned = handles[handles.Count - 1]; handles.RemoveAt(handles.Count - 1);
                         Native.Check(Native.CloseHandle(owned), "close fixed contained activation stdin");
@@ -356,7 +381,7 @@ namespace ScientificSecurity
                 long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
                 {
-                    if ((activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest) && activationClock.Elapsed.TotalSeconds > 10)
+                    if ((activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null) && activationClock.Elapsed.TotalSeconds > 10)
                         throw new TimeoutException("fixed child activation exceeded 10 seconds");
                     long length = outputCapture.Length() + errorCapture.Length();
                     if (length > 1048576) throw new InvalidOperationException("worker standard output exceeded 1 MiB");
@@ -376,6 +401,13 @@ namespace ScientificSecurity
                 string text = outputCapture.Read(), errors = errorCapture.Read();
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(errors) > 1048576)
                     throw new InvalidOperationException("combined worker output exceeded 1 MiB");
+                if (defaultDacl != null) {
+                    if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed default-DACL pass exceeded 10 seconds");
+                    if (text.Length != 0 || errors.Length != 0)
+                        throw new InvalidOperationException("fixed default-DACL pass produced unexpected output");
+                    defaultDacl.exit = exit;
+                    return "";
+                }
                 if (dllRequest) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed DLL request exceeded 10 seconds");
                     return ChildActivationFixture.DllResult(exit, text, errors);

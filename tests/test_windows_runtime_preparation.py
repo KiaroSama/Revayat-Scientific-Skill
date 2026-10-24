@@ -25,6 +25,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.StaticKernelInspection]::RunFixed($state)',
             '[ScientificSecurity.StaticKernelInspection]::RunActivationWorker($state)',
             python_block,
+            '[ScientificSecurity.DefaultDaclComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.DebugControl]::RunFixed($runId, $state)',
             '[ScientificSecurity.ChildActivationFixture]::RunDllHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunHost($childPython)',
