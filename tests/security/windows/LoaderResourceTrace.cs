@@ -5,7 +5,7 @@ namespace ScientificSecurity
     internal sealed partial class LoaderTrace
     {
         readonly string resourcePython;
-        readonly bool dispatchMode, moduleDispatchMode;
+        readonly bool dispatchMode, moduleDispatchMode, pythonDispatchMode;
         uint? dispatchExit;
         internal uint? DispatchExit { get { ThreadCheck(); return dispatchExit; } }
         internal string DispatchMetadata()

@@ -9,7 +9,7 @@ namespace ScientificSecurity
     public static class PythonStartupFixture
     {
         const long Maximum = 16L * 1024 * 1024;
-        static string Runtime(string run, string state)
+        internal static string Runtime(string run, string state)
         {
             if (run == null || run.Length != 32 || !run.All(c => (c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) ||
                 !Path.IsPathFullyQualified(state) || Path.GetFileName(Path.TrimEndingDirectorySeparator(state)) != "security-windows-" + run)
@@ -25,7 +25,7 @@ namespace ScientificSecurity
             catch (DirectoryNotFoundException) { return; }
             throw new InvalidOperationException("fixed Python diagnostic collides with existing state or override");
         }
-        static void Overrides(string runtime)
+        internal static void Overrides(string runtime)
         {
             foreach (string image in new [] { "python.exe", "startup-python.exe" }) {
                 string path = Path.Combine(runtime, image);
@@ -35,7 +35,7 @@ namespace ScientificSecurity
             }
             foreach (string name in new [] { "pyvenv.cfg", "pybuilddir.txt" }) Absent(Path.Combine(runtime, name));
         }
-        static FileStream Open(string path)
+        internal static FileStream Open(string path)
         {
             NativeFixture.Plain(path);
             var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);

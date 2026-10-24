@@ -157,11 +157,11 @@ namespace ScientificSecurity
         bool stopped, initial, changed, restored, invalidated, alive = true;
         internal ActivationBoundaryTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId,
             string executable, string imageDigest, Action<string> output, bool callback = false, bool entry = false,
-            bool resource = false, Action resourceDeadline = null, bool dispatch = false, bool moduleDispatch = false)
+            bool resource = false, Action resourceDeadline = null, bool dispatch = false, bool moduleDispatch = false, bool pythonDispatch = false)
         {
-            if (moduleDispatch && !dispatch || dispatch && !resource || (callback ? 1 : 0) + (entry ? 1 : 0) + (resource ? 1 : 0) > 1 || resource != (resourceDeadline != null))
+            if (pythonDispatch && (!dispatch || moduleDispatch) || moduleDispatch && !dispatch || dispatch && !resource || (callback ? 1 : 0) + (entry ? 1 : 0) + (resource ? 1 : 0) > 1 || resource != (resourceDeadline != null))
                 throw new ArgumentException("activation observation roles cannot overlap");
-            moduleCallback = callback; entryOnly = entry; automaticResource = resource; csrDispatch = dispatch; csrModuleDispatch = moduleDispatch;
+            moduleCallback = callback; entryOnly = entry; automaticResource = resource; csrDispatch = dispatch; csrModuleDispatch = moduleDispatch; csrPythonDispatch = pythonDispatch;
             Need(IntPtr.Size == 8 && Marshal.SizeOf(typeof(MemoryInfo)) == 48 &&
                 processHandle != IntPtr.Zero && threadHandle != IntPtr.Zero);
             process = processHandle; thread = threadHandle; pid = processId; tid = threadId;

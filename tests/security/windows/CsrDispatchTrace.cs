@@ -5,7 +5,7 @@ namespace ScientificSecurity
 {
     public sealed partial class ActivationBoundaryTrace
     {
-        readonly bool csrDispatch, csrModuleDispatch;
+        readonly bool csrDispatch, csrModuleDispatch, csrPythonDispatch;
         KernelImage dispatchNtdll;
         uint dispatchIat;
         bool dispatchRead, dispatchArmed;
@@ -164,7 +164,8 @@ namespace ScientificSecurity
         internal string DispatchMetadata()
         {
             ResourceCheck(csrDispatch && resourceDestroyed, "dispatch-metadata-destruction");
-            return (csrModuleDispatch ? "WINDOWS_MODULE_CSR_DISPATCH invocation_module_verified=False python_equivalence_claimed=False paired=" : "WINDOWS_CSR_DISPATCH paired=") + resourceThreads.Captured + " target_equal=" + resourceThreads.BaseEqual +
+            return (csrPythonDispatch ? "WINDOWS_PYTHON_CSR_DISPATCH invocation_module_verified=False failing_request_verified=False paired=" :
+                csrModuleDispatch ? "WINDOWS_MODULE_CSR_DISPATCH invocation_module_verified=False python_equivalence_claimed=False paired=" : "WINDOWS_CSR_DISPATCH paired=") + resourceThreads.Captured + " target_equal=" + resourceThreads.BaseEqual +
                 (resourceThreads.Captured ? " request=0x1001001E length=0x000001F8 raw_return=0x" + resourceThreads.RawEax.ToString("X8") : "") +
                 " live_restored=" + resourceThreads.CaptureRestored + " natural_exit=" + resourceNaturalExit +
                 " state_destroyed=True observation_qualified=" + ResourceComplete() + resourceThreads.DispatchTraps +

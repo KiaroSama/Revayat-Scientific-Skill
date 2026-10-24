@@ -9,19 +9,25 @@ namespace ScientificSecurity
         static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed CSR dispatch comparison is inconclusive"); }
         // Only a failure qualified by the existing complete-cleanup carrier permits later diagnostics.
-        internal static Exception Execute(Action<CsrDispatchObservation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit, bool module = false)
+        internal static Exception Execute(Action<CsrDispatchObservation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit, bool module = false, bool python = false)
         {
+            Need(!module || !python);
             var lease = begin(); Exception primary = null, diagnostic = null; bool clean = true;
             try {
                 foreach (bool traced in new [] { true, false }) {
-                    var value = new CsrDispatchObservation(traced, module); clean = false; bool qualifiedFailure = false;
+                    var value = new CsrDispatchObservation(traced, module, python); clean = false; bool qualifiedFailure = false;
                     try { observe(value); clean = true; }
                     catch (ExplicitEntryComparison.QualifiedFailure failure) {
                         clean = qualifiedFailure = true;
                         diagnostic = diagnostic == null ? failure.Original : new AggregateException("CSR dispatch diagnostics failed", diagnostic, failure.Original);
                     }
-                    if (value.recorded) emit(value.Metadata());
-                    else Need(qualifiedFailure);
+                    if (value.recorded) {
+                        if (python && !value.completed) {
+                            var failure = new InvalidOperationException("fixed Python CSR pass failed raw_process_exit=0x" + value.exit.ToString("X8"));
+                            diagnostic = diagnostic == null ? failure : new AggregateException("CSR dispatch diagnostics failed", diagnostic, failure);
+                        }
+                        emit(value.Metadata());
+                    } else Need(qualifiedFailure);
                 }
             }
             catch (Exception failure) {
@@ -55,6 +61,10 @@ namespace ScientificSecurity
             if (moduleRetained != null) {
                 failure = failure == null ? moduleRetained : new AggregateException("CSR dispatch roles failed", failure, moduleRetained);
                 moduleRetained = null;
+            }
+            if (pythonRetained != null) {
+                failure = failure == null ? pythonRetained : new AggregateException("CSR dispatch roles failed", failure, pythonRetained);
+                pythonRetained = null;
             }
             return failure == null ? later : later == null ? failure : new AggregateException("CSR dispatch and subsequent operation failed", failure, later);
         }

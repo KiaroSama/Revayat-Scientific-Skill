@@ -9,7 +9,7 @@ using System.Threading;
 
 namespace ScientificSecurity
 {
-    public static class Sandbox
+    public static partial class Sandbox
     {
         public static string PackageSid(string moniker)
         {
@@ -102,6 +102,7 @@ namespace ScientificSecurity
             string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, CsrDispatchObservation observation)
         {
             if (observation == null) throw new ArgumentNullException("observation");
+            if (observation.python) throw new ArgumentException("Python CSR requires its separate fixed adapter");
             if (observation.module) ModuleActivationFixture.RequireDispatchHostPositive(python);
             else SelfActivationFixture.RequireDispatchHostPositive(python);
             RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
@@ -162,10 +163,12 @@ namespace ScientificSecurity
             if (dispatch != null && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe ||
                 activationTrace || observeExit || defaultActivation || callbackExit.HasValue || selfEntry || dllRequest ||
                 pythonCondition || defaultDacl != null || expectedRegistryStatus != 0 || dispatch.recorded ||
-                (dispatch.module ? moduleRole != 2 || selfActivation || selfResource || selfRole != SelfActivationRole.Original :
+                (dispatch.python ? moduleRole != 0 || selfActivation || selfResource || selfRole != SelfActivationRole.Original :
+                dispatch.module ? moduleRole != 2 || selfActivation || selfResource || selfRole != SelfActivationRole.Original :
                 moduleRole != 0 || !selfActivation || selfRole != SelfActivationRole.ExplicitId2 || selfResource != dispatch.traced)))
                 throw new ArgumentException("CSR dispatch requires its separate fixed readable-key role");
             bool moduleDispatchTrace = dispatch != null && dispatch.module && dispatch.traced;
+            bool pythonDispatch = dispatch != null && dispatch.python, pythonDispatchTrace = pythonDispatch && dispatch.traced;
             if (defaultDacl != null && (!preflight || wallProbe || loaderProbe || nativeFixture || pythonClone || activationProbe ||
                 activationTrace || observeExit || defaultActivation || moduleRole != 0 || callbackExit.HasValue || selfActivation ||
                 selfRole != SelfActivationRole.Original || selfEntry || selfResource || dllRequest || pythonCondition || expectedRegistryStatus != 0))
@@ -204,7 +207,8 @@ namespace ScientificSecurity
             if (preflight) { arguments.Add(tcpPort.ToString()); arguments.Add(udpPort.ToString()); arguments.Add(profileFolder); }
             if (wallProbe) arguments.Add("wall-tree");
             string executable = python;
-            if (loaderProbe || defaultDacl != null) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
+            if (loaderProbe || defaultDacl != null || pythonDispatch) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
+            if (pythonDispatch) { phase = "original-python-csr-pass"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
             if (defaultDacl != null) phase = "child-default-dacl-pass";
             if (nativeFixture) {
                 executable = Path.Combine(Path.GetDirectoryName(python), "startup-native.exe");
@@ -259,13 +263,14 @@ namespace ScientificSecurity
             bool started = false, resumed = false, wallExpired = false, callbackStarted = false, entryStarted = false, dispatchSignaled = false;
             Exception primaryFailure = null;
             Capture outputCapture = null, errorCapture = null;
-            LoaderTrace loader = loaderProbe || activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace ?
+            LoaderTrace loader = loaderProbe || activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace ?
                 new LoaderTrace(nativeFixture, pythonClone, activationTrace, callback, selfEntry ? python : null,
-                    selfResource || moduleDispatchTrace ? python : null, dispatch != null, moduleDispatchTrace) : null;
+                    selfResource || moduleDispatchTrace || pythonDispatchTrace ? python : null, dispatch != null, moduleDispatchTrace, pythonDispatchTrace) : null;
             IDisposable activationLease = null;
             var activationClock = new Stopwatch();
             try
             {
+                if (pythonDispatch) activationLease = PythonCsrDispatch.Hold(python);
                 if (dllRequest) activationLease = ChildActivationFixture.HoldDllRequest(python);
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
@@ -333,7 +338,7 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("prepared LPAC executable, working directory or fixed probe is absent");
                 using (OwnedToken restricted = OwnedToken.Create()) {
                     bool created = OwnedToken.CreateProcessAsUserW(restricted.Handle, executable, new StringBuilder(command), processAttributes, processAttributes, true,
-                        CreationFlags(loaderProbe || activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace),
+                        CreationFlags(loaderProbe || activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace),
                         env, launchCwd, ref startup, out process);
                     started = created;
                     if (created && loader != null) loader.Arm(process);
@@ -354,7 +359,7 @@ namespace ScientificSecurity
                 OwnProcessAccess.Repair(process);
                 StartupAccess.RequireOwnQueries(process, true);
                 Stopwatch defaultClock = defaultDacl == null ? null : Stopwatch.StartNew();
-                if (pythonCondition || defaultDacl != null)
+                if (pythonCondition || defaultDacl != null || pythonDispatch)
                     RequireRegistryCondition(StartupRegistryAccess.ObserveChild(process, package), expectedRegistryStatus.Value);
                 if (defaultDacl != null)
                     defaultDacl.opened = DefaultDaclControl.Prepare(process, package,
@@ -365,7 +370,7 @@ namespace ScientificSecurity
                     string metadata = TokenDefaultMetadata.Observe(process.process);
                     Console.Out.WriteLine(metadata); Console.Out.Flush();
                 }
-                if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null) activationClock.Start();
+                if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null || pythonDispatch) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
@@ -377,7 +382,7 @@ namespace ScientificSecurity
                 } else { foreach (IntPtr handle in handles) Native.CloseHandle(handle); handles.Clear(); }
                 outputCapture.CloseWriter(); errorCapture.CloseWriter();
                 if (loader != null) {
-                    callbackStarted = callback; entryStarted = selfEntry || selfResource || moduleDispatchTrace;
+                    callbackStarted = callback; entryStarted = selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace;
                     uint tracedExit;
                     try { tracedExit = loader.Observe(); }
                     catch (Exception observationFailure) {
@@ -412,7 +417,7 @@ namespace ScientificSecurity
                 long previous = 0; double progress = 0; double? wallStarted = null;
                 while (Native.WaitForSingleObject(process.process, 100) == 0x102)
                 {
-                    if ((activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null) && activationClock.Elapsed.TotalSeconds > 10)
+                    if ((activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null || pythonDispatch) && activationClock.Elapsed.TotalSeconds > 10)
                         throw new TimeoutException("fixed child activation exceeded 10 seconds");
                     long length = outputCapture.Length() + errorCapture.Length();
                     if (length > 1048576) throw new InvalidOperationException("worker standard output exceeded 1 MiB");
@@ -492,7 +497,7 @@ namespace ScientificSecurity
                 });
                 bool reaped = false;
                 AttemptCleanup(cleanupFailures, () => {
-                    if (job != IntPtr.Zero) ReapJob(job, (activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace) && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
+                    if (job != IntPtr.Zero) ReapJob(job, (activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace) && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
                     reaped = true;
                 });
                 bool destroyed = false;
@@ -518,7 +523,7 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("owned package SID cleanup failed"); });
                 AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) Native.Check(Native.CloseHandle(job), "close owned job"); });
                 AttemptCleanup(cleanupFailures, () => { if (activationLease != null) activationLease.Dispose(); });
-                Exception completionFailure = selfEntry || selfResource || moduleDispatchTrace ? ExplicitEntryComparison.FinishTrace(primaryFailure, cleanupFailures, entryStarted, destroyed,
+                Exception completionFailure = selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace ? ExplicitEntryComparison.FinishTrace(primaryFailure, cleanupFailures, entryStarted, destroyed,
                     dispatch != null ? (Func<string>)loader.DispatchMetadata : selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata,
                     line => { Console.Out.WriteLine(line); Console.Out.Flush(); }) : dispatch != null ?
                     CsrDispatchComparison.FinishUndebugged(primaryFailure, cleanupFailures, started, dispatchSignaled, reaped) :

@@ -6,14 +6,20 @@ namespace ScientificSecurity
     // Raw trusted-fixture transport is deliberately separate from successful activation/admission.
     internal sealed class CsrDispatchObservation
     {
-        internal readonly bool traced, module;
+        internal readonly bool traced, module, python;
         internal bool recorded, receipt, completed;
         internal uint exit;
         internal int characters;
-        internal CsrDispatchObservation(bool debug, bool moduleId2 = false) { traced = debug; module = moduleId2; }
+        internal CsrDispatchObservation(bool debug, bool moduleId2 = false, bool pythonPass = false)
+        {
+            Need(!moduleId2 || !pythonPass); traced = debug; module = moduleId2; python = pythonPass;
+        }
         internal void Record(uint code, string text, string errors)
         {
             Need(!recorded && text != null && errors != null && text.Length <= (module ? 256 : 128) && errors.Length == 0);
+            if (python) {
+                Need(text.Length == 0); recorded = true; exit = code; completed = code == 0; return;
+            }
             if (module) {
                 ModuleActivationFixture.Result(true, code, text, errors);
                 recorded = true; exit = code; characters = text.Length; completed = code == 0;
@@ -27,6 +33,10 @@ namespace ScientificSecurity
         internal string Metadata()
         {
             Need(recorded);
+            if (python) return "WINDOWS_PYTHON_CSR_TRANSPORT traced=" + traced + " raw_process_exit=0x" + exit.ToString("X8") +
+                " pass_code_completed=" + completed + " stdout_empty=True stderr_empty=True process_job_handle_cleanup=True key_readable=True" +
+                " invocation_module_verified=False failing_request_verified=False server_operation_verified=False" +
+                " cause_claimed=False target_admitted=False production_grant=False undebugged_equivalence_claimed=False";
             if (module) return "WINDOWS_MODULE_CSR_TRANSPORT traced=" + traced + " raw_process_exit=0x" + exit.ToString("X8") +
                 " entry_observed=" + completed + " association_proved=" + completed + " completed_wire=" + completed +
                 " stdout_chars=" + characters + " process_job_handle_cleanup=True key_readable=True invocation_module_verified=False" +

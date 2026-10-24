@@ -21,6 +21,7 @@ class DiagnosticOrderTest(unittest.TestCase):
 """
         anchors = (
             '[ScientificSecurity.PythonStartupFixture]::Prepare($runId, $state)',
+            '[ScientificSecurity.PythonCsrDispatch]::Prepare($runId, $state)',
             '    Protect-Tree $runtime\n',
             '[ScientificSecurity.StaticKernelInspection]::RunFixed($state)',
             '[ScientificSecurity.StaticKernelInspection]::RunActivationWorker($state)',
@@ -31,6 +32,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.SelfActivationFixture]::RunHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)',
             '[ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)',
+            '[ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)',
             "[ScientificSecurity.LoaderSnaps]::Enable($runId, $state, (Join-Path (Split-Path $childPython) 'startup-native.exe'))",
@@ -42,6 +44,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.ManualActivationComparison]::RunDllRequest(',
             '[ScientificSecurity.CsrDispatchComparison]::Run(',
             '[ScientificSecurity.CsrDispatchComparison]::RunModule(',
+            '[ScientificSecurity.CsrDispatchComparison]::RunPython(',
             '[ScientificSecurity.AutomaticResourceComparison]::Run(',
             '$originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run(',
             '$preflightText = [ScientificSecurity.Sandbox]::Run(',
@@ -73,6 +76,7 @@ class DiagnosticOrderTest(unittest.TestCase):
     [ScientificSecurity.SelfActivationFixture]::RunHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)
     [ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)
+    [ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)
 ''', 'All host gates must remain unconditional and fatal before contained work')
