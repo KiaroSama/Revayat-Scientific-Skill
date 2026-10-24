@@ -13,6 +13,7 @@ namespace ScientificSecurity
         {
             CsrDispatchPair dispatchPair;
             Action dispatchTarget;
+            bool dispatchQualifiedStop;
             string dispatchCallTrap, dispatchRefusal;
             internal string DispatchTraps { get { return (dispatchCallTrap == null ? "" : " call_" + dispatchCallTrap.Replace(" ", " call_")) +
                 (Trap == null ? "" : " return_" + Trap.Replace(" ", " return_")); } }
@@ -29,7 +30,9 @@ namespace ScientificSecurity
                         ownedTrap |= value.dispatchState[slot] != 0 && U64(context, 248) == value.dispatchState[slot] &&
                             DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), control, slot);
                 }
-                if (!exact && !ownedTrap) {
+                bool stoppedPeer = dispatchQualifiedStop && kind == 1 && eventThread != value.id &&
+                    SoftwareStatus(U64(context, 104), U64(context, 112), control);
+                if (!exact && !ownedTrap && !stoppedPeer) {
                     if (dispatchRefusal == null) {
                         bool callSite = value.dispatchState[0] != 0 && U64(context, 248) == value.dispatchState[0];
                         bool postSite = value.dispatchState[1] != 0 && U64(context, 248) == value.dispatchState[1];
@@ -57,7 +60,7 @@ namespace ScientificSecurity
             }
             internal bool CaptureDispatch(uint id, bool first, IntPtr exception)
             {
-                ResourceCheck(epoch && !cleanup && !failed && !Captured && dispatchPair != null && !processDead, "dispatch-capture-state");
+                ResourceCheck(epoch && kind == 1 && eventThread == id && !cleanup && !failed && !Captured && dispatchPair != null && !processDead, "dispatch-capture-state");
                 deadline(); Generation value = Live(id); byte[] context = read(value.handle);
                 try {
                     int generation = generations.IndexOf(value);
@@ -71,10 +74,10 @@ namespace ScientificSecurity
                         ResourceCheck(slot == 0, "dispatch-call-first");
                         dispatchPair.Begin(generation, context);
                         dispatchCallTrap = DebugContext.TrapQualifiers(U64(context, 104));
-                        dispatchTarget(); BaseEqual = true;
+                        dispatchTarget(); BaseEqual = true; dispatchQualifiedStop = true;
                         foreach (var live in generations) if (!live.dead && !live.retired) Apply(live, false);
                     } else {
-                        ResourceCheck(slot == 1, "dispatch-return-slot"); dispatchPair.End(generation, context);
+                        ResourceCheck(slot == 1, "dispatch-return-slot"); dispatchPair.End(generation, context); dispatchQualifiedStop = true;
                         Captured = true; CreatorCapture = id == creator; RawEax = dispatchPair.Result;
                         Trap = DebugContext.TrapQualifiers(U64(context, 104));
                         RestoreAll(); captureRestored = true;

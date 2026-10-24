@@ -49,7 +49,7 @@ namespace ScientificSecurity
             }
             internal void Stop(uint actualPid, uint actualThread, uint eventKind, bool draining)
             {
-                epoch = false;
+                epoch = dispatchQualifiedStop = false;
                 ResourceCheck(actualPid == pid, "event-process");
                 if (!draining) {
                     ResourceCheck(!processDead && (eventKind >= 1 && eventKind <= 8 && eventKind != 3 ||

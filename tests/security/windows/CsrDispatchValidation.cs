@@ -10,7 +10,8 @@ namespace ScientificSecurity
         public static void CheckCsrDispatchValidation()
         {
             CheckDispatchReads();
-            foreach (bool creator in new [] { false, true }) {
+            foreach (bool creator in new [] { false, true })
+                foreach (ulong rtm in new ulong[] { 0, 0x10000 }) foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
                 var contexts = new Dictionary<IntPtr, byte[]>(); int writes = 0, targets = 0, closes = 0;
                 Action<uint> prepare = id => contexts[new IntPtr(id)] = new byte[DebugContext.Size];
                 prepare(11); prepare(12); prepare(13);
@@ -22,6 +23,8 @@ namespace ScientificSecurity
                 Need(writes == 2 && new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 72) == 0x8000 &&
                     U64(contexts[new IntPtr(id)], 80) == 0x8007 && U64(contexts[new IntPtr(id)], 112) == 5));
                 uint selected = creator ? 11U : 12U, other = creator ? 12U : 11U;
+                byte[] peer = contexts[new IntPtr(other)];
+                Put(peer, 104, 0xFFFE0FF0UL | rtm); Put(peer, 112, 5UL | fixedBit);
                 byte[] trap = contexts[new IntPtr(selected)]; DispatchFixtureTrap(trap, false);
                 registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8000));
                 Need(targets == 1 && writes == 4 && !registry.Captured);
@@ -31,6 +34,8 @@ namespace ScientificSecurity
                 registry.Continued();
                 registry.Stop(7, 13, 2, false); registry.Enroll(13, new IntPtr(13), true); registry.Continued();
                 Need(writes == 4 && U64(contexts[new IntPtr(13)], 72) == 0 && U64(contexts[new IntPtr(13)], 80) == 0);
+                peer = contexts[new IntPtr(other)];
+                Put(peer, 104, 0xFFFE0FF0UL | rtm); Put(peer, 112, fixedBit);
                 trap = contexts[new IntPtr(selected)]; DispatchFixtureTrap(trap, true);
                 Put(trap, 184, UInt64.MaxValue); Put(trap, 192, UInt64.MaxValue);
                 registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8007)); registry.Continued();
@@ -46,7 +51,7 @@ namespace ScientificSecurity
                 Need(closes == 2 && registry.DestroyedState && !registry.Failed);
             }
             CheckDispatchFailures(); CheckDispatchRestoreDrift(); CheckDispatchMetadata(); CheckDispatchGenerations();
-            CheckDispatchRefusalReporting();
+            CheckDispatchRefusalReporting(); CheckDispatchPeerRefusals();
         }
         static void DispatchFixtureTrap(byte[] context, bool post)
         {
@@ -194,6 +199,63 @@ namespace ScientificSecurity
                 bool sticky = false;
                 try { registry.Destroyed(); } catch (AggregateException failure) { sticky = failure.ToString().Contains(expected); }
                 Need(sticky && registry.DestroyedState && closes == 1);
+            }
+        }
+        static void CheckDispatchPeerRefusals()
+        {
+            var changes = new List<Tuple<int, ulong>>();
+            foreach (int offset in new [] { 72, 80, 88, 96 }) changes.Add(Tuple.Create(offset, 0x9999UL));
+            foreach (ulong bit in new ulong[] { 1, 2, 4, 8, 0x1000, 0x2000, 0x4000, 0x8000, 0x100000000 })
+                changes.Add(Tuple.Create(104, 0xFFFF0FF0UL | bit));
+            changes.Add(Tuple.Create(104, 0xFFFF07F0UL)); changes.Add(Tuple.Create(104, 0xFFFF0FE0UL));
+            foreach (ulong bit in new ulong[] { 2, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x800, 0x1000, 0x2000, 0x10000, 0x40000, 0x100000000 })
+                changes.Add(Tuple.Create(112, 0x405UL | bit));
+            foreach (var change in changes) {
+                var contexts = new Dictionary<IntPtr, byte[]> {
+                    { new IntPtr(11), new byte[DebugContext.Size] }, { new IntPtr(12), new byte[DebugContext.Size] }
+                };
+                var written = new List<IntPtr>();
+                var registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(),
+                    (handle, bytes) => { written.Add(handle); contexts[handle] = (byte[])bytes.Clone(); }, _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
+                registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => { }); registry.Continued();
+                byte[] peer = contexts[new IntPtr(12)]; Put(peer, 104, 0xFFFF0FF0); Put(peer, 112, 0x405);
+                Put(peer, change.Item1, change.Item2); DispatchFixtureTrap(contexts[new IntPtr(11)], false);
+                written.Clear(); registry.Stop(7, 11, 1, false);
+                DispatchRefuse(() => registry.CaptureDispatch(11, true, new IntPtr(0x8000)));
+                Need(written.Count == 1 && written[0] == new IntPtr(11) && U64(peer, change.Item1) == change.Item2 && registry.Failed);
+                try { registry.RestoreAll(); } catch (AggregateException) { }
+                Need(!written.Contains(new IntPtr(12)));
+                registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
+                bool sticky = false; try { registry.Destroyed(); } catch (AggregateException) { sticky = true; }
+                Need(sticky && registry.DestroyedState && !registry.CaptureRestored);
+            }
+            for (int mode = 0; mode < 5; mode++) {
+                var contexts = new Dictionary<IntPtr, byte[]> {
+                    { new IntPtr(11), new byte[DebugContext.Size] }, { new IntPtr(12), new byte[DebugContext.Size] }
+                };
+                int reads = 0, writes = 0;
+                var registry = new ResourceThreads(7, 11, handle => { reads++; return (byte[])contexts[handle].Clone(); },
+                    (handle, bytes) => { writes++; contexts[handle] = (byte[])bytes.Clone(); }, _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
+                registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => { }); registry.Continued();
+                if (mode < 2) {
+                    registry.Stop(7, 11, mode == 0 ? 6U : 1U, false); int beforeReads = reads, beforeWrites = writes;
+                    DispatchRefuse(() => registry.CaptureDispatch(mode == 0 ? 11U : 12U, true, new IntPtr(0x8000)));
+                    Need(reads == beforeReads && writes == beforeWrites);
+                } else {
+                    DispatchFixtureTrap(contexts[new IntPtr(11)], false);
+                    registry.Stop(7, 11, 1, false); registry.CaptureDispatch(11, true, new IntPtr(0x8000)); registry.Continued();
+                    registry.Stop(7, 11, mode == 2 ? 1U : 8U, mode == 3);
+                }
+                Put(contexts[new IntPtr(12)], 104, 0xFFFF0FF0); Put(contexts[new IntPtr(12)], 112, mode < 2 ? 0x405UL : 0x400UL);
+                bool rejected = false; try { registry.RestoreAll(); } catch (AggregateException) { rejected = true; }
+                Need(rejected && registry.Failed && !registry.CaptureRestored);
+                registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
+                bool sticky = false; try { registry.Destroyed(); } catch (AggregateException) { sticky = true; }
+                Need(sticky && registry.DestroyedState);
             }
         }
         static void CheckDispatchReads()
