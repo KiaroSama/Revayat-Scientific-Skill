@@ -24,6 +24,14 @@ namespace ScientificSecurity
             try { Parse(new byte[7]); } catch (InvalidOperationException error) { malformed = error.Message; }
             Need(System.Text.RegularExpressions.Regex.IsMatch(malformed,
                 @"^child default-DACL contract failed component=policy source_check=[1-9][0-9]{0,3}$"));
+            var unsupported = new RawAcl(2, 1);
+            unsupported.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, unchecked((int)0x80000000U),
+                new SecurityIdentifier("S-1-5-21-1-2-3-500"), false, null));
+            string maskFailure = null;
+            try { Parse(Binary(unsupported)); } catch (InvalidOperationException error) { maskFailure = error.Message; }
+            Need(maskFailure != null && maskFailure.EndsWith(
+                " ace_index=0 ace_type=0 mask=0x80000000 rejected_bits=0x80000000", StringComparison.Ordinal) &&
+                !maskFailure.Contains("S-1-") && maskFailure.Length < 220);
             var user = new SecurityIdentifier("S-1-5-21-1-2-3-500");
             var original = new RawAcl(2, 2);
             original.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessDenied, 2,
@@ -67,6 +75,12 @@ namespace ScientificSecurity
         { var bytes = new byte[acl.BinaryLength]; acl.GetBinaryForm(bytes, 0); return bytes; }
         static byte[] Binary(GenericAce ace)
         { var bytes = new byte[ace.BinaryLength]; ace.GetBinaryForm(bytes, 0); return bytes; }
+        static void Mask(uint mask, int index, byte type, [System.Runtime.CompilerServices.CallerLineNumber] int source = 0)
+        {
+            uint rejected = mask & ~(0x10000000U | 0x1F0003U);
+            if (rejected != 0) throw new InvalidOperationException("child default-DACL contract failed component=policy source_check=" + source +
+                " ace_index=" + index + " ace_type=" + type + " mask=0x" + mask.ToString("X8") + " rejected_bits=0x" + rejected.ToString("X8"));
+        }
         internal static RawAcl Parse(byte[] bytes)
         {
             Need(bytes != null && bytes.Length >= 8 && bytes.Length <= 65535 && (bytes.Length & 3) == 0 &&
@@ -80,7 +94,7 @@ namespace ScientificSecurity
                 Need(length >= 16 && (length & 3) == 0 && length <= bytes.Length - offset &&
                     bytes[offset + 8] == 1 && subAuthorities <= 15 && length == 16 + 4 * subAuthorities);
                 uint mask = BitConverter.ToUInt32(bytes, offset + 4);
-                Need((mask & ~(0x10000000U | 0x1F0003U)) == 0);
+                Mask(mask, index, bytes[offset]);
                 offset += length;
             }
             var acl = new RawAcl(bytes, 0); bool allowSeen = false;

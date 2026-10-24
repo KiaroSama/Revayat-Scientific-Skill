@@ -147,6 +147,8 @@ namespace ScientificSecurity
             }
             Finish(primary, actions);
         }
+        static Exception PreparationFailure(string phase, Exception failure)
+        { return new InvalidOperationException("child default-security preparation failed phase=" + phase, failure); }
         internal static bool Prepare(Native.ProcessInfo child, string package, bool changed, Stopwatch clock, out byte[] baseline)
         {
             baseline = null;
@@ -154,26 +156,30 @@ namespace ScientificSecurity
             Need(IntPtr.Size == 8 && Marshal.SizeOf(typeof(Name)) == 16 && Marshal.SizeOf(typeof(Attributes)) == 48);
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero;
             byte[] before = null, prepared = null; bool impersonating = false; Exception primary = null;
+            string phase = "open-primary";
             try {
                 Need(clock != null && clock.IsRunning); Deadline(clock);
                 Native.Check(Native.OpenProcessToken(child.process, 0x8A, out token), "open suspended child default-security token");
-                Need(Valid(token)); before = ChildDefaultDacl.Read(token); var user = ChildDefaultDacl.User(token);
+                Need(Valid(token)); phase = "read-primary"; before = ChildDefaultDacl.Read(token);
+                phase = "read-user"; var user = ChildDefaultDacl.User(token);
                 // Validate the same finite policy on every leg, even when no setter runs.
-                byte[] candidate = ChildDefaultDacl.WithUser(before, user);
+                phase = "candidate"; byte[] candidate = ChildDefaultDacl.WithUser(before, user);
                 prepared = changed ? candidate : (byte[])before.Clone();
                 if (!changed) Array.Clear(candidate, 0, candidate.Length);
-                if (changed) ChildDefaultDacl.Set(token, prepared);
-                EqualDefault(token, prepared); Deadline(clock);
+                phase = "set-primary"; if (changed) ChildDefaultDacl.Set(token, prepared);
+                phase = "primary-readback"; EqualDefault(token, prepared); Deadline(clock);
+                phase = "duplicate-context";
                 Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate prepared default-security context");
                 Need(Valid(duplicate)); var context = new RegistryContext(token, duplicate, package);
-                EqualDefault(duplicate, prepared); Deadline(clock);
+                phase = "duplicate-readback"; EqualDefault(duplicate, prepared); Deadline(clock);
+                phase = "effective-context";
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter exact child default-security context");
                 impersonating = true; context.RequireThread();
-                bool opened = Event(token, user, prepared, context, clock);
+                phase = "event-control"; bool opened = Event(token, user, prepared, context, clock);
                 Need(!changed || opened); context.RequireThread(); Deadline(clock);
                 baseline = (byte[])before.Clone(); return opened;
             }
-            catch (Exception failure) { primary = failure; throw; }
+            catch (Exception failure) { primary = PreparationFailure(phase, failure); throw primary; }
             finally {
                 FinishContext(primary, impersonating, RevertToSelf,
                     () => Environment.FailFast("Child default-security reversion failed; outer owner must reap and recover."),
@@ -203,6 +209,14 @@ namespace ScientificSecurity
             catch (InvalidOperationException error) { native = error.Message; }
             Need(System.Text.RegularExpressions.Regex.IsMatch(native,
                 @"^child default-DACL contract failed component=control source_check=[1-9][0-9]{0,3} native_status=0xC0000022$"));
+            var originalFailure = new InvalidOperationException("fixed original");
+            Exception wrapped = PreparationFailure("read-primary", originalFailure);
+            Need(wrapped.Message == "child default-security preparation failed phase=read-primary" &&
+                Object.ReferenceEquals(wrapped.InnerException, originalFailure));
+            AggregateException wrappedCleanup = null;
+            try { Finish(wrapped, () => { throw new InvalidOperationException("fixed cleanup"); }); }
+            catch (AggregateException error) { wrappedCleanup = error; }
+            Need(wrappedCleanup != null && Object.ReferenceEquals(wrappedCleanup.InnerExceptions[0], wrapped));
             Need(Opened(0, new IntPtr(2), new IntPtr(1)) && !Opened(Denied, IntPtr.Zero, new IntPtr(1)));
             const string path = "\\Sessions\\1\\AppContainerNamedObjects\\fixed";
             Need(ObjectName(path, (uint)path.Length + 1, new string('a', 32)).EndsWith(new string('a', 32), StringComparison.Ordinal));
