@@ -1,6 +1,11 @@
 name: Dependency review
 on:
-  pull_request:
+  workflow_call:
+    inputs:
+      base_ref:
+        description: Base commit SHA for the reviewed change
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -11,6 +16,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Require an explicit base commit
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
+        run: |
+          if [[ ! "$BASE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Dependency review requires a full base commit SHA.' >&2
+            exit 1
+          fi
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
           fail-on-severity: moderate
+          base-ref: ${{ inputs.base_ref }}
+          head-ref: ${{ github.sha }}

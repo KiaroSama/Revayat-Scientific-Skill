@@ -254,6 +254,10 @@ python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/validat
 python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/package.py
 ```
 
+The separate [security regression tiers](docs/security-testing.md) require effective
+Linux/Windows containment before their finite fixtures. Authored scenarios and missing
+native controls are not a security certification or a successful skipped test.
+
 During implementation run only the narrow next-edit check; final integrated suites
 run once in CI. Headless/captured execution preserves useful failed-run evidence.
 Portable discovery has explicit native/platform skips: it does not certify missing

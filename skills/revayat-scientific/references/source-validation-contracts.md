@@ -9,6 +9,13 @@ the prior scope before inheriting language, hidden, direction or identity state.
 Nested list/table boundaries remain scoped. Body/html end tags do not erase the
 scope of tail text that HTML renderers reprocess within the existing body.
 
+The shared parser admits at most 100000 start elements and 512 open ancestors.
+It checks these work budgets before namespace and scope scans, including for
+self-closing tags. Lint, build guards/assets, text-order source extraction and HTML
+render admission share the refusal diagnostic; ordinary supported nesting remains
+usable. The ancestor ceiling is conservative, not a claim of exact rendered DOM
+height or a complete native-decoder resource sandbox.
+
 This is a deliberately bounded source model, not a complete HTML5 DOM engine.
 Active-formatting reconstruction/adoption, nested interactive elements, fostered
 table text or misplaced table parts, ambiguous select children/separators and

@@ -1,17 +1,28 @@
 name: CI
 on:
-  push:
-    branches: [main, 'codex/**', 'feature/**', 'fix/**']
-  pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '13 6 * * 1'
+    inputs:
+      base_ref:
+        description: Base commit SHA for identity and dependency review
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  security:
+    uses: $/.github/workflows/security-ci.yml
+  codeql:
+    permissions:
+      contents: read
+      security-events: write
+    uses: $/.github/workflows/codeql.yml
+  dependency-review:
+    uses: $/.github/workflows/dependency-review.yml
+    with:
+      base_ref: ${{ inputs.base_ref }}
   portable:
     env:
       SCIENTIFIC_REQUIRE_BROWSER: '1'
@@ -194,13 +205,14 @@ jobs:
         with:
           python-version: '3.13'
       - name: Check introduced commit identities
-        if: github.event_name == 'pull_request'
         env:
-          IDENTITY_BASE: ${{ github.event.pull_request.base.sha }}
-          IDENTITY_HEAD: ${{ github.event.pull_request.head.sha }}
+          IDENTITY_BASE: ${{ inputs.base_ref }}
+          IDENTITY_HEAD: ${{ github.sha }}
         shell: python
         run: |
-          import os, subprocess, sys
+          import os, re, subprocess, sys
+          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['IDENTITY_BASE']):
+              raise SystemExit('Identity review requires a full base commit SHA.')
           raise SystemExit(subprocess.call([
               sys.executable, 'tools/check-commit-identity.py',
               '--base', os.environ['IDENTITY_BASE'], '--head', os.environ['IDENTITY_HEAD']]))
@@ -216,7 +228,8 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Workflow syntax and security
         run: |
-          python tools/run-check.py --timeout 120 --idle-timeout 60 -- actionlint
+          python tools/run-check.py --timeout 60 --idle-timeout 30 -- python -B -m unittest discover -s tests -p 'test_workflow_lint.py' -v
+          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B tools/check-workflows.py
           python tools/run-check.py --timeout 120 --idle-timeout 60 -- zizmor --offline .github/workflows
       - name: Runtime and development dependency audit
         run: python tools/run-check.py --timeout 300 --idle-timeout 90 -- python -m pip_audit --strict --progress-spinner off -r skills/revayat-scientific/requirements.txt -r requirements-dev.txt
