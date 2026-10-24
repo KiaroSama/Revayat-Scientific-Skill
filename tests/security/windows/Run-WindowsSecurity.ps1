@@ -361,6 +361,8 @@ try {
     [ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'matched undebugged Python host preparation starts after token comparison restoration; no image matrix or admission claim'
     [ScientificSecurity.PythonActivationPreparation]::RunHost($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    Write-RunLog INFO 'matched undebugged Python image-bundle preparation starts after host restoration; conditional sufficiency only'
+    [ScientificSecurity.PythonActivationPreparation]::RunImages($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'child-only default-DACL differential starts under constant readable key; never target admission or production policy'
     [ScientificSecurity.DefaultDaclComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'single fixed trusted-host debugger control starts; never normalization or admission proof'
@@ -397,7 +399,7 @@ try {
     Write-RunLog INFO 'fixed automatic resource observation then unchanged entry and explicit ID2 comparisons; none admits target code'
     [ScientificSecurity.AutomaticResourceComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'reversible fixed registry causal comparison starts; no target admission under intervention'
-    $originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    $negativeBaselineExit = [ScientificSecurity.RegistryCausalComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'fixed child-process activation comparison starts; never Python causality or admission'
     $activationText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $false, $false, $false, $true)
     [Console]::Out.WriteLine([ScientificSecurity.ChildActivationFixture]::RequireResult($activationText))
@@ -410,7 +412,7 @@ try {
     $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
     [ScientificSecurity.PythonActivationPreparation]::RequireClean()
     [ScientificSecurity.CsrDispatchComparison]::RequireClean()
-    [ScientificSecurity.RegistryCausalComparison]::RequireAdmission($originalAdmissionExit)
+    [ScientificSecurity.RegistryCausalComparison]::RequireNegativeBaseline($negativeBaselineExit)
     $preflight = $preflightText | ConvertFrom-Json
     if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }
     $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $true)

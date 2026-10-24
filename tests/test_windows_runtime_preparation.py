@@ -28,6 +28,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             python_block,
             '[ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunHost($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
+            '[ScientificSecurity.PythonActivationPreparation]::RunImages($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.DefaultDaclComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.DebugControl]::RunFixed($runId, $state)',
             '[ScientificSecurity.ChildActivationFixture]::RunDllHost($childPython)',
@@ -48,11 +49,11 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.CsrDispatchComparison]::RunModule(',
             '[ScientificSecurity.CsrDispatchComparison]::RunPython(',
             '[ScientificSecurity.AutomaticResourceComparison]::Run(',
-            '$originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run(',
+            '$negativeBaselineExit = [ScientificSecurity.RegistryCausalComparison]::Run(',
             '$preflightText = [ScientificSecurity.Sandbox]::Run(',
             '[ScientificSecurity.PythonActivationPreparation]::RequireClean()',
             '[ScientificSecurity.CsrDispatchComparison]::RequireClean()',
-            '[ScientificSecurity.RegistryCausalComparison]::RequireAdmission($originalAdmissionExit)',
+            '[ScientificSecurity.RegistryCausalComparison]::RequireNegativeBaseline($negativeBaselineExit)',
             "if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight')",
             '$wall = [ScientificSecurity.Sandbox]::Run(',
             '$regressionText = [ScientificSecurity.Sandbox]::Run(',
@@ -61,6 +62,26 @@ class DiagnosticOrderTest(unittest.TestCase):
             self.assertEqual(controller.count(anchor), 1, 'Missing, duplicated or altered diagnostic/admission step')
         positions = [controller.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions), 'Python diagnostic cleanup must precede debugger controls without bypassing later gates')
+
+    def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
+        controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        block = '''    Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
+    $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
+    [ScientificSecurity.PythonActivationPreparation]::RequireClean()
+    [ScientificSecurity.CsrDispatchComparison]::RequireClean()
+    [ScientificSecurity.RegistryCausalComparison]::RequireNegativeBaseline($negativeBaselineExit)
+    $preflight = $preflightText | ConvertFrom-Json
+    if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }
+    $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $true)
+    if ($wall -ne 'WALL_TREE_TERMINATED') { throw 'Native wall/process-tree negative control was not proved' }
+    Write-RunLog INFO 'all required native controls observed including wall-tree cleanup; reviewed regressions admitted'
+    $regressionText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $false, 0, 0)
+'''
+        self.assertEqual(controller.count(block), 1, 'Actual ordinary output and every fatal gate must precede reviewed code')
+        self.assertEqual(controller.count('$preflightText = '), 1, 'Diagnostic output cannot substitute for fresh admission')
+        self.assertEqual(controller.count('$preflight = '), 1, 'Admission must validate that same ordinary output')
+        self.assertNotIn('RequireAdmission', controller)
+        self.assertNotIn('$originalAdmissionExit', controller)
 
     def test_csr_host_launch_preserves_aggregate_containment_prerequisites(self):
         windows = ROOT / 'tests/security/windows'

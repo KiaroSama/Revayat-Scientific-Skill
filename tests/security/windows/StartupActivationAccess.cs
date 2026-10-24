@@ -39,15 +39,15 @@ namespace ScientificSecurity
             return "WINDOWS_STARTUP_ACTIVATION context=" + context + " resource_type=24 resource_id=1 created=" + success +
                 " win32_error=" + error + " activated=False child_equivalence_claimed=False cause_claimed=False";
         }
-        static void Attempt(List<Exception> failures, Action action)
+        internal static void Attempt(List<Exception> failures, Action action)
         { try { action(); } catch (Exception failure) { failures.Add(failure); } }
-        static void Finish(Exception primary, List<Exception> failures)
+        internal static void Finish(Exception primary, List<Exception> failures)
         {
             if (failures.Count == 0) return;
             if (primary != null) failures.Insert(0, primary);
             throw new AggregateException("fixed activation operation/cleanup failed", failures);
         }
-        static void FinalizeComparison(Exception primary, bool impersonating, Func<bool> revert, Action failFast, Action emit, params Action[] cleanup)
+        internal static void FinalizeComparison(Exception primary, bool impersonating, Func<bool> revert, Action failFast, Action emit, params Action[] cleanup)
         {
             if (impersonating) {
                 bool reverted;
@@ -128,7 +128,7 @@ namespace ScientificSecurity
         }
         internal static void PreparePython(Native.ProcessInfo child, string python, string package, PythonActivationPreparation.Observation observation)
         {
-            PythonActivationPreparation.Need(observation != null); observation.RequireFresh();
+            PythonActivationPreparation.Need(observation != null && observation.experiment == PythonActivationPreparation.Experiment.Token); observation.RequireFresh();
             ushort language = PythonCsrDispatch.PreparedLanguage(python);
             using (WindowsIdentity current = WindowsIdentity.GetCurrent(true))
                 if (current != null) throw new InvalidOperationException("Python preparation host is already impersonating");

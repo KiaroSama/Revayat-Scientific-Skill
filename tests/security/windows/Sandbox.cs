@@ -215,7 +215,7 @@ namespace ScientificSecurity
             if (wallProbe) arguments.Add("wall-tree");
             string executable = python;
             if (loaderProbe || defaultDacl != null || pythonDispatch || preparation != null) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
-            if (preparation != null) { phase = preparation.host ? "python-host-preparation" : "python-activation-preparation"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
+            if (preparation != null) { phase = preparation.image ? "python-image-preparation" : preparation.host ? "python-host-preparation" : "python-activation-preparation"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
             if (pythonDispatch) { phase = "original-python-csr-pass"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
             if (defaultDacl != null) phase = "child-default-dacl-pass";
             if (nativeFixture) {
@@ -370,7 +370,7 @@ namespace ScientificSecurity
                 if (pythonCondition || defaultDacl != null || pythonDispatch || preparation != null)
                     RequireRegistryCondition(StartupRegistryAccess.ObserveChild(process, package), expectedRegistryStatus.Value);
                 if (preparation != null) {
-                    if (preparation.host) StartupActivationAccess.PrepareHostPython(process, python, package, preparation);
+                    if (preparation.host || preparation.image) StartupActivationAccess.PrepareHostPython(process, python, package, preparation);
                     else StartupActivationAccess.PreparePython(process, python, package, preparation);
                 }
                 if (defaultDacl != null)

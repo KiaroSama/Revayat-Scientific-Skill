@@ -21,7 +21,7 @@ namespace ScientificSecurity
         internal static void PrepareHostPython(Native.ProcessInfo child, string python, string package,
             PythonActivationPreparation.Observation observation)
         {
-            PythonActivationPreparation.Need(observation != null && observation.host); observation.RequireFresh();
+            PythonActivationPreparation.Need(observation != null && (observation.host || observation.image)); observation.RequireFresh();
             ushort language = PythonCsrDispatch.PreparedLanguage(python); RequirePreparationHost();
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero; bool impersonating = false;
             Exception primary = null; var lines = new List<string>(); var clock = Stopwatch.StartNew();
@@ -32,7 +32,11 @@ namespace ScientificSecurity
                 impersonating = true;
                 PythonActivationPreparation.PrepareHost(observation, () => new RegistryContext(token, duplicate, package).RequireThread(), () => Deadline(clock),
                     () => ChildDefaultDacl.Read(token), () => ChildDefaultDacl.Read(duplicate),
-                    () => ObserveOne("host", python, language, lines, clock, null),
+                    () => {
+                        if (!observation.image) return ObserveOne("host", python, language, lines, clock, null);
+                        StartupImageAccess.Observe(child, python, package);
+                        RequirePreparationHost(); Deadline(clock); return true;
+                    },
                     () => LeavePreparation(ref impersonating), RequirePreparationHost,
                     () => {
                         Native.Check(ImpersonateLoggedOnUser(duplicate), "reenter exact host preparation LPAC qualification");
@@ -44,8 +48,8 @@ namespace ScientificSecurity
                 FinalizeComparison(primary, impersonating, RevertToSelf,
                     () => Environment.FailFast("Host preparation identity restoration failed; outer owner must reap and clean up."),
                     () => {
-                        PythonActivationPreparation.Need(lines.Count == (observation.attempted ? 1 : 0));
-                        if (observation.prepared && observation.attempted) observation.Activation(lines[0]);
+                        PythonActivationPreparation.Need(lines.Count == (observation.attempted && !observation.image ? 1 : 0));
+                        if (!observation.image && observation.prepared && observation.attempted) observation.Activation(lines[0]);
                     },
                     () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close host preparation duplicate token"); },
                     () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close host preparation primary token"); });

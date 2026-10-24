@@ -223,7 +223,7 @@ namespace ScientificSecurity
                     }, () => { order.Add("begin"); return new Trial(() => order.Add("restore"), () => order.Add("defer")); }, _ => order.Add("comparison")),
                         () => order.Add("query"));
                     Need(original == 0xC0000022); order.Add("fresh-ordinary");
-                    RequireAdmission(0); // Even a later successful gate cannot erase the diagnostic.
+                    RequireNegativeBaseline(original); // A verified baseline cannot erase a diagnostic failure.
                 } catch (Exception failure) { caught = failure; }
                 if (mode == 2 || mode == 4) {
                     Need(callbackFailure == null && String.Join(",", order) ==
@@ -298,11 +298,37 @@ namespace ScientificSecurity
             evidence();
             return originalExit;
         }
-        public static void RequireAdmission(uint originalExit)
+        public static void RequireNegativeBaseline(uint negativeBaselineExit)
         {
-            Exception failure = originalExit == 0 ? null : new InvalidOperationException("original ordinary admission failure remains batch-fatal");
+            Exception failure = negativeBaselineExit == 0xC0000022U ? null :
+                new InvalidOperationException("fixed negative baseline did not retain its expected denial");
             failure = PreserveCallbackFailure(failure);
             if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+        static void CheckNegativeBaseline()
+        {
+            Need(callbackFailure == null);
+            RequireNegativeBaseline(0xC0000022U);
+            var qualified = new QualifiedModuleCallbackFailure(new InvalidOperationException("fixed callback"));
+            foreach (uint code in new uint[] { 0xC0000022U, 0, 259, 0xC0150002U, UInt32.MaxValue }) {
+                bool valid = code == 0xC0000022U;
+                Exception caught = null;
+                try { RequireNegativeBaseline(code); }
+                catch (InvalidOperationException failure) { caught = failure; }
+                Need(valid ? caught == null : caught != null);
+                RetainCallbackFailure(qualified);
+                caught = null;
+                try { RequireNegativeBaseline(code); }
+                catch (Exception failure) { caught = failure; }
+                if (valid) Need(Object.ReferenceEquals(caught, qualified));
+                else {
+                    var group = caught as AggregateException;
+                    Need(group != null && group.InnerExceptions.Count == 2 &&
+                        Object.ReferenceEquals(group.InnerExceptions[0], qualified) &&
+                        group.InnerExceptions[1] is InvalidOperationException);
+                }
+                Need(callbackFailure == null && PreserveCallbackFailure(null) == null);
+            }
         }
         sealed class Trial
         {
@@ -327,11 +353,9 @@ namespace ScientificSecurity
                 Need(String.Join(",", order) == "observe1,begin,observe2,restore,observe3,emit" &&
                     result.Contains("activation_changed=" + changes + " python_exit_changed=" + changes) &&
                     result.EndsWith("restored_baseline=True target_admitted=False cause_claimed=False production_grant=False", StringComparison.Ordinal));
-                bool admitted = false, refused = false;
-                try { uint repeatedPreflight = 0; Need(repeatedPreflight == 0); RequireAdmission(originalExit); admitted = true; }
-                catch (InvalidOperationException) { refused = true; }
-                Need(refused && !admitted);
+                RequireNegativeBaseline(originalExit);
             }
+            CheckNegativeBaseline();
             CheckStartupOrdering();
             CheckSelfOrdering();
             CheckModuleOrdering();
