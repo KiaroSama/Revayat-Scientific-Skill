@@ -29,10 +29,10 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.DebugControl]::RunFixed($runId, $state)',
             '[ScientificSecurity.ChildActivationFixture]::RunDllHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunHost($childPython)',
-            '[ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)',
-            '[ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)',
             '[ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)',
+            '[ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)',
+            '[ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)',
             "[ScientificSecurity.LoaderSnaps]::Enable($runId, $state, (Join-Path (Split-Path $childPython) 'startup-native.exe'))",
             '$nativeDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $true)',
             'finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure) }\n'
@@ -55,6 +55,27 @@ class DiagnosticOrderTest(unittest.TestCase):
             self.assertEqual(controller.count(anchor), 1, 'Missing, duplicated or altered diagnostic/admission step')
         positions = [controller.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions), 'Python diagnostic cleanup must precede debugger controls without bypassing later gates')
+
+    def test_csr_host_launch_preserves_aggregate_containment_prerequisites(self):
+        windows = ROOT / 'tests/security/windows'
+        source = (windows / 'CsrDispatchObservation.cs').read_text(encoding='utf-8')
+        aggregate = '''        internal static void RequireDispatchHostPositive(string python)
+        { RequireResourceHostPositive(python); Need(dispatchHostPositive); }'''
+        launch = '''        public static void RunDispatchHost(string python)
+        {
+            RequireHostPositive(python, SelfActivationRole.ExplicitId2); Need(!dispatchHostPositive);'''
+        self.assertEqual(source.count(aggregate), 1, 'Contained CSR must retain entry/resource and its own host positives')
+        self.assertEqual(source.count(launch), 1, 'CSR host launch must retain the strict undebugged ExplicitId2 positive')
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        start = controller.index('    [ScientificSecurity.ChildActivationFixture]::RunDllHost($childPython)')
+        end = controller.index("    Write-RunLog INFO 'fixed no-CRT native startup differential starts; never an admission control'", start)
+        self.assertEqual(controller[start:end], '''    [ScientificSecurity.ChildActivationFixture]::RunDllHost($childPython)
+    [ScientificSecurity.SelfActivationFixture]::RunHost($childPython)
+    [ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)
+    [ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)
+    [ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)
+    [ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)
+''', 'All host gates must remain unconditional and fatal before contained work')
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'Windows PowerShell preparation functions')

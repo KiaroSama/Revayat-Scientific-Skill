@@ -361,10 +361,10 @@ try {
     Write-RunLog INFO 'fixed own-image activation host positive starts; never LPAC or Python equivalence'
     [ScientificSecurity.ChildActivationFixture]::RunDllHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunHost($childPython)
-    [ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)
-    [ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)
     [ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)
+    [ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)
+    [ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)
     Write-RunLog INFO 'fixed no-CRT native startup differential starts; never an admission control'
     $diagnosticFailure = $null
     try {

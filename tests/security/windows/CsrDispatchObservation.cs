@@ -75,7 +75,7 @@ namespace ScientificSecurity
         { RequireResourceHostPositive(python); Need(dispatchHostPositive); }
         public static void RunDispatchHost(string python)
         {
-            RequireResourceHostPositive(python); Need(!dispatchHostPositive);
+            RequireHostPositive(python, SelfActivationRole.ExplicitId2); Need(!dispatchHostPositive);
             IDisposable held = Hold(python, SelfActivationRole.ExplicitId2);
             CompleteDispatchHost(retain => TrustedSetup.RunCsrDispatch(python, retain), held.Dispose,
                 line => { Console.Out.WriteLine(line); Console.Out.Flush(); }, () => dispatchHostPositive = true);
