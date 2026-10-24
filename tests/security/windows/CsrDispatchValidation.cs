@@ -194,6 +194,11 @@ namespace ScientificSecurity
             string metadata = observer.DispatchMetadata();
             Need(metadata.Length < 1024 && metadata.Contains("paired=False") && metadata.Contains("observation_qualified=False") &&
                 !metadata.Contains("raw_return=") && !metadata.Contains("private-") && metadata.EndsWith("undebugged_equivalence_claimed=False", StringComparison.Ordinal));
+            var module = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", _ => { }, false, false, true, () => { }, true, true);
+            module.resourceDestroyed = true;
+            string moduleMetadata = module.DispatchMetadata();
+            Need(moduleMetadata.Length < 1024 && moduleMetadata.StartsWith("WINDOWS_MODULE_CSR_DISPATCH invocation_module_verified=False python_equivalence_claimed=False paired=False", StringComparison.Ordinal) &&
+                moduleMetadata.Contains("observation_qualified=False") && !moduleMetadata.Contains("private-") && !moduleMetadata.Contains("raw_return="));
             var continuation = new LoaderTrace.ResourceContinuation();
             DispatchRefuse(() => continuation.Run(() => { throw new InvalidOperationException("fixed continue"); }));
             continuation.Run(() => { }); DispatchRefuse(continuation.RequireClean);

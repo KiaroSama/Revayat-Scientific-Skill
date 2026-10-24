@@ -56,6 +56,10 @@ namespace ScientificSecurity
             QualifyModuleCallbackHost(host, Hash(host));
             ModuleRefuse(() => QualifyModuleCallbackHost(host, "different"));
             ModuleRefuse(() => QualifyModuleCallbackHost(ModuleActivationFixtureImage(true, true), Hash(host)));
+            QualifyModuleCallbackPath(Path.Combine("fixed", "module-id2", "startup-module.exe"), Path.Combine("fixed", "module-id2", "startup-module.exe"));
+            foreach (string wrong in new [] { Path.Combine("fixed", "module-plain", "startup-module.exe"), Path.Combine("fixed", "module-id2", "startup-explicit-id2.exe") })
+                ModuleRefuse(() => QualifyModuleCallbackPath(wrong, wrong));
+            ModuleRefuse(() => QualifyModuleCallbackPath("other", Path.Combine("fixed", "module-id2", "startup-module.exe")));
         }
         internal void RequireModuleCallbackProfile()
         {
@@ -111,11 +115,15 @@ namespace ScientificSecurity
         internal static KernelImage FromModuleCallbackCreation(IntPtr file, IntPtr imageBase, string expectedPath, string digest)
         {
             string path = EventPath(file);
-            Need(path != null && Path.GetFileName(expectedPath) == "startup-module.exe" &&
-                Path.GetFileName(Path.GetDirectoryName(expectedPath)) == "module-id2" &&
-                String.Equals(path, expectedPath, StringComparison.OrdinalIgnoreCase));
+            QualifyModuleCallbackPath(path, expectedPath);
             var image = ReadEventImage(file, imageBase, "fixed-module-activation");
             QualifyModuleCallbackHost(image.data, digest); return image;
+        }
+        static void QualifyModuleCallbackPath(string actual, string expected)
+        {
+            Need(actual != null && expected != null && Path.GetFileName(expected) == "startup-module.exe" &&
+                Path.GetFileName(Path.GetDirectoryName(expected)) == "module-id2" &&
+                String.Equals(actual, expected, StringComparison.OrdinalIgnoreCase));
         }
         static byte[] CallbackFixture()
         {

@@ -62,12 +62,13 @@ namespace ScientificSecurity
         int pythonStringEvents, requestedBytes;
         HardwareTrace hardware;
         ActivationBoundaryTrace activation;
-        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false, bool callback = false, string explicitEntryPython = null, string automaticResourcePython = null, bool dispatch = false)
+        internal LoaderTrace(bool nativeSnaps = false, bool cloneSnaps = false, bool activationTrace = false, bool callback = false, string explicitEntryPython = null, string automaticResourcePython = null, bool dispatch = false, bool moduleDispatch = false)
         {
+            if (moduleDispatch && !dispatch) throw new ArgumentException("module dispatch requires its fixed CSR role");
             if (dispatch && automaticResourcePython == null) throw new ArgumentException("dispatch requires the fixed process-scope role");
             if ((nativeSnaps ? 1 : 0) + (cloneSnaps ? 1 : 0) + (activationTrace ? 1 : 0) + (callback ? 1 : 0) + (explicitEntryPython != null ? 1 : 0) + (automaticResourcePython != null ? 1 : 0) > 1)
                 throw new ArgumentException("diagnostic roles cannot overlap");
-            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; entryPython = explicitEntryPython; resourcePython = automaticResourcePython; dispatchMode = dispatch;
+            nativeHardware = nativeSnaps; pythonSnaps = cloneSnaps; entryPython = explicitEntryPython; resourcePython = automaticResourcePython; dispatchMode = dispatch; moduleDispatchMode = moduleDispatch;
             activationMode = activationTrace || callback || EntryMode || ResourceMode; moduleCallback = callback;
             if (StrictEventOwnership) callbackFiles = new EventCleanupLedger();
             if (IntPtr.Size != 8 || Marshal.SizeOf(typeof(ExceptionRecord)) != 152 ||
@@ -103,7 +104,8 @@ namespace ScientificSecurity
                     out thread, 0, false, 2), "duplicate retained loader diagnostic thread handle");
                 child.process = process; child.thread = thread; memoryProcess = lifetimeProcess = process; process = thread = IntPtr.Zero;
                 if (nativeHardware) hardware = new HardwareTrace(child.process, child.thread, pid, tid, Emit);
-                if (activationMode) activation = ResourceMode ? SelfActivationFixture.ResourceObserver(resourcePython, child, Emit, ResourceDeadline, dispatchMode) :
+                if (activationMode) activation = moduleDispatchMode ? ModuleActivationFixture.DispatchObserver(resourcePython, child, Emit, ResourceDeadline) :
+                    ResourceMode ? SelfActivationFixture.ResourceObserver(resourcePython, child, Emit, ResourceDeadline, dispatchMode) :
                     EntryMode ? SelfActivationFixture.EntryObserver(entryPython, child, Emit) :
                     moduleCallback ? ModuleActivationFixture.Observer(child, Emit) : ChildActivationFixture.Observer(child, Emit);
             }

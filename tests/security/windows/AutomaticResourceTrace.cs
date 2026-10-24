@@ -198,7 +198,8 @@ namespace ScientificSecurity
         void ResourceCreation(IntPtr file, IntPtr imageBase)
         {
             ResourceCheck(resourceThreads != null && fixture == null && !invalidated, "creation-state");
-            fixture = KernelImage.FromExplicitEntryCreation(file, imageBase, path, digest);
+            fixture = csrModuleDispatch ? KernelImage.FromModuleCallbackCreation(file, imageBase, path, digest) :
+                KernelImage.FromExplicitEntryCreation(file, imageBase, path, digest);
             RequireExecutable(fixture, fixture.Entry, 1);
             resourceThreads.Enroll(tid, thread, false);
         }

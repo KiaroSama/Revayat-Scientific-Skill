@@ -32,6 +32,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)',
+            '[ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)',
             "[ScientificSecurity.LoaderSnaps]::Enable($runId, $state, (Join-Path (Split-Path $childPython) 'startup-native.exe'))",
             '$nativeDiagnostic = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $false, $true, $true)',
             'finally { [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state, $diagnosticFailure) }\n'
@@ -40,6 +41,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.ManualActivationComparison]::Run(',
             '[ScientificSecurity.ManualActivationComparison]::RunDllRequest(',
             '[ScientificSecurity.CsrDispatchComparison]::Run(',
+            '[ScientificSecurity.CsrDispatchComparison]::RunModule(',
             '[ScientificSecurity.AutomaticResourceComparison]::Run(',
             '$originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run(',
             '$preflightText = [ScientificSecurity.Sandbox]::Run(',

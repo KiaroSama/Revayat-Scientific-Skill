@@ -35,21 +35,29 @@ namespace ScientificSecurity
             return RunFixed(image, new string[0], Path.GetDirectoryName(image), true, SelfActivationRole.ExplicitId2,
                 python, retainMetadata, true, dispatch: true);
         }
+        internal static string RunModuleCsrDispatch(string python, Action<string> retainMetadata)
+        {
+            string image = ModuleActivationFixture.PreparedImage(python, true);
+            return RunFixed(image, new string[0], Path.GetDirectoryName(image), true,
+                entryPython: python, retainMetadata: retainMetadata, resource: true, dispatch: true, moduleDispatch: true);
+        }
         internal static string RunDllRequest(string python)
         {
             string image = ChildActivationFixture.DllPreparedImage(python);
             return RunFixed(image, new string[0], Path.GetDirectoryName(image), false, dllRequest: true);
         }
-        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false, bool dllRequest = false, bool dispatch = false)
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false, bool dllRequest = false, bool dispatch = false, bool moduleDispatch = false)
         {
             SelfActivationFixture.RequireKnownRole(role);
+            if (moduleDispatch && (!dispatch || !resource || !selfActivation || dllRequest || role != SelfActivationRole.Original || entryPython == null || retainMetadata == null))
+                throw new ArgumentException("module CSR host requires its separate fixed role");
             if (dispatch && !resource) throw new ArgumentException("dispatch host requires fixed resource transport");
             if (dllRequest) {
                 ChildActivationFixture.RequireDllRole(true, selfActivation, role != SelfActivationRole.Original, entryPython != null, resource, retainMetadata != null);
                 RequireDllLaunch(executable, arguments, cwd);
                 selfActivation = true; // Reuse the same strict fixed-diagnostic process/cleanup limits.
             }
-            if (resource && entryPython == null || entryPython != null && (!selfActivation || role != SelfActivationRole.ExplicitId2 || retainMetadata == null) ||
+            if (resource && entryPython == null || entryPython != null && (!selfActivation || role != (moduleDispatch ? SelfActivationRole.Original : SelfActivationRole.ExplicitId2) || retainMetadata == null) ||
                 entryPython == null && retainMetadata != null) throw new ArgumentException("entry host requires fixed ExplicitId2 metadata retention");
             if (!Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd))
                 throw new ArgumentException("trusted setup requires fully qualified executable and working directory");
@@ -58,7 +66,8 @@ namespace ScientificSecurity
             string name = Path.GetFileName(executable).ToLowerInvariant();
             bool compilerPreparation = new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe" }.Contains(name);
             if (role != SelfActivationRole.Original && !selfActivation) throw new ArgumentException("activation role requires the fixed internal launch");
-            if (selfActivation && !dllRequest) RequireSelfLaunch(executable, arguments, cwd, role);
+            if (moduleDispatch) RequireModuleDispatchLaunch(executable, arguments, cwd);
+            else if (selfActivation && !dllRequest) RequireSelfLaunch(executable, arguments, cwd, role);
             if (compilerPreparation || selfActivation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
             if (!selfActivation && !compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
@@ -76,7 +85,7 @@ namespace ScientificSecurity
             var child = new Native.ProcessInfo(); bool started = false, resumed = false;
             Exception primaryFailure = null;
             var clock = new Stopwatch();
-            LoaderTrace loader = entryPython == null ? null : new LoaderTrace(false, false, false, false, resource ? null : entryPython, resource ? entryPython : null, dispatch);
+            LoaderTrace loader = entryPython == null ? null : new LoaderTrace(false, false, false, false, resource ? null : entryPython, resource ? entryPython : null, dispatch, moduleDispatch);
             try
             {
                 EmitStage(name, "prepare");
@@ -153,7 +162,9 @@ namespace ScientificSecurity
                     uint observedExit = loader.Observe();
                     string captured = output.Read(), capturedError = error.Read();
                     if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed entry host exceeded 10 seconds");
-                    return SelfActivationFixture.Result(observedExit, captured, capturedError, SelfActivationRole.ExplicitId2);
+                    if (moduleDispatch && captured.Length > 256) throw new InvalidOperationException("module CSR host transport exceeded its bound");
+                    return moduleDispatch ? ModuleActivationFixture.Result(true, observedExit, captured, capturedError) :
+                        SelfActivationFixture.Result(observedExit, captured, capturedError, SelfActivationRole.ExplicitId2);
                 }
                 if (!selfActivation) clock.Start();
                 long previous = 0; double progress = 0;
@@ -242,6 +253,35 @@ namespace ScientificSecurity
                 Path.GetDirectoryName(executable) != cwd || Path.GetFileName(cwd) != "python")
                 throw new ArgumentException("unsupported fixed host activation launch");
         }
+        static void RequireModuleDispatchLaunch(string executable, string[] arguments, string cwd)
+        {
+            if (executable == null || cwd == null || !Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd) ||
+                arguments == null || arguments.Length != 0 || Path.GetFileName(executable) != "startup-module.exe" ||
+                Path.GetDirectoryName(executable) != cwd || Path.GetFileName(cwd) != "module-id2")
+                throw new ArgumentException("unsupported fixed module CSR host launch");
+        }
+        internal static void CheckModuleDispatchValidation()
+        {
+            string image = Path.Combine(Path.GetFullPath("."), "python", "module-id2", "startup-module.exe");
+            string cwd = Path.GetDirectoryName(image);
+            RequireModuleDispatchLaunch(image, new string[0], cwd);
+            foreach (Action action in new Action[] {
+                () => RequireModuleDispatchLaunch(image, null, cwd),
+                () => RequireModuleDispatchLaunch(image, new [] { "private-sentinel" }, cwd),
+                () => RequireModuleDispatchLaunch(image, new string[0], Path.GetDirectoryName(cwd)),
+                () => RequireModuleDispatchLaunch(image.Replace("module-id2", "module-plain"), new string[0], cwd.Replace("module-id2", "module-plain")),
+                () => RequireModuleDispatchLaunch(image.Replace("startup-module.exe", "startup-explicit-id2.exe"), new string[0], cwd),
+                () => RunFixed(null, null, null, false, moduleDispatch: true),
+                () => RunFixed(null, null, null, true, entryPython: "fixed", retainMetadata: _ => { }, resource: true, moduleDispatch: true),
+                () => RunFixed(null, null, null, true, SelfActivationRole.ExplicitId2, "fixed", _ => { }, true, dispatch: true, moduleDispatch: true)
+            }) {
+                bool refused = false;
+                try { action(); } catch (ArgumentException error) { refused = !error.Message.Contains("private-sentinel"); }
+                if (!refused) throw new InvalidOperationException("module CSR host role was not isolated");
+            }
+            if (Stage("startup-module.exe", "create-before") != "WINDOWS_SETUP_STAGE tool=startup-module.exe stage=create-before")
+                throw new InvalidOperationException("module CSR host stage differs");
+        }
         static void RequireDllLaunch(string executable, string[] arguments, string cwd)
         {
             if (executable == null || cwd == null || !Path.IsPathFullyQualified(executable) || !Path.IsPathFullyQualified(cwd) ||
@@ -262,7 +302,7 @@ namespace ScientificSecurity
         }
         static string Stage(string tool, string stage)
         {
-            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe", "startup-manual-activation.exe", "startup-explicit-id2.exe", "startup-dll-resource.exe" }.Contains(tool) ||
+            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe", "startup-manual-activation.exe", "startup-explicit-id2.exe", "startup-dll-resource.exe", "startup-module.exe" }.Contains(tool) ||
                 !new [] { "prepare", "create-before", "create-after", "assign-before", "assign-after", "resume-before", "resume-after",
                     "wait-first", "wait-complete", "reap-before", "reap-after", "capture-after", "cleanup-before", "cleanup-after" }.Contains(stage))
                 throw new InvalidOperationException("unsupported trusted setup stage label");

@@ -3,18 +3,18 @@ using System.Collections.Generic;
 
 namespace ScientificSecurity
 {
-    public static class CsrDispatchComparison
+    public static partial class CsrDispatchComparison
     {
         static Exception retained;
         static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed CSR dispatch comparison is inconclusive"); }
         // Only a failure qualified by the existing complete-cleanup carrier permits later diagnostics.
-        internal static Exception Execute(Action<CsrDispatchObservation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit)
+        internal static Exception Execute(Action<CsrDispatchObservation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit, bool module = false)
         {
             var lease = begin(); Exception primary = null, diagnostic = null; bool clean = true;
             try {
                 foreach (bool traced in new [] { true, false }) {
-                    var value = new CsrDispatchObservation(traced); clean = false; bool qualifiedFailure = false;
+                    var value = new CsrDispatchObservation(traced, module); clean = false; bool qualifiedFailure = false;
                     try { observe(value); clean = true; }
                     catch (ExplicitEntryComparison.QualifiedFailure failure) {
                         clean = qualifiedFailure = true;
@@ -52,6 +52,10 @@ namespace ScientificSecurity
         public static Exception PreserveFailure(Exception later)
         {
             Exception failure = retained; retained = null;
+            if (moduleRetained != null) {
+                failure = failure == null ? moduleRetained : new AggregateException("CSR dispatch roles failed", failure, moduleRetained);
+                moduleRetained = null;
+            }
             return failure == null ? later : later == null ? failure : new AggregateException("CSR dispatch and subsequent operation failed", failure, later);
         }
         public static void RequireClean()

@@ -6,14 +6,19 @@ namespace ScientificSecurity
     // Raw trusted-fixture transport is deliberately separate from successful activation/admission.
     internal sealed class CsrDispatchObservation
     {
-        internal readonly bool traced;
+        internal readonly bool traced, module;
         internal bool recorded, receipt, completed;
         internal uint exit;
         internal int characters;
-        internal CsrDispatchObservation(bool debug) { traced = debug; }
+        internal CsrDispatchObservation(bool debug, bool moduleId2 = false) { traced = debug; module = moduleId2; }
         internal void Record(uint code, string text, string errors)
         {
-            Need(!recorded && text != null && errors != null && text.Length <= 128 && errors.Length == 0);
+            Need(!recorded && text != null && errors != null && text.Length <= (module ? 256 : 128) && errors.Length == 0);
+            if (module) {
+                ModuleActivationFixture.Result(true, code, text, errors);
+                recorded = true; exit = code; characters = text.Length; completed = code == 0;
+                return;
+            }
             bool complete = SelfActivationFixture.DispatchCompleted(code, text);
             Need(complete || (code & 0x80000000) != 0 && text.Length == 0);
             recorded = true; exit = code; characters = text.Length;
@@ -22,6 +27,10 @@ namespace ScientificSecurity
         internal string Metadata()
         {
             Need(recorded);
+            if (module) return "WINDOWS_MODULE_CSR_TRANSPORT traced=" + traced + " raw_process_exit=0x" + exit.ToString("X8") +
+                " entry_observed=" + completed + " association_proved=" + completed + " completed_wire=" + completed +
+                " stdout_chars=" + characters + " process_job_handle_cleanup=True key_readable=True invocation_module_verified=False" +
+                " python_equivalence_claimed=False target_admitted=False cause_claimed=False production_grant=False";
             return "WINDOWS_CSR_DISPATCH_TRANSPORT traced=" + traced + " raw_process_exit=0x" + exit.ToString("X8") +
                 " pre_call_receipt_observed=" + receipt + " completed_wire=" + completed + " stdout_chars=" + characters +
                 " process_job_handle_cleanup=True key_readable=True target_admitted=False cause_claimed=False production_grant=False";

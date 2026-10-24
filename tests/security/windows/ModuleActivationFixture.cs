@@ -10,7 +10,7 @@ using System.Text.RegularExpressions;
 namespace ScientificSecurity
 {
     // Two fixed immutable pairs; module association is not active-at-entry or Python causality.
-    public static class ModuleActivationFixture
+    public static partial class ModuleActivationFixture
     {
         const string Host = "startup-module.exe", Dll = "startup-module.dll";
         const string SourceHash = "71c149943424c9ebe482b40b75b785a2eec85bcdca0870f8ac3f0e2154193f74";
