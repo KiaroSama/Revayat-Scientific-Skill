@@ -26,6 +26,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.StaticKernelInspection]::RunFixed($state)',
             '[ScientificSecurity.StaticKernelInspection]::RunActivationWorker($state)',
             python_block,
+            '[ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.DefaultDaclComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.DebugControl]::RunFixed($runId, $state)',
             '[ScientificSecurity.ChildActivationFixture]::RunDllHost($childPython)',
@@ -48,6 +49,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.AutomaticResourceComparison]::Run(',
             '$originalAdmissionExit = [ScientificSecurity.RegistryCausalComparison]::Run(',
             '$preflightText = [ScientificSecurity.Sandbox]::Run(',
+            '[ScientificSecurity.PythonActivationPreparation]::RequireClean()',
             '[ScientificSecurity.CsrDispatchComparison]::RequireClean()',
             '[ScientificSecurity.RegistryCausalComparison]::RequireAdmission($originalAdmissionExit)',
             "if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight')",
@@ -80,6 +82,21 @@ class DiagnosticOrderTest(unittest.TestCase):
     [ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)
 ''', 'All host gates must remain unconditional and fatal before contained work')
+
+    def test_preparation_failures_use_one_ordered_controller_boundary(self):
+        windows = ROOT / 'tests/security/windows'
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        source = (windows / 'PythonActivationPreparation.cs').read_text(encoding='utf-8')
+        self.assertEqual(source.count('return PreserveFailure(CsrDispatchComparison.PreserveFailure(RegistryCausalComparison.PreserveCallbackFailure(later)));'), 1)
+        self.assertEqual(source.count('Exception failure = PreserveAllFailures(null); if (failure != null) throw failure;'), 1)
+        start = controller.index('    $cause = $_.Exception\n')
+        end = controller.index('    $staticReport = ', start)
+        self.assertEqual(controller[start:end], '''    $cause = $_.Exception
+    if ('ScientificSecurity.PythonActivationPreparation' -as [type]) {
+        $cause = [ScientificSecurity.PythonActivationPreparation]::PreserveAllFailures($cause)
+        $failure = [Management.Automation.ErrorRecord]::new($cause, 'WindowsSecurityFailure', [Management.Automation.ErrorCategory]::NotSpecified, $null)
+    }
+''', 'Later preservers must not prepend already-consumed failures out of chronological order')
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'Windows PowerShell preparation functions')

@@ -126,6 +126,36 @@ namespace ScientificSecurity
                     () => { if (held != null) held.Dispose(); });
             }
         }
+        internal static void PreparePython(Native.ProcessInfo child, string python, string package, PythonActivationPreparation.Observation observation)
+        {
+            PythonActivationPreparation.Need(observation != null); observation.RequireFresh();
+            ushort language = PythonCsrDispatch.PreparedLanguage(python);
+            using (WindowsIdentity current = WindowsIdentity.GetCurrent(true))
+                if (current != null) throw new InvalidOperationException("Python preparation host is already impersonating");
+            IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero; bool impersonating = false;
+            Exception primary = null; var lines = new List<string>(); var clock = Stopwatch.StartNew();
+            try {
+                Native.Check(Native.OpenProcessToken(child.process, 0xA, out token), "open exact Python preparation primary token");
+                Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate exact Python preparation token");
+                var context = new RegistryContext(token, duplicate, package);
+                Native.Check(ImpersonateLoggedOnUser(duplicate), "enter exact Python preparation LPAC context");
+                impersonating = true;
+                PythonActivationPreparation.Prepare(observation, context.RequireThread, () => Deadline(clock),
+                    () => ChildDefaultDacl.Read(token), () => ChildDefaultDacl.Read(duplicate),
+                    () => ObserveOne("lpac", python, language, lines, clock, null));
+            }
+            catch (Exception failure) { primary = failure; throw; }
+            finally {
+                FinalizeComparison(primary, impersonating, RevertToSelf,
+                    () => Environment.FailFast("Python preparation identity restoration failed; outer owner must reap and clean up."),
+                    () => {
+                        PythonActivationPreparation.Need(lines.Count == (observation.attempted ? 1 : 0));
+                        if (observation.prepared && observation.attempted) observation.Activation(lines[0]);
+                    },
+                    () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close Python preparation duplicate token"); },
+                    () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close Python preparation primary token"); });
+            }
+        }
         static bool ObserveOne(string label, string python, ushort language, List<string> lines, Stopwatch clock, List<Tuple<string, string>> assemblyPaths)
         {
             Deadline(clock); ActCtx context = Fixed(python, language);

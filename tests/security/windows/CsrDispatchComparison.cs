@@ -68,6 +68,8 @@ namespace ScientificSecurity
             }
             return failure == null ? later : later == null ? failure : new AggregateException("CSR dispatch and subsequent operation failed", failure, later);
         }
+        internal static void RetainValidationFailure(Exception failure)
+        { Need(failure != null && retained == null && moduleRetained == null && pythonRetained == null); retained = failure; }
         public static void RequireClean()
         { Exception failure = PreserveFailure(null); if (failure != null) throw failure; }
         internal static Exception FinishUndebugged(Exception primary, List<Exception> cleanup, bool started, bool signaled, bool reaped)

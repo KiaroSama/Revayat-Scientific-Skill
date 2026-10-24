@@ -16,6 +16,7 @@ namespace ScientificSecurity
             Need(failure is QualifiedModuleCallbackFailure && callbackFailure == null);
             callbackFailure = failure;
         }
+        internal static void RetainValidationFailure(Exception failure) { RetainCallbackFailure(failure); }
         public static Exception PreserveCallbackFailure(Exception later)
         {
             Exception retained = callbackFailure; callbackFailure = null;

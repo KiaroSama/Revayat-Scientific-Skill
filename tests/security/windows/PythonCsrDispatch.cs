@@ -255,6 +255,8 @@ namespace ScientificSecurity
         { Need(prepared != null); RequirePath(python, prepared.python); return prepared.python; }
         internal static IDisposable Hold(string python)
         { PreparedImage(python); return Acquire(python, prepared, _ => { }); }
+        internal static ushort PreparedLanguage(string python)
+        { PreparedImage(python); return prepared.language; }
         internal static void RequireImage(string python, byte[] bytes)
         {
             PreparedImage(python);
