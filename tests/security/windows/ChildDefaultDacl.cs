@@ -32,6 +32,24 @@ namespace ScientificSecurity
             Need(maskFailure != null && maskFailure.EndsWith(
                 " ace_index=0 ace_type=0 mask=0x40000000 rejected_bits=0x40000000", StringComparison.Ordinal) &&
                 !maskFailure.Contains("S-1-") && maskFailure.Length < 220);
+            byte[][] headers = {
+                new byte[] { 2, 0, 8, 0, 1, 0, 0, 0 },
+                new byte[] { 2, 0, 24, 0, 1, 0, 0, 0, 2, 0, 16, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 5 },
+                new byte[] { 2, 0, 24, 0, 1, 0, 0, 0, 0, 16, 16, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 5 }
+            };
+            string[] headerFailures = {
+                " check=ace-span acl_length=8 ace_offset=8 ace_count=1 ace_index=0",
+                " check=ace-header ace_offset=8 ace_index=0 ace_type=2 ace_flags=0x00",
+                " check=ace-header ace_offset=8 ace_index=0 ace_type=0 ace_flags=0x10"
+            };
+            for (int index = 0; index < headers.Length; index++) {
+                string failure = null;
+                try { Parse(headers[index]); } catch (InvalidOperationException error) { failure = error.Message; }
+                Need(failure != null && failure.EndsWith(headerFailures[index], StringComparison.Ordinal) &&
+                    System.Text.RegularExpressions.Regex.IsMatch(failure,
+                        @"^child default-DACL contract failed component=policy source_check=[1-9][0-9]{0,3} check=ace-(span|header) [a-z0-9_= x]+$") &&
+                    failure.Length < 240 && !failure.Contains("S-1-") && !failure.Contains("\\"));
+            }
             var user = new SecurityIdentifier("S-1-5-21-1-2-3-500");
             uint[] inputs = { 0x80000000, 0x20000000, 0xA0000000, 0xA0000002, 0xB0000000 };
             int[] expectedMasks = { 0x20001, 0x120000, 0x120001, 0x120003, 0x1F0003 };
@@ -98,6 +116,17 @@ namespace ScientificSecurity
             if (rejected != 0) throw new InvalidOperationException("child default-DACL contract failed component=policy source_check=" + source +
                 " ace_index=" + index + " ace_type=" + type + " mask=0x" + mask.ToString("X8") + " rejected_bits=0x" + rejected.ToString("X8"));
         }
+        static void Header(byte[] bytes, int offset, int count, int index,
+            [System.Runtime.CompilerServices.CallerLineNumber] int source = 0)
+        {
+            if (offset > bytes.Length - 16)
+                throw new InvalidOperationException("child default-DACL contract failed component=policy source_check=" + source +
+                    " check=ace-span acl_length=" + bytes.Length + " ace_offset=" + offset + " ace_count=" + count + " ace_index=" + index);
+            byte type = bytes[offset], flags = bytes[offset + 1];
+            if ((type != 0 && type != 1) || flags != 0)
+                throw new InvalidOperationException("child default-DACL contract failed component=policy source_check=" + source +
+                    " check=ace-header ace_offset=" + offset + " ace_index=" + index + " ace_type=" + type + " ace_flags=0x" + flags.ToString("X2"));
+        }
         internal static RawAcl Parse(byte[] bytes)
         {
             Need(bytes != null && bytes.Length >= 8 && bytes.Length <= 65535 && (bytes.Length & 3) == 0 &&
@@ -106,7 +135,7 @@ namespace ScientificSecurity
             int count = BitConverter.ToUInt16(bytes, 4), offset = 8;
             Need(count <= 64);
             for (int index = 0; index < count; index++) {
-                Need(offset <= bytes.Length - 16 && (bytes[offset] == 0 || bytes[offset] == 1) && bytes[offset + 1] == 0);
+                Header(bytes, offset, count, index);
                 int length = BitConverter.ToUInt16(bytes, offset + 2), subAuthorities = bytes[offset + 9];
                 Need(length >= 16 && (length & 3) == 0 && length <= bytes.Length - offset &&
                     bytes[offset + 8] == 1 && subAuthorities <= 15 && length == 16 + 4 * subAuthorities);
