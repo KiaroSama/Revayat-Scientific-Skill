@@ -72,14 +72,27 @@ namespace ScientificSecurity
             // The docs do not define successful ReturnLength terminator accounting; use the actual bounded NUL.
             return new UnicodeEncoding(false, false, true).GetString(buffer, 0, end);
         }
-        static string ObjectName(string path, uint returned, string suffix)
+        static uint Session(IntPtr token)
+        {
+            IntPtr data = Marshal.AllocHGlobal(4);
+            try {
+                uint returned;
+                Native.Check(Native.GetTokenInformation(token, 12, data, 4, out returned), "query exact child object session");
+                Need(returned == 4); return unchecked((uint)Marshal.ReadInt32(data));
+            }
+            finally { Marshal.WriteInt32(data, 0); Marshal.FreeHGlobal(data); }
+        }
+        static string ObjectName(string path, uint returned, string suffix, string package, uint session)
         {
             Need(path != null && path.Length > 1 && path.Length < 2048 && returned > 0 && returned <= 2048 &&
-                path[0] == '\\' && path[path.Length - 1] != '\\' && !path.Contains("\\\\") &&
-                suffix != null && suffix.Length == 32);
-            foreach (char item in path) Need(item >= 32 && item != 127 && item != '\0');
+                suffix != null && suffix.Length == 32 && package != null);
+            var sid = new SecurityIdentifier(package);
+            Need(sid.Value == package && package.StartsWith("S-1-15-2-", StringComparison.Ordinal));
+            string relative = "AppContainerNamedObjects\\" + package;
+            string qualified = "Sessions\\" + session.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\\" + relative;
+            Need(path == relative || path == qualified || path == "\\" + qualified);
             foreach (char item in suffix) Need(item >= '0' && item <= '9' || item >= 'a' && item <= 'f');
-            return path + "\\ScientificDefaultDacl-" + suffix;
+            return "\\" + qualified + "\\ScientificDefaultDacl-" + suffix;
         }
         static bool Opened(int status, IntPtr opened, IntPtr created)
         {
@@ -96,7 +109,7 @@ namespace ScientificSecurity
                 sd.DiscretionaryAcl != null);
             ChildDefaultDacl.RequireEqual(ChildDefaultDacl.EventPolicy(prepared), ChildDefaultDacl.Binary(sd.DiscretionaryAcl));
         }
-        static bool Event(IntPtr token, SecurityIdentifier user, byte[] prepared, RegistryContext context, Stopwatch clock)
+        static bool Event(IntPtr token, string package, SecurityIdentifier user, byte[] prepared, RegistryContext context, Stopwatch clock)
         {
             IntPtr text = IntPtr.Zero, name = IntPtr.Zero, created = IntPtr.Zero, opened = IntPtr.Zero, buffer = IntPtr.Zero, pathBuffer = IntPtr.Zero;
             Exception primary = null;
@@ -108,7 +121,7 @@ namespace ScientificSecurity
                 byte[] pathBytes = new byte[4096]; string full;
                 try {
                     Marshal.Copy(pathBuffer, pathBytes, 0, pathBytes.Length);
-                    full = ObjectName(DecodePath(pathBytes, returned), returned, Guid.NewGuid().ToString("N"));
+                    full = ObjectName(DecodePath(pathBytes, returned), returned, Guid.NewGuid().ToString("N"), package, Session(token));
                 } finally { Array.Clear(pathBytes, 0, pathBytes.Length); }
                 text = Marshal.StringToHGlobalUni(full); name = Marshal.AllocHGlobal(16);
                 Marshal.StructureToPtr(new Name { length = checked((ushort)(full.Length * 2)),
@@ -175,7 +188,7 @@ namespace ScientificSecurity
                 phase = "effective-context";
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter exact child default-security context");
                 impersonating = true; context.RequireThread();
-                phase = "event-control"; bool opened = Event(token, user, prepared, context, clock);
+                phase = "event-control"; bool opened = Event(token, package, user, prepared, context, clock);
                 Need(!changed || opened); context.RequireThread(); Deadline(clock);
                 baseline = (byte[])before.Clone(); return opened;
             }
@@ -218,15 +231,35 @@ namespace ScientificSecurity
             catch (AggregateException error) { wrappedCleanup = error; }
             Need(wrappedCleanup != null && Object.ReferenceEquals(wrappedCleanup.InnerExceptions[0], wrapped));
             Need(Opened(0, new IntPtr(2), new IntPtr(1)) && !Opened(Denied, IntPtr.Zero, new IntPtr(1)));
-            const string path = "\\Sessions\\1\\AppContainerNamedObjects\\fixed";
-            Need(ObjectName(path, (uint)path.Length + 1, new string('a', 32)).EndsWith(new string('a', 32), StringComparison.Ordinal));
+            const string package = "S-1-15-2-3", relative = "AppContainerNamedObjects\\S-1-15-2-3";
+            const string path = "\\Sessions\\1\\AppContainerNamedObjects\\S-1-15-2-3";
+            string suffix = new string('a', 32), expectedName = path + "\\ScientificDefaultDacl-" + suffix;
+            foreach (string accepted in new [] { relative, path.Substring(1), path })
+                Need(ObjectName(accepted, (uint)accepted.Length + 1, suffix, package, 1) == expectedName);
+            Need(ObjectName(relative, (uint)relative.Length + 1, suffix, package, 0) ==
+                "\\Sessions\\0\\AppContainerNamedObjects\\S-1-15-2-3\\ScientificDefaultDacl-" + suffix);
+            foreach (string rejected in new [] {
+                "\\" + relative, "\\" + path, path + "\\", relative + "\\extra", relative + "0",
+                "Sessions\\2\\" + relative, "Sessions\\01\\" + relative,
+                "Sessions\\+1\\" + relative, "Global\\" + relative, "AppContainerNamedObjects\\..", "relative"
+            }) {
+                string message = null;
+                try { ObjectName(rejected, (uint)rejected.Length + 1, suffix, package, 1); }
+                catch (InvalidOperationException error) { message = error.Message; }
+                Need(message != null && !message.Contains(package) && !message.Contains(suffix) &&
+                    System.Text.RegularExpressions.Regex.IsMatch(message,
+                        @"^child default-DACL contract failed component=control source_check=[1-9][0-9]{0,3}$"));
+            }
             foreach (Action invalid in new Action[] {
                 () => Opened(0, IntPtr.Zero, new IntPtr(1)), () => Opened(0, new IntPtr(1), new IntPtr(1)),
                 () => Opened(Denied, new IntPtr(2), new IntPtr(1)), () => Opened(1, IntPtr.Zero, new IntPtr(1)),
-                () => ObjectName("relative", 8, new string('a', 32)),
-                () => ObjectName("\\path\\", 7, new string('a', 32)),
-                () => ObjectName("\\private\nsentinel", 18, new string('a', 32)),
-                () => ObjectName("\\path", 2049, new string('a', 32))
+                () => ObjectName("relative", 8, suffix, package, 1),
+                () => ObjectName("\\path\\", 7, suffix, package, 1),
+                () => ObjectName("\\private\nsentinel", 18, suffix, package, 1),
+                () => ObjectName(path, 2049, suffix, package, 1),
+                () => ObjectName(relative, 0, suffix, package, 1),
+                () => ObjectName(relative, 40, new string('g', 32), package, 1),
+                () => ObjectName(relative, 40, "a", package, 1)
             }) {
                 bool refused = false; try { invalid(); } catch (InvalidOperationException) { refused = true; }
                 Need(refused);
