@@ -11,10 +11,19 @@ namespace ScientificSecurity
     {
         const int Capacity = 65536;
         const int GenericAll = 0x10000000;
-        internal static void Need(bool value)
-        { if (!value) throw new InvalidOperationException("child default-DACL contract failed"); }
+        internal static void Need(bool value, [System.Runtime.CompilerServices.CallerLineNumber] int source = 0)
+        { if (!value) throw new InvalidOperationException("child default-DACL contract failed component=policy source_check=" + source); }
         public static void CheckValidation()
         {
+            string first = null, second = null;
+            try { Need(false); } catch (InvalidOperationException error) { first = error.Message; }
+            try { Need(false); } catch (InvalidOperationException error) { second = error.Message; }
+            Need(first != second && System.Text.RegularExpressions.Regex.IsMatch(first,
+                @"^child default-DACL contract failed component=policy source_check=[1-9][0-9]{0,3}$"));
+            string malformed = null;
+            try { Parse(new byte[7]); } catch (InvalidOperationException error) { malformed = error.Message; }
+            Need(System.Text.RegularExpressions.Regex.IsMatch(malformed,
+                @"^child default-DACL contract failed component=policy source_check=[1-9][0-9]{0,3}$"));
             var user = new SecurityIdentifier("S-1-5-21-1-2-3-500");
             var original = new RawAcl(2, 2);
             original.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessDenied, 2,

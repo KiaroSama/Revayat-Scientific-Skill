@@ -15,7 +15,8 @@ namespace ScientificSecurity
             internal uint exit;
             internal Observation(Condition value) { Name(value); condition = value; }
         }
-        static void Need(bool value) { ChildDefaultDacl.Need(value); }
+        static void Need(bool value, [System.Runtime.CompilerServices.CallerLineNumber] int source = 0)
+        { if (!value) throw new InvalidOperationException("child default-DACL contract failed component=comparison source_check=" + source); }
         static string Name(Condition condition)
         {
             switch (condition) {
@@ -76,6 +77,11 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
+            string first = null, second = null;
+            try { Need(false); } catch (InvalidOperationException error) { first = error.Message; }
+            try { Need(false); } catch (InvalidOperationException error) { second = error.Message; }
+            Need(first != second && System.Text.RegularExpressions.Regex.IsMatch(first,
+                @"^child default-DACL contract failed component=comparison source_check=[1-9][0-9]{0,3}$"));
             byte[] baseline = ChildDefaultDacl.Binary(new System.Security.AccessControl.RawAcl(2, 0));
             var order = new List<string>(); int count = 0;
             Execute(condition => {

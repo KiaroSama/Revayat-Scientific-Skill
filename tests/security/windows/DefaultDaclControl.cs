@@ -27,7 +27,13 @@ namespace ScientificSecurity
         [DllImport("ntdll.dll")] static extern int NtQuerySecurityObject(IntPtr handle, uint info, IntPtr data, uint size, out uint returned);
         [DllImport("ntdll.dll")] static extern int NtClose(IntPtr handle);
         const int Denied = unchecked((int)0xC0000022);
-        static void Need(bool value) { ChildDefaultDacl.Need(value); }
+        static void Need(bool value, [System.Runtime.CompilerServices.CallerLineNumber] int source = 0)
+        { if (!value) throw new InvalidOperationException("child default-DACL contract failed component=control source_check=" + source); }
+        static void NativeResult(bool value, int status, [System.Runtime.CompilerServices.CallerLineNumber] int source = 0)
+        {
+            if (!value) throw new InvalidOperationException("child default-DACL contract failed component=control source_check=" + source +
+                " native_status=0x" + unchecked((uint)status).ToString("X8"));
+        }
         static bool Valid(IntPtr handle) { return handle != IntPtr.Zero && handle != Native.InvalidHandle; }
         static void Deadline(Stopwatch clock)
         { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("child default-security preparation exceeded 10 seconds"); }
@@ -44,7 +50,7 @@ namespace ScientificSecurity
         static void NativeClose(ref IntPtr handle)
         {
             IntPtr owned = handle; handle = IntPtr.Zero;
-            if (Valid(owned)) Need(NtClose(owned) == 0);
+            if (Valid(owned)) { int status = NtClose(owned); NativeResult(status == 0, status); }
         }
         static void TokenClose(ref IntPtr handle)
         {
@@ -78,7 +84,7 @@ namespace ScientificSecurity
         static bool Opened(int status, IntPtr opened, IntPtr created)
         {
             Need(Valid(created));
-            Need(status == 0 ? Valid(opened) && opened != created : status == Denied && opened == IntPtr.Zero);
+            NativeResult(status == 0 ? Valid(opened) && opened != created : status == Denied && opened == IntPtr.Zero, status);
             return status == 0;
         }
         static void RequireObjectPolicy(byte[] descriptor, SecurityIdentifier user, byte[] prepared)
@@ -110,9 +116,10 @@ namespace ScientificSecurity
                 var attributes = new Attributes { length = 48, name = name };
                 Deadline(clock); context.RequireThread();
                 int status = NtCreateEvent(out created, 0x20002, ref attributes, 0, false);
-                Need(status == 0 && Valid(created)); context.RequireThread(); Deadline(clock);
+                NativeResult(status == 0 && Valid(created), status); context.RequireThread(); Deadline(clock);
                 buffer = Marshal.AllocHGlobal(65536);
-                Need(NtQuerySecurityObject(created, 5, buffer, 65536, out returned) == 0 && returned >= 20 && returned <= 65536);
+                status = NtQuerySecurityObject(created, 5, buffer, 65536, out returned);
+                NativeResult(status == 0 && returned >= 20 && returned <= 65536, status);
                 byte[] bytes = new byte[returned];
                 try { Marshal.Copy(buffer, bytes, 0, bytes.Length); RequireObjectPolicy(bytes, user, prepared); }
                 finally { Array.Clear(bytes, 0, bytes.Length); }
@@ -184,6 +191,18 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
+            string firstFailure = null, secondFailure = null, native = null;
+            try { Need(false); } catch (InvalidOperationException error) { firstFailure = error.Message; }
+            try { Need(false); } catch (InvalidOperationException error) { secondFailure = error.Message; }
+            try { NativeResult(false, Denied, 73); } catch (InvalidOperationException error) { native = error.Message; }
+            Need(firstFailure != secondFailure && System.Text.RegularExpressions.Regex.IsMatch(firstFailure,
+                @"^child default-DACL contract failed component=control source_check=[1-9][0-9]{0,3}$") &&
+                native == "child default-DACL contract failed component=control source_check=73 native_status=0xC0000022");
+            native = null;
+            try { Opened(Denied, new IntPtr(2), new IntPtr(1)); }
+            catch (InvalidOperationException error) { native = error.Message; }
+            Need(System.Text.RegularExpressions.Regex.IsMatch(native,
+                @"^child default-DACL contract failed component=control source_check=[1-9][0-9]{0,3} native_status=0xC0000022$"));
             Need(Opened(0, new IntPtr(2), new IntPtr(1)) && !Opened(Denied, IntPtr.Zero, new IntPtr(1)));
             const string path = "\\Sessions\\1\\AppContainerNamedObjects\\fixed";
             Need(ObjectName(path, (uint)path.Length + 1, new string('a', 32)).EndsWith(new string('a', 32), StringComparison.Ordinal));
