@@ -10,7 +10,8 @@ namespace ScientificSecurity
     public static class PythonActivationPreparation
     {
         internal enum Condition { Baseline, ChildCreate, BaselineAgain }
-        static Exception retained;
+        static Exception retained, hostRetained;
+        static bool hostStarted;
         const string Created = "WINDOWS_STARTUP_ACTIVATION context=lpac resource_type=24 resource_id=1 created=True win32_error=0 activated=False child_equivalence_claimed=False cause_claimed=False";
         const string Denied = "WINDOWS_STARTUP_ACTIVATION context=lpac resource_type=24 resource_id=1 created=False win32_error=5 activated=False child_equivalence_claimed=False cause_claimed=False";
         static readonly byte[] EmptyPolicy = { 2, 0, 8, 0, 0, 0, 0, 0 };
@@ -26,18 +27,22 @@ namespace ScientificSecurity
         internal sealed class Observation
         {
             internal readonly Condition condition;
+            internal readonly bool host;
+            internal bool CallExpected { get { return condition == Condition.ChildCreate; } }
+            internal string Label { get { return host && CallExpected ? "host-create" : Name(condition); } }
+            internal string Prefix { get { return host ? "WINDOWS_PYTHON_HOST_PREPARATION" : "WINDOWS_PYTHON_ACTIVATION_PREPARATION"; } }
             internal byte[] baseline;
             internal bool prepared, attempted, created, recorded, completed;
             internal uint exit;
             bool activationSeen;
             uint activationError;
-            internal Observation(Condition value) { Name(value); condition = value; }
+            internal Observation(Condition value, bool hostPreparation = false) { Name(value); condition = value; host = hostPreparation; }
             internal void RequireFresh()
             { Need(!prepared && !attempted && !created && !recorded && !activationSeen && baseline == null); }
             internal void Activation(string line)
             {
                 Need(prepared && attempted && !activationSeen && line != null && line.Length < 256);
-                var match = Regex.Match(line, @"\AWINDOWS_STARTUP_ACTIVATION context=lpac resource_type=24 resource_id=1 created=(True|False) win32_error=([0-9]{1,10}) activated=False child_equivalence_claimed=False cause_claimed=False\z");
+                var match = Regex.Match(line, @"\AWINDOWS_STARTUP_ACTIVATION context=" + (host ? "host" : "lpac") + @" resource_type=24 resource_id=1 created=(True|False) win32_error=([0-9]{1,10}) activated=False child_equivalence_claimed=False cause_claimed=False\z");
                 uint error = 0;
                 Need(match.Success && UInt32.TryParse(match.Groups[2].Value, System.Globalization.NumberStyles.None,
                     System.Globalization.CultureInfo.InvariantCulture, out error));
@@ -46,21 +51,22 @@ namespace ScientificSecurity
             }
             internal void Record(uint code, string text, string errors)
             {
-                Need(prepared && baseline != null && !recorded && attempted == (condition == Condition.ChildCreate) &&
+                Need(prepared && baseline != null && !recorded && attempted == CallExpected &&
                     activationSeen == attempted && text != null && errors != null && text.Length == 0 && errors.Length == 0);
                 exit = code; completed = code == 0; recorded = true;
             }
             internal string ActivationMetadata()
             {
                 Need(recorded && activationSeen);
-                return "WINDOWS_PYTHON_ACTIVATION_CALL condition=child-create created=" + created +
+                return (host ? "WINDOWS_PYTHON_HOST_PREPARATION_CALL condition=host-create context=host created=" :
+                    "WINDOWS_PYTHON_ACTIVATION_CALL condition=child-create created=") + created +
                     " win32_error=0x" + activationError.ToString("X8") + " released_if_valid=True activated=False" +
                     " cause_claimed=False target_admitted=False production_grant=False";
             }
             internal string Metadata()
             {
                 Need(recorded);
-                return "WINDOWS_PYTHON_ACTIVATION_PREPARATION condition=" + Name(condition) +
+                return Prefix + " condition=" + Label +
                     " activation_attempted=" + attempted + " raw_process_exit=0x" + exit.ToString("X8") +
                     " pass_code_completed=" + completed + " stdout_empty=True stderr_empty=True default_dacl_unchanged=True" +
                     " process_job_handle_cleanup=True key_readable=True cause_claimed=False target_admitted=False production_grant=False";
@@ -80,12 +86,25 @@ namespace ScientificSecurity
         { try { ChildDefaultDacl.RequireEqual(expected, actual); } finally { if (actual != null) Array.Clear(actual, 0, actual.Length); } }
         internal static void Prepare(Observation value, Action qualify, Action deadline, Func<byte[]> primary, Func<byte[]> duplicate, Func<bool> create)
         {
-            Need(value != null); value.RequireFresh(); byte[] before = null;
+            Need(value != null && !value.host);
+            PrepareCore(value, qualify, deadline, primary, duplicate, create, () => { }, () => { });
+        }
+        internal static void PrepareHost(Observation value, Action qualify, Action deadline, Func<byte[]> primary, Func<byte[]> duplicate,
+            Func<bool> create, Action leave, Action requireHost, Action enter)
+        {
+            Need(value != null && value.host);
+            PrepareCore(value, qualify, deadline, primary, duplicate, create,
+                () => { leave(); requireHost(); deadline(); }, () => { requireHost(); deadline(); enter(); });
+        }
+        static void PrepareCore(Observation value, Action qualify, Action deadline, Func<byte[]> primary, Func<byte[]> duplicate,
+            Func<bool> create, Action beforeCall, Action afterCall)
+        {
+            value.RequireFresh(); byte[] before = null;
             try {
                 qualify(); deadline(); before = primary(); EqualAndClear(before, duplicate());
-                qualify(); deadline();
-                if (value.condition == Condition.ChildCreate) { value.attempted = true; value.created = create(); }
-                qualify(); deadline(); EqualAndClear(before, primary()); EqualAndClear(before, duplicate());
+                qualify(); deadline(); beforeCall();
+                if (value.CallExpected) { value.attempted = true; value.created = create(); }
+                afterCall(); qualify(); deadline(); EqualAndClear(before, primary()); EqualAndClear(before, duplicate());
                 value.baseline = before; before = null; value.prepared = true;
             }
             finally { if (before != null) Array.Clear(before, 0, before.Length); }
@@ -94,16 +113,18 @@ namespace ScientificSecurity
         { return first == null ? later : later == null ? first : new AggregateException("Python preparation and subsequent operation failed", first, later); }
         static void Emit(string line, Action<string> emit, ref int bytes)
         { Need(line != null); int next = checked(bytes + Encoding.UTF8.GetByteCount(line)); Need(next <= 4096); bytes = next; emit(line); }
-        static Exception Execute(Action<Observation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit)
+        static Exception Execute(Action<Observation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit, bool host = false)
         {
             var values = new List<Observation>(); var lease = begin(); bool clean = true;
             Exception primary = null, diagnostic = null; int bytes = 0;
             try {
                 foreach (Condition condition in new [] { Condition.Baseline, Condition.ChildCreate, Condition.BaselineAgain }) {
-                    var value = new Observation(condition); values.Add(value); clean = false;
-                    observe(value); clean = true; Need(value.recorded && value.baseline != null);
+                    var value = new Observation(condition, host); values.Add(value); clean = false;
+                    observe(value); clean = true; Need(value.recorded && value.baseline != null && value.host == host);
+                    if (host && value.attempted && !value.created) diagnostic = Combine(diagnostic,
+                        new InvalidOperationException("fixed host activation preparation positive control failed"));
                     if (!value.completed) diagnostic = Combine(diagnostic, new InvalidOperationException(
-                        "fixed Python preparation pass failed condition=" + Name(condition) + " raw_process_exit=0x" + value.exit.ToString("X8")));
+                        "fixed Python preparation pass failed condition=" + value.Label + " raw_process_exit=0x" + value.exit.ToString("X8")));
                     if (values.Count > 1) ChildDefaultDacl.RequireEqual(values[0].baseline, value.baseline);
                     if (value.attempted) Emit(value.ActivationMetadata(), emit, ref bytes);
                     Emit(value.Metadata(), emit, ref bytes);
@@ -116,7 +137,7 @@ namespace ScientificSecurity
                 finally { foreach (Observation value in values) value.Clear(); }
             }
             try {
-                Emit("WINDOWS_PYTHON_ACTIVATION_PREPARATION_COMPARISON middle_exit_differs=" + (values[0].exit != values[1].exit) +
+                Emit(values[0].Prefix + "_COMPARISON middle_exit_differs=" + (values[0].exit != values[1].exit) +
                     " final_exit_differs=" + (values[0].exit != values[2].exit) +
                     " baseline_policy_equal=True key_restored=True cache_reset_claimed=False" +
                     " cause_claimed=False target_admitted=False production_grant=False", emit, ref bytes);
@@ -134,14 +155,28 @@ namespace ScientificSecurity
                     return Tuple.Create<Action, Action>(lease.Dispose, lease.DeferRecovery);
                 }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
         }
+        public static void RunHost(string run, string state, string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
+        {
+            Need(!hostStarted && hostRetained == null); hostStarted = true;
+            LoaderSnaps.RequireClean(run, state); PythonCsrDispatch.PreparedImage(python);
+            hostRetained = Execute(value => Sandbox.ObserveActivationPreparation(python, root, scratch, powershell, chromium,
+                moniker, profileFolder, tcpPort, udpPort, value), () => {
+                    var lease = RegistryPolicyLease.Begin(run, state);
+                    return Tuple.Create<Action, Action>(lease.Dispose, lease.DeferRecovery);
+                }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }, true);
+        }
         public static Exception PreserveFailure(Exception later)
-        { Exception failure = retained; retained = null; return Combine(failure, later); }
+        {
+            Exception failure = Combine(retained, hostRetained); retained = null; hostRetained = null;
+            return Combine(failure, later);
+        }
         public static Exception PreserveAllFailures(Exception later)
         { return PreserveFailure(CsrDispatchComparison.PreserveFailure(RegistryCausalComparison.PreserveCallbackFailure(later))); }
         public static void RequireClean() { Exception failure = PreserveAllFailures(null); if (failure != null) throw failure; }
         public static void CheckValidation()
         {
-            CheckTransport(); CheckPreparation(); CheckComparison(); Sandbox.CheckActivationPreparationRole();
+            CheckTransport(); CheckPreparation(); CheckComparison(); CheckHostPreparation(); Sandbox.CheckActivationPreparationRole();
             Need(retained == null);
             var first = new Exception("fixed preparation"); var later = new Exception("fixed later");
             retained = first;
@@ -171,18 +206,21 @@ namespace ScientificSecurity
                 Need(PreserveAllFailures(null) == null && Object.ReferenceEquals(PreserveAllFailures(caught), caught));
             }
         }
-        static Observation Prepared(Condition condition, bool created = true)
+        static Observation Prepared(Condition condition, bool created = true, bool host = false)
         {
-            var value = new Observation(condition);
-            Prepare(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(), () => created);
-            if (condition == Condition.ChildCreate) value.Activation(created ? Created : Denied);
+            var value = new Observation(condition, host);
+            if (host) PrepareHost(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(),
+                () => created, () => { }, () => { }, () => { });
+            else Prepare(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(), () => created);
+            if (value.CallExpected) value.Activation(host ? (created ? Created : Denied).Replace("context=lpac", "context=host") : created ? Created : Denied);
             return value;
         }
         static void CheckTransport()
         {
+            foreach (bool host in new [] { false, true })
             foreach (Condition condition in new [] { Condition.Baseline, Condition.ChildCreate, Condition.BaselineAgain }) {
                 foreach (uint exit in new uint[] { 0, 1, 121, 0xC0000022, 0xC0150002, UInt32.MaxValue }) {
-                    var value = Prepared(condition); value.Record(exit, "", "");
+                    var value = Prepared(condition, host: host); value.Record(exit, "", "");
                     string metadata = value.Metadata();
                     Need(value.recorded && value.exit == exit && value.completed == (exit == 0) &&
                         metadata.Contains("raw_process_exit=0x" + exit.ToString("X8")) && metadata.Contains("pass_code_completed=" + (exit == 0)) &&
@@ -234,8 +272,67 @@ namespace ScientificSecurity
             byte[] before = (byte[])EmptyPolicy.Clone(), wrong = { 4, 0, 8, 0, 0, 0, 0, 0 };
             Refuse(() => EqualAndClear(before, wrong)); Need(wrong.All(item => item == 0));
         }
+        static void CheckHostPreparation()
+        {
+            foreach (Condition condition in new [] { Condition.Baseline, Condition.ChildCreate, Condition.BaselineAgain }) {
+                var order = new List<string>(); var value = new Observation(condition, true); bool inside = true;
+                Action qualify = () => { Need(inside); order.Add("qualify"); };
+                Action host = () => { Need(!inside); order.Add("host"); };
+                PrepareHost(value, qualify, () => order.Add("deadline"),
+                    () => { Need(inside); order.Add("primary"); return (byte[])EmptyPolicy.Clone(); },
+                    () => { Need(inside); order.Add("duplicate"); return (byte[])EmptyPolicy.Clone(); },
+                    () => { Need(!inside); order.Add("create-release"); return true; },
+                    () => { Need(inside); inside = false; order.Add("leave"); }, host,
+                    () => { Need(!inside); inside = true; order.Add("enter"); });
+                Need(inside && value.prepared && value.attempted == value.CallExpected);
+                Need(String.Join(",", order) == "qualify,deadline,primary,duplicate,qualify,deadline,leave,host,deadline," +
+                    (value.CallExpected ? "create-release," : "") + "host,deadline,enter,qualify,deadline,primary,duplicate");
+                if (value.CallExpected) {
+                    Refuse(() => value.Activation(Created));
+                    value.Activation(Created.Replace("context=lpac", "context=host"));
+                }
+                value.Record(0, "", "");
+                Need(value.Metadata().StartsWith("WINDOWS_PYTHON_HOST_PREPARATION condition=" + value.Label, StringComparison.Ordinal));
+                if (value.CallExpected) Need(value.ActivationMetadata().Contains("condition=host-create context=host created=True"));
+                value.Clear();
+            }
+            for (int failAt = 1; failAt <= 17; failAt++) {
+                int step = 0; var allocations = new List<byte[]>(); var value = new Observation(Condition.ChildCreate, true);
+                var failure = new Exception("fixed host preparation transition"); Exception caught = null;
+                Action visit = () => { if (++step == failAt) throw failure; };
+                Func<byte[]> read = () => { visit(); byte[] bytes = (byte[])EmptyPolicy.Clone(); allocations.Add(bytes); return bytes; };
+                try { PrepareHost(value, visit, visit, read, read, () => { visit(); return true; }, visit, visit, visit); }
+                catch (Exception error) { caught = error; }
+                Need(Object.ReferenceEquals(caught, failure) && !value.prepared && value.baseline == null);
+                Need(allocations.All(bytes => bytes.All(item => item == 0)));
+            }
+            foreach (bool hostSuccess in new [] { false, true }) {
+                int visits = 0; var lines = new List<string>();
+                Exception failure = Execute(value => {
+                    Need(value.host); visits++;
+                    PrepareHost(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(),
+                        () => hostSuccess, () => { }, () => { }, () => { });
+                    if (value.CallExpected) value.Activation((hostSuccess ? Created : Denied).Replace("context=lpac", "context=host"));
+                    value.Record(0, "", "");
+                }, () => Tuple.Create<Action, Action>(() => lines.Add("restore"), () => { throw new Exception("unexpected defer"); }), lines.Add, true);
+                Need(visits == 3 && (failure == null) == hostSuccess && lines.Count == 6 && lines[4] == "restore" &&
+                    lines[5].StartsWith("WINDOWS_PYTHON_HOST_PREPARATION_COMPARISON", StringComparison.Ordinal));
+                Need(hostSuccess || failure.Message == "fixed host activation preparation positive control failed");
+            }
+            var tokenFailure = new Exception("fixed token preparation"); var hostFailure = new Exception("fixed host preparation");
+            var later = new Exception("fixed subsequent"); retained = tokenFailure; hostRetained = hostFailure;
+            var combined = PreserveAllFailures(later) as AggregateException;
+            var pair = combined == null ? null : combined.InnerExceptions[0] as AggregateException;
+            Need(pair != null && Object.ReferenceEquals(pair.InnerExceptions[0], tokenFailure) &&
+                Object.ReferenceEquals(pair.InnerExceptions[1], hostFailure) && Object.ReferenceEquals(combined.InnerExceptions[1], later));
+            Need(PreserveAllFailures(null) == null && Object.ReferenceEquals(PreserveAllFailures(combined), combined));
+            Refuse(() => Prepare(new Observation(Condition.Baseline, true), () => { }, () => { }, () => null, () => null, () => true));
+            Refuse(() => PrepareHost(new Observation(Condition.Baseline), () => { }, () => { }, () => null, () => null,
+                () => true, () => { }, () => { }, () => { }));
+        }
         static void CheckComparison()
         {
+            foreach (bool host in new [] { false, true })
             for (int mode = 0; mode < 8; mode++) {
                 var order = new List<string>(); var values = new List<Observation>(); int visits = 0, reports = 0;
                 var operation = new Exception("fixed operation"); var reporting = new Exception("fixed report"); var cleanup = new Exception("fixed restore");
@@ -244,14 +341,16 @@ namespace ScientificSecurity
                     result = Execute(value => {
                         visits++; order.Add(Name(value.condition)); values.Add(value);
                         if (mode == 4 && visits == 2) throw operation;
-                        Prepare(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(), () => true);
-                        if (value.condition == Condition.ChildCreate) value.Activation(Created);
+                        if (host) PrepareHost(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(),
+                            () => true, () => { }, () => { }, () => { });
+                        else Prepare(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(), () => true);
+                        if (value.CallExpected) value.Activation(host ? Created.Replace("context=lpac", "context=host") : Created);
                         uint exit = mode == 0 ? 0U : mode == 2 && visits == 2 || mode == 3 && visits != 1 ? 0U : 0xC0150002U;
                         value.Record(exit, "", "");
                         if (mode == 7 && visits == 2) value.baseline[0] = 4;
                     }, () => { order.Add("begin"); return Tuple.Create<Action, Action>(
                         () => { order.Add("restore"); if (mode == 6) throw cleanup; }, () => order.Add("defer")); },
-                    line => { reports++; order.Add("emit"); if (mode == 5) throw reporting; });
+                    line => { reports++; order.Add("emit"); if (mode == 5) throw reporting; }, host);
                 } catch (Exception failure) { caught = failure; }
                 Need(values.All(value => value.baseline == null));
                 if (mode <= 3) Need(caught == null && visits == 3 && order.Contains("restore") && reports == 5 && (result == null) == (mode == 0));

@@ -8,7 +8,7 @@ using System.Security.Principal;
 namespace ScientificSecurity
 {
     // One fixed operation comparison, not a child-loader identity or causality certificate.
-    public static class StartupActivationAccess
+    public static partial class StartupActivationAccess
     {
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct ActCtx {
             internal uint size, flags;
