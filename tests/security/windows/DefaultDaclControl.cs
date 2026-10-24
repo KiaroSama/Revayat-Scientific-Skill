@@ -21,6 +21,7 @@ namespace ScientificSecurity
             IntPtr token, uint access, IntPtr attributes, int level, int kind, out IntPtr duplicate);
         [DllImport("advapi32.dll", SetLastError = true)] static extern bool ImpersonateLoggedOnUser(IntPtr token);
         [DllImport("advapi32.dll", SetLastError = true)] static extern bool RevertToSelf();
+        [DllImport("ntdll.dll")] static extern int NtCreateDirectoryObject(out IntPtr handle, uint access, ref Attributes attributes);
         [DllImport("ntdll.dll")] static extern int NtCreateEvent(out IntPtr handle, uint access, ref Attributes attributes,
             int type, [MarshalAs(UnmanagedType.U1)] bool initial);
         [DllImport("ntdll.dll")] static extern int NtOpenEvent(out IntPtr handle, uint access, ref Attributes attributes);
@@ -46,11 +47,6 @@ namespace ScientificSecurity
             if (failures.Count == 0) return;
             if (primary != null) failures.Insert(0, primary);
             throw new AggregateException("child default-security operation/cleanup failed", failures);
-        }
-        static void NativeClose(ref IntPtr handle)
-        {
-            IntPtr owned = handle; handle = IntPtr.Zero;
-            if (Valid(owned)) { int status = NtClose(owned); NativeResult(status == 0, status); }
         }
         static void TokenClose(ref IntPtr handle)
         {
@@ -94,11 +90,55 @@ namespace ScientificSecurity
             foreach (char item in suffix) Need(item >= '0' && item <= '9' || item >= 'a' && item <= 'f');
             return "\\" + qualified + "\\ScientificDefaultDacl-" + suffix;
         }
-        static bool Opened(int status, IntPtr opened, IntPtr created)
+        const string EventLeaf = "DefaultDaclEvent";
+        const uint DirectoryAccess = 0x20006;
+        static RawAcl DirectoryAcl(SecurityIdentifier user, SecurityIdentifier package)
         {
-            Need(Valid(created));
-            NativeResult(status == 0 ? Valid(opened) && opened != created : status == Denied && opened == IntPtr.Zero, status);
+            Need(user != null && package != null && !user.Equals(package));
+            var acl = new RawAcl(2, 2);
+            foreach (SecurityIdentifier sid in new [] { user, package })
+                acl.InsertAce(acl.Count, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed,
+                    (int)DirectoryAccess, sid, false, null));
+            return acl;
+        }
+        static byte[] DirectoryDescriptor(SecurityIdentifier user, SecurityIdentifier package)
+        {
+            var sd = new RawSecurityDescriptor(ControlFlags.SelfRelative | ControlFlags.DiscretionaryAclPresent |
+                ControlFlags.DiscretionaryAclProtected, user, user, null, DirectoryAcl(user, package));
+            Need(sd.BinaryLength >= 20 && sd.BinaryLength <= 512);
+            var bytes = new byte[sd.BinaryLength]; sd.GetBinaryForm(bytes, 0); return bytes;
+        }
+        static void RequireDirectoryPolicy(byte[] descriptor, SecurityIdentifier user, SecurityIdentifier package)
+        {
+            Need(descriptor != null && descriptor.Length >= 20 && descriptor.Length <= 65536);
+            var sd = new RawSecurityDescriptor(descriptor, 0);
+            const ControlFlags required = ControlFlags.SelfRelative | ControlFlags.DiscretionaryAclPresent |
+                ControlFlags.DiscretionaryAclProtected;
+            Need((sd.ControlFlags & required) == required && sd.Owner != null && sd.Owner.Equals(user) &&
+                sd.DiscretionaryAcl != null && System.Linq.Enumerable.SequenceEqual(
+                    ChildDefaultDacl.Binary(DirectoryAcl(user, package)), ChildDefaultDacl.Binary(sd.DiscretionaryAcl)));
+        }
+        static Attributes EventAttributes(IntPtr directory, IntPtr name)
+        {
+            Need(Valid(directory) && name != IntPtr.Zero);
+            return new Attributes { length = 48, root = directory, name = name };
+        }
+        static bool Opened(int status, IntPtr opened, IntPtr created, IntPtr directory = default(IntPtr))
+        {
+            Need(Valid(created) && created != directory);
+            NativeResult(status == 0 ? Valid(opened) && opened != created && opened != directory :
+                status == Denied && opened == IntPtr.Zero, status);
             return status == 0;
+        }
+        static void FinishObjects(Exception primary, IntPtr opened, IntPtr created, IntPtr directory,
+            Action<IntPtr> close, params Action[] actions)
+        {
+            var cleanup = new List<Action>(); var unique = new HashSet<IntPtr>();
+            foreach (IntPtr handle in new [] { opened, created, directory }) {
+                if (!Valid(handle) || !unique.Add(handle)) continue;
+                IntPtr owned = handle; cleanup.Add(() => close(owned));
+            }
+            cleanup.AddRange(actions); Finish(primary, cleanup.ToArray());
         }
         static void RequireObjectPolicy(byte[] descriptor, SecurityIdentifier user, byte[] prepared)
         {
@@ -111,8 +151,10 @@ namespace ScientificSecurity
         }
         static bool Event(IntPtr token, string package, SecurityIdentifier user, byte[] prepared, RegistryContext context, Stopwatch clock)
         {
-            IntPtr text = IntPtr.Zero, name = IntPtr.Zero, created = IntPtr.Zero, opened = IntPtr.Zero, buffer = IntPtr.Zero, pathBuffer = IntPtr.Zero;
-            Exception primary = null;
+            IntPtr text = IntPtr.Zero, name = IntPtr.Zero, created = IntPtr.Zero, opened = IntPtr.Zero,
+                directory = IntPtr.Zero, security = IntPtr.Zero, leaf = IntPtr.Zero, leafName = IntPtr.Zero,
+                buffer = IntPtr.Zero, pathBuffer = IntPtr.Zero;
+            int securityLength = 0; Exception primary = null;
             try {
                 Deadline(clock); context.RequireThread();
                 pathBuffer = Marshal.AllocHGlobal(4096); uint returned;
@@ -126,26 +168,47 @@ namespace ScientificSecurity
                 text = Marshal.StringToHGlobalUni(full); name = Marshal.AllocHGlobal(16);
                 Marshal.StructureToPtr(new Name { length = checked((ushort)(full.Length * 2)),
                     maximum = checked((ushort)(full.Length * 2 + 2)), buffer = text }, name, false);
-                var attributes = new Attributes { length = 48, name = name };
+                var packageSid = new SecurityIdentifier(package);
+                byte[] input = DirectoryDescriptor(user, packageSid);
+                try {
+                    securityLength = input.Length; security = Marshal.AllocHGlobal(securityLength);
+                    Marshal.Copy(input, 0, security, input.Length);
+                } finally { Array.Clear(input, 0, input.Length); }
+                var directoryAttributes = new Attributes { length = 48, name = name, descriptor = security };
                 Deadline(clock); context.RequireThread();
-                int status = NtCreateEvent(out created, 0x20002, ref attributes, 0, false);
-                NativeResult(status == 0 && Valid(created), status); context.RequireThread(); Deadline(clock);
+                int status = NtCreateDirectoryObject(out directory, DirectoryAccess, ref directoryAttributes);
+                NativeResult(status == 0 && Valid(directory), status); context.RequireThread(); Deadline(clock);
                 buffer = Marshal.AllocHGlobal(65536);
-                status = NtQuerySecurityObject(created, 5, buffer, 65536, out returned);
+                status = NtQuerySecurityObject(directory, 5, buffer, 65536, out returned);
                 NativeResult(status == 0 && returned >= 20 && returned <= 65536, status);
                 byte[] bytes = new byte[returned];
+                try { Marshal.Copy(buffer, bytes, 0, bytes.Length); RequireDirectoryPolicy(bytes, user, packageSid); }
+                finally { Array.Clear(bytes, 0, bytes.Length); }
+                context.RequireThread(); Deadline(clock);
+                leaf = Marshal.StringToHGlobalUni(EventLeaf); leafName = Marshal.AllocHGlobal(16);
+                Marshal.StructureToPtr(new Name { length = (ushort)(EventLeaf.Length * 2),
+                    maximum = (ushort)(EventLeaf.Length * 2 + 2), buffer = leaf }, leafName, false);
+                var attributes = EventAttributes(directory, leafName);
+                status = NtCreateEvent(out created, 0x20002, ref attributes, 0, false);
+                NativeResult(status == 0 && Valid(created) && created != directory, status);
+                context.RequireThread(); Deadline(clock);
+                status = NtQuerySecurityObject(created, 5, buffer, 65536, out returned);
+                NativeResult(status == 0 && returned >= 20 && returned <= 65536, status);
+                bytes = new byte[returned];
                 try { Marshal.Copy(buffer, bytes, 0, bytes.Length); RequireObjectPolicy(bytes, user, prepared); }
                 finally { Array.Clear(bytes, 0, bytes.Length); }
                 context.RequireThread(); Deadline(clock);
                 status = NtOpenEvent(out opened, 2, ref attributes);
-                bool result = Opened(status, opened, created);
+                bool result = Opened(status, opened, created, directory);
                 context.RequireThread(); Deadline(clock); return result;
             }
             catch (Exception failure) { primary = failure; throw; }
             finally {
-                if (opened == created) opened = IntPtr.Zero; // An inconsistent alias is refused, never closed twice.
-                Finish(primary, () => NativeClose(ref opened), () => NativeClose(ref created),
-                    () => { if (buffer != IntPtr.Zero) { for (int index = 0; index < 65536; index += 8) Marshal.WriteInt64(buffer, index, 0); Marshal.FreeHGlobal(buffer); } },
+                FinishObjects(primary, opened, created, directory, handle => { int status = NtClose(handle); NativeResult(status == 0, status); },
+                    () => { if (buffer != IntPtr.Zero) { try { for (int index = 0; index < 65536; index += 8) Marshal.WriteInt64(buffer, index, 0); } finally { Marshal.FreeHGlobal(buffer); } } },
+                    () => { if (security != IntPtr.Zero) { try { for (int index = 0; index < securityLength; index++) Marshal.WriteByte(security, index, 0); } finally { Marshal.FreeHGlobal(security); } } },
+                    () => { if (leafName != IntPtr.Zero) Marshal.FreeHGlobal(leafName); },
+                    () => { if (leaf != IntPtr.Zero) Marshal.FreeHGlobal(leaf); },
                     () => { if (name != IntPtr.Zero) Marshal.FreeHGlobal(name); },
                     () => { if (text != IntPtr.Zero) Marshal.FreeHGlobal(text); },
                     () => { if (pathBuffer != IntPtr.Zero) { try { for (int index = 0; index < 4096; index += 8) Marshal.WriteInt64(pathBuffer, index, 0); } finally { Marshal.FreeHGlobal(pathBuffer); } } });
@@ -208,8 +271,63 @@ namespace ScientificSecurity
                 owner, owner, null, acl);
             byte[] bytes = new byte[descriptor.BinaryLength]; descriptor.GetBinaryForm(bytes, 0); return bytes;
         }
+        static void CheckDirectoryValidation()
+        {
+            var user = new SecurityIdentifier("S-1-5-21-1-2-3-500");
+            var package = new SecurityIdentifier("S-1-15-2-3");
+            // Independent literal rights/control values; no SDDL conversion or native fixture calls.
+            var literalAcl = new RawAcl(2, 2);
+            literalAcl.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20006, user, false, null));
+            literalAcl.InsertAce(1, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20006, package, false, null));
+            var expected = new RawSecurityDescriptor((ControlFlags)0x9004, user, user, null, literalAcl);
+            byte[] bytes = new byte[expected.BinaryLength]; expected.GetBinaryForm(bytes, 0);
+            RequireDirectoryPolicy(bytes, user, package);
+            var built = new RawSecurityDescriptor(DirectoryDescriptor(user, package), 0);
+            Need(built.Owner.Equals(user) && built.Group.Equals(user) &&
+                (built.ControlFlags & ControlFlags.DiscretionaryAclProtected) != 0 &&
+                System.Linq.Enumerable.SequenceEqual(ChildDefaultDacl.Binary(expected.DiscretionaryAcl),
+                    ChildDefaultDacl.Binary(built.DiscretionaryAcl)));
+            for (int mode = 0; mode < 10; mode++) {
+                var wrong = new RawSecurityDescriptor(bytes, 0);
+                RawAcl acl = wrong.DiscretionaryAcl;
+                if (mode == 0) wrong.Owner = package;
+                if (mode == 1) wrong.SetFlags(wrong.ControlFlags & ~ControlFlags.DiscretionaryAclProtected);
+                if (mode == 2) wrong.DiscretionaryAcl = null;
+                if (mode == 3) acl.RemoveAce(1);
+                if (mode == 4) acl.InsertAce(2, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20006, user, false, null));
+                if (mode == 5) { GenericAce first = acl[0]; acl[0] = acl[1]; acl[1] = first; }
+                if (mode == 6) acl[0] = new CommonAce(AceFlags.ObjectInherit, AceQualifier.AccessAllowed, 0x20006, user, false, null);
+                if (mode == 7) acl[1] = new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20007, package, false, null);
+                if (mode == 8) acl[1] = new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20006, new SecurityIdentifier("S-1-1-0"), false, null);
+                if (mode == 9) acl[1] = new CommonAce(AceFlags.Inherited, AceQualifier.AccessAllowed, 0x20006, package, false, null);
+                byte[] invalid = new byte[wrong.BinaryLength]; wrong.GetBinaryForm(invalid, 0);
+                bool refused = false;
+                try { RequireDirectoryPolicy(invalid, user, package); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            Need(EventAttributes(new IntPtr(3), new IntPtr(4)).root == new IntPtr(3) &&
+                EventAttributes(new IntPtr(3), new IntPtr(4)).name == new IntPtr(4) &&
+                EventAttributes(new IntPtr(3), new IntPtr(4)).descriptor == IntPtr.Zero &&
+                EventAttributes(new IntPtr(3), new IntPtr(4)).flags == 0 && EventLeaf == "DefaultDaclEvent");
+            bool aliasRefused = false;
+            try { Opened(0, new IntPtr(3), new IntPtr(2), new IntPtr(3)); }
+            catch (InvalidOperationException) { aliasRefused = true; }
+            Need(aliasRefused);
+            foreach (bool aliases in new [] { false, true }) {
+                var order = new List<long>(); var primary = new InvalidOperationException("fixed primary");
+                AggregateException failure = null;
+                try {
+                    FinishObjects(primary, new IntPtr(aliases ? 3 : 1), new IntPtr(aliases ? 3 : 2), new IntPtr(3),
+                        handle => { order.Add(handle.ToInt64()); throw new InvalidOperationException("fixed close"); },
+                        () => order.Add(4));
+                } catch (AggregateException error) { failure = error; }
+                Need(String.Join(",", order) == (aliases ? "3,4" : "1,2,3,4") && failure != null &&
+                    Object.ReferenceEquals(failure.InnerExceptions[0], primary) && failure.InnerExceptions.Count == (aliases ? 2 : 4));
+            }
+        }
         public static void CheckValidation()
         {
+            CheckDirectoryValidation();
             string firstFailure = null, secondFailure = null, native = null;
             try { Need(false); } catch (InvalidOperationException error) { firstFailure = error.Message; }
             try { Need(false); } catch (InvalidOperationException error) { secondFailure = error.Message; }
