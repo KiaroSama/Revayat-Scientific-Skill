@@ -25,14 +25,30 @@ namespace ScientificSecurity
             Need(System.Text.RegularExpressions.Regex.IsMatch(malformed,
                 @"^child default-DACL contract failed component=policy source_check=[1-9][0-9]{0,3}$"));
             var unsupported = new RawAcl(2, 1);
-            unsupported.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, unchecked((int)0x80000000U),
+            unsupported.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x40000000,
                 new SecurityIdentifier("S-1-5-21-1-2-3-500"), false, null));
             string maskFailure = null;
             try { Parse(Binary(unsupported)); } catch (InvalidOperationException error) { maskFailure = error.Message; }
             Need(maskFailure != null && maskFailure.EndsWith(
-                " ace_index=0 ace_type=0 mask=0x80000000 rejected_bits=0x80000000", StringComparison.Ordinal) &&
+                " ace_index=0 ace_type=0 mask=0x40000000 rejected_bits=0x40000000", StringComparison.Ordinal) &&
                 !maskFailure.Contains("S-1-") && maskFailure.Length < 220);
             var user = new SecurityIdentifier("S-1-5-21-1-2-3-500");
+            uint[] inputs = { 0x80000000, 0x20000000, 0xA0000000, 0xA0000002, 0xB0000000 };
+            int[] expectedMasks = { 0x20001, 0x120000, 0x120001, 0x120003, 0x1F0003 };
+            for (int vector = 0; vector < inputs.Length; vector++) {
+                var raw = new RawAcl(2, 2);
+                var other = new SecurityIdentifier("S-1-15-2-3");
+                raw.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessDenied, unchecked((int)inputs[vector]), other, false, null));
+                raw.InsertAce(1, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, unchecked((int)inputs[vector]), other, false, null));
+                byte[] rawBytes = Binary(raw), saved = (byte[])rawBytes.Clone();
+                RawAcl mapped = Parse(EventPolicy(rawBytes)), delta = Parse(WithUser(rawBytes, user));
+                Need(rawBytes.SequenceEqual(saved) && delta.Count == 3 &&
+                    Binary(delta[0]).SequenceEqual(Binary(raw[0])) && Binary(delta[2]).SequenceEqual(Binary(raw[1])) &&
+                    ((CommonAce)delta[1]).AccessMask == 0x10000000 && ((CommonAce)delta[1]).SecurityIdentifier.Equals(user));
+                for (int ace = 0; ace < 2; ace++) Need(((CommonAce)mapped[ace]).AccessMask == expectedMasks[vector] &&
+                    ((CommonAce)mapped[ace]).AceQualifier == ((CommonAce)raw[ace]).AceQualifier &&
+                    ((CommonAce)mapped[ace]).SecurityIdentifier.Equals(other) && mapped[ace].AceFlags == AceFlags.None);
+            }
             var original = new RawAcl(2, 2);
             original.InsertAce(0, new CommonAce(AceFlags.None, AceQualifier.AccessDenied, 2,
                 new SecurityIdentifier("S-1-5-32-546"), false, null));
@@ -54,7 +70,8 @@ namespace ScientificSecurity
                 () => RequireEqual(before, Binary(changed)),
                 () => { byte[] bad = (byte[])before.Clone(); bad[1] = 1; Parse(bad); },
                 () => { byte[] bad = (byte[])before.Clone(); bad[9] = 2; Parse(bad); },
-                () => { byte[] bad = (byte[])before.Clone(); bad[15] = 0x80; Parse(bad); },
+                () => { byte[] bad = (byte[])before.Clone(); bad[15] = 0x40; Parse(bad); },
+                () => { byte[] bad = (byte[])before.Clone(); bad[15] = 0x04; Parse(bad); },
                 () => { byte[] bad = (byte[])before.Clone(); bad[17] = 16; Parse(bad); },
                 () => { var bad = new RawAcl(2, 2); bad.InsertAce(0, original[1]); bad.InsertAce(1, original[0]); Parse(Binary(bad)); }
             }) {
@@ -77,7 +94,7 @@ namespace ScientificSecurity
         { var bytes = new byte[ace.BinaryLength]; ace.GetBinaryForm(bytes, 0); return bytes; }
         static void Mask(uint mask, int index, byte type, [System.Runtime.CompilerServices.CallerLineNumber] int source = 0)
         {
-            uint rejected = mask & ~(0x10000000U | 0x1F0003U);
+            uint rejected = mask & ~0xB01F0003U;
             if (rejected != 0) throw new InvalidOperationException("child default-DACL contract failed component=policy source_check=" + source +
                 " ace_index=" + index + " ace_type=" + type + " mask=0x" + mask.ToString("X8") + " rejected_bits=0x" + rejected.ToString("X8"));
         }
@@ -127,9 +144,11 @@ namespace ScientificSecurity
         {
             RawAcl acl = Parse(prepared), mapped = new RawAcl(acl.Revision, acl.Count);
             foreach (CommonAce ace in acl) {
-                int mask = ace.AccessMask;
-                if ((mask & GenericAll) != 0) mask = (mask & ~GenericAll) | 0x1F0003;
-                mapped.InsertAce(mapped.Count, new CommonAce(AceFlags.None, ace.AceQualifier, mask,
+                uint original = unchecked((uint)ace.AccessMask), mask = original & ~0xB0000000U;
+                if ((original & 0x10000000U) != 0) mask |= 0x1F0003;
+                if ((original & 0x80000000U) != 0) mask |= 0x20001;
+                if ((original & 0x20000000U) != 0) mask |= 0x120000;
+                mapped.InsertAce(mapped.Count, new CommonAce(AceFlags.None, ace.AceQualifier, unchecked((int)mask),
                     ace.SecurityIdentifier, false, null));
             }
             return Binary(mapped);
