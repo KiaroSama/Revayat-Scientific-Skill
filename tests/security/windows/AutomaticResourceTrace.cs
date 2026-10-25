@@ -111,6 +111,7 @@ namespace ScientificSecurity
                     if (dispatchPair != null && (restore || dispatchPair.Started)) RequireDispatchTransition(value, before, restore);
                     ulong[] sites = dispatchPair == null ? new ulong[] { site, 0 } : dispatchPair.Sites(generations.IndexOf(value));
                     desired = Desired(before, value.baseline, sites, new [] { !restore && sites[0] != 0, !restore && sites[1] != 0 }, restore);
+                    if (dispatchPair != null && !restore) Put(desired, 104, 0xFFFF0FF0);
                     value.changed = true;
                     write(value.handle, desired); after = read(value.handle);
                     ResourceCheck(DebugContext.RawDebugEqual(desired, after) && DebugContext.UnchangedControlInteger(before, after), "setter-readback");

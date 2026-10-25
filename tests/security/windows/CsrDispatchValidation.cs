@@ -11,15 +11,19 @@ namespace ScientificSecurity
         {
             CheckDispatchReads();
             foreach (bool creator in new [] { false, true })
+                foreach (ulong baselineStatus in new ulong[] { 0, 0xFFFF0FF0 })
                 foreach (ulong rtm in new ulong[] { 0, 0x10000 }) foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
                 var contexts = new Dictionary<IntPtr, byte[]>(); int writes = 0, targets = 0, closes = 0;
-                Action<uint> prepare = id => contexts[new IntPtr(id)] = new byte[DebugContext.Size];
+                byte[] baseline = new byte[DebugContext.Size]; Put(baseline, 104, baselineStatus);
+                Action<uint> prepare = id => contexts[new IntPtr(id)] = (byte[])baseline.Clone();
                 prepare(11); prepare(12); prepare(13);
                 var registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(),
                     (handle, bytes) => { writes++; contexts[handle] = (byte[])bytes.Clone(); }, _ => closes++, () => { });
                 registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
                 registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
                 registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => targets++); registry.Continued();
+                if (!new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 104) == 0xFFFF0FF0))
+                    throw new InvalidOperationException("CSR ARM did not initialize owned debug status");
                 Need(writes == 2 && new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 72) == 0x8000 &&
                     U64(contexts[new IntPtr(id)], 80) == 0x8007 && U64(contexts[new IntPtr(id)], 112) == 5));
                 uint selected = creator ? 11U : 12U, other = creator ? 12U : 11U;
@@ -27,7 +31,8 @@ namespace ScientificSecurity
                 Put(peer, 104, 0xFFFE0FF0UL | rtm); Put(peer, 112, 5UL | fixedBit);
                 byte[] trap = contexts[new IntPtr(selected)]; DispatchFixtureTrap(trap, false);
                 registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8000));
-                Need(targets == 1 && writes == 4 && !registry.Captured);
+                Need(targets == 1 && writes == 4 && !registry.Captured &&
+                    new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 104) == 0xFFFF0FF0));
                 Need(U64(contexts[new IntPtr(selected)], 72) == 0 && U64(contexts[new IntPtr(selected)], 80) == 0x8007 &&
                     U64(contexts[new IntPtr(selected)], 112) == 4 && U64(contexts[new IntPtr(other)], 72) == 0 &&
                     U64(contexts[new IntPtr(other)], 80) == 0 && U64(contexts[new IntPtr(other)], 112) == 0);
@@ -41,9 +46,13 @@ namespace ScientificSecurity
                 registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8007)); registry.Continued();
                 Need(registry.Captured && registry.BaseEqual && registry.CaptureRestored && !registry.Failed &&
                     registry.RawEax == 0xC0150002 && registry.CreatorCapture == creator && writes == 6);
-                Need(contexts.Values.All(c => U64(c, 72) == 0 && U64(c, 80) == 0 && U64(c, 112) == 0));
+                Need(contexts.Values.All(c => DebugContext.RawDebugEqual(baseline, c)));
                 Need(registry.DispatchTraps.Contains("call_transaction_context=unknown") && registry.DispatchTraps.Contains("return_raw_dr6="));
-                registry.Stop(7, 11, 1, false); Need(registry.DispatchSoftware(11, true)); registry.Continued();
+                int beforeSoftware = writes;
+                Put(contexts[new IntPtr(11)], 104, 0xFFFE07F0);
+                registry.Stop(7, 11, 1, false); DispatchRefuse(() => registry.DispatchSoftware(11, true));
+                Need(writes == beforeSoftware); Put(contexts[new IntPtr(11)], 104, baselineStatus);
+                Need(registry.DispatchSoftware(11, true)); registry.Continued();
                 registry.Stop(7, 12, 4, false); registry.Continued();
                 prepare(14); registry.Stop(7, 12, 2, false);
                 DispatchRefuse(() => registry.Enroll(12, new IntPtr(14), true)); registry.Continued();
@@ -51,7 +60,24 @@ namespace ScientificSecurity
                 Need(closes == 2 && registry.DestroyedState && !registry.Failed);
             }
             CheckDispatchFailures(); CheckDispatchRestoreDrift(); CheckDispatchMetadata(); CheckDispatchGenerations();
-            CheckDispatchRefusalReporting(); CheckDispatchPeerRefusals();
+            CheckDispatchRefusalReporting(); CheckDispatchPeerRefusals(); CheckDispatchSetterReadback();
+        }
+        static void CheckDispatchSetterReadback()
+        {
+            foreach (int offset in new [] { 104, 112, 120, 248 }) {
+                byte[] context = new byte[DebugContext.Size]; int writes = 0;
+                var registry = new ResourceThreads(7, 11, _ => (byte[])context.Clone(), (_, desired) => {
+                    writes++; context = (byte[])desired.Clone(); context[offset] ^= 1;
+                }, _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 11, 6, false); bool refused = false;
+                try { registry.ArmDispatch(0x8000, 0x8007, () => { }); }
+                catch (InvalidOperationException failure) { refused = failure.Message.EndsWith("check=setter-readback", StringComparison.Ordinal); }
+                Need(refused && writes == 1 && registry.Failed && !registry.CaptureRestored);
+                registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
+                bool sticky = false; try { registry.Destroyed(); } catch (AggregateException) { sticky = true; }
+                Need(sticky && registry.DestroyedState);
+            }
         }
         static void DispatchFixtureTrap(byte[] context, bool post)
         {
@@ -180,8 +206,8 @@ namespace ScientificSecurity
                     " cleanup=" + (mode >= 2) + " event_thread_equal=" + (mode == 3) + " dr6_equal=" + (mode == 1) +
                     " dr7_equal=" + (mode >= 2) + " call_site_match=" + (mode == 0) +
                     " post_site_match=False call_status_match=" + (mode == 0) + " post_status_match=False" +
-                    " stored_dr6=0x0000000000000000 stored_dr7=0x" + (mode == 0 ? "0000000000000005" : "0000000000000000") +
-                    " current_dr6=0x" + (mode == 0 ? "00000000FFFF0FF1" : mode == 1 ? "0000000000000000" : "00000000FFFE0FF0") +
+                    " stored_dr6=0x00000000FFFF0FF0 stored_dr7=0x" + (mode == 0 ? "0000000000000005" : "0000000000000000") +
+                    " current_dr6=0x" + (mode == 0 ? "00000000FFFF0FF1" : mode == 1 ? "00000000FFFF0FF0" : "00000000FFFE0FF0") +
                     " current_dr7=0x" + (mode == 1 ? "0000000000009999" : mode == 0 ? "0000000000000405" : "0000000000000000") +
                     " transaction_context=unknown";
                 Exception first = caught;
