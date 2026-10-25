@@ -357,6 +357,7 @@ try {
     Write-RunLog INFO $loaderDiagnostic
     Write-RunLog INFO 'fixed three-condition Python clone loader comparison starts; diagnostic only and never admission'
     [ScientificSecurity.PythonLoaderComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    [ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)
     Write-RunLog INFO 'matched undebugged Python activation preparation starts under constant readable key; no cache-reset or admission claim'
     [ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'matched undebugged Python host preparation starts after token comparison restoration; no image matrix or admission claim'
@@ -374,7 +375,6 @@ try {
     [ScientificSecurity.SelfActivationFixture]::RunHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)
     [ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)
-    [ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)
     Write-RunLog INFO 'fixed no-CRT native startup differential starts; never an admission control'

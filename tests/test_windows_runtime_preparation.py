@@ -18,6 +18,7 @@ class DiagnosticOrderTest(unittest.TestCase):
     Write-RunLog INFO $loaderDiagnostic
     Write-RunLog INFO 'fixed three-condition Python clone loader comparison starts; diagnostic only and never admission'
     [ScientificSecurity.PythonLoaderComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    [ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)
 """
         anchors = (
             '[ScientificSecurity.PythonStartupFixture]::Prepare($runId, $state)',
@@ -26,6 +27,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.StaticKernelInspection]::RunFixed($state)',
             '[ScientificSecurity.StaticKernelInspection]::RunActivationWorker($state)',
             python_block,
+            '[ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)',
             '[ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunHost($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunImages($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
@@ -36,7 +38,6 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.SelfActivationFixture]::RunHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)',
             '[ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)',
-            '[ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)',
             '[ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)',
             "[ScientificSecurity.LoaderSnaps]::Enable($runId, $state, (Join-Path (Split-Path $childPython) 'startup-native.exe'))",
@@ -101,7 +102,6 @@ class DiagnosticOrderTest(unittest.TestCase):
     [ScientificSecurity.SelfActivationFixture]::RunHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunDispatchHost($childPython)
     [ScientificSecurity.ModuleActivationFixture]::RunDispatchHost($childPython)
-    [ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunEntryHost($childPython)
     [ScientificSecurity.SelfActivationFixture]::RunResourceHost($childPython)
 ''', 'All host gates must remain unconditional and fatal before contained work')
