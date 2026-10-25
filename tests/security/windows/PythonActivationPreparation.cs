@@ -10,9 +10,9 @@ namespace ScientificSecurity
     public static class PythonActivationPreparation
     {
         internal enum Condition { Baseline, ChildCreate, BaselineAgain }
-        internal enum Experiment { Token, Host, Image }
-        static Exception retained, hostRetained, imageRetained;
-        static bool hostStarted, imageStarted;
+        internal enum Experiment { Token, Host, Image, ActivationBundle }
+        static Exception retained, hostRetained, imageRetained, bundleRetained;
+        static bool hostStarted, imageStarted, bundleStarted;
         const string Created = "WINDOWS_STARTUP_ACTIVATION context=lpac resource_type=24 resource_id=1 created=True win32_error=0 activated=False child_equivalence_claimed=False cause_claimed=False";
         const string Denied = "WINDOWS_STARTUP_ACTIVATION context=lpac resource_type=24 resource_id=1 created=False win32_error=5 activated=False child_equivalence_claimed=False cause_claimed=False";
         static readonly byte[] EmptyPolicy = { 2, 0, 8, 0, 0, 0, 0, 0 };
@@ -31,9 +31,11 @@ namespace ScientificSecurity
             internal readonly Experiment experiment;
             internal bool host { get { return experiment == Experiment.Host; } }
             internal bool image { get { return experiment == Experiment.Image; } }
+            internal bool activationBundle { get { return experiment == Experiment.ActivationBundle; } }
+            internal bool compound { get { return image || activationBundle; } }
             internal bool CallExpected { get { return condition == Condition.ChildCreate; } }
-            internal string Label { get { return CallExpected && image ? "image-bundle" : host && CallExpected ? "host-create" : Name(condition); } }
-            internal string Prefix { get { return image ? "WINDOWS_PYTHON_IMAGE_PREPARATION" : host ? "WINDOWS_PYTHON_HOST_PREPARATION" : "WINDOWS_PYTHON_ACTIVATION_PREPARATION"; } }
+            internal string Label { get { return CallExpected && activationBundle ? "activation-bundle" : CallExpected && image ? "image-bundle" : host && CallExpected ? "host-create" : Name(condition); } }
+            internal string Prefix { get { return activationBundle ? "WINDOWS_PYTHON_ACTIVATION_BUNDLE" : image ? "WINDOWS_PYTHON_IMAGE_PREPARATION" : host ? "WINDOWS_PYTHON_HOST_PREPARATION" : "WINDOWS_PYTHON_ACTIVATION_PREPARATION"; } }
             internal byte[] baseline;
             internal bool prepared, attempted, created, recorded, completed;
             internal uint exit;
@@ -43,14 +45,14 @@ namespace ScientificSecurity
                 : this(value, hostPreparation ? Experiment.Host : Experiment.Token) { }
             internal Observation(Condition value, Experiment kind)
             {
-                Name(value); Need(kind == Experiment.Token || kind == Experiment.Host || kind == Experiment.Image);
+                Name(value); Need(kind == Experiment.Token || kind == Experiment.Host || kind == Experiment.Image || kind == Experiment.ActivationBundle);
                 condition = value; experiment = kind;
             }
             internal void RequireFresh()
             { Need(!prepared && !attempted && !created && !recorded && !activationSeen && !operationCompleted && baseline == null); }
             internal void Activation(string line)
             {
-                Need(!image && prepared && attempted && !activationSeen && line != null && line.Length < 256);
+                Need(!compound && prepared && attempted && !activationSeen && line != null && line.Length < 256);
                 var match = Regex.Match(line, @"\AWINDOWS_STARTUP_ACTIVATION context=" + (host ? "host" : "lpac") + @" resource_type=24 resource_id=1 created=(True|False) win32_error=([0-9]{1,10}) activated=False child_equivalence_claimed=False cause_claimed=False\z");
                 uint error = 0;
                 Need(match.Success && UInt32.TryParse(match.Groups[2].Value, System.Globalization.NumberStyles.None,
@@ -61,17 +63,17 @@ namespace ScientificSecurity
             internal void Record(uint code, string text, string errors)
             {
                 Need(prepared && baseline != null && !recorded && attempted == CallExpected &&
-                    (image ? operationCompleted == attempted && !activationSeen && !created : activationSeen == attempted) &&
+                    (compound ? operationCompleted == attempted && !activationSeen && !created : activationSeen == attempted) &&
                     text != null && errors != null && text.Length == 0 && errors.Length == 0);
                 exit = code; completed = code == 0; recorded = true;
             }
-            internal void CompleteImages()
-            { Need(image && attempted && !operationCompleted && !activationSeen && !created); operationCompleted = true; }
+            internal void CompleteBundle()
+            { Need(compound && attempted && !operationCompleted && !activationSeen && !created); operationCompleted = true; }
             internal string ActivationMetadata()
             {
-                if (image) {
+                if (compound) {
                     Need(recorded && attempted && operationCompleted);
-                    return "WINDOWS_PYTHON_IMAGE_PREPARATION_CALL condition=image-bundle operation_completed=True" +
+                    return Prefix + "_CALL condition=" + Label + " operation_completed=True" +
                         " all_access_succeeded_claimed=False cause_claimed=False target_admitted=False production_grant=False";
                 }
                 Need(recorded && activationSeen);
@@ -84,7 +86,7 @@ namespace ScientificSecurity
             {
                 Need(recorded);
                 return Prefix + " condition=" + Label +
-                    (image ? " image_bundle_attempted=" : " activation_attempted=") + attempted + " raw_process_exit=0x" + exit.ToString("X8") +
+                    (activationBundle ? " activation_bundle_attempted=" : image ? " image_bundle_attempted=" : " activation_attempted=") + attempted + " raw_process_exit=0x" + exit.ToString("X8") +
                     " pass_code_completed=" + completed + " stdout_empty=True stderr_empty=True default_dacl_unchanged=True" +
                     " process_job_handle_cleanup=True key_readable=True cause_claimed=False target_admitted=False production_grant=False";
             }
@@ -109,7 +111,7 @@ namespace ScientificSecurity
         internal static void PrepareHost(Observation value, Action qualify, Action deadline, Func<byte[]> primary, Func<byte[]> duplicate,
             Func<bool> create, Action leave, Action requireHost, Action enter)
         {
-            Need(value != null && (value.host || value.image));
+            Need(value != null && (value.host || value.compound));
             PrepareCore(value, qualify, deadline, primary, duplicate, create,
                 () => { leave(); requireHost(); deadline(); }, () => { requireHost(); deadline(); enter(); });
         }
@@ -122,7 +124,7 @@ namespace ScientificSecurity
                 qualify(); deadline(); beforeCall();
                 if (value.CallExpected) {
                     value.attempted = true; bool result = create();
-                    if (value.image) { Need(result); value.CompleteImages(); } else value.created = result;
+                    if (value.compound) { Need(result); value.CompleteBundle(); } else value.created = result;
                 }
                 afterCall(); qualify(); deadline(); EqualAndClear(before, primary()); EqualAndClear(before, duplicate());
                 value.baseline = before; before = null; value.prepared = true;
@@ -133,16 +135,16 @@ namespace ScientificSecurity
         { return first == null ? later : later == null ? first : new AggregateException("Python preparation and subsequent operation failed", first, later); }
         static void Emit(string line, Action<string> emit, ref int bytes)
         { Need(line != null); int next = checked(bytes + Encoding.UTF8.GetByteCount(line)); Need(next <= 4096); bytes = next; emit(line); }
-        static Exception Execute(Action<Observation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit, bool host = false, bool image = false)
+        static Exception Execute(Action<Observation> observe, Func<Tuple<Action, Action>> begin, Action<string> emit, bool host = false, bool image = false, bool activationBundle = false)
         {
-            Need(!host || !image);
+            Need((host ? 1 : 0) + (image ? 1 : 0) + (activationBundle ? 1 : 0) <= 1);
             var values = new List<Observation>(); var lease = begin(); bool clean = true;
             Exception primary = null, diagnostic = null; int bytes = 0;
             try {
                 foreach (Condition condition in new [] { Condition.Baseline, Condition.ChildCreate, Condition.BaselineAgain }) {
-                    var value = new Observation(condition, image ? Experiment.Image : host ? Experiment.Host : Experiment.Token);
+                    var value = new Observation(condition, activationBundle ? Experiment.ActivationBundle : image ? Experiment.Image : host ? Experiment.Host : Experiment.Token);
                     values.Add(value); clean = false;
-                    observe(value); clean = true; Need(value.recorded && value.baseline != null && value.host == host && value.image == image);
+                    observe(value); clean = true; Need(value.recorded && value.baseline != null && value.host == host && value.image == image && value.activationBundle == activationBundle);
                     if (host && value.attempted && !value.created) diagnostic = Combine(diagnostic,
                         new InvalidOperationException("fixed host activation preparation positive control failed"));
                     if (!value.completed) diagnostic = Combine(diagnostic, new InvalidOperationException(
@@ -199,10 +201,21 @@ namespace ScientificSecurity
                     return Tuple.Create<Action, Action>(lease.Dispose, lease.DeferRecovery);
                 }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }, image: true);
         }
+        public static void RunActivationBundle(string run, string state, string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
+        {
+            Need(imageStarted && !bundleStarted && bundleRetained == null); bundleStarted = true;
+            LoaderSnaps.RequireClean(run, state); PythonCsrDispatch.PreparedImage(python);
+            bundleRetained = Execute(value => Sandbox.ObserveActivationPreparation(python, root, scratch, powershell, chromium,
+                moniker, profileFolder, tcpPort, udpPort, value), () => {
+                    var lease = RegistryPolicyLease.Begin(run, state);
+                    return Tuple.Create<Action, Action>(lease.Dispose, lease.DeferRecovery);
+                }, line => { Console.Out.WriteLine(line); Console.Out.Flush(); }, activationBundle: true);
+        }
         public static Exception PreserveFailure(Exception later)
         {
-            Exception failure = Combine(Combine(retained, hostRetained), imageRetained);
-            retained = null; hostRetained = null; imageRetained = null;
+            Exception failure = Combine(Combine(Combine(retained, hostRetained), imageRetained), bundleRetained);
+            retained = null; hostRetained = null; imageRetained = null; bundleRetained = null;
             return Combine(failure, later);
         }
         public static Exception PreserveAllFailures(Exception later)
@@ -366,30 +379,41 @@ namespace ScientificSecurity
         }
         static void CheckImagePreparation()
         {
-            Refuse(() => new Observation(Condition.Baseline, (Experiment)3));
-            Refuse(() => Prepare(new Observation(Condition.Baseline, Experiment.Image), () => { }, () => { },
+            foreach (Experiment kind in new [] { Experiment.Image, Experiment.ActivationBundle }) CheckBundlePreparation(kind);
+        }
+        static void CheckBundlePreparation(Experiment kind)
+        {
+            Refuse(() => new Observation(Condition.Baseline, (Experiment)4));
+            StartupActivationAccess.RequireBundleRegistryStatus(0);
+            foreach (int status in new [] { 1, 0x40000003, -1, unchecked((int)0xC0000022) })
+                Refuse(() => StartupActivationAccess.RequireBundleRegistryStatus(status));
+            bool bundle = kind == Experiment.ActivationBundle;
+            string label = bundle ? "activation-bundle" : "image-bundle";
+            string attempted = bundle ? "activation_bundle_attempted=" : "image_bundle_attempted=";
+            string prefix = bundle ? "WINDOWS_PYTHON_ACTIVATION_BUNDLE" : "WINDOWS_PYTHON_IMAGE_PREPARATION";
+            Refuse(() => Prepare(new Observation(Condition.Baseline, kind), () => { }, () => { },
                 () => null, () => null, () => true));
             foreach (Condition condition in new [] { Condition.Baseline, Condition.ChildCreate, Condition.BaselineAgain }) {
-                var value = new Observation(condition, Experiment.Image); var order = new List<string>(); bool inside = true;
+                var value = new Observation(condition, kind); var order = new List<string>(); bool inside = true;
                 Action qualify = () => { Need(inside); order.Add("qualify"); };
                 Action host = () => { Need(!inside); order.Add("host"); };
                 PrepareHost(value, qualify, () => order.Add("deadline"),
                     () => { Need(inside); order.Add("primary"); return (byte[])EmptyPolicy.Clone(); },
                     () => { Need(inside); order.Add("duplicate"); return (byte[])EmptyPolicy.Clone(); },
-                    () => { Need(!inside); order.Add("image-bundle"); return true; },
+                    () => { Need(!inside); order.Add(label); return true; },
                     () => { inside = false; order.Add("leave"); }, host, () => { inside = true; order.Add("enter"); });
                 Need(inside && value.prepared && !value.created && value.attempted == value.CallExpected);
                 Need(String.Join(",", order) == "qualify,deadline,primary,duplicate,qualify,deadline,leave,host,deadline," +
-                    (value.CallExpected ? "image-bundle," : "") + "host,deadline,enter,qualify,deadline,primary,duplicate");
+                    (value.CallExpected ? label + "," : "") + "host,deadline,enter,qualify,deadline,primary,duplicate");
                 Refuse(() => value.Activation(Created)); value.Record(0, "", "");
-                Need(value.Metadata().Contains("image_bundle_attempted=" + value.CallExpected) &&
-                    !value.Metadata().Contains("activation_attempted"));
-                if (value.CallExpected) Need(value.ActivationMetadata().Contains("operation_completed=True") &&
-                    value.ActivationMetadata().Contains("all_access_succeeded_claimed=False") && !value.ActivationMetadata().Contains("created="));
+                Need(value.Metadata().StartsWith(prefix + " condition=", StringComparison.Ordinal) &&
+                    value.Metadata().Contains(attempted + value.CallExpected) && !value.Metadata().Contains("activation_attempted"));
+                if (value.CallExpected) Need(value.ActivationMetadata() == prefix + "_CALL condition=" + label +
+                    " operation_completed=True all_access_succeeded_claimed=False cause_claimed=False target_admitted=False production_grant=False");
                 value.Clear();
             }
             foreach (uint code in new uint[] { 0, 1, 121, 0xC0000022, 0xC0150002, UInt32.MaxValue }) {
-                var value = new Observation(Condition.ChildCreate, Experiment.Image);
+                var value = new Observation(Condition.ChildCreate, kind);
                 PrepareHost(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(),
                     () => true, () => { }, () => { }, () => { });
                 Refuse(() => value.Record(code, "private-sentinel", ""));
@@ -399,10 +423,10 @@ namespace ScientificSecurity
                     value.Metadata().Contains("raw_process_exit=0x" + code.ToString("X8")));
                 Refuse(() => value.Record(code, "", "")); value.Clear();
             }
-            Refuse(() => new Observation(Condition.Baseline, Experiment.Image).CompleteImages());
+            Refuse(() => new Observation(Condition.Baseline, kind).CompleteBundle());
             for (int failAt = 1; failAt <= 17; failAt++) {
-                int step = 0; var allocations = new List<byte[]>(); var value = new Observation(Condition.ChildCreate, Experiment.Image);
-                var failure = new Exception("fixed image preparation transition"); Exception caught = null;
+                int step = 0; var allocations = new List<byte[]>(); var value = new Observation(Condition.ChildCreate, kind);
+                var failure = new Exception("fixed bundle preparation transition"); Exception caught = null;
                 Action visit = () => { if (++step == failAt) throw failure; };
                 Func<byte[]> read = () => { visit(); byte[] bytes = (byte[])EmptyPolicy.Clone(); allocations.Add(bytes); return bytes; };
                 try { PrepareHost(value, visit, visit, read, read, () => { visit(); return true; }, visit, visit, visit); }
@@ -412,32 +436,34 @@ namespace ScientificSecurity
             }
             for (int mode = 0; mode < 8; mode++) {
                 int visits = 0; var lines = new List<string>(); var values = new List<Observation>();
-                var operation = new Exception("fixed image operation"); var reporting = new Exception("fixed image report");
-                var cleanup = new Exception("fixed image restore"); Exception result = null, caught = null;
+                var operation = new Exception("fixed bundle operation"); var reporting = new Exception("fixed bundle report");
+                var cleanup = new Exception("fixed bundle restore"); Exception result = null, caught = null;
                 try {
                     result = Execute(value => {
-                        Need(value.image && !value.host); visits++; values.Add(value);
+                        Need(value.experiment == kind && !value.host); visits++; values.Add(value);
                         if (mode == 4 && visits == 2) throw operation;
                         PrepareHost(value, () => { }, () => { }, () => (byte[])EmptyPolicy.Clone(), () => (byte[])EmptyPolicy.Clone(),
                             () => true, () => { }, () => { }, () => { });
                         value.Record(mode == 0 || mode == 2 && visits == 2 || mode == 3 && visits != 1 ? 0U : 0xC0150002U, "", "");
                         if (mode == 7 && visits == 2) value.baseline[0] = 4;
                     }, () => Tuple.Create<Action, Action>(() => { lines.Add("restore"); if (mode == 6) throw cleanup; },
-                        () => lines.Add("defer")), line => { lines.Add(line); if (mode == 5) throw reporting; }, image: true);
+                        () => lines.Add("defer")), line => { lines.Add(line); if (mode == 5) throw reporting; }, image: !bundle, activationBundle: bundle);
                 } catch (Exception failure) { caught = failure; }
                 Need(values.All(value => value.baseline == null));
                 if (mode <= 3) Need(caught == null && visits == 3 && lines.Count == 6 && lines[4] == "restore" && (result == null) == (mode == 0));
                 else Need(caught is AggregateException && lines.Contains(mode == 4 ? "defer" : "restore"));
             }
             var tokenFailure = new Exception("fixed token"); var hostFailure = new Exception("fixed host");
-            var imageFailure = new Exception("fixed image"); var later = new Exception("fixed later");
-            retained = tokenFailure; hostRetained = hostFailure; imageRetained = imageFailure;
+            var imageFailure = new Exception("fixed image"); var bundleFailure = new Exception("fixed bundle"); var later = new Exception("fixed later");
+            retained = tokenFailure; hostRetained = hostFailure; imageRetained = imageFailure; bundleRetained = bundleFailure;
             var combined = PreserveAllFailures(later) as AggregateException;
-            var images = combined == null ? null : combined.InnerExceptions[0] as AggregateException;
+            var bundles = combined == null ? null : combined.InnerExceptions[0] as AggregateException;
+            var images = bundles == null ? null : bundles.InnerExceptions[0] as AggregateException;
             var previous = images == null ? null : images.InnerExceptions[0] as AggregateException;
             Need(previous != null && Object.ReferenceEquals(previous.InnerExceptions[0], tokenFailure) &&
                 Object.ReferenceEquals(previous.InnerExceptions[1], hostFailure) && Object.ReferenceEquals(images.InnerExceptions[1], imageFailure) &&
-                Object.ReferenceEquals(combined.InnerExceptions[1], later) && PreserveAllFailures(null) == null);
+                Object.ReferenceEquals(bundles.InnerExceptions[1], bundleFailure) && Object.ReferenceEquals(combined.InnerExceptions[1], later) &&
+                PreserveAllFailures(null) == null);
         }
         static void CheckComparison()
         {

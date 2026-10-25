@@ -30,6 +30,7 @@ namespace ScientificSecurity
         {
             var paths = new List<Tuple<string, string>>();
             IntPtr buffer = Marshal.AllocHGlobal(65536), index = IntPtr.Zero;
+            Exception primary = null;
             try {
                 Clear(buffer); UIntPtr returned;
                 Native.Check(QueryActCtxW(0, context, IntPtr.Zero, 2, buffer, new UIntPtr(65536), out returned), "query fixed activation assembly count");
@@ -49,8 +50,10 @@ namespace ScientificSecurity
                 RequireProfile(paths.Select(value => value.Item1).ToArray(), count);
                 return paths;
             }
+            catch (Exception failure) { primary = failure; throw; }
             finally {
-                try { Clear(buffer); } finally { Marshal.FreeHGlobal(buffer); if (index != IntPtr.Zero) Marshal.FreeHGlobal(index); }
+                Release(primary, () => Clear(buffer), () => Marshal.FreeHGlobal(buffer),
+                    () => { if (index != IntPtr.Zero) Marshal.FreeHGlobal(index); });
             }
         }
         static uint RequireSize(UIntPtr returned, uint minimum)
@@ -143,6 +146,7 @@ namespace ScientificSecurity
                 IntPtr file = CreateFileW(path.Item2, 0x80000000, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
                 int error = file == Native.InvalidHandle ? Marshal.GetLastWin32Error() : 0;
                 bool opened = file != Native.InvalidHandle;
+                Exception primary = null;
                 try {
                     if (file == IntPtr.Zero) throw new InvalidOperationException("activation file returned an invalid success handle");
                     lines.Add("WINDOWS_ACTIVATION_FILE context=" + context + " label=" + path.Item1 + " opened=" + opened +
@@ -150,11 +154,41 @@ namespace ScientificSecurity
                     if (context == "host" && !opened) throw new InvalidOperationException("activation file host positive control failed");
                     deadline();
                 }
-                finally { if (opened && file != IntPtr.Zero) Native.Check(Native.CloseHandle(file), "close fixed activation manifest file"); }
+                catch (Exception failure) { primary = failure; throw; }
+                finally { Release(primary, () => {
+                    if (opened && file != IntPtr.Zero) Native.Check(Native.CloseHandle(file), "close fixed activation manifest file");
+                }); }
             }
+        }
+        static void Release(Exception primary, params Action[] actions)
+        {
+            var failures = new List<Exception>();
+            foreach (Action action in actions) StartupActivationAccess.Attempt(failures, action);
+            StartupActivationAccess.Finish(primary, failures);
+        }
+        internal static void CheckCleanupValidation()
+        {
+            var operation = new InvalidOperationException("fixed assembly operation");
+            var first = new InvalidOperationException("fixed assembly first release");
+            var second = new InvalidOperationException("fixed assembly second release");
+            foreach (bool hasPrimary in new [] { false, true }) {
+                var order = new List<int>(); AggregateException caught = null;
+                try { Release(hasPrimary ? operation : null,
+                    () => { order.Add(1); throw first; }, () => order.Add(2), () => { order.Add(3); throw second; }); }
+                catch (AggregateException failure) { caught = failure; }
+                int offset = hasPrimary ? 1 : 0;
+                if (caught == null || caught.InnerExceptions.Count != offset + 2 || String.Join(",", order) != "1,2,3" ||
+                    (hasPrimary && !Object.ReferenceEquals(caught.InnerExceptions[0], operation)) ||
+                    !Object.ReferenceEquals(caught.InnerExceptions[offset], first) ||
+                    !Object.ReferenceEquals(caught.InnerExceptions[offset + 1], second))
+                    throw new InvalidOperationException("assembly releases lost original-first failures or independent cleanup");
+            }
+            int released = 0; Release(operation, () => released++, () => released++);
+            if (released != 2) throw new InvalidOperationException("assembly independent release was skipped");
         }
         public static void CheckValidation(string work)
         {
+            CheckCleanupValidation();
             if (Marshal.SizeOf(typeof(AssemblyInfo)) != 104 || Marshal.OffsetOf(typeof(AssemblyInfo), "path").ToInt32() != 72 ||
                 Marshal.OffsetOf(typeof(AssemblyInfo), "pathBytes").ToInt32() != 12 || Marshal.OffsetOf(typeof(AssemblyInfo), "pathType").ToInt32() != 8)
                 throw new InvalidOperationException("activation assembly ABI differs");

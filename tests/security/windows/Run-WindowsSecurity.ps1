@@ -363,6 +363,8 @@ try {
     [ScientificSecurity.PythonActivationPreparation]::RunHost($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'matched undebugged Python image-bundle preparation starts after host restoration; conditional sufficiency only'
     [ScientificSecurity.PythonActivationPreparation]::RunImages($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    Write-RunLog INFO 'matched undebugged Python whole activation preparation starts after image restoration; conditional sufficiency only'
+    [ScientificSecurity.PythonActivationPreparation]::RunActivationBundle($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'child-only default-DACL differential starts under constant readable key; never target admission or production policy'
     [ScientificSecurity.DefaultDaclComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'single fixed trusted-host debugger control starts; never normalization or admission proof'

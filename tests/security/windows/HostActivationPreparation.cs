@@ -18,10 +18,12 @@ namespace ScientificSecurity
                 () => Environment.FailFast("Host preparation identity restoration failed; outer owner must reap and clean up."), () => { });
             impersonating = false;
         }
+        internal static void RequireBundleRegistryStatus(int status)
+        { PythonActivationPreparation.Need(status == 0); }
         internal static void PrepareHostPython(Native.ProcessInfo child, string python, string package,
             PythonActivationPreparation.Observation observation)
         {
-            PythonActivationPreparation.Need(observation != null && (observation.host || observation.image)); observation.RequireFresh();
+            PythonActivationPreparation.Need(observation != null && (observation.host || observation.compound)); observation.RequireFresh();
             ushort language = PythonCsrDispatch.PreparedLanguage(python); RequirePreparationHost();
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero; bool impersonating = false;
             Exception primary = null; var lines = new List<string>(); var clock = Stopwatch.StartNew();
@@ -33,8 +35,11 @@ namespace ScientificSecurity
                 PythonActivationPreparation.PrepareHost(observation, () => new RegistryContext(token, duplicate, package).RequireThread(), () => Deadline(clock),
                     () => ChildDefaultDacl.Read(token), () => ChildDefaultDacl.Read(duplicate),
                     () => {
-                        if (!observation.image) return ObserveOne("host", python, language, lines, clock, null);
-                        StartupImageAccess.Observe(child, python, package);
+                        if (!observation.compound) return ObserveOne("host", python, language, lines, clock, null);
+                        if (observation.activationBundle) {
+                            int status = Observe(child, python, package);
+                            RequireBundleRegistryStatus(status);
+                        } else StartupImageAccess.Observe(child, python, package);
                         RequirePreparationHost(); Deadline(clock); return true;
                     },
                     () => LeavePreparation(ref impersonating), RequirePreparationHost,
@@ -48,8 +53,8 @@ namespace ScientificSecurity
                 FinalizeComparison(primary, impersonating, RevertToSelf,
                     () => Environment.FailFast("Host preparation identity restoration failed; outer owner must reap and clean up."),
                     () => {
-                        PythonActivationPreparation.Need(lines.Count == (observation.attempted && !observation.image ? 1 : 0));
-                        if (!observation.image && observation.prepared && observation.attempted) observation.Activation(lines[0]);
+                        PythonActivationPreparation.Need(lines.Count == (observation.attempted && !observation.compound ? 1 : 0));
+                        if (!observation.compound && observation.prepared && observation.attempted) observation.Activation(lines[0]);
                     },
                     () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close host preparation duplicate token"); },
                     () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close host preparation primary token"); });

@@ -63,6 +63,31 @@ namespace ScientificSecurity
             Attempt(failures, emit);
             Finish(primary, failures);
         }
+        static void Report(List<string> lines, Action<string> emit)
+        {
+            var utf8 = new System.Text.UTF8Encoding(false, true);
+            int bytes = 0;
+            if (lines.Count > 15) throw new InvalidOperationException("activation output line bound exceeded");
+            foreach (string line in lines)
+                bytes = checked(bytes + utf8.GetByteCount(line) + utf8.GetByteCount(Environment.NewLine));
+            if (bytes > 12288) throw new InvalidOperationException("activation output byte bound exceeded");
+            foreach (string line in lines) emit(line);
+        }
+        static void CheckReporting()
+        {
+            int emitted = 0, newline = new System.Text.UTF8Encoding(false, true).GetByteCount(Environment.NewLine);
+            Report(new List<string> { new string('x', 12288 - newline) }, _ => emitted++);
+            if (emitted != 1) throw new InvalidOperationException("activation reporting boundary differs");
+            foreach (var lines in new [] { new List<string> { new string('x', 12289 - newline) },
+                new List<string>(new string[16]) }) {
+                bool refused = false;
+                try { Report(lines, _ => emitted++); } catch (InvalidOperationException) { refused = true; }
+                if (!refused || emitted != 1) throw new InvalidOperationException("activation reporting exceeded its bound");
+            }
+            var fifteen = new List<string>(); for (int index = 0; index < 15; index++) fifteen.Add("fixed");
+            Report(fifteen, _ => emitted++);
+            if (emitted != 16) throw new InvalidOperationException("activation line boundary differs");
+        }
         static void Deadline(Stopwatch clock)
         { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed activation comparison exceeded 10 seconds"); }
         internal static int Observe(Native.ProcessInfo child, string python, string package)
@@ -120,7 +145,7 @@ namespace ScientificSecurity
             finally {
                 FinalizeComparison(primary, impersonating, RevertToSelf,
                     () => Environment.FailFast("Activation identity restoration failed; outer owner must reap and clean up."),
-                    () => { foreach (string line in lines) Console.Out.WriteLine(line); Console.Out.Flush(); },
+                    () => { Report(lines, Console.Out.WriteLine); Console.Out.Flush(); },
                     () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close activation duplicate token"); },
                     () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close activation primary token"); },
                     () => { if (held != null) held.Dispose(); });
@@ -228,7 +253,7 @@ namespace ScientificSecurity
             bool refused = false;
             try { Outcome("host", IntPtr.Zero, 0); } catch (InvalidOperationException) { refused = true; }
             if (!refused) throw new InvalidOperationException("activation null result was accepted");
-            CheckFinalization();
+            CheckFinalization(); CheckReporting(); ActivationAssemblyAccess.CheckCleanupValidation();
             var primary = new IOException("fixed primary"); var cleanup = new IOException("fixed cleanup");
             var failures = new List<Exception>(); int attempts = 0;
             Attempt(failures, () => { attempts++; throw cleanup; }); Attempt(failures, () => attempts++);
