@@ -219,7 +219,7 @@ namespace ScientificSecurity
             return Combine(failure, later);
         }
         public static Exception PreserveAllFailures(Exception later)
-        { return PreserveFailure(CsrDispatchComparison.PreserveFailure(RegistryCausalComparison.PreserveCallbackFailure(later))); }
+        { return RegistryStartupComparison.PreserveFailure(PreserveFailure(CsrDispatchComparison.PreserveFailure(RegistryCausalComparison.PreserveCallbackFailure(later)))); }
         public static void RequireClean() { Exception failure = PreserveAllFailures(null); if (failure != null) throw failure; }
         public static void CheckValidation()
         {

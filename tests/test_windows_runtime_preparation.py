@@ -28,6 +28,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.StaticKernelInspection]::RunActivationWorker($state)',
             python_block,
             '[ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)',
+            '[ScientificSecurity.RegistryStartupComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunHost($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunImages($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
@@ -110,7 +111,7 @@ class DiagnosticOrderTest(unittest.TestCase):
         windows = ROOT / 'tests/security/windows'
         controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
         source = (windows / 'PythonActivationPreparation.cs').read_text(encoding='utf-8')
-        self.assertEqual(source.count('return PreserveFailure(CsrDispatchComparison.PreserveFailure(RegistryCausalComparison.PreserveCallbackFailure(later)));'), 1)
+        self.assertEqual(source.count('return RegistryStartupComparison.PreserveFailure(PreserveFailure(CsrDispatchComparison.PreserveFailure(RegistryCausalComparison.PreserveCallbackFailure(later))));'), 1)
         self.assertEqual(source.count('Exception failure = PreserveAllFailures(null); if (failure != null) throw failure;'), 1)
         start = controller.index('    $cause = $_.Exception\n')
         end = controller.index('    $staticReport = ', start)
