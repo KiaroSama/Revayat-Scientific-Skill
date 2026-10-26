@@ -30,7 +30,7 @@ namespace ScientificSecurity
             internal void Complete() { preparation.Complete(); Need(wire != null && !recorded); recorded = true; }
             internal void Clear() { preparation.Clear(); wire = null; }
         }
-        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=((?:start|token|root|mutation|inventory|identity|close|descendant|report):(?:control|timeout|decode|encode|native|transport|other|cleanup)(?:,(?:start|token|root|mutation|inventory|identity|close|descendant|report):(?:control|timeout|decode|encode|native|transport|other|cleanup)){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=((?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import)(?:,(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import)){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
             string detail = "unqualified";
@@ -101,6 +101,10 @@ namespace ScientificSecurity
             }
             string timeout = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:timeout\n";
             Need(TransportFailure(1, timeout).Message.Contains("child_exit=none errors=descendant:timeout"));
+            foreach (string phase in new [] { "ctypes", "ctypes-wintypes", "json", "os", "pathlib", "runpy", "subprocess", "time" }) {
+                string bootstrap = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=import-" + phase + ":import\n";
+                Need(TransportFailure(1, bootstrap).Message.Contains("errors=import-" + phase + ":import"));
+            }
             Need(TransportFailure(1, wire.Replace("root:control", "root:private")).Message.Contains("unqualified"));
             var observation = new Observation(); Exception operation = null;
             try { observation.Stage(1, "", wire); } catch (Exception failure) { operation = failure; }

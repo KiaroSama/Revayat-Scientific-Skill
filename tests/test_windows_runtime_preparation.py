@@ -126,6 +126,50 @@ class DiagnosticOrderTest(unittest.TestCase):
 
 
 class RegistryAuthorityValidationTest(unittest.TestCase):
+    def test_bootstrap_import_failures_are_private_and_nonzero(self):
+        import builtins
+        import io
+        from types import SimpleNamespace
+        source = (ROOT / 'tests/security/windows/RegistryAuthorityProbe.py').read_text(encoding='utf-8')
+        code = compile(source, 'fixed-registry-authority', 'exec')
+        imports = ('ctypes', 'ctypes.wintypes', 'json', 'os', 'pathlib', 'runpy', 'subprocess', 'time')
+        for selected in imports:
+            for descendant in (False, True):
+                for error, category in ((ImportError('private-import-sentinel'), 'import'),
+                                        (OSError('private-native-sentinel'), 'native'),
+                                        (ValueError('private-other-sentinel'), 'other')):
+                    output = io.StringIO()
+                    system = SimpleNamespace(argv=['fixed.py'] + (['--descendant'] if descendant else []), stderr=output)
+                    seen = []
+
+                    def importer(name, *args, **kwargs):
+                        if name == 'sys':
+                            return system
+                        self.assertIn(name, imports)
+                        seen.append(name)
+                        if name == selected:
+                            raise error
+                        return SimpleNamespace(Path=object(), wintypes=SimpleNamespace())
+
+                    namespace = {'__name__': '__main__', '__builtins__': dict(vars(builtins), __import__=importer)}
+                    with self.subTest(module=selected, descendant=descendant, category=category), self.assertRaises(SystemExit) as caught:
+                        exec(code, namespace)
+                    self.assertEqual(caught.exception.code, 1)
+                    role = 'descendant' if descendant else 'primary'
+                    expected = 'REGISTRY_AUTHORITY_FAILURE role=' + role + ' child_exit=none errors=import-' + selected.replace('.', '-') + ':' + category + '\n'
+                    self.assertEqual(output.getvalue(), expected)
+                    self.assertEqual(seen, list(imports[:imports.index(selected) + 1]))
+                    self.assertNotIn('private', output.getvalue())
+        class BrokenReport:
+            def write(self, _):
+                raise OSError('private-report-sentinel')
+            def flush(self):
+                raise AssertionError('unreachable flush')
+        system.stderr = BrokenReport()
+        with self.assertRaises(SystemExit) as caught:
+            exec(code, namespace)
+        self.assertEqual(caught.exception.code, 1)
+
     def test_fixed_controls_without_native_execution(self):
         probe = runpy.run_path(str(ROOT / 'tests/security/windows/RegistryAuthorityProbe.py'))
         denied, basic = probe['require_denied'], probe['require_basic']

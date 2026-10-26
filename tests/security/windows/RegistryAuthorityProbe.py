@@ -1,20 +1,41 @@
 """Fixed trusted registry authority inventory; never imports reviewed modules."""
-import ctypes
-import ctypes.wintypes as w
-import json
-import os
-from pathlib import Path
-import runpy
-import subprocess
 import sys
-import time
+
+try:
+    phase = 'import-ctypes'
+    import ctypes
+    phase = 'import-ctypes-wintypes'
+    import ctypes.wintypes as w
+    phase = 'import-json'
+    import json
+    phase = 'import-os'
+    import os
+    phase = 'import-pathlib'
+    from pathlib import Path
+    phase = 'import-runpy'
+    import runpy
+    phase = 'import-subprocess'
+    import subprocess
+    phase = 'import-time'
+    import time
+except Exception as error:
+    category = 'import' if isinstance(error, ImportError) else 'native' if isinstance(error, OSError) else 'other'
+    role = 'descendant' if sys.argv[1:] == ['--descendant'] else 'primary'
+    try:
+        sys.stderr.write('REGISTRY_AUTHORITY_FAILURE role=' + role + ' child_exit=none errors=' + phase + ':' + category + '\n')
+        sys.stderr.flush()
+    except Exception:
+        pass
+    raise SystemExit(1) from None
 
 P = ctypes.c_void_p
 KEY = r'\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide'
 DENIED = 0xC0000022
 PHASE = 'start'
-PHASES = ('start', 'token', 'root', 'mutation', 'inventory', 'identity', 'close', 'descendant', 'report')
-KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup')
+PHASES = ('start', 'token', 'root', 'mutation', 'inventory', 'identity', 'close', 'descendant', 'report',
+          'import-ctypes', 'import-ctypes-wintypes', 'import-json', 'import-os', 'import-pathlib',
+          'import-runpy', 'import-subprocess', 'import-time')
+KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup', 'import')
 
 
 class Failure(Exception):
@@ -48,7 +69,7 @@ def failure_wire(error, role):
 def descendant_result(child):
     if child.returncode != 0:
         import re
-        pattern = r'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=([a-z:,]+)\n'
+        pattern = r'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=([a-z:,\-]+)\n'
         match = re.fullmatch(pattern, child.stderr) if len(child.stderr) <= 512 else None
         events = [('descendant', 'transport')]
         if match:
