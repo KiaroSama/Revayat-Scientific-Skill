@@ -1,6 +1,21 @@
 """Fixed trusted registry authority inventory; never imports reviewed modules."""
 import sys
 
+
+def import_category(error):
+    if isinstance(error, ImportError):
+        kind = type(error)
+        if kind is not ImportError and kind is not ModuleNotFoundError:
+            return 'import-unrecognized'
+        name = error.name
+        label = 'absent' if name is None else 'unrecognized'
+        if type(name) is str:
+            label = {'ctypes': 'ctypes', '_ctypes': 'ctypes-native', 'struct': 'struct',
+                     '_struct': 'struct-native', 'ctypes._endian': 'endian', 'os': 'os', 'types': 'types'}.get(name, 'unrecognized')
+        return ('missing-' if type(error) is ModuleNotFoundError else 'import-') + label
+    return 'native' if isinstance(error, OSError) else 'other'
+
+
 try:
     phase = 'import-ctypes'
     import ctypes
@@ -19,7 +34,7 @@ try:
     phase = 'import-time'
     import time
 except Exception as error:
-    category = 'import' if isinstance(error, ImportError) else 'native' if isinstance(error, OSError) else 'other'
+    category = import_category(error)
     role = 'descendant' if sys.argv[1:] == ['--descendant'] else 'primary'
     try:
         sys.stderr.write('REGISTRY_AUTHORITY_FAILURE role=' + role + ' child_exit=none errors=' + phase + ':' + category + '\n')
@@ -35,7 +50,9 @@ PHASE = 'start'
 PHASES = ('start', 'token', 'root', 'mutation', 'inventory', 'identity', 'close', 'descendant', 'report',
           'import-ctypes', 'import-ctypes-wintypes', 'import-json', 'import-os', 'import-pathlib',
           'import-runpy', 'import-subprocess', 'import-time')
-KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup', 'import')
+KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup', 'import') + tuple(
+    prefix + label for prefix in ('import-', 'missing-')
+    for label in ('ctypes', 'ctypes-native', 'struct', 'struct-native', 'endian', 'os', 'types', 'absent', 'unrecognized'))
 
 
 class Failure(Exception):

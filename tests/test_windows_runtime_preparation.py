@@ -135,7 +135,7 @@ class RegistryAuthorityValidationTest(unittest.TestCase):
         imports = ('ctypes', 'ctypes.wintypes', 'json', 'os', 'pathlib', 'runpy', 'subprocess', 'time')
         for selected in imports:
             for descendant in (False, True):
-                for error, category in ((ImportError('private-import-sentinel'), 'import'),
+                for error, category in ((ImportError('private-import-sentinel'), 'import-absent'),
                                         (OSError('private-native-sentinel'), 'native'),
                                         (ValueError('private-other-sentinel'), 'other')):
                     output = io.StringIO()
@@ -169,6 +169,64 @@ class RegistryAuthorityValidationTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as caught:
             exec(code, namespace)
         self.assertEqual(caught.exception.code, 1)
+
+    def test_bootstrap_reported_import_name_is_closed_metadata(self):
+        import builtins
+        import io
+        from types import SimpleNamespace
+        source = (ROOT / 'tests/security/windows/RegistryAuthorityProbe.py').read_text(encoding='utf-8')
+        code = compile(source, 'fixed-registry-authority', 'exec')
+
+        class HostileName(str):
+            def __hash__(self):
+                raise AssertionError('Private name must not be hashed')
+            def __eq__(self, _):
+                raise AssertionError('Private name must not be compared')
+
+        class CustomImport(ImportError):
+            @property
+            def name(self):
+                raise AssertionError('Custom exception metadata must not be read')
+
+        names = [('_ctypes', 'ctypes-native'), ('ctypes', 'ctypes'), ('struct', 'struct'),
+                 ('_struct', 'struct-native'), ('ctypes._endian', 'endian'), ('os', 'os'), ('types', 'types'),
+                 (None, 'absent'), ('private-name-sentinel', 'unrecognized'), (b'_ctypes', 'unrecognized'),
+                 (1, 'unrecognized'), (True, 'unrecognized'), (HostileName('_ctypes'), 'unrecognized')]
+        cases = [(kind('private-message-sentinel', name=name, path='private-path-sentinel'), prefix + label)
+                 for kind, prefix in ((ImportError, 'import-'), (ModuleNotFoundError, 'missing-')) for name, label in names]
+        cases.append((CustomImport('private-subclass-sentinel'), 'import-unrecognized'))
+        for error, expected in cases:
+            for descendant in (False, True):
+                output = io.StringIO()
+                system = SimpleNamespace(argv=['fixed.py'] + (['--descendant'] if descendant else []), stderr=output)
+
+                def importer(name, *args, **kwargs):
+                    if name == 'sys':
+                        return system
+                    self.assertEqual(name, 'ctypes')
+                    raise error
+
+                namespace = {'__name__': '__main__', '__builtins__': dict(vars(builtins), __import__=importer)}
+                with self.subTest(category=expected, descendant=descendant), self.assertRaises(SystemExit) as caught:
+                    exec(code, namespace)
+                self.assertEqual(caught.exception.code, 1)
+                role = 'descendant' if descendant else 'primary'
+                self.assertEqual(output.getvalue(), 'REGISTRY_AUTHORITY_FAILURE role=' + role +
+                                 ' child_exit=none errors=import-ctypes:' + expected + '\n')
+                self.assertLessEqual(len(output.getvalue().encode('ascii')), 512)
+                self.assertNotIn('private', output.getvalue())
+        for fail_flush in (False, True):
+            class BrokenReport(io.StringIO):
+                def write(self, text):
+                    if not fail_flush:
+                        raise OSError('private-report-sentinel')
+                    return super().write(text)
+                def flush(self):
+                    raise OSError('private-flush-sentinel')
+            system.stderr = BrokenReport()
+            with self.assertRaises(SystemExit) as caught:
+                exec(code, namespace)
+            self.assertEqual(caught.exception.code, 1)
 
     def test_fixed_controls_without_native_execution(self):
         probe = runpy.run_path(str(ROOT / 'tests/security/windows/RegistryAuthorityProbe.py'))
@@ -221,6 +279,22 @@ class RegistryAuthorityValidationTest(unittest.TestCase):
 
         self.assertEqual(probe['entry'](child_failure, reports.append, 'primary'), 1)
         self.assertEqual(reports.pop(), 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=descendant:transport,root:control,close:cleanup\n')
+        for category in ('import-ctypes-native', 'missing-struct-native', 'import-absent', 'missing-unrecognized'):
+            frame = 'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=import-ctypes:' + category + '\n'
+            with self.assertRaises(probe['Failure']) as caught:
+                probe['descendant_result'](subprocess.CompletedProcess([], 1, '', frame))
+            self.assertEqual(caught.exception.events, (('descendant', 'transport'), ('import-ctypes', category)))
+            self.assertEqual(caught.exception.child_exit, 1)
+        for events in (','.join(['import-ctypes:import-absent'] * 7), ','.join(['import-ctypes:import-absent'] * 8),
+                       'import-ctypes:import-private', 'import-ctypes:missing-private'):
+            frame = 'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=' + events + '\n'
+            with self.assertRaises(probe['Failure']) as caught:
+                probe['descendant_result'](subprocess.CompletedProcess([], 7, '', frame))
+            self.assertEqual(len(caught.exception.events), 8 if events.count(',') == 6 else 1)
+            self.assertEqual(caught.exception.child_exit, 7)
+        with self.assertRaises(probe['Failure']) as caught:
+            probe['descendant_result'](subprocess.CompletedProcess([], 7, '', 'x' * 513))
+        self.assertEqual(caught.exception.events, (('descendant', 'transport'),))
         for error, kind in [(subprocess.TimeoutExpired('private-command-sentinel', 5, output=b'private-output-sentinel'), 'timeout'),
                             (UnicodeDecodeError('utf-16-le', b'\x37\xd8', 0, 2, 'private-decode-sentinel'), 'decode')]:
             def operation():
