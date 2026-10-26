@@ -14,9 +14,15 @@ namespace ScientificSecurity
             CsrDispatchPair dispatchPair;
             Action dispatchTarget;
             bool dispatchQualifiedStop;
-            string dispatchCallTrap, dispatchRefusal;
+            string dispatchCallTrap, dispatchRefusal, dispatchPeerStatus;
             internal string DispatchTraps { get { return (dispatchCallTrap == null ? "" : " call_" + dispatchCallTrap.Replace(" ", " call_")) +
-                (Trap == null ? "" : " return_" + Trap.Replace(" ", " return_")); } }
+                (Trap == null ? "" : " return_" + Trap.Replace(" ", " return_")) + dispatchPeerStatus; } }
+            // Non-event API status presentation is not attribution of the selected exception.
+            static bool PeerConfiguration(ulong status, ulong control, ulong expectedControl)
+            {
+                return (status & ~(0x10000UL | 0x800UL)) == 0xFFFE07F0UL && (expectedControl & ~0x405UL) == 0 &&
+                    ((control ^ expectedControl) & ~0x400UL) == 0;
+            }
             void RequireDispatchTransition(Generation value, byte[] context, bool restore)
             {
                 ResourceCheck(value.dispatchState != null && value.dispatchState.Length == 6, "dispatch-transition-baseline");
@@ -31,7 +37,11 @@ namespace ScientificSecurity
                             DebugContext.OwnedTrapStatus(U64(context, 104), U64(context, 112), control, slot);
                 }
                 bool stoppedPeer = dispatchQualifiedStop && kind == 1 && eventThread != value.id &&
-                    SoftwareStatus(U64(context, 104), U64(context, 112), control);
+                    PeerConfiguration(U64(context, 104), U64(context, 112), control);
+                if (!exact && stoppedPeer && dispatchPeerStatus == null)
+                    dispatchPeerStatus = " peer_raw_dr6=0x" + U64(context, 104).ToString("X16") +
+                        " peer_raw_dr7=0x" + U64(context, 112).ToString("X16") +
+                        " peer_status_attributed=False peer_transaction_context=unknown peer_bld_bit_set=" + ((U64(context, 104) & 0x800) != 0);
                 if (!exact && !ownedTrap && !stoppedPeer) {
                     if (dispatchRefusal == null) {
                         bool callSite = value.dispatchState[0] != 0 && U64(context, 248) == value.dispatchState[0];
@@ -164,12 +174,14 @@ namespace ScientificSecurity
         internal string DispatchMetadata()
         {
             ResourceCheck(csrDispatch && resourceDestroyed, "dispatch-metadata-destruction");
-            return (csrPythonDispatch ? "WINDOWS_PYTHON_CSR_DISPATCH invocation_module_verified=False failing_request_verified=False paired=" :
+            string value = (csrPythonDispatch ? "WINDOWS_PYTHON_CSR_DISPATCH invocation_module_verified=False failing_request_verified=False paired=" :
                 csrModuleDispatch ? "WINDOWS_MODULE_CSR_DISPATCH invocation_module_verified=False python_equivalence_claimed=False paired=" : "WINDOWS_CSR_DISPATCH paired=") + resourceThreads.Captured + " target_equal=" + resourceThreads.BaseEqual +
                 (resourceThreads.Captured ? " request=0x1001001E length=0x000001F8 raw_return=0x" + resourceThreads.RawEax.ToString("X8") : "") +
                 " live_restored=" + resourceThreads.CaptureRestored + " natural_exit=" + resourceNaturalExit +
                 " state_destroyed=True observation_qualified=" + ResourceComplete() + resourceThreads.DispatchTraps +
                 " server_operation_verified=False cause_claimed=False target_admitted=False production_grant=False undebugged_equivalence_claimed=False";
+            ResourceCheck(value.Length <= 1024, "dispatch-metadata-budget");
+            return value;
         }
     }
 }

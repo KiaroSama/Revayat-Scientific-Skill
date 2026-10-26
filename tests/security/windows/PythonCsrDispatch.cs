@@ -103,6 +103,15 @@ namespace ScientificSecurity
                 }
             }
         }
+        internal static void CheckRejectedDispatch(Action dispatch)
+        {
+            bool latched = false, closed = false; Exception caught = null;
+            try {
+                CompleteHost(retain => { dispatch(); retain("fixed"); return HostResult; },
+                    () => closed = true, _ => { }, () => latched = true);
+            } catch (Exception failure) { caught = failure; }
+            Need(caught != null && closed && !latched);
+        }
         static void CheckComparison()
         {
             var operation = new InvalidOperationException("fixed trace"); var cleanup = new InvalidOperationException("fixed cleanup");

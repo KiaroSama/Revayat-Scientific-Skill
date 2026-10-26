@@ -12,7 +12,8 @@ namespace ScientificSecurity
             CheckDispatchReads();
             foreach (bool creator in new [] { false, true })
                 foreach (ulong baselineStatus in new ulong[] { 0, 0xFFFF0FF0 })
-                foreach (ulong rtm in new ulong[] { 0, 0x10000 }) foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
+                foreach (ulong rtm in new ulong[] { 0, 0x10000 }) foreach (ulong bld in new ulong[] { 0, 0x800 })
+                foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
                 var contexts = new Dictionary<IntPtr, byte[]>(); int writes = 0, targets = 0, closes = 0;
                 byte[] baseline = new byte[DebugContext.Size]; Put(baseline, 104, baselineStatus);
                 Action<uint> prepare = id => contexts[new IntPtr(id)] = (byte[])baseline.Clone();
@@ -22,17 +23,20 @@ namespace ScientificSecurity
                 registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
                 registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
                 registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => targets++); registry.Continued();
-                if (!new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 104) == 0xFFFF0FF0))
-                    throw new InvalidOperationException("CSR ARM did not initialize owned debug status");
+                if (!new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 104) == baselineStatus))
+                    throw new InvalidOperationException("CSR ARM did not preserve original API debug status");
                 Need(writes == 2 && new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 72) == 0x8000 &&
                     U64(contexts[new IntPtr(id)], 80) == 0x8007 && U64(contexts[new IntPtr(id)], 112) == 5));
                 uint selected = creator ? 11U : 12U, other = creator ? 12U : 11U;
                 byte[] peer = contexts[new IntPtr(other)];
-                Put(peer, 104, 0xFFFE0FF0UL | rtm); Put(peer, 112, 5UL | fixedBit);
+                ulong firstPeerStatus = 0xFFFE07F0UL | rtm | bld;
+                bool firstPeerNonexact = firstPeerStatus != baselineStatus || fixedBit != 0;
+                Put(peer, 104, firstPeerStatus); Put(peer, 112, 5UL | fixedBit);
                 byte[] trap = contexts[new IntPtr(selected)]; DispatchFixtureTrap(trap, false);
+                Put(trap, 104, 0xFFFE0FF1UL | rtm);
                 registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8000));
                 Need(targets == 1 && writes == 4 && !registry.Captured &&
-                    new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 104) == 0xFFFF0FF0));
+                    new [] { 11, 12 }.All(id => U64(contexts[new IntPtr(id)], 104) == baselineStatus));
                 Need(U64(contexts[new IntPtr(selected)], 72) == 0 && U64(contexts[new IntPtr(selected)], 80) == 0x8007 &&
                     U64(contexts[new IntPtr(selected)], 112) == 4 && U64(contexts[new IntPtr(other)], 72) == 0 &&
                     U64(contexts[new IntPtr(other)], 80) == 0 && U64(contexts[new IntPtr(other)], 112) == 0);
@@ -40,14 +44,29 @@ namespace ScientificSecurity
                 registry.Stop(7, 13, 2, false); registry.Enroll(13, new IntPtr(13), true); registry.Continued();
                 Need(writes == 4 && U64(contexts[new IntPtr(13)], 72) == 0 && U64(contexts[new IntPtr(13)], 80) == 0);
                 peer = contexts[new IntPtr(other)];
-                Put(peer, 104, 0xFFFE0FF0UL | rtm); Put(peer, 112, fixedBit);
+                ulong secondPeerStatus = firstPeerStatus ^ 0x10800UL;
+                Put(peer, 104, secondPeerStatus); Put(peer, 112, fixedBit);
                 trap = contexts[new IntPtr(selected)]; DispatchFixtureTrap(trap, true);
+                Put(trap, 104, 0xFFFE0FF2UL | rtm);
                 Put(trap, 184, UInt64.MaxValue); Put(trap, 192, UInt64.MaxValue);
                 registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8007)); registry.Continued();
                 Need(registry.Captured && registry.BaseEqual && registry.CaptureRestored && !registry.Failed &&
                     registry.RawEax == 0xC0150002 && registry.CreatorCapture == creator && writes == 6);
                 Need(contexts.Values.All(c => DebugContext.RawDebugEqual(baseline, c)));
-                Need(registry.DispatchTraps.Contains("call_transaction_context=unknown") && registry.DispatchTraps.Contains("return_raw_dr6="));
+                ulong retainedStatus = firstPeerNonexact ? firstPeerStatus : secondPeerStatus;
+                string peerSnapshot = " peer_raw_dr6=0x" + retainedStatus.ToString("X16") +
+                    " peer_raw_dr7=0x" + (firstPeerNonexact ? 5UL | fixedBit : fixedBit).ToString("X16") +
+                    " peer_status_attributed=False peer_transaction_context=unknown peer_bld_bit_set=" + ((retainedStatus & 0x800) != 0);
+                Need(registry.DispatchTraps.Contains("call_transaction_context=unknown") && registry.DispatchTraps.Contains("return_raw_dr6=") &&
+                    registry.DispatchTraps.EndsWith(peerSnapshot, StringComparison.Ordinal) &&
+                    registry.DispatchTraps.Split(new [] { "peer_raw_dr6=" }, StringSplitOptions.None).Length == 2);
+                var report = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", _ => { },
+                    resource: true, resourceDeadline: () => { }, dispatch: true, pythonDispatch: true);
+                report.resourceThreads = registry; report.resourceDestroyed = true; report.resourceNaturalExit = true;
+                string metadata = report.DispatchMetadata();
+                Need(metadata.Length <= 1024 && metadata.All(c => c <= 127) && metadata.Contains("raw_return=0xC0150002") &&
+                    metadata.Contains(peerSnapshot) && metadata.Contains("observation_qualified=True") &&
+                    !metadata.Contains("private-") && !metadata.Contains("000000000000800") && !metadata.Contains("0000000000009000"));
                 int beforeSoftware = writes;
                 Put(contexts[new IntPtr(11)], 104, 0xFFFE07F0);
                 registry.Stop(7, 11, 1, false); DispatchRefuse(() => registry.DispatchSoftware(11, true));
@@ -61,6 +80,86 @@ namespace ScientificSecurity
             }
             CheckDispatchFailures(); CheckDispatchRestoreDrift(); CheckDispatchMetadata(); CheckDispatchGenerations();
             CheckDispatchRefusalReporting(); CheckDispatchPeerRefusals(); CheckDispatchSetterReadback();
+            CheckDispatchSelectedBusLock(); CheckDispatchQueuedPeer();
+        }
+        static void CheckDispatchSelectedBusLock()
+        {
+            foreach (bool creator in new [] { false, true }) foreach (bool post in new [] { false, true }) {
+                var contexts = new Dictionary<IntPtr, byte[]> {
+                    { new IntPtr(11), new byte[DebugContext.Size] }, { new IntPtr(12), new byte[DebugContext.Size] }
+                };
+                int writes = 0;
+                var registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(),
+                    (handle, bytes) => { writes++; contexts[handle] = (byte[])bytes.Clone(); }, _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
+                registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => { }); registry.Continued();
+                uint selected = creator ? 11U : 12U;
+                byte[] trap = contexts[new IntPtr(selected)];
+                if (post) {
+                    DispatchFixtureTrap(trap, false);
+                    registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8000)); registry.Continued();
+                }
+                DispatchFixtureTrap(contexts[new IntPtr(selected)], post);
+                Put(contexts[new IntPtr(selected)], 104, post ? 0xFFFE07F2UL : 0xFFFF07F1UL);
+                registry.Stop(7, selected, 1, false); int before = writes;
+                DispatchRefuse(() => registry.CaptureDispatch(selected, true, new IntPtr(post ? 0x8007 : 0x8000)));
+                Need(writes == before && registry.Failed && !registry.Captured);
+                DispatchFixtureTrap(contexts[new IntPtr(selected)], post);
+                DispatchRefuse(() => registry.CaptureDispatch(selected, true, new IntPtr(post ? 0x8007 : 0x8000)));
+                Need(writes == before); registry.RestoreAll();
+                registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued(); registry.Destroyed();
+                Need(registry.Failed && registry.DestroyedState && !registry.CaptureRestored);
+            }
+        }
+        static void CheckDispatchQueuedPeer()
+        {
+            foreach (bool creator in new [] { false, true }) foreach (bool afterPost in new [] { false, true }) {
+                var contexts = new Dictionary<IntPtr, byte[]> {
+                    { new IntPtr(11), new byte[DebugContext.Size] }, { new IntPtr(12), new byte[DebugContext.Size] }
+                };
+                int calls = 0, continuations = 0;
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", _ => { },
+                    resource: true, resourceDeadline: () => { }, dispatch: true, pythonDispatch: true);
+                var registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(),
+                    (handle, bytes) => contexts[handle] = (byte[])bytes.Clone(), _ => { }, () => { });
+                observer.resourceThreads = registry;
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
+                registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => calls++); registry.Continued();
+                uint selected = creator ? 11U : 12U, peer = creator ? 12U : 11U;
+                Put(contexts[new IntPtr(peer)], 104, 0xFFFE07F0); Put(contexts[new IntPtr(peer)], 112, 0x405);
+                DispatchFixtureTrap(contexts[new IntPtr(selected)], false);
+                registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8000)); registry.Continued();
+                Need(U64(contexts[new IntPtr(peer)], 104) == 0);
+                if (afterPost) {
+                    DispatchFixtureTrap(contexts[new IntPtr(selected)], true);
+                    registry.Stop(7, selected, 1, false); registry.CaptureDispatch(selected, true, new IntPtr(0x8007)); registry.Continued();
+                    Need(registry.Captured && registry.CaptureRestored);
+                }
+                // The copied event remains SINGLE_STEP even after the peer context was rewritten.
+                observer.Stop(7, peer, 1);
+                Need(!observer.AcceptSoftware(peer, 0x80000004, true));
+                Exception dispatchFailure = null;
+                PythonCsrDispatch.CheckRejectedDispatch(() => {
+                    try {
+                        LoaderTrace.ActivationEvent(() => {
+                            if (!observer.SingleStep(peer, 0x80000004, true, new IntPtr(0x8000)) &&
+                                !observer.AcceptSoftware(peer, 0x80000004, true))
+                                throw new InvalidOperationException("resource observation encountered an unexpected exception");
+                        }, () => { observer.Invalidate(); observer.Restore(); }, new Action[0], () => { continuations++; observer.Continued(); });
+                    } catch (Exception failure) { dispatchFailure = failure; throw; }
+                    observer.RequireComplete();
+                });
+                Need(dispatchFailure is InvalidOperationException && dispatchFailure.Message ==
+                    "fixed resource observation refused check=" + (afterPost ? "dispatch-capture-state" : "dispatch-trap-site"));
+                Need(continuations == 1 && calls == 1 && registry.Failed && registry.Captured == afterPost);
+                DispatchFixtureTrap(contexts[new IntPtr(selected)], true);
+                observer.Stop(7, selected, 1); DispatchRefuse(() => observer.SingleStep(selected, 0x80000004, true, new IntPtr(0x8007)));
+                DispatchRefuse(observer.RequireComplete); observer.Continued();
+                observer.Stop(7, 11, 5, true); observer.Continued(); observer.Destroyed();
+                Need(registry.DestroyedState && registry.Failed);
+            }
         }
         static void CheckDispatchSetterReadback()
         {
@@ -78,7 +177,7 @@ namespace ScientificSecurity
                     " debug_equal=" + (offset == 120 || offset == 248) + " control_integer_equal=" + (offset >= 72 && offset <= 112) +
                     " dr0_equal=" + (offset != 72) + " dr1_equal=" + (offset != 80) + " dr2_equal=" + (offset != 88) +
                     " dr3_equal=" + (offset != 96) + " dr6_equal=" + (offset != 104 && offset != -1) + " dr7_equal=" + (offset != 112) +
-                    " desired_dr6=0x00000000FFFF0FF0 current_dr6=0x" + (offset == 104 || offset == -1 ? "00000000FFFF0FF1" : "00000000FFFF0FF0") +
+                    " desired_dr6=0x0000000000000000 current_dr6=0x" + (offset == 104 || offset == -1 ? "0000000000000001" : "0000000000000000") +
                     " desired_dr7=0x0000000000000005 current_dr7=0x" + (offset == 112 ? "0000000000000004" : "0000000000000005");
                 if (refusal != expected) throw new InvalidOperationException("CSR setter refusal metadata did not identify its exact comparison");
                 Need(refusal.Length <= 1024 && refusal.All(c => c <= 127) && !refusal.Contains("000000000000800") && !refusal.Contains("0000000000009000"));
@@ -227,6 +326,7 @@ namespace ScientificSecurity
                 }
                 Put(contexts[new IntPtr(12)], mode == 1 ? 112 : 104, mode == 1 ? 0x9999UL : 0xFFFE0FF0UL);
                 if (mode == 0) DispatchFixtureTrap(contexts[new IntPtr(12)], false);
+                if (mode == 1) Put(contexts[new IntPtr(12)], 104, 0);
                 int before = writes; Exception caught = null;
                 if (mode < 2) {
                     DispatchFixtureTrap(contexts[new IntPtr(11)], mode == 1);
@@ -243,8 +343,8 @@ namespace ScientificSecurity
                     " cleanup=" + (mode >= 2) + " event_thread_equal=" + (mode == 3) + " dr6_equal=" + (mode == 1) +
                     " dr7_equal=" + (mode >= 2) + " call_site_match=" + (mode == 0) +
                     " post_site_match=False call_status_match=" + (mode == 0) + " post_status_match=False" +
-                    " stored_dr6=0x00000000FFFF0FF0 stored_dr7=0x" + (mode == 0 ? "0000000000000005" : "0000000000000000") +
-                    " current_dr6=0x" + (mode == 0 ? "00000000FFFF0FF1" : mode == 1 ? "00000000FFFF0FF0" : "00000000FFFE0FF0") +
+                    " stored_dr6=0x0000000000000000 stored_dr7=0x" + (mode == 0 ? "0000000000000005" : "0000000000000000") +
+                    " current_dr6=0x" + (mode == 0 ? "00000000FFFF0FF1" : mode == 1 ? "0000000000000000" : "00000000FFFE0FF0") +
                     " current_dr7=0x" + (mode == 1 ? "0000000000009999" : mode == 0 ? "0000000000000405" : "0000000000000000") +
                     " transaction_context=unknown";
                 Exception first = caught;
@@ -270,7 +370,7 @@ namespace ScientificSecurity
             foreach (int offset in new [] { 72, 80, 88, 96 }) changes.Add(Tuple.Create(offset, 0x9999UL));
             foreach (ulong bit in new ulong[] { 1, 2, 4, 8, 0x1000, 0x2000, 0x4000, 0x8000, 0x100000000 })
                 changes.Add(Tuple.Create(104, 0xFFFF0FF0UL | bit));
-            changes.Add(Tuple.Create(104, 0xFFFF07F0UL)); changes.Add(Tuple.Create(104, 0xFFFF0FE0UL));
+            changes.Add(Tuple.Create(104, 0xFFFF0FE0UL)); changes.Add(Tuple.Create(104, 0xFFFF0FB0UL));
             foreach (ulong bit in new ulong[] { 2, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x800, 0x1000, 0x2000, 0x10000, 0x40000, 0x100000000 })
                 changes.Add(Tuple.Create(112, 0x405UL | bit));
             foreach (var change in changes) {
