@@ -68,10 +68,20 @@ namespace ScientificSecurity
                     metadata.Contains(peerSnapshot) && metadata.Contains("observation_qualified=True") &&
                     !metadata.Contains("private-") && !metadata.Contains("000000000000800") && !metadata.Contains("0000000000009000"));
                 int beforeSoftware = writes;
-                Put(contexts[new IntPtr(11)], 104, 0xFFFE07F0);
+                Put(contexts[new IntPtr(11)], 104, 0xFFFE17F0);
                 registry.Stop(7, 11, 1, false); DispatchRefuse(() => registry.DispatchSoftware(11, true));
-                Need(writes == beforeSoftware); Put(contexts[new IntPtr(11)], 104, baselineStatus);
-                Need(registry.DispatchSoftware(11, true)); registry.Continued();
+                Need(writes == beforeSoftware && registry.SoftwareTrap == null);
+                Put(contexts[new IntPtr(11)], 104, 0xFFFE07F0);
+                Need(registry.DispatchSoftware(11, true));
+                string firstSoftware = registry.SoftwareTrap;
+                Put(contexts[new IntPtr(11)], 104, baselineStatus);
+                DispatchRefuse(() => registry.DispatchSoftware(11, true));
+                Need(writes == beforeSoftware && registry.SoftwareTrap == firstSoftware);
+                metadata = report.DispatchMetadata();
+                Need(metadata.Length <= 1024 && metadata.All(c => c <= 127) && metadata.Contains(peerSnapshot) &&
+                    metadata.Contains("software_raw_dr6=0x00000000FFFE07F0") && metadata.Contains("software_origin_verified=False") &&
+                    metadata.Contains("call_rtm_bit_set=") && metadata.Contains("return_rtm_bit_set="));
+                registry.Continued();
                 registry.Stop(7, 12, 4, false); registry.Continued();
                 prepare(14); registry.Stop(7, 12, 2, false);
                 DispatchRefuse(() => registry.Enroll(12, new IntPtr(14), true)); registry.Continued();
@@ -80,7 +90,44 @@ namespace ScientificSecurity
             }
             CheckDispatchFailures(); CheckDispatchRestoreDrift(); CheckDispatchMetadata(); CheckDispatchGenerations();
             CheckDispatchRefusalReporting(); CheckDispatchPeerRefusals(); CheckDispatchSetterReadback();
-            CheckDispatchSelectedBusLock(); CheckDispatchQueuedPeer();
+            CheckDispatchSelectedBusLock(); CheckDispatchQueuedPeer(); CheckDispatchSoftwarePresentation();
+        }
+        static void CheckDispatchSoftwarePresentation()
+        {
+            foreach (int phase in new [] { 0, 1, 2 })
+                foreach (ulong status in new ulong[] { 0, 0xFFFE07F0, 0xFFFE0FF0, 0xFFFF07F0, 0xFFFF0FF0 })
+                foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
+                byte[] context = new byte[DebugContext.Size]; int reads = 0, writes = 0;
+                var registry = new ResourceThreads(7, 11, _ => { reads++; return (byte[])context.Clone(); },
+                    (_, bytes) => { writes++; context = (byte[])bytes.Clone(); }, _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                if (phase != 0) { registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => { }); registry.Continued(); }
+                if (phase == 2) {
+                    DispatchFixtureTrap(context, false);
+                    registry.Stop(7, 11, 1, false); registry.CaptureDispatch(11, true, new IntPtr(0x8000)); registry.Continued();
+                    DispatchFixtureTrap(context, true);
+                    registry.Stop(7, 11, 1, false); registry.CaptureDispatch(11, true, new IntPtr(0x8007)); registry.Continued();
+                }
+                Put(context, 104, status); Put(context, 112, (phase == 1 ? 5UL : 0UL) | fixedBit);
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", _ => { },
+                    resource: true, resourceDeadline: () => { }, dispatch: true, pythonDispatch: true);
+                observer.resourceThreads = registry; observer.Stop(7, 11, 1);
+                Need(!observer.AcceptSoftware(11, 0x80000004, true));
+                int beforeReads = reads;
+                DispatchRefuse(() => observer.AcceptSoftware(12, 0x80000003, true));
+                DispatchRefuse(() => observer.AcceptSoftware(11, 0x80000003, false));
+                Need(reads == beforeReads && registry.SoftwareTrap == null);
+                bool accepted = phase == 0 ? status == 0 && fixedBit == 0 : phase == 1 ? status != 0 : status != 0 || fixedBit == 0;
+                if (accepted) {
+                    Need(observer.AcceptSoftware(11, 0x80000003, true));
+                    string snapshot = registry.SoftwareTrap;
+                    DispatchRefuse(() => observer.AcceptSoftware(11, 0x80000003, true));
+                    Need(snapshot == registry.SoftwareTrap && snapshot.Contains("software_raw_dr6=0x" + status.ToString("X16")));
+                    if (phase != 2) PythonCsrDispatch.CheckRejectedDispatch(observer.RequireComplete);
+                } else DispatchRefuse(() => observer.AcceptSoftware(11, 0x80000003, true));
+                Need(writes == (phase == 0 ? 0 : phase == 1 ? 1 : 3) && registry.Captured == (phase == 2) && registry.CaptureRestored == (phase == 2));
+                observer.Continued();
+            }
         }
         static void CheckDispatchSelectedBusLock()
         {
@@ -127,6 +174,9 @@ namespace ScientificSecurity
                 registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
                 registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
                 registry.Stop(7, 11, 6, false); registry.ArmDispatch(0x8000, 0x8007, () => calls++); registry.Continued();
+                Put(contexts[new IntPtr(11)], 104, 0xFFFE07F0); Put(contexts[new IntPtr(11)], 112, 0x405);
+                observer.Stop(7, 11, 1); Need(observer.AcceptSoftware(11, 0x80000003, true)); observer.Continued();
+                string softwareSnapshot = registry.SoftwareTrap;
                 uint selected = creator ? 11U : 12U, peer = creator ? 12U : 11U;
                 Put(contexts[new IntPtr(peer)], 104, 0xFFFE07F0); Put(contexts[new IntPtr(peer)], 112, 0x405);
                 DispatchFixtureTrap(contexts[new IntPtr(selected)], false);
@@ -153,7 +203,7 @@ namespace ScientificSecurity
                 });
                 Need(dispatchFailure is InvalidOperationException && dispatchFailure.Message ==
                     "fixed resource observation refused check=" + (afterPost ? "dispatch-capture-state" : "dispatch-trap-site"));
-                Need(continuations == 1 && calls == 1 && registry.Failed && registry.Captured == afterPost);
+                Need(continuations == 1 && calls == 1 && registry.Failed && registry.Captured == afterPost && registry.SoftwareTrap == softwareSnapshot);
                 DispatchFixtureTrap(contexts[new IntPtr(selected)], true);
                 observer.Stop(7, selected, 1); DispatchRefuse(() => observer.SingleStep(selected, 0x80000004, true, new IntPtr(0x8007)));
                 DispatchRefuse(observer.RequireComplete); observer.Continued();

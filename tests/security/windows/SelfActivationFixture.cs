@@ -75,6 +75,17 @@ namespace ScientificSecurity
                 accept();
             }, SelfActivationRole.ExplicitId2);
         }
+        internal static void CheckRejectedEntry(Action observation)
+        {
+            bool latched = false, closed = false; Exception caught = null;
+            try {
+                CompleteEntryHost(retain => {
+                    observation(); retain("fixed-metadata");
+                    return Success.Replace("WINDOWS_SELF_ACTIVATION", Label(SelfActivationRole.ExplicitId2)).TrimEnd('\n');
+                }, () => closed = true, _ => { }, () => latched = true);
+            } catch (Exception failure) { caught = failure; }
+            Need(caught != null && closed && !latched);
+        }
         internal static void CheckEntryHostValidation()
         {
             IOException operation = new IOException("fixed host observation"), cleanup = new IOException("fixed lease close"), reporting = new IOException("fixed report");

@@ -87,6 +87,7 @@ namespace ScientificSecurity
             Need(destruction != null && registry.Failed && !registry.CaptureRestored);
             int beforeReads = reads; registry.Stop(7, 11, 6, true); registry.RestoreAll(); Need(reads == beforeReads);
             CheckResourcePreArm();
+            CheckResourceSoftwarePresentation();
             CheckResourceRefusal();
             CheckResourceFinalization();
             // An unsupported event clears authority before any context access.
@@ -140,6 +141,39 @@ namespace ScientificSecurity
                 }
             }
         }
+        static void CheckResourceSoftwarePresentation()
+        {
+            foreach (ulong status in new ulong[] { 0xFFFE07F0, 0xFFFE0FF0, 0xFFFF07F0, 0xFFFF0FF0 })
+                foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
+                byte[] context = new byte[DebugContext.Size]; int writes = 0;
+                var registry = new ResourceThreads(7, 11, _ => (byte[])context.Clone(),
+                    (_, bytes) => { writes++; context = (byte[])bytes.Clone(); }, _ => { }, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 11, 6, false); registry.Arm(0x8000); registry.Continued();
+                Put(context, 104, status); Put(context, 112, 1UL | fixedBit);
+                registry.Stop(7, 11, 1, false); Need(registry.Software(11, true));
+                string first = registry.SoftwareTrap;
+                Need(writes == 1 && !registry.Captured && !registry.CaptureRestored &&
+                    first.Contains("software_raw_dr6=0x" + status.ToString("X16")) && first.Contains("software_origin_verified=False"));
+                bool repeated = false; Put(context, 104, status ^ 0x10800UL);
+                try { registry.Software(11, true); } catch (InvalidOperationException) { repeated = true; }
+                Need(repeated && registry.SoftwareTrap == first && writes == 1);
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", _ => { },
+                    resource: true, resourceDeadline: () => { });
+                observer.resourceThreads = registry; observer.resourceDestroyed = true;
+                string metadata = observer.ResourceMetadata();
+                Need(metadata.Length <= 1024 && metadata.Contains(first) && metadata.Contains("observation_qualified=False") && !metadata.Contains("private-"));
+                bool incomplete = false; try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
+                Need(incomplete); registry.Continued();
+                Put(context, 104, 0xFFFE0FF1); Put(context, 112, 0x401);
+                Put(context, 248, 0x8000); Put(context, 176, 0x10000000);
+                registry.Stop(7, 11, 1, false); Need(registry.Capture(11, true, new IntPtr(0x8000), 0x10000000)); registry.Continued();
+                observer.Stop(7, 11, 5); observer.ResourceExit(false); observer.Continued(); observer.Destroyed();
+                metadata = observer.ResourceMetadata(); observer.RequireComplete();
+                Need(metadata.Length <= 1024 && metadata.Contains(first) && metadata.Contains("raw_dr6=0x00000000FFFE0FF1") &&
+                    metadata.Contains("observation_qualified=True") && writes == 2 && !metadata.Contains("private-"));
+            }
+        }
         static void CheckResourceRefusal()
         {
             var contexts = new Dictionary<IntPtr, byte[]> { { new IntPtr(11), new byte[1232] } };
@@ -169,11 +203,11 @@ namespace ScientificSecurity
                 (handle, bytes) => contexts[handle] = (byte[])bytes.Clone(), _ => { }, () => { });
             registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
             registry.Stop(7, 11, 6, false); registry.Arm(0x8000); registry.Continued();
-            Put(contexts[new IntPtr(11)], 104, 0xFFFE07F0); Put(contexts[new IntPtr(11)], 112, 0x401);
+            Put(contexts[new IntPtr(11)], 104, 0xFFFE17F0); Put(contexts[new IntPtr(11)], 112, 0x401);
             registry.Stop(7, 11, 1, false); caught = null;
             try { registry.Software(11, true); } catch (InvalidOperationException error) { caught = error; }
             Need(caught != null && caught.Message == "fixed resource observation refused check=software-control-ownership " +
-                "raw_dr6=0x00000000FFFE07F0 rtm_bit_set=False bld_bit_set=False transaction_context=unknown raw_dr7=0x0000000000000401");
+                "raw_dr6=0x00000000FFFE17F0 rtm_bit_set=False bld_bit_set=False transaction_context=unknown raw_dr7=0x0000000000000401");
         }
         static void CheckResourceFinalization()
         {

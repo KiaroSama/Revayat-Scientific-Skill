@@ -43,20 +43,24 @@ namespace ScientificSecurity
             RequireExecutable(kernel, site, 5);
             byte[] before = Read();
             try {
-                if (initial) Ownership(before, false);
-                else Need(DebugContext.RawDebugEqual(original, before));
+                CallbackLoadOwnership(before);
                 addresses[0] = kernel.Address(site);
                 enabled[0] = true; stage = 2; Apply(before, false);
             }
             finally { Array.Clear(before, 0, before.Length); }
             emit("phase=module-callback-load identity_equal=True fixed_profile=True dr0_armed=True entry_armed=False control_integer_unchanged=True");
         }
+        void CallbackLoadOwnership(byte[] context)
+        {
+            if (initial) Ownership(context, false);
+            else Need(DebugContext.RawDebugEqual(original, context));
+        }
         bool CallbackSoftware(uint eventThread, uint code, bool first)
         {
             if (code != 0x80000003) return false;
             Check(CallbackSoftwareStage(eventThread, code, first), "software-stage");
             byte[] before = Read(); string qualifiers;
-            try { Ownership(before, false); qualifiers = DebugContext.TrapQualifiers(U64(before, 104)); initial = true; }
+            try { AcceptSoftwareContext(before); qualifiers = DebugContext.TrapQualifiers(U64(before, 104)); }
             finally { Array.Clear(before, 0, before.Length); }
             emit("phase=module-callback-software-stop origin_verified=False ordering_only=True " + qualifiers);
             return true;

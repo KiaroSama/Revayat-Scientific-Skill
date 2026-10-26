@@ -34,6 +34,7 @@ namespace ScientificSecurity
             internal bool CreatorCapture { get; private set; }
             internal uint RawEax { get; private set; }
             internal string Trap { get; private set; }
+            internal string SoftwareTrap { get; private set; }
             internal bool CaptureRestored { get { return captureRestored; } }
             internal bool Failed { get { return failed; } }
             internal bool DestroyedState { get { return destroyed; } }
@@ -178,7 +179,7 @@ namespace ScientificSecurity
                     if (!qualified)
                         throw new InvalidOperationException("fixed resource observation refused check=software-control-ownership " +
                             DebugContext.TrapQualifiers(U64(context, 104)) + " raw_dr7=0x" + U64(context, 112).ToString("X16"));
-                    initial = true; return true;
+                    SoftwareTrap = SoftwareQualifiers(context); initial = true; return true;
                 } finally { Array.Clear(context, 0, context.Length); }
             }
             internal void Invalidate() { failed = true; }
@@ -247,12 +248,13 @@ namespace ScientificSecurity
         internal string ResourceMetadata()
         {
             ResourceCheck(automaticResource && resourceDestroyed, "metadata-destruction");
-            return "WINDOWS_AUTOMATIC_RESOURCE traced=True process_scope=True first_delivery=" + resourceThreads.Captured + " captured=" + resourceThreads.Captured +
+            string value = "WINDOWS_AUTOMATIC_RESOURCE traced=True process_scope=True first_delivery=" + resourceThreads.Captured + " captured=" + resourceThreads.Captured +
                 " creator=" + resourceThreads.CreatorCapture + (resourceThreads.Captured ? " raw_eax=0x" + resourceThreads.RawEax.ToString("X8") : "") +
                 " register_base_equal=" + resourceThreads.BaseEqual + " capture_live_restored=" + resourceThreads.CaptureRestored +
                 " prior_dead_retired=" + resourceThreads.PriorDeadRetired + " retired_count=" + resourceThreads.Retired + " enrolled_count=" + resourceThreads.Enrolled +
                 " natural_exit=" + resourceNaturalExit + " state_destroyed=True observation_qualified=" + ResourceComplete() +
-                (resourceThreads.Trap == null ? "" : " " + resourceThreads.Trap) + " cause_claimed=False undebugged_equivalence_claimed=False";
+                (resourceThreads.Trap == null ? "" : " " + resourceThreads.Trap) + resourceThreads.SoftwareTrap + " cause_claimed=False undebugged_equivalence_claimed=False";
+            ResourceCheck(value.Length <= 1024, "resource-metadata-budget"); return value;
         }
     }
 }

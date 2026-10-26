@@ -8,6 +8,9 @@ namespace ScientificSecurity
     {
         public static void CheckValidation()
         {
+            if (!SoftwareStatus(0xFFFE07F0, 0x401, 1))
+                throw new InvalidOperationException("software breakpoint rejected supported API status presentation");
+            CheckSoftwarePresentation();
             KernelImage.CheckActivationBoundaryValidation();
             LoaderTrace.CheckActivationEventValidation();
             LoaderTrace.CheckActivationDestructionValidation();
@@ -104,16 +107,16 @@ namespace ScientificSecurity
             incomplete = false;
             try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
             Need(incomplete);
-            foreach (ulong rtm in new ulong[] { 0, 0x10000 })
-                foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
-                    ulong status = 0xFFFE0FF0UL | rtm, control = 1UL | fixedBit;
-                    Need(SoftwareStatus(status, control, 1));
+            foreach (ulong rtm in new ulong[] { 0, 0x10000 }) foreach (ulong bld in new ulong[] { 0, 0x800 })
+                foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) foreach (ulong expected in new ulong[] { 0, 1, 4, 5, 0x400, 0x401, 0x404, 0x405 }) {
+                    ulong status = 0xFFFE07F0UL | rtm | bld, control = expected ^ fixedBit;
+                    Need(SoftwareStatus(status, control, expected));
                     foreach (ulong foreign in new ulong[] { 1, 2, 4, 8, 0x1000, 0x2000, 0x4000, 0x8000, 0x100000000 })
-                        Need(!SoftwareStatus(status | foreign, control, 1));
-                    Need(!SoftwareStatus(status ^ 0x800, control, 1) && !SoftwareStatus(status ^ 0x10, control, 1));
-                    foreach (ulong foreign in new ulong[] { 2, 4, 0x100, 0x200, 0x800, 0x2000, 0x10000, 0x40000, 0x100000000 })
-                        Need(!SoftwareStatus(status, control | foreign, 1));
-                    Need(!SoftwareStatus(status, control | 0x800, 0x801));
+                        Need(!SoftwareStatus(status | foreign, control, expected));
+                    Need(!SoftwareStatus(status ^ 0x10, control, expected));
+                    foreach (ulong foreign in new ulong[] { 2, 8, 0x100, 0x200, 0x800, 0x2000, 0x10000, 0x40000, 0x100000000 })
+                        Need(!SoftwareStatus(status, control | foreign, expected));
+                    Need(!SoftwareStatus(status, control | 0x800, expected | 0x800));
                 }
             observer.original = new byte[DebugContext.Size]; observer.enabled[0] = true;
             observer.addresses[0] = 0x1000; observer.initial = false;
@@ -155,6 +158,7 @@ namespace ScientificSecurity
         uint eventCode;
         bool eventCreator, eventFirst;
         bool stopped, initial, changed, restored, invalidated, alive = true;
+        string softwareTrap;
         internal ActivationBoundaryTrace(IntPtr processHandle, IntPtr threadHandle, uint processId, uint threadId,
             string executable, string imageDigest, Action<string> output, bool callback = false, bool entry = false,
             bool resource = false, Action resourceDeadline = null, bool dispatch = false, bool moduleDispatch = false, bool pythonDispatch = false)
@@ -262,9 +266,13 @@ namespace ScientificSecurity
             for (int index = 0; index < 2; index++) if (enabled[index]) value |= 1UL << (index * 2);
             return value;
         }
+        static string SoftwareQualifiers(byte[] context)
+        { return " software_" + DebugContext.TrapQualifiers(U64(context, 104)).Replace(" ", " software_") + " software_origin_verified=False"; }
+        void AcceptSoftwareContext(byte[] context)
+        { Need(!initial); Ownership(context, false); softwareTrap = SoftwareQualifiers(context); initial = true; }
         static bool SoftwareStatus(ulong status, ulong control, ulong expectedControl)
         {
-            return (status & ~0x10000UL) == 0xFFFE0FF0UL && (expectedControl & ~0x405UL) == 0 &&
+            return (status & ~(0x10000UL | 0x800UL)) == 0xFFFE07F0UL && (expectedControl & ~0x405UL) == 0 &&
                 ((control ^ expectedControl) & ~0x400UL) == 0;
         }
         void Ownership(byte[] context, bool trap)
@@ -323,7 +331,7 @@ namespace ScientificSecurity
             if (code != 0x80000003) return false;
             Check(Software(stage, initial, eventThread, tid, first), "software-stage");
             byte[] before = Read(); string qualifiers;
-            try { Ownership(before, false); qualifiers = DebugContext.TrapQualifiers(U64(before, 104)); initial = true; }
+            try { AcceptSoftwareContext(before); qualifiers = DebugContext.TrapQualifiers(U64(before, 104)); }
             finally { Array.Clear(before, 0, before.Length); }
             emit("phase=activation-software-stop origin_verified=False ordering_only=True " + qualifiers); return true;
         }

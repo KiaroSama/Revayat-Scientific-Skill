@@ -115,7 +115,7 @@ namespace ScientificSecurity
                     ResourceCheck(dispatchPair == null ? DebugContext.RawDebugEqual(value.baseline, context) :
                         SoftwareStatus(U64(context, 104), U64(context, 112), control) ||
                         Captured && captureRestored && !failed && DebugContext.RawDebugEqual(value.baseline, context), "dispatch-software-control");
-                    initial = true; return true;
+                    SoftwareTrap = SoftwareQualifiers(context); initial = true; return true;
                 } finally { Array.Clear(context, 0, context.Length); }
             }
         }
@@ -178,7 +178,7 @@ namespace ScientificSecurity
                 csrModuleDispatch ? "WINDOWS_MODULE_CSR_DISPATCH invocation_module_verified=False python_equivalence_claimed=False paired=" : "WINDOWS_CSR_DISPATCH paired=") + resourceThreads.Captured + " target_equal=" + resourceThreads.BaseEqual +
                 (resourceThreads.Captured ? " request=0x1001001E length=0x000001F8 raw_return=0x" + resourceThreads.RawEax.ToString("X8") : "") +
                 " live_restored=" + resourceThreads.CaptureRestored + " natural_exit=" + resourceNaturalExit +
-                " state_destroyed=True observation_qualified=" + ResourceComplete() + resourceThreads.DispatchTraps +
+                " state_destroyed=True observation_qualified=" + ResourceComplete() + resourceThreads.DispatchTraps + resourceThreads.SoftwareTrap +
                 " server_operation_verified=False cause_claimed=False target_admitted=False production_grant=False undebugged_equivalence_claimed=False";
             ResourceCheck(value.Length <= 1024, "dispatch-metadata-budget");
             return value;

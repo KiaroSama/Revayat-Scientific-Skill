@@ -28,13 +28,17 @@ namespace ScientificSecurity
             addresses[0] = fixture.Address(fixture.Entry); enabled[0] = true; stage = 1;
             Apply(original, false);
         }
+        bool EntrySoftwareStage(uint eventThread, uint code, bool first)
+        {
+            return !invalidated && (stage == 1 || stage == 2) &&
+                LoaderTrace.AcceptInitialBreakpoint(eventThread, tid, code, first, initial, null);
+        }
         bool EntrySoftware(uint eventThread, uint code, bool first)
         {
             if (code != 0x80000003) return false;
-            Need(!invalidated && (stage == 1 || stage == 2) &&
-                LoaderTrace.AcceptInitialBreakpoint(eventThread, tid, code, first, initial, null));
+            Need(EntrySoftwareStage(eventThread, code, first));
             byte[] before = Read();
-            try { Ownership(before, false); initial = true; }
+            try { AcceptSoftwareContext(before); }
             finally { Array.Clear(before, 0, before.Length); }
             return true;
         }
@@ -44,14 +48,18 @@ namespace ScientificSecurity
             Need(!invalidated && stage == 1 && !entryHit && original != null && stopped && alive);
             byte[] before = Read();
             try {
-                Ownership(before, true);
-                ulong status = U64(before, 104);
-                Need(EntryTrapAccepted(eventThread, tid, first, enabled[0], U64(before, 248), addresses[0],
-                    unchecked((ulong)exceptionAddress.ToInt64()), status, U64(before, 112), Control()));
-                EntryHit(status, () => Apply(before, true));
+                EntryHardwareContext(eventThread, first, exceptionAddress, before, () => Apply(before, true));
                 return true;
             }
             finally { Array.Clear(before, 0, before.Length); }
+        }
+        void EntryHardwareContext(uint eventThread, bool first, IntPtr exceptionAddress, byte[] context, Action restore)
+        {
+            Ownership(context, true);
+            ulong status = U64(context, 104);
+            Need(EntryTrapAccepted(eventThread, tid, first, enabled[0], U64(context, 248), addresses[0],
+                unchecked((ulong)exceptionAddress.ToInt64()), status, U64(context, 112), Control()));
+            EntryHit(status, restore);
         }
         static bool EntryTrapAccepted(uint actual, uint creator, bool first, bool active, ulong rip, ulong configured,
             ulong exception, ulong status, ulong control, ulong expected)
@@ -73,9 +81,10 @@ namespace ScientificSecurity
         internal string EntryMetadata()
         {
             Need(entryOnly && entryDestroyed);
-            return "WINDOWS_EXPLICIT_ENTRY traced=True creator_scope=True entry_observed=" + entryHit +
+            string value = "WINDOWS_EXPLICIT_ENTRY traced=True creator_scope=True entry_observed=" + entryHit +
                 " restored=" + restored + " natural_exit=" + entryNaturalExit + " state_destroyed=True observation_qualified=" + EntryComplete() +
-                entryTrap + " cause_claimed=False undebugged_equivalence_claimed=False";
+                entryTrap + softwareTrap + " cause_claimed=False undebugged_equivalence_claimed=False";
+            ResourceCheck(value.Length <= 1024, "entry-metadata-budget"); return value;
         }
         bool EntryComplete() { return entryHit && restored && entryNaturalExit && !invalidated; }
         internal static void CheckEntryLifetimeValidation(KernelImage image)
@@ -137,6 +146,94 @@ namespace ScientificSecurity
             catch (AggregateException failure) { group = failure; }
             Need(failed.invalidated && !failed.RestorationAllowed && attempts == 3 && group != null && group.InnerExceptions.Count == 2 &&
                 Object.ReferenceEquals(group.InnerExceptions[0], closeFailure) && Object.ReferenceEquals(group.InnerExceptions[1], continuationFailure));
+        }
+        static void CheckSoftwarePresentation()
+        {
+            foreach (int role in new [] { 0, 1, 2 }) foreach (int state in new [] { 1, 2, 3 })
+                foreach (ulong status in new ulong[] { 0xFFFE07F0, 0xFFFE0FF0, 0xFFFF07F0, 0xFFFF0FF0 })
+                foreach (ulong fixedBit in new ulong[] { 0, 0x400 }) {
+                if (role == 0 && state != 1 || role == 2 && state == 3) continue;
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", _ => { },
+                    callback: role == 1, entry: role == 2);
+                observer.stage = state; observer.original = new byte[DebugContext.Size]; observer.stopped = true;
+                bool armed = role == 0 || role == 1 && state == 2 || role == 2 && state == 1;
+                observer.addresses[0] = armed ? 0x8000UL : 0UL; observer.enabled[0] = armed;
+                byte[] context = Desired(observer.original, observer.original, observer.addresses, observer.enabled, false);
+                Put(context, 104, status); Put(context, 112, observer.Control() ^ fixedBit);
+                Func<uint, uint, bool, bool> allowed = (id, code, first) => role == 1 ? observer.CallbackSoftwareStage(id, code, first) :
+                    role == 2 ? observer.EntrySoftwareStage(id, code, first) : code == 0x80000003 && Software(state, observer.initial, id, 11, first);
+                Need(allowed(11, 0x80000003, true) && !allowed(12, 0x80000003, true) &&
+                    !allowed(11, 0x80000004, true) && !allowed(11, 0x80000003, false));
+                if (role == 1) {
+                    bool refused = false;
+                    try { observer.CallbackLoadOwnership(context); } catch (InvalidOperationException) { refused = true; }
+                    Need(refused); observer.CallbackLoadOwnership(observer.original);
+                }
+                foreach (int offset in new [] { 72, 80, 88, 96, 104, 112 }) {
+                    byte[] foreign = (byte[])context.Clone(); Put(foreign, offset, U64(foreign, offset) ^ (offset == 104 ? 0x1000UL : offset == 112 ? 0x800UL : 1UL));
+                    bool refused = false;
+                    try { observer.AcceptSoftwareContext(foreign); } catch (InvalidOperationException) { refused = true; }
+                    Need(refused && !observer.initial && observer.softwareTrap == null);
+                }
+                observer.AcceptSoftwareContext(context); string firstSnapshot = observer.softwareTrap;
+                Need(observer.initial && observer.stage == state && !observer.entryHit && !observer.restored &&
+                    firstSnapshot.Contains("software_raw_dr6=0x" + status.ToString("X16")) && firstSnapshot.Contains("software_origin_verified=False"));
+                Need(!allowed(11, 0x80000003, true));
+                Put(context, 104, status ^ 0x10800UL);
+                bool repeated = false;
+                try { observer.AcceptSoftwareContext(context); } catch (InvalidOperationException) { repeated = true; }
+                Need(repeated && observer.softwareTrap == firstSnapshot);
+                if (role == 1) observer.CallbackLoadOwnership(context);
+                else {
+                    bool incomplete = false; try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
+                    Need(incomplete);
+                }
+                if (role == 2) {
+                    observer.entryDestroyed = true;
+                    string metadata = observer.EntryMetadata();
+                    Need(metadata.Length <= 1024 && metadata.Contains(firstSnapshot) && metadata.Contains("entry_observed=False") &&
+                        !metadata.Contains("private-") && !metadata.Contains("0000000000008000"));
+                    SelfActivationFixture.CheckRejectedEntry(observer.RequireComplete);
+                    if (state == 1) {
+                        observer.EntryHit(0xFFFE0FF1, () => observer.restored = true); observer.entryNaturalExit = true;
+                        metadata = observer.EntryMetadata();
+                        Need(metadata.Length <= 1024 && metadata.Contains(firstSnapshot) && metadata.Contains("raw_dr6=0x00000000FFFE0FF1") &&
+                            metadata.Contains("entry_observed=True") && metadata.Contains("observation_qualified=True"));
+                    }
+                }
+            }
+            CheckSoftwareThenHardwareFailure();
+        }
+        static void CheckSoftwareThenHardwareFailure()
+        {
+            for (int mode = 0; mode < 6; mode++) {
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, entry: true);
+                observer.stage = 1; observer.original = new byte[DebugContext.Size]; observer.stopped = true;
+                observer.addresses[0] = 0x8000; observer.enabled[0] = true;
+                byte[] context = Desired(observer.original, observer.original, observer.addresses, observer.enabled, false);
+                Put(context, 104, 0xFFFE07F0); Put(context, 112, 0x401);
+                Need(observer.EntrySoftwareStage(11, 0x80000003, true)); observer.AcceptSoftwareContext(context);
+                Put(context, 104, mode == 0 ? 0xFFFE07F1UL : mode == 1 ? 0xFFFE0FF3UL : 0xFFFE0FF1UL);
+                Put(context, 248, mode == 2 ? 0x8001UL : 0x8000UL);
+                int restores = 0, continuations = 0; Exception caught = null;
+                try {
+                    LoaderTrace.FinalizeEntryEvent(observer, 1, IntPtr.Zero, false, () => {
+                        if (mode == 5 && !observer.SingleStep(11, 0xC0000005, true, new IntPtr(0x8000)) &&
+                            !observer.AcceptSoftware(11, 0xC0000005, true))
+                            throw new InvalidOperationException("fixed entry observation encountered an unexpected exception");
+                        observer.EntryHardwareContext(mode == 3 ? 12U : 11U, mode != 4, new IntPtr(0x8000), context, () => restores++);
+                    }, () => { }, new Action[0], status => { Need(status == 0x80010001); continuations++; });
+                } catch (InvalidOperationException failure) { caught = failure; }
+                Need(caught != null && continuations == 1 && restores == 0 && observer.invalidated && !observer.entryHit && !observer.EntryComplete());
+                Put(context, 104, 0xFFFE0FF1); Put(context, 248, 0x8000);
+                Need(!observer.EntrySoftwareStage(11, 0x80000003, true));
+                bool laterRejected = false;
+                try { observer.SingleStep(11, 0x80000004, true, new IntPtr(0x8000)); } catch (InvalidOperationException) { laterRejected = true; }
+                Need(laterRejected && !observer.entryHit);
+                bool incomplete = false; try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
+                Need(incomplete);
+                SelfActivationFixture.CheckRejectedEntry(() => { observer.RequireComplete(); });
+            }
         }
         public static void CheckExplicitEntryValidation()
         {
