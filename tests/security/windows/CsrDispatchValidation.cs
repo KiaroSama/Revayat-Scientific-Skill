@@ -64,19 +64,56 @@ namespace ScientificSecurity
         }
         static void CheckDispatchSetterReadback()
         {
-            foreach (int offset in new [] { 104, 112, 120, 248 }) {
+            foreach (int offset in new [] { 72, 80, 88, 96, 104, 112, 120, 248, -1 }) {
                 byte[] context = new byte[DebugContext.Size]; int writes = 0;
                 var registry = new ResourceThreads(7, 11, _ => (byte[])context.Clone(), (_, desired) => {
-                    writes++; context = (byte[])desired.Clone(); context[offset] ^= 1;
+                    writes++; context = (byte[])desired.Clone(); context[offset < 0 ? 104 : offset] ^= 1;
+                    if (offset < 0) context[248] ^= 1;
                 }, _ => { }, () => { });
                 registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
-                registry.Stop(7, 11, 6, false); bool refused = false;
+                registry.Stop(7, 11, 6, false); string refusal = null;
                 try { registry.ArmDispatch(0x8000, 0x8007, () => { }); }
-                catch (InvalidOperationException failure) { refused = failure.Message.EndsWith("check=setter-readback", StringComparison.Ordinal); }
-                Need(refused && writes == 1 && registry.Failed && !registry.CaptureRestored);
+                catch (InvalidOperationException failure) { refusal = failure.Message; }
+                string expected = "fixed resource observation refused check=setter-readback snapshot=first phase=arm event_kind=6 event_thread_equal=True" +
+                    " debug_equal=" + (offset == 120 || offset == 248) + " control_integer_equal=" + (offset >= 72 && offset <= 112) +
+                    " dr0_equal=" + (offset != 72) + " dr1_equal=" + (offset != 80) + " dr2_equal=" + (offset != 88) +
+                    " dr3_equal=" + (offset != 96) + " dr6_equal=" + (offset != 104 && offset != -1) + " dr7_equal=" + (offset != 112) +
+                    " desired_dr6=0x00000000FFFF0FF0 current_dr6=0x" + (offset == 104 || offset == -1 ? "00000000FFFF0FF1" : "00000000FFFF0FF0") +
+                    " desired_dr7=0x0000000000000005 current_dr7=0x" + (offset == 112 ? "0000000000000004" : "0000000000000005");
+                if (refusal != expected) throw new InvalidOperationException("CSR setter refusal metadata did not identify its exact comparison");
+                Need(refusal.Length <= 1024 && refusal.All(c => c <= 127) && !refusal.Contains("000000000000800") && !refusal.Contains("0000000000009000"));
+                Need(writes == 1 && registry.Failed && !registry.CaptureRestored);
+                bool restoreRejected = false;
+                try { registry.RestoreAll(); }
+                catch (AggregateException failure) { restoreRejected = failure.InnerExceptions.Count == 1 && failure.InnerExceptions[0].Message.EndsWith("check=dispatch-transition-baseline", StringComparison.Ordinal); }
+                Need(restoreRejected && writes == 1);
                 registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
                 bool sticky = false; try { registry.Destroyed(); } catch (AggregateException) { sticky = true; }
                 Need(sticky && registry.DestroyedState);
+            }
+            foreach (bool restoreDrift in new [] { false, true }) {
+                var contexts = new Dictionary<IntPtr, byte[]> { { new IntPtr(11), new byte[DebugContext.Size] }, { new IntPtr(12), new byte[DebugContext.Size] } };
+                int writes = 0, closes = 0;
+                var registry = new ResourceThreads(7, 11, handle => (byte[])contexts[handle].Clone(), (handle, desired) => {
+                    writes++; contexts[handle] = (byte[])desired.Clone();
+                    if (writes == 2 || restoreDrift && writes == 3) contexts[handle][104] ^= 1;
+                }, _ => closes++, () => { });
+                registry.Stop(7, 11, 3, false); registry.Enroll(11, new IntPtr(11), false); registry.Continued();
+                registry.Stop(7, 12, 2, false); registry.Enroll(12, new IntPtr(12), true); registry.Continued();
+                registry.Stop(7, 11, 6, false); string first = null;
+                try { registry.ArmDispatch(0x8000, 0x8007, () => { }); }
+                catch (InvalidOperationException failure) { first = failure.Message; }
+                Need(first != null && first.Contains("snapshot=first phase=arm event_kind=6 event_thread_equal=False") && writes == 2);
+                AggregateException cleanup = null;
+                try { registry.RestoreAll(); } catch (AggregateException failure) { cleanup = failure; }
+                Need(cleanup != null && cleanup.InnerExceptions.Count == (restoreDrift ? 2 : 1) && writes == 3);
+                if (restoreDrift) Need(cleanup.InnerExceptions[0].Message == first);
+                else Need(DebugContext.RawDebugEqual(new byte[DebugContext.Size], contexts[new IntPtr(11)]));
+                Need(cleanup.InnerExceptions[cleanup.InnerExceptions.Count - 1].Message.EndsWith("check=dispatch-transition-baseline", StringComparison.Ordinal));
+                Need(registry.Failed && !registry.CaptureRestored);
+                registry.Continued(); registry.Stop(7, 11, 5, true); registry.Continued();
+                bool sticky = false; try { registry.Destroyed(); } catch (AggregateException) { sticky = true; }
+                Need(sticky && registry.DestroyedState && closes == 1);
             }
         }
         static void DispatchFixtureTrap(byte[] context, bool post)

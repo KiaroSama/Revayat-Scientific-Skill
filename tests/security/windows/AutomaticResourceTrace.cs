@@ -26,6 +26,7 @@ namespace ScientificSecurity
             readonly List<Generation> generations = new List<Generation>();
             bool epoch, cleanup, processDead, initial, captureRestored, failed, destroyed;
             Exception cleanupUncertainty;
+            string setterRefusal;
             uint eventThread, kind;
             ulong site;
             internal bool Captured { get; private set; }
@@ -114,7 +115,21 @@ namespace ScientificSecurity
                     if (dispatchPair != null && !restore) Put(desired, 104, 0xFFFF0FF0);
                     value.changed = true;
                     write(value.handle, desired); after = read(value.handle);
-                    ResourceCheck(DebugContext.RawDebugEqual(desired, after) && DebugContext.UnchangedControlInteger(before, after), "setter-readback");
+                    bool debugEqual = DebugContext.RawDebugEqual(desired, after);
+                    bool controlIntegerEqual = DebugContext.UnchangedControlInteger(before, after);
+                    if (!debugEqual || !controlIntegerEqual) {
+                        if (dispatchPair != null && setterRefusal == null)
+                            setterRefusal = "fixed resource observation refused check=setter-readback snapshot=first phase=" +
+                                (!restore ? dispatchPair.Started ? "call-disarm" : "arm" : cleanup || !dispatchPair.Paired ? "cleanup-restore" : "pair-restore") +
+                                " event_kind=" + kind.ToString(System.Globalization.CultureInfo.InvariantCulture) + " event_thread_equal=" + (eventThread == value.id) +
+                                " debug_equal=" + debugEqual + " control_integer_equal=" + controlIntegerEqual +
+                                " dr0_equal=" + (U64(desired, 72) == U64(after, 72)) + " dr1_equal=" + (U64(desired, 80) == U64(after, 80)) +
+                                " dr2_equal=" + (U64(desired, 88) == U64(after, 88)) + " dr3_equal=" + (U64(desired, 96) == U64(after, 96)) +
+                                " dr6_equal=" + (U64(desired, 104) == U64(after, 104)) + " dr7_equal=" + (U64(desired, 112) == U64(after, 112)) +
+                                " desired_dr6=0x" + U64(desired, 104).ToString("X16") + " current_dr6=0x" + U64(after, 104).ToString("X16") +
+                                " desired_dr7=0x" + U64(desired, 112).ToString("X16") + " current_dr7=0x" + U64(after, 112).ToString("X16");
+                        throw new InvalidOperationException(dispatchPair != null ? setterRefusal : "fixed resource observation refused check=setter-readback");
+                    }
                     if (dispatchPair != null) {
                         if (value.dispatchState == null) value.dispatchState = new ulong[6];
                         for (int index = 0; index < 6; index++) value.dispatchState[index] = U64(after, 72 + index * 8);
