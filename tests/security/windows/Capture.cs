@@ -94,6 +94,23 @@ namespace ScientificSecurity
                 return false;
             }
         }
+        static byte[] Prefix(MemoryStream stream, out bool truncated)
+        {
+            int count = (int)Math.Min(512L, stream.Length);
+            truncated = stream.Length > count;
+            byte[] bytes = new byte[count];
+            Buffer.BlockCopy(stream.GetBuffer(), 0, bytes, 0, count);
+            return bytes;
+        }
+        void RetainFailureReceipt(Action<byte[], bool> retain)
+        {
+            if (retain == null) return;
+            lock (gate) {
+                bool truncated; byte[] bytes = Prefix(captured, out truncated);
+                try { retain(bytes, truncated); }
+                finally { Array.Clear(bytes, 0, bytes.Length); }
+            }
+        }
         internal string Read()
         {
             if (!drain.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("pipe did not close after owned job reaping");
@@ -136,16 +153,34 @@ namespace ScientificSecurity
                     throw new InvalidOperationException("capture strict-close ownership or sticky failure differs");
                 if (mode == 3) actualFailure = caught;
             }
+            foreach (int length in new [] { 0, 127, 512, 513, 1024 }) {
+                using (var stream = new MemoryStream()) {
+                    byte[] input = new byte[length];
+                    for (int index = 0; index < input.Length; index++) input[index] = (byte)(index & 255);
+                    stream.Write(input, 0, input.Length); bool truncated;
+                    byte[] prefix = Prefix(stream, out truncated);
+                    if (prefix.Length != Math.Min(512, length) || truncated != (length > 512) || stream.Length != length)
+                        throw new InvalidOperationException("bounded capture prefix differs");
+                    for (int index = 0; index < prefix.Length; index++)
+                        if (prefix[index] != input[index]) throw new InvalidOperationException("capture prefix invented bytes");
+                }
+            }
             return actualFailure;
         }
-        public void Dispose()
+        public void Dispose() { Dispose(null); }
+        internal static void DisposeStrict(Action snapshot, Action closeWriter, Action cancel, Action closeReader,
+            Action join, Action checkDrain, Action disposeBuffer, Action checkClose)
+        { FinishStrict(snapshot, closeWriter, cancel, closeReader, join, snapshot, checkDrain, disposeBuffer, checkClose); }
+        internal void Dispose(Action<byte[], bool> retainFailure)
         {
             if (strictClose) {
-                FinishStrict(
+                DisposeStrict(
+                    () => RetainFailureReceipt(retainFailure),
                     CloseWriter,
                     () => { if (reader != IntPtr.Zero) Native.CancelIoEx(reader, IntPtr.Zero); },
                     () => CloseStrict(ref reader, ref closeFailed, Native.CloseHandle),
                     () => { if (drain != null && !drain.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("fixed activation pipe reader did not stop"); },
+                    () => { if (retainFailure != null && failure != null) throw new InvalidOperationException("owned pipe capture failed", failure); },
                     captured.Dispose,
                     () => RequireClosed(closeFailed));
                 return;

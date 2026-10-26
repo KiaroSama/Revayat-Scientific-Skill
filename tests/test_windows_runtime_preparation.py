@@ -218,16 +218,20 @@ class RegistryAuthorityValidationTest(unittest.TestCase):
                 def importer(name, *args, **kwargs):
                     if name == 'sys':
                         return system
-                    self.assertEqual(name, 'ctypes')
-                    raise error
+                    if name == 'ctypes':
+                        raise error
+                    self.assertEqual(name, 'importlib.machinery')
+                    raise ImportError('private-support-sentinel')
 
                 namespace = {'__name__': '__main__', '__builtins__': dict(vars(builtins), __import__=importer)}
                 with self.subTest(category=expected, descendant=descendant), self.assertRaises(SystemExit) as caught:
                     exec(code, namespace)
                 self.assertEqual(caught.exception.code, 1)
                 role = 'descendant' if descendant else 'primary'
+                tail = ('REGISTRY_LOADER_FOLLOWUP role=' + role + ' errors=loader:unqualified\n'
+                        if type(error) is ImportError and type(error.name) is str and error.name == '_ctypes' else '')
                 self.assertEqual(output.getvalue(), 'REGISTRY_AUTHORITY_FAILURE role=' + role +
-                                 ' child_exit=none errors=import-ctypes:' + expected + '\n')
+                                 ' child_exit=none errors=import-ctypes:' + expected + '\n' + tail)
                 self.assertLessEqual(len(output.getvalue().encode('ascii')), 512)
                 self.assertNotIn('private', output.getvalue())
         for fail_flush in (False, True):
@@ -300,7 +304,11 @@ class RegistryAuthorityValidationTest(unittest.TestCase):
             frame = 'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=import-ctypes:' + category + '\n'
             with self.assertRaises(probe['Failure']) as caught:
                 probe['descendant_result'](subprocess.CompletedProcess([], 1, '', frame))
-            self.assertEqual(caught.exception.events, (('descendant', 'transport'), ('import-ctypes', category)))
+            expected = ((('import-ctypes', category), ('descendant', 'transport'))
+                        if category in ('import-ctypes-native', 'import-ctypes-denied', 'import-ctypes-module',
+                                        'import-ctypes-procedure', 'import-ctypes-init', 'import-ctypes-memory', 'import-ctypes-format')
+                        else (('descendant', 'transport'), ('import-ctypes', category)))
+            self.assertEqual(caught.exception.events, expected)
             self.assertEqual(caught.exception.child_exit, 1)
         for events in (','.join(['import-ctypes:import-absent'] * 7), ','.join(['import-ctypes:import-absent'] * 8),
                        'import-ctypes:import-private', 'import-ctypes:missing-private'):

@@ -33,12 +33,12 @@ namespace ScientificSecurity
         static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=((?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))(?:,(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
-            string detail = "unqualified";
-            if (errors != null && errors.Length <= 512 && errors.All(c => c <= 127)) {
+            string detail = RegistryLoaderEvidence.Detail(errors == null ? null : errors.Replace("\r\n", "\n")) ?? "unqualified";
+            if (detail == "unqualified" && errors != null && errors.Length <= 512 && errors.All(c => c <= 127)) {
                 var match = FailureWire.Match(errors.Replace("\r\n", "\n"));
                 if (match.Success) detail = "child_exit=" + match.Groups[1].Value + " errors=" + match.Groups[2].Value;
             }
-            return new InvalidOperationException("fixed registry authority failed primary_exit=0x" + code.ToString("X8") + " " + detail + " raw_error_withheld=True");
+            return new RegistryLoaderEvidence.ReceiptFailure(code, detail);
         }
         internal static void ValidateWire(uint code, string text, string errors)
         {
@@ -137,6 +137,9 @@ namespace ScientificSecurity
         public static void CheckValidation()
         {
             RegistryAuthoritySurface.CheckValidation();
+            RegistryLoaderEvidence.CheckValidation();
+            RegistryLoaderEvidence.CheckPrivacyValidation();
+            Sandbox.CheckCompletionValidation();
             CheckFailureProjection();
             const string primary = "{\"accessible\":1,\"capabilities\":0,\"granted_access\":131097,\"lpac\":true,\"mutation_denied\":true,\"no_reparse\":true,\"read\":true,\"read_surface_approved\":false,\"restricted\":true,\"role\":\"primary\",\"subkeys\":2,\"version\":1,\"x64\":true}\n";
             string child = primary.Replace("\"primary\"", "\"descendant\"").Replace("\"accessible\":1", "\"accessible\":0").Replace("\"subkeys\":2", "\"subkeys\":0");

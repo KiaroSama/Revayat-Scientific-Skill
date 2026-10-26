@@ -27,6 +27,97 @@ def import_category(error):
     return 'native' if isinstance(error, OSError) else 'other'
 
 
+def loader_events(text):
+    if text == 'loader:unqualified':
+        return (('loader', 'unqualified'),)
+    if text == 'loader:loaded,loader-release:released':
+        return (('loader', 'loaded'), ('loader-release', 'released'))
+    for prefix, events in (('loader:win32-', ()),
+                           ('loader:loaded,loader-release:win32-', (('loader', 'loaded'),))):
+        value = text[len(prefix):] if text.startswith(prefix) else ''
+        if len(value) == 8 and all(c in '0123456789ABCDEF' for c in value) and int(value, 16):
+            return events + ((('loader-release' if events else 'loader'), 'win32-' + value),)
+    return None
+
+
+def bootstrap_evidence(data, role):
+    if type(data) is bytes:
+        first, separator, tail = data[:512].partition(b'\n')
+        try:
+            first = first.decode('ascii', errors='strict')
+        except UnicodeError:
+            return None
+        try:
+            tail = tail.decode('ascii', errors='strict')
+        except UnicodeError:
+            tail = 'unqualified'
+        separator = bool(separator)
+    elif type(data) is str:
+        first, separator, tail = data[:512].partition('\n')
+    else:
+        return None
+    if first.endswith('\r'):
+        first = first[:-1]
+    tail = tail.replace('\r\n', '\n')
+    prefix = 'REGISTRY_AUTHORITY_FAILURE role=' + role + ' child_exit=none errors=import-ctypes:'
+    category = first[len(prefix):] if first.startswith(prefix) else ''
+    allowed = ('import-ctypes-native', 'import-ctypes-denied', 'import-ctypes-module',
+               'import-ctypes-procedure', 'import-ctypes-init', 'import-ctypes-memory', 'import-ctypes-format')
+    if not separator or len(first) + 1 > 128 or category not in allowed:
+        return None
+    events = (('import-ctypes', category),)
+    if not tail and len(data) <= 512:
+        return events
+    marker = 'REGISTRY_LOADER_FOLLOWUP role=' + role + ' errors='
+    parsed = loader_events(tail[len(marker):-1]) if len(data) <= 512 and tail.startswith(marker) and tail.endswith('\n') else None
+    return events + (parsed if parsed is not None else (('loader', 'unqualified'),))
+
+
+def fixed_loader_followup():
+    from importlib.machinery import ExtensionFileLoader
+    from importlib.util import module_from_spec, spec_from_file_location
+    import os
+    if (sys.implementation.name != 'cpython' or sys.version_info[:2] != (3, 11)
+            or sys.maxsize != 0x7FFFFFFFFFFFFFFF or hasattr(sys, 'gettotalrefcount')
+            or sys.flags.isolated != 1 or type(sys.executable) is not str):
+        raise RuntimeError('fixed loader prerequisites differ')
+    name = '_registry_loader'
+    path = os.path.join(os.path.dirname(sys.executable), 'DLLs', name + '.pyd')
+    if not os.path.isabs(path) or os.path.normpath(path) != path or name in sys.modules:
+        raise RuntimeError('fixed loader identity differs')
+    for module in tuple(sys.modules.values()):
+        if module is None:
+            continue
+        values = vars(module)
+        origin = values.get('__file__')
+        spec = values.get('__spec__')
+        spec_origin = getattr(spec, 'origin', None)
+        if ((type(origin) is str and os.path.normcase(os.path.abspath(origin)) == os.path.normcase(path))
+                or (type(spec_origin) is str and os.path.normcase(os.path.abspath(spec_origin)) == os.path.normcase(path))):
+            raise RuntimeError('fixed loader cache collision')
+    loader = ExtensionFileLoader(name, path)
+    spec = spec_from_file_location(name, path, loader=loader)
+    if (type(loader) is not ExtensionFileLoader or type(loader.name) is not str or type(loader.path) is not str
+            or loader.name != name or loader.path != path or spec is None
+            or type(spec.name) is not str or type(spec.origin) is not str
+            or spec.name != name or spec.origin != path or spec.loader is not loader
+            or not spec.has_location or spec.submodule_search_locations is not None):
+        raise RuntimeError('fixed loader specification differs')
+    module = module_from_spec(spec)
+    loader.exec_module(module)
+    if (module.__name__ != name or module.__file__ != path or module.__spec__ is not spec
+            or module.__loader__ is not loader):
+        raise RuntimeError('fixed loader module differs')
+    loaded, error, release, version = (getattr(module, key) for key in ('loaded', 'load_error', 'release_error', 'version'))
+    if (any(type(value) is not int for value in (loaded, error, release, version)) or version != 1
+            or loaded not in (0, 1) or not 0 <= error <= 0xFFFFFFFF or not 0 <= release <= 0xFFFFFFFF
+            or (loaded == 0 and (error == 0 or release != 0)) or (loaded == 1 and error != 0)):
+        raise RuntimeError('fixed loader result differs')
+    if not loaded:
+        return 'loader:win32-' + format(error, '08X')
+    return 'loader:loaded,loader-release:' + ('win32-' + format(release, '08X') if release else 'released')
+
+
 try:
     phase = 'import-ctypes'
     import ctypes
@@ -48,8 +139,21 @@ except Exception as error:
     category = import_category(error)
     role = 'descendant' if sys.argv[1:] == ['--descendant'] else 'primary'
     try:
-        sys.stderr.write('REGISTRY_AUTHORITY_FAILURE role=' + role + ' child_exit=none errors=' + phase + ':' + category + '\n')
+        frame = 'REGISTRY_AUTHORITY_FAILURE role=' + role + ' child_exit=none errors=' + phase + ':' + category + '\n'
+        if not frame.isascii() or len(frame) > 128 or sys.stderr.write(frame) != len(frame):
+            raise RuntimeError('fixed bootstrap receipt is incomplete')
         sys.stderr.flush()
+        if phase == 'import-ctypes' and type(error) is ImportError and type(error.name) is str and error.name == '_ctypes':
+            try:
+                tail = fixed_loader_followup()
+            except Exception:
+                tail = 'loader:unqualified'
+            followup = 'REGISTRY_LOADER_FOLLOWUP role=' + role + ' errors=' + tail + '\n'
+            if loader_events(tail) is None or len(frame) + len(followup) > 512:
+                raise RuntimeError('fixed followup receipt differs')
+            if sys.stderr.write(followup) != len(followup):
+                raise RuntimeError('fixed followup receipt is incomplete')
+            sys.stderr.flush()
     except Exception:
         pass
     raise SystemExit(1) from None
@@ -90,13 +194,24 @@ def failure(error, phase):
 def failure_wire(error, role):
     error = failure(error, PHASE)
     require(role in ('primary', 'descendant') and 1 <= len(error.events) <= 8)
-    require(all(phase in PHASES and kind in KINDS for phase, kind in error.events))
+    require(all((phase in PHASES and kind in KINDS) or
+                (phase == 'loader' and kind in ('unqualified', 'loaded')) or
+                (phase == 'loader-release' and kind == 'released') or
+                (phase in ('loader', 'loader-release') and kind.startswith('win32-'))
+                for phase, kind in error.events))
+    selected = tuple(index for index, event in enumerate(error.events) if event[0] in ('loader', 'loader-release'))
+    if selected:
+        block = error.events[selected[0]:selected[-1] + 1]
+        require(len(block) == len(selected) and loader_events(','.join(phase + ':' + kind for phase, kind in block)) == block)
     code = 'none' if error.child_exit is None else format(error.child_exit & 0xFFFFFFFF, '08X')
     return ('REGISTRY_AUTHORITY_FAILURE role=' + role + ' child_exit=' + code + ' errors=' +
             ','.join(phase + ':' + kind for phase, kind in error.events) + '\n')
 
 
 def descendant_result(child):
+    bootstrap = bootstrap_evidence(child.stderr, 'descendant')
+    if bootstrap is not None:
+        raise Failure(bootstrap + (('descendant', 'transport'),), child.returncode)
     if child.returncode != 0:
         import re
         pattern = r'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=([a-z:,\-]+)\n'
@@ -339,10 +454,14 @@ def main():
         sys.stdout.flush()
         return
     PHASE = 'descendant'
-    child = subprocess.run([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__).resolve()), '--descendant'],
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', errors='strict',
-                           timeout=5, creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
-                           close_fds=True, env=dict(os.environ), cwd=str(Path(sys.executable).parent))
+    try:
+        child = subprocess.run([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__).resolve()), '--descendant'],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', errors='strict',
+                               timeout=5, creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                               close_fds=True, env=dict(os.environ), cwd=str(Path(sys.executable).parent))
+    except subprocess.TimeoutExpired as error:
+        original = bootstrap_evidence(error.stderr, 'descendant') or ()
+        raise Failure(original + (('descendant', 'timeout'),), original=error) from None
     complete_descendant(child, result, sys.stdout)
 
 

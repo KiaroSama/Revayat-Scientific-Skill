@@ -283,7 +283,8 @@ namespace ScientificSecurity
             var activationClock = new Stopwatch();
             try
             {
-                if (pythonDispatch || passComparison) activationLease = PythonCsrDispatch.Hold(python);
+                if (registryStartup is RegistryAuthorityComparison.Observation) activationLease = RegistryLoaderFixture.Hold(python);
+                else if (pythonDispatch || passComparison) activationLease = PythonCsrDispatch.Hold(python);
                 if (dllRequest) activationLease = ChildActivationFixture.HoldDllRequest(python);
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);
                 if (defaultActivation) activationLease = DefaultActivationFixture.Hold(python);
@@ -486,48 +487,13 @@ namespace ScientificSecurity
             catch (Exception failure) { primaryFailure = failure; throw; }
             finally
             {
-                var cleanupFailures = new List<Exception>();
-                AttemptCleanup(cleanupFailures, () => {
-                    if (started && loader != null) {
-                        Native.ProcessInfo retained = process;
-                        loader.SuppressOriginalAliases(ref process);
-                        loader.TerminateAndDrain(job, retained);
-                    }
-                    else if (started && !resumed) Native.Check(Native.TerminateProcess(process.process, 125), "terminate suspended child");
-                });
-                bool reaped = false;
-                AttemptCleanup(cleanupFailures, () => {
-                    if (job != IntPtr.Zero) ReapJob(job, (activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace) && started ? (Func<uint>)loader.RemainingActivationCleanup : null);
-                    reaped = true;
-                });
-                bool destroyed = false;
-                if (reaped && started && loader != null)
-                    AttemptCleanup(cleanupFailures, () => { loader.ConfirmDestroyed(); destroyed = true; });
-                AttemptCleanup(cleanupFailures, () => { if (outputCapture != null) outputCapture.Dispose(); });
-                AttemptCleanup(cleanupFailures, () => { if (errorCapture != null) errorCapture.Dispose(); });
-                AttemptCleanup(cleanupFailures, () => { if (process.thread != IntPtr.Zero) Native.Check(Native.CloseHandle(process.thread), "close owned child thread"); });
-                AttemptCleanup(cleanupFailures, () => { if (process.process != IntPtr.Zero) Native.Check(Native.CloseHandle(process.process), "close owned child process"); });
-                foreach (IntPtr handle in handles)
-                    AttemptCleanup(cleanupFailures, () => Native.Check(Native.CloseHandle(handle), "close owned standard handle"));
-                AttemptCleanup(cleanupFailures, () => {
-                    if (attrs != IntPtr.Zero) {
-                        try { Native.DeleteProcThreadAttributeList(attrs); }
-                        finally { Marshal.FreeHGlobal(attrs); }
-                    }
-                });
-                foreach (IntPtr value in values) AttemptCleanup(cleanupFailures, () => Marshal.FreeHGlobal(value));
-                AttemptCleanup(cleanupFailures, () => { if (env != IntPtr.Zero) Marshal.FreeHGlobal(env); });
-                AttemptCleanup(cleanupFailures, () => { if (processDescriptor != IntPtr.Zero && Native.LocalFree(processDescriptor) != IntPtr.Zero)
-                    throw new InvalidOperationException("owned process descriptor cleanup failed"); });
-                AttemptCleanup(cleanupFailures, () => { if (sid != IntPtr.Zero && Native.FreeSid(sid) != IntPtr.Zero)
-                    throw new InvalidOperationException("owned package SID cleanup failed"); });
-                AttemptCleanup(cleanupFailures, () => { if (job != IntPtr.Zero) Native.Check(Native.CloseHandle(job), "close owned job"); });
-                AttemptCleanup(cleanupFailures, () => { if (activationLease != null) activationLease.Dispose(); });
-                Exception completionFailure = selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace ? ExplicitEntryComparison.FinishTrace(primaryFailure, cleanupFailures, entryStarted, destroyed,
-                    dispatch != null ? (Func<string>)loader.DispatchMetadata : selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata,
-                    line => { Console.Out.WriteLine(line); Console.Out.Flush(); }) : dispatch != null || passComparison ?
-                    CsrDispatchComparison.FinishUndebugged(primaryFailure, cleanupFailures, started, dispatchSignaled, reaped) :
-                    CompletionFailure(primaryFailure, cleanupFailures, callbackStarted, destroyed);
+                Exception completionFailure = FinishRun(ref process, job, sid, attrs, env, processDescriptor, handles, values,
+                    outputCapture, errorCapture, activationLease, loader, primaryFailure, started, resumed,
+                    activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace,
+                    selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace, entryStarted, callbackStarted,
+                    dispatch != null || passComparison, dispatchSignaled,
+                    loader == null ? null : dispatch != null ? (Func<string>)loader.DispatchMetadata : selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata,
+                    registryStartup is RegistryAuthorityComparison.Observation);
                 if (completionFailure != null) throw completionFailure;
             }
         }
