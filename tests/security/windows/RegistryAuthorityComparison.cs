@@ -30,7 +30,7 @@ namespace ScientificSecurity
             internal void Complete() { preparation.Complete(); Need(wire != null && !recorded); recorded = true; }
             internal void Clear() { preparation.Clear(); wire = null; }
         }
-        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=((?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))(?:,(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=((?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))(?:,(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
             string detail = "unqualified";
@@ -111,6 +111,12 @@ namespace ScientificSecurity
                     string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000001 errors=descendant:transport,import-ctypes:" + category + "\n";
                     Need(TransportFailure(1, frame).Message.Contains("errors=descendant:transport,import-ctypes:" + category));
                 }
+            foreach (string label in new [] { "denied", "module", "procedure", "init", "memory", "format" }) {
+                string category = "import-ctypes-" + label;
+                string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000001 errors=descendant:transport,import-ctypes:" + category + "\n";
+                Need(TransportFailure(1, frame).Message.Contains("errors=descendant:transport,import-ctypes:" + category));
+                Need(TransportFailure(1, frame.Replace(category, "missing-ctypes-" + label)).Message.Contains("unqualified"));
+            }
             string eight = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000001 errors=" + String.Join(",", Enumerable.Repeat("import-ctypes-wintypes:missing-unrecognized", 8)) + "\n";
             Need(eight.Length <= 512 && !TransportFailure(1, eight).Message.Contains("unqualified"));
             foreach (string invalid in new [] { eight.Replace("errors=", "errors=root:control,"), eight + "\n", new string('x', 513),

@@ -12,7 +12,18 @@ def import_category(error):
         if type(name) is str:
             label = {'ctypes': 'ctypes', '_ctypes': 'ctypes-native', 'struct': 'struct',
                      '_struct': 'struct-native', 'ctypes._endian': 'endian', 'os': 'os', 'types': 'types'}.get(name, 'unrecognized')
-        return ('missing-' if type(error) is ModuleNotFoundError else 'import-') + label
+            if kind is ImportError and name == '_ctypes':
+                message = error.msg
+                if type(message) is str:
+                    label = {
+                        'DLL load failed while importing _ctypes: Access is denied.': 'ctypes-denied',
+                        'DLL load failed while importing _ctypes: The specified module could not be found.': 'ctypes-module',
+                        'DLL load failed while importing _ctypes: The specified procedure could not be found.': 'ctypes-procedure',
+                        'DLL load failed while importing _ctypes: A dynamic link library (DLL) initialization routine failed.': 'ctypes-init',
+                        'DLL load failed while importing _ctypes: Not enough memory resources are available to process this command.': 'ctypes-memory',
+                        'DLL load failed while importing _ctypes: %1 is not a valid Win32 application.': 'ctypes-format',
+                    }.get(message, label)
+        return ('missing-' if kind is ModuleNotFoundError else 'import-') + label
     return 'native' if isinstance(error, OSError) else 'other'
 
 
@@ -50,7 +61,9 @@ PHASE = 'start'
 PHASES = ('start', 'token', 'root', 'mutation', 'inventory', 'identity', 'close', 'descendant', 'report',
           'import-ctypes', 'import-ctypes-wintypes', 'import-json', 'import-os', 'import-pathlib',
           'import-runpy', 'import-subprocess', 'import-time')
-KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup', 'import') + tuple(
+KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup', 'import',
+         'import-ctypes-denied', 'import-ctypes-module', 'import-ctypes-procedure',
+         'import-ctypes-init', 'import-ctypes-memory', 'import-ctypes-format') + tuple(
     prefix + label for prefix in ('import-', 'missing-')
     for label in ('ctypes', 'ctypes-native', 'struct', 'struct-native', 'endian', 'os', 'types', 'absent', 'unrecognized'))
 

@@ -195,6 +195,21 @@ class RegistryAuthorityValidationTest(unittest.TestCase):
         cases = [(kind('private-message-sentinel', name=name, path='private-path-sentinel'), prefix + label)
                  for kind, prefix in ((ImportError, 'import-'), (ModuleNotFoundError, 'missing-')) for name, label in names]
         cases.append((CustomImport('private-subclass-sentinel'), 'import-unrecognized'))
+        messages = [('Access is denied.', 'denied'), ('The specified module could not be found.', 'module'),
+                    ('The specified procedure could not be found.', 'procedure'),
+                    ('A dynamic link library (DLL) initialization routine failed.', 'init'),
+                    ('Not enough memory resources are available to process this command.', 'memory'),
+                    ('%1 is not a valid Win32 application.', 'format')]
+        prefix = 'DLL load failed while importing _ctypes: '
+        for body, label in messages:
+            text = prefix + body
+            cases.append((ImportError(text, name='_ctypes', path='private-path-sentinel'), 'import-ctypes-' + label))
+            for altered in (text + ' ', 'private-prefix' + text, text + '\r\n', body, text[:-1],
+                            HostileName(text), text.encode('ascii'), None, 1, True):
+                cases.append((ImportError(altered, name='_ctypes'), 'import-ctypes-native'))
+            cases.append((ModuleNotFoundError(text, name='_ctypes'), 'missing-ctypes-native'))
+            cases.append((ImportError(text, name='ctypes'), 'import-ctypes'))
+        cases.append((ImportError('بارگذاری ناموفق', name='_ctypes'), 'import-ctypes-native'))
         for error, expected in cases:
             for descendant in (False, True):
                 output = io.StringIO()
@@ -279,7 +294,9 @@ class RegistryAuthorityValidationTest(unittest.TestCase):
 
         self.assertEqual(probe['entry'](child_failure, reports.append, 'primary'), 1)
         self.assertEqual(reports.pop(), 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=descendant:transport,root:control,close:cleanup\n')
-        for category in ('import-ctypes-native', 'missing-struct-native', 'import-absent', 'missing-unrecognized'):
+        for category in ('import-ctypes-native', 'missing-struct-native', 'import-absent', 'missing-unrecognized',
+                         'import-ctypes-denied', 'import-ctypes-module', 'import-ctypes-procedure',
+                         'import-ctypes-init', 'import-ctypes-memory', 'import-ctypes-format'):
             frame = 'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=import-ctypes:' + category + '\n'
             with self.assertRaises(probe['Failure']) as caught:
                 probe['descendant_result'](subprocess.CompletedProcess([], 1, '', frame))
