@@ -1,5 +1,6 @@
 """Exercise trusted preparation functions, not the native security entry point."""
 from pathlib import Path
+import runpy
 import shutil
 import sys
 import tempfile
@@ -29,6 +30,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             python_block,
             '[ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)',
             '[ScientificSecurity.RegistryStartupComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
+            '[ScientificSecurity.RegistryAuthorityComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunHost($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunImages($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
@@ -121,6 +123,101 @@ class DiagnosticOrderTest(unittest.TestCase):
         $failure = [Management.Automation.ErrorRecord]::new($cause, 'WindowsSecurityFailure', [Management.Automation.ErrorCategory]::NotSpecified, $null)
     }
 ''', 'Later preservers must not prepend already-consumed failures out of chronological order')
+
+
+class RegistryAuthorityValidationTest(unittest.TestCase):
+    def test_fixed_controls_without_native_execution(self):
+        probe = runpy.run_path(str(ROOT / 'tests/security/windows/RegistryAuthorityProbe.py'))
+        denied, basic = probe['require_denied'], probe['require_basic']
+        token, identity = probe['require_token_fields'], probe['read_identity']
+        key = r'\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide'
+        encoded = key.encode('utf-16-le', errors='strict')
+        data = b'\x8c\0\0\0' + encoded
+        self.assertEqual(len(encoded), 140)
+        self.assertEqual(identity(0, 144, data, 140), key)
+        token(1, 0, 1)
+        basic(0, 56, 0, 0x20019)
+        denied(0xC0000022, None)
+        cases = [
+            lambda: token(2, 0, 1), lambda: token(1, 1, 1), lambda: token(1, 0, 0),
+            lambda: basic(1, 56, 0, 0x20019), lambda: basic(0, 55, 0, 0x20019),
+            lambda: basic(0, 56, 2, 0x20019), lambda: basic(0, 56, 0, 0xF003F),
+            lambda: denied(0, None), lambda: denied(0xC0000022, 4), lambda: denied(0xC0000034, None),
+            lambda: identity(1, 144, data, 140), lambda: identity(0, 143, data, 140),
+            lambda: identity(0, 4097, data, 140), lambda: identity(0, 144, data, 138),
+            lambda: identity(0, 144, b'\x8b\0\0\0' + encoded, 140),
+            lambda: identity(0, 144, b'\x8c\0\0\0' + encoded[:-2] + b'\0\0', 140),
+            lambda: identity(0, 144, b'\x8c\0\0\0' + encoded[:-2] + b'\0\xd8', 140),
+        ]
+        for index, case in enumerate(cases):
+            with self.subTest(case=index), self.assertRaises((probe['Failure'], UnicodeError)):
+                case()
+        operation, cleanup = RuntimeError('operation'), RuntimeError('cleanup')
+        attempted = []
+
+        def fail():
+            attempted.append('close')
+            raise cleanup
+
+        with self.assertRaises(probe['Failure']) as caught:
+            probe['finish'](operation, [fail, lambda: attempted.append('second')])
+        self.assertEqual(attempted, ['close', 'second'])
+        self.assertEqual(caught.exception.events, (('start', 'control'), ('close', 'cleanup')))
+        self.assertIs(caught.exception.original.exceptions[0].original, operation)
+        self.assertIs(caught.exception.original.exceptions[1].original, cleanup)
+
+    def test_failure_projection_preserves_exits_order_and_privacy(self):
+        import subprocess
+        probe = runpy.run_path(str(ROOT / 'tests/security/windows/RegistryAuthorityProbe.py'))
+        reports = []
+        wire = 'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=root:control,close:cleanup\n'
+
+        def child_failure():
+            probe['descendant_result'](subprocess.CompletedProcess([], 7, '', wire))
+
+        self.assertEqual(probe['entry'](child_failure, reports.append, 'primary'), 1)
+        self.assertEqual(reports.pop(), 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=descendant:transport,root:control,close:cleanup\n')
+        for error, kind in [(subprocess.TimeoutExpired('private-command-sentinel', 5, output=b'private-output-sentinel'), 'timeout'),
+                            (UnicodeDecodeError('utf-16-le', b'\x37\xd8', 0, 2, 'private-decode-sentinel'), 'decode')]:
+            def operation():
+                raise error
+            self.assertEqual(probe['entry'](operation, reports.append, 'primary'), 1)
+            report = reports.pop()
+            self.assertEqual(report, 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=start:' + kind + '\n')
+            self.assertNotIn('private', report)
+        def malformed_child():
+            probe['descendant_result'](subprocess.CompletedProcess([], 0xC0000022, '', 'private-stderr-sentinel'))
+        self.assertEqual(probe['entry'](malformed_child, reports.append, 'primary'), 1)
+        self.assertEqual(reports.pop(), 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=C0000022 errors=descendant:transport\n')
+        def operation_cleanup_failure():
+            probe['finish'](probe['Failure']((('root', 'control'),)), [lambda: (_ for _ in ()).throw(OSError('private-close-sentinel'))])
+        self.assertEqual(probe['entry'](operation_cleanup_failure, reports.append, 'primary'), 1)
+        self.assertEqual(reports.pop(), 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=root:control,close:cleanup\n')
+        import io
+        record = {'role': 'primary'}
+        child = subprocess.CompletedProcess([], 0, '{"role":"descendant"}\n', '')
+        for flush_failure in (False, True):
+            class BrokenOutput(io.StringIO):
+                def write(self, text):
+                    if not flush_failure:
+                        raise OSError('private-output-sentinel')
+                    return super().write(text)
+
+                def flush(self):
+                    raise OSError('private-flush-sentinel')
+
+            def completed_child_reporting():
+                probe['complete_descendant'](child, record, BrokenOutput())
+
+            self.assertEqual(probe['entry'](completed_child_reporting, reports.append, 'primary'), 1)
+            self.assertEqual(reports.pop(), 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000000 errors=report:native\n')
+        def broken_report(_):
+            raise OSError('private-report-sentinel')
+        with self.assertRaises(probe['Failure']) as caught:
+            probe['entry'](child_failure, broken_report, 'primary')
+        self.assertEqual(caught.exception.child_exit, 7)
+        self.assertEqual(caught.exception.events[-1], ('report', 'other'))
+        self.assertNotIn('private', str(caught.exception))
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'Windows PowerShell preparation functions')

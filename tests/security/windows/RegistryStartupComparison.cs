@@ -9,37 +9,37 @@ namespace ScientificSecurity
     {
         static Exception retained;
         static bool started;
-        internal sealed class Observation
+        internal sealed class Observation : RegistryDiagnostic
         {
             internal readonly int condition;
             byte[] policy;
             bool prepared, readQualified, staged;
             internal bool recorded { get; private set; }
             internal uint exit { get; private set; }
-            internal int Expected { get { return condition == 1 ? 0 : unchecked((int)0xC0000022); } }
+            internal override int Expected { get { return condition == 1 ? 0 : unchecked((int)0xC0000022); } }
             internal string Label { get { return condition == 0 ? "original" : condition == 1 ? "readable" : "restored"; } }
             internal Observation(int value)
             {
                 if (value < 0 || value > 2) throw new ArgumentException("unsupported registry startup condition");
                 condition = value;
             }
-            internal void RequireFresh() { Need(!prepared && !readQualified && !staged && !recorded && policy == null); }
-            internal void Prepare(byte[] primary, byte[] duplicate)
+            internal override void RequireFresh() { Need(!prepared && !readQualified && !staged && !recorded && policy == null); }
+            internal override void Prepare(byte[] primary, byte[] duplicate)
             {
                 RequireFresh(); ChildDefaultDacl.RequireEqual(primary, duplicate);
                 policy = (byte[])primary.Clone(); prepared = true;
             }
-            internal void RequirePolicy(byte[] primary, byte[] duplicate)
+            internal override void RequirePolicy(byte[] primary, byte[] duplicate)
             {
                 Need(prepared && !staged && !recorded);
                 ChildDefaultDacl.RequireEqual(policy, primary); ChildDefaultDacl.RequireEqual(policy, duplicate);
             }
-            internal void ReadControl(int status)
+            internal override void ReadControl(int status)
             {
                 Need(prepared && !readQualified && !staged && !recorded);
                 Need(Expected == 0 ? status >= 0 : status == Expected); readQualified = true;
             }
-            internal void Stage(uint code, string text, string errors)
+            internal override void Stage(uint code, string text, string errors)
             {
                 Need(prepared && readQualified && !staged && !recorded && text != null && errors != null && text.Length == 0 && errors.Length == 0);
                 exit = code; staged = true;
@@ -251,7 +251,7 @@ namespace ScientificSecurity
     }
     public static partial class StartupActivationAccess
     {
-        internal static void PrepareRegistryStartup(Native.ProcessInfo child, string package, RegistryStartupComparison.Observation observation)
+        internal static void PrepareRegistryStartup(Native.ProcessInfo child, string package, RegistryDiagnostic observation)
         {
             RequirePreparationHost(); observation.RequireFresh();
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero; Exception primary = null;
@@ -286,9 +286,9 @@ namespace ScientificSecurity
             if (registryStartup) StartupAccess.RequireOwnQueries(child, false);
             OwnProcessAccess.Repair(child);
         }
-        static void RequireRegistryStartupRole(RegistryStartupComparison.Observation observation, int? expected, bool conflict)
+        static void RequireRegistryStartupRole(RegistryDiagnostic observation, int? expected, bool conflict)
         {
-            if (observation == null || conflict || expected != observation.Expected)
+            if (!(observation is RegistryStartupComparison.Observation) && !(observation is RegistryAuthorityComparison.Observation) || conflict || expected != observation.Expected)
                 throw new ArgumentException("registry startup comparison requires its fixed undebugged pass-code role");
             observation.RequireFresh();
         }
@@ -306,9 +306,16 @@ namespace ScientificSecurity
                 try { RequireRegistryStartupRole(observation, observation.Expected, true); } catch (ArgumentException) { conflict = true; }
                 RegistryStartupComparison.Need(conflict);
             }
+            RequireRegistryStartupRole(new RegistryAuthorityComparison.Observation(), 0, false);
+            foreach (int? expected in new int?[] { null, 1, unchecked((int)0xC0000022) }) {
+                bool refused = false;
+                try { RequireRegistryStartupRole(new RegistryAuthorityComparison.Observation(), expected, false); } catch (ArgumentException) { refused = true; }
+                RegistryStartupComparison.Need(refused);
+            }
+            foreach (bool authority in new [] { false, true })
             for (int mode = 0; mode < 21; mode++) {
                 bool refused = false;
-                var observation = new RegistryStartupComparison.Observation(0);
+                RegistryDiagnostic observation = authority ? (RegistryDiagnostic)new RegistryAuthorityComparison.Observation() : new RegistryStartupComparison.Observation(0);
                 try {
                     RunFixed(null, null, null, null, null, null, null, mode != 0, 0, 0,
                         mode == 1, mode == 2, mode == 3, mode == 4, mode == 5, mode == 6, mode == 7,

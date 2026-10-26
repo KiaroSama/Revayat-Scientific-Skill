@@ -158,7 +158,7 @@ namespace ScientificSecurity
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
                                string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort,
-                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false, bool pythonCondition = false, DefaultDaclComparison.Observation defaultDacl = null, CsrDispatchObservation dispatch = null, PythonActivationPreparation.Observation preparation = null, RegistryStartupComparison.Observation registryStartup = null)
+                               bool wallProbe, bool loaderProbe, bool nativeFixture, bool pythonClone, bool activationProbe, bool activationTrace, bool observeExit, int? expectedRegistryStatus, bool defaultActivation = false, int moduleRole = 0, uint? callbackExit = null, bool selfActivation = false, SelfActivationRole selfRole = SelfActivationRole.Original, bool selfEntry = false, bool selfResource = false, bool dllRequest = false, bool pythonCondition = false, DefaultDaclComparison.Observation defaultDacl = null, CsrDispatchObservation dispatch = null, PythonActivationPreparation.Observation preparation = null, RegistryDiagnostic registryStartup = null)
         {
             bool passComparison = preparation != null || registryStartup != null;
             if (registryStartup != null) {
@@ -220,7 +220,7 @@ namespace ScientificSecurity
             string executable = python;
             if (loaderProbe || defaultDacl != null || pythonDispatch || passComparison) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
             if (preparation != null) { phase = preparation.activationBundle ? "python-activation-bundle" : preparation.image ? "python-image-preparation" : preparation.host ? "python-host-preparation" : "python-activation-preparation"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
-            if (registryStartup != null) { phase = "registry-startup-pass"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
+            if (registryStartup != null) { phase = registryStartup is RegistryAuthorityComparison.Observation ? "registry-authority" : "registry-startup-pass"; arguments = RegistryArguments(python, root, registryStartup); }
             if (pythonDispatch) { phase = "original-python-csr-pass"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
             if (defaultDacl != null) phase = "child-default-dacl-pass";
             if (nativeFixture) {
@@ -359,35 +359,9 @@ namespace ScientificSecurity
                     Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
                 }
                 if (loader != null) loader.PrepareHandles(ref process);
-                Profile.SealRegistry(process.process, moniker, package);
-                TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
-                Profile.RequireReadOnlyRegistry(process.process, moniker, package);
-                if (preflight && !wallProbe && !loaderProbe && defaultDacl == null && !passComparison) {
-                    StartupAccess.Observe(process, python);
-                    StartupImageAccess.Observe(process, python, package);
-                    int registryStatus = StartupActivationAccess.Observe(process, python, package);
-                    if (expectedRegistryStatus.HasValue) RequireRegistryCondition(registryStatus, expectedRegistryStatus.Value);
-                    StartupAccess.RequireOwnQueries(process, false);
-                }
-                PrepareOwnProcessAccess(process, registryStartup != null);
-                StartupAccess.RequireOwnQueries(process, true);
-                Stopwatch defaultClock = defaultDacl == null ? null : Stopwatch.StartNew();
-                if (pythonCondition || defaultDacl != null || pythonDispatch || preparation != null)
-                    RequireRegistryCondition(StartupRegistryAccess.ObserveChild(process, package), expectedRegistryStatus.Value);
-                if (registryStartup != null) StartupActivationAccess.PrepareRegistryStartup(process, package, registryStartup);
-                if (preparation != null) {
-                    if (preparation.host || preparation.compound) StartupActivationAccess.PrepareHostPython(process, python, package, preparation);
-                    else StartupActivationAccess.PreparePython(process, python, package, preparation);
-                }
-                if (defaultDacl != null)
-                    defaultDacl.opened = DefaultDaclControl.Prepare(process, package,
-                        defaultDacl.condition == DefaultDaclComparison.Condition.UserAllow, defaultClock, out defaultDacl.baseline);
-                if (preflight && !wallProbe && !loaderProbe && !activationProbe && !activationTrace && defaultDacl == null && !passComparison)
-                    StartupTokenAccess.Observe(process, package);
-                if (nativeFixture) {
-                    string metadata = TokenDefaultMetadata.Observe(process.process);
-                    Console.Out.WriteLine(metadata); Console.Out.Flush();
-                }
+                PrepareContained(process, python, scratch, moniker, package, preflight, wallProbe, loaderProbe,
+                    activationProbe, activationTrace, nativeFixture, pythonCondition, pythonDispatch, expectedRegistryStatus,
+                    defaultDacl, preparation, registryStartup);
                 if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null || pythonDispatch || passComparison) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
