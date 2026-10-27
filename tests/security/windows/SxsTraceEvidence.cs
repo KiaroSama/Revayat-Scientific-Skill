@@ -43,6 +43,22 @@ namespace ScientificSecurity
             if (!value) throw new SxsTraceSession.PrivateFailure(
                 new InvalidOperationException("fixed SxS evidence predicate rejected"), "evidence-" + label);
         }
+        static string Flags(bool unresolved, bool denied, bool malformed, bool failed, bool common, bool crt)
+        {
+            return "unresolved_reference=" + unresolved + " access_denied=" + denied + " manifest_parse=" + malformed +
+                " activation_failed=" + failed + " common_controls=" + common + " vc_crt=" + crt;
+        }
+        static SxsTraceSession.PrivateFailure SelectionFailure(SxsTraceSession.PrivateFailure original, string first,
+            bool unresolved, bool denied, bool malformed, bool failed, bool common, bool crt, bool unsupported)
+        {
+            try {
+                return new SxsTraceSession.PrivateFailure(original, original.SafeStage +
+                    " selected_observed=2 total_matches=unknown first_qualified=True first_flags=[" + first +
+                    "] second_qualified=False second_flags=[" + Flags(unresolved, denied, malformed, failed, common, crt) +
+                    "] second_unsupported=" + unsupported + " further_blocks_examined=False");
+            }
+            catch { return original; }
+        }
         static bool KnownDependency(string identity)
         {
             try { return Dependency.IsMatch(identity); }
@@ -191,10 +207,13 @@ namespace ScientificSecurity
                 if (line == End) {
                     Check(inside, Predicate.End); inside = false;
                     if (selected) {
-                        Check(++matches == 1, Predicate.SelectedCount); Check(manifestFields == 1, Predicate.ManifestCount);
+                        try { Check(++matches == 1, Predicate.SelectedCount); }
+                        catch (SxsTraceSession.PrivateFailure original) {
+                            throw SelectionFailure(original, result, unresolved, denied, malformed, failed, common, crt, unsupported);
+                        }
+                        Check(manifestFields == 1, Predicate.ManifestCount);
                         Check(!unsupported, Predicate.Unsupported); Check(unresolved || denied || malformed || failed, Predicate.Empty);
-                        result = "unresolved_reference=" + unresolved + " access_denied=" + denied + " manifest_parse=" + malformed +
-                            " activation_failed=" + failed + " common_controls=" + common + " vc_crt=" + crt;
+                        result = Flags(unresolved, denied, malformed, failed, common, crt);
                     }
                     continue;
                 }
@@ -412,9 +431,48 @@ namespace ScientificSecurity
                 SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && caught.Message.Contains("evidence-line-width"));
             }
         }
+        static void CheckSelectionValidation()
+        {
+            const string manifest = "F:\\private-selection-sentinel\\_ctypes.pyd";
+            string first = Begin + "\nManifestPath = " + manifest + "\nERROR: Cannot resolve reference Microsoft.Windows.Common-Controls.\n" + End + "\n";
+            string second = Begin + "\nManifestPath = " + manifest + "\nERROR: Access is denied.\n" + End + "\n";
+            Func<string, byte[]> encode = value => new byte[] { 239, 187, 191 }.Concat(new UTF8Encoding(false, true).GetBytes(value)).ToArray();
+            const string firstFlags = "unresolved_reference=True access_denied=False manifest_parse=False activation_failed=False common_controls=True vc_crt=False";
+            const string secondFlags = "unresolved_reference=False access_denied=True manifest_parse=False activation_failed=False common_controls=False vc_crt=False";
+            string expected = "fixed SxS trace failed stage=evidence-selected-count selected_observed=2 total_matches=unknown first_qualified=True first_flags=[" +
+                firstFlags + "] second_qualified=False second_flags=[" + secondFlags + "] second_unsupported=False further_blocks_examined=False raw_error_withheld=True";
+            foreach (string suffix in new [] { "", first, Begin + "\n" + Begin + "\n" }) {
+                Exception caught = null;
+                try { Parse(encode(first + second + suffix), manifest); } catch (Exception error) { caught = error; }
+                var safe = caught as SxsTraceSession.PrivateFailure;
+                SxsTraceSession.Need(safe != null && safe.Message == expected && safe.InnerException == null &&
+                    safe.Original is SxsTraceSession.PrivateFailure && safe.Message.Length < 1024 &&
+                    ((SxsTraceSession.PrivateFailure)safe.Original).SafeStage == "evidence-selected-count" &&
+                    !RegistryLoaderEvidence.Sanitize(new AggregateException("private-group-sentinel", safe)).ToString().Contains("sentinel"));
+            }
+            foreach (bool unsupported in new [] { false, true }) {
+                string current = second.Replace("ERROR: Access is denied.", unsupported ? "ERROR: private-unknown-sentinel" : "INFO: benign");
+                Exception caught = null;
+                try { Parse(encode(first + current), manifest); } catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(caught != null && caught.Message == expected.Replace(secondFlags,
+                    "unresolved_reference=False access_denied=False manifest_parse=False activation_failed=False common_controls=False vc_crt=False")
+                    .Replace("second_unsupported=False", "second_unsupported=" + unsupported));
+            }
+            byte[] utf16 = new byte[] { 255, 254 }.Concat(new UnicodeEncoding(false, false, true).GetBytes(first + second)).ToArray();
+            Exception otherCodec = null;
+            try { Parse(utf16, manifest); } catch (Exception error) { otherCodec = error; }
+            SxsTraceSession.Need(otherCodec != null && otherCodec.Message == expected);
+            foreach (string value in new [] { first.Replace("Microsoft.Windows.Common-Controls", "private-reference-sentinel") + second,
+                first.Replace("ERROR: Cannot resolve reference Microsoft.Windows.Common-Controls.", "INFO: benign") + second,
+                Begin + "\n" + first + second, first + second + "\0", first + second + new string('x', 2049) }) {
+                Exception earlier = null;
+                try { Parse(encode(value), manifest); } catch (Exception error) { earlier = error; }
+                SxsTraceSession.Need(earlier != null && !earlier.Message.Contains("selected_observed") && !earlier.ToString().Contains("sentinel"));
+            }
+        }
         internal static void CheckReportingValidation()
         {
-            CheckLengthValidation(); CheckPrefixValidation(); CheckCodecValidation();
+            CheckLengthValidation(); CheckPrefixValidation(); CheckCodecValidation(); CheckSelectionValidation();
             Exception caught = null;
             try { Parse(new byte[0], "private-manifest-sentinel"); }
             catch (Exception error) { caught = error; }
@@ -430,8 +488,10 @@ namespace ScientificSecurity
                 string prefix = label.StartsWith("length-input-shape", StringComparison.Ordinal) || label == "bom" ?
                     " evidence-prefix status=array signature=" + (bytes == null || bytes.Length == 0 ? "absent" : "other") +
                     " transferred_bytes=" + (bytes == null ? 0 : Math.Min(3, bytes.Length)) : "";
-                SxsTraceSession.Need(failure is SxsTraceSession.PrivateFailure && failure.InnerException == null &&
-                    failure.Message == "fixed SxS trace failed stage=evidence-" + label + prefix + " raw_error_withheld=True" &&
+                var retained = failure as SxsTraceSession.PrivateFailure;
+                if (label == "selected-count" && retained != null) retained = retained.Original as SxsTraceSession.PrivateFailure;
+                SxsTraceSession.Need(retained != null && retained.InnerException == null &&
+                    retained.Message == "fixed SxS trace failed stage=evidence-" + label + prefix + " raw_error_withheld=True" &&
                     !failure.ToString().Contains("sentinel"));
             };
             SxsTraceSession.Need(Parse(encode(block), manifest).Contains("activation_failed=True"));
@@ -487,6 +547,7 @@ namespace ScientificSecurity
                 catch (Exception failure) {
                     var retained = failure as SxsTraceSession.PrivateFailure;
                     Exception original = retained == null ? failure : retained.Original;
+                    if (original is SxsTraceSession.PrivateFailure) original = ((SxsTraceSession.PrivateFailure)original).Original;
                     if (original is AggregateException) original = ((SxsTraceSession.PrivateFailure)((AggregateException)original).InnerExceptions[0]).Original;
                     SxsTraceSession.Need(original is InvalidOperationException || original is DecoderFallbackException);
                     var safe = SxsTraceSession.Safe(failure, "parse");
