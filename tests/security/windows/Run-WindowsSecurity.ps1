@@ -14,12 +14,21 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Required prep
 $runId = $RunId
 $state = [IO.Path]::GetFullPath((Join-Path (Join-Path $Root '.scratch') "security-windows-$runId"))
 if ($CleanupOnly) {
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'), (Join-Path $PSScriptRoot 'SxsTraceSession.cs'))
+    $recovery = @{ trace = $false }
     [ScientificSecurity.RegistryPolicyLease]::CleanupOwned(
-        [Action]{ [ScientificSecurity.RegistryPolicyLease]::Recover($runId, $state, $OuterOwnerReaped.IsPresent) },
+        [Action]{
+            $errors = [Collections.Generic.List[Exception]]::new()
+            try { [ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $OuterOwnerReaped.IsPresent); $recovery.trace = $true }
+            catch { $errors.Add($_.Exception) }
+            try { [ScientificSecurity.RegistryPolicyLease]::Recover($runId, $state, $OuterOwnerReaped.IsPresent) }
+            catch { $errors.Add($_.Exception) }
+            if ($errors.Count) { throw [AggregateException]::new('Owned recovery failed', $errors) }
+        },
         [Action]{ [ScientificSecurity.LoaderSnaps]::Cleanup($runId, $state) },
         [Action]{ [ScientificSecurity.Profile]::DeleteOwned('Scientific.Security.' + $runId, (Join-Path $state 'profile.receipt')) },
         [Action]{
+            if (-not $recovery.trace) { throw 'Owned trace recovery is required before disk detach' }
             $ownedVhd = Join-Path $state 'scratch.vhdx'
             if (Test-Path -LiteralPath $ownedVhd -PathType Leaf) {
                 if ((Get-Item -LiteralPath $ownedVhd -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Owned cleanup disk is a reparse point' }
@@ -163,7 +172,7 @@ try {
     }
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
-    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'ChildDefaultDacl.cs'), (Join-Path $PSScriptRoot 'DefaultDaclControl.cs'), (Join-Path $PSScriptRoot 'DefaultDaclComparison.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'PythonLoaderComparison.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'StartupRegistryAccess.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'), (Join-Path $PSScriptRoot 'RegistryCausalComparison.cs'), (Join-Path $PSScriptRoot 'ManualActivationComparison.cs'), (Join-Path $PSScriptRoot 'StartupActivationEvents.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'ChildActivationDllRequest.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageDefaultActivation.cs'), (Join-Path $PSScriptRoot 'DefaultActivationFixture.cs'), (Join-Path $PSScriptRoot 'SelfActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageSelfActivation.cs'), (Join-Path $PSScriptRoot 'ModuleActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageModuleActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageModuleCallback.cs'), (Join-Path $PSScriptRoot 'ModuleCallbackTrace.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationWorker.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationBoundary.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationProfiles.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationProfileValidation.cs'), (Join-Path $PSScriptRoot 'ActivationBoundaryTrace.cs'), (Join-Path $PSScriptRoot 'ExplicitEntryTrace.cs'), (Join-Path $PSScriptRoot 'LoaderEntryTrace.cs'), (Join-Path $PSScriptRoot 'ExplicitEntryComparison.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceTrace.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceValidation.cs'), (Join-Path $PSScriptRoot 'LoaderResourceTrace.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceComparison.cs'), (Join-Path $PSScriptRoot 'CsrDispatchPair.cs'), (Join-Path $PSScriptRoot 'KernelImageCsrDispatch.cs'), (Join-Path $PSScriptRoot 'CsrDispatchTrace.cs'), (Join-Path $PSScriptRoot 'CsrDispatchObservation.cs'), (Join-Path $PSScriptRoot 'CsrDispatchComparison.cs'), (Join-Path $PSScriptRoot 'CsrDispatchValidation.cs'), (Join-Path $PSScriptRoot 'ModuleCsrDispatch.cs'), (Join-Path $PSScriptRoot 'PythonCsrDispatch.cs'), (Join-Path $PSScriptRoot 'PythonActivationPreparation.cs'), (Join-Path $PSScriptRoot 'HostActivationPreparation.cs'), (Join-Path $PSScriptRoot 'RegistryStartupComparison.cs'), (Join-Path $PSScriptRoot 'RegistryDiagnostic.cs'), (Join-Path $PSScriptRoot 'RegistryAuthorityComparison.cs'), (Join-Path $PSScriptRoot 'RegistryAuthoritySurface.cs'), (Join-Path $PSScriptRoot 'SandboxPreparation.cs'), (Join-Path $PSScriptRoot 'SandboxCompletion.cs'), (Join-Path $PSScriptRoot 'RegistryLoaderEvidence.cs'), (Join-Path $PSScriptRoot 'RegistryLoaderFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageRegistryLoader.cs'))
+    Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'ChildDefaultDacl.cs'), (Join-Path $PSScriptRoot 'DefaultDaclControl.cs'), (Join-Path $PSScriptRoot 'DefaultDaclComparison.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'PythonLoaderComparison.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'StartupRegistryAccess.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'), (Join-Path $PSScriptRoot 'RegistryCausalComparison.cs'), (Join-Path $PSScriptRoot 'ManualActivationComparison.cs'), (Join-Path $PSScriptRoot 'StartupActivationEvents.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'ChildActivationDllRequest.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageDefaultActivation.cs'), (Join-Path $PSScriptRoot 'DefaultActivationFixture.cs'), (Join-Path $PSScriptRoot 'SelfActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageSelfActivation.cs'), (Join-Path $PSScriptRoot 'ModuleActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageModuleActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageModuleCallback.cs'), (Join-Path $PSScriptRoot 'ModuleCallbackTrace.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationWorker.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationBoundary.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationProfiles.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationProfileValidation.cs'), (Join-Path $PSScriptRoot 'ActivationBoundaryTrace.cs'), (Join-Path $PSScriptRoot 'ExplicitEntryTrace.cs'), (Join-Path $PSScriptRoot 'LoaderEntryTrace.cs'), (Join-Path $PSScriptRoot 'ExplicitEntryComparison.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceTrace.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceValidation.cs'), (Join-Path $PSScriptRoot 'LoaderResourceTrace.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceComparison.cs'), (Join-Path $PSScriptRoot 'CsrDispatchPair.cs'), (Join-Path $PSScriptRoot 'KernelImageCsrDispatch.cs'), (Join-Path $PSScriptRoot 'CsrDispatchTrace.cs'), (Join-Path $PSScriptRoot 'CsrDispatchObservation.cs'), (Join-Path $PSScriptRoot 'CsrDispatchComparison.cs'), (Join-Path $PSScriptRoot 'CsrDispatchValidation.cs'), (Join-Path $PSScriptRoot 'ModuleCsrDispatch.cs'), (Join-Path $PSScriptRoot 'PythonCsrDispatch.cs'), (Join-Path $PSScriptRoot 'PythonActivationPreparation.cs'), (Join-Path $PSScriptRoot 'HostActivationPreparation.cs'), (Join-Path $PSScriptRoot 'RegistryStartupComparison.cs'), (Join-Path $PSScriptRoot 'RegistryDiagnostic.cs'), (Join-Path $PSScriptRoot 'RegistryAuthorityComparison.cs'), (Join-Path $PSScriptRoot 'RegistryAuthoritySurface.cs'), (Join-Path $PSScriptRoot 'SandboxPreparation.cs'), (Join-Path $PSScriptRoot 'SandboxCompletion.cs'), (Join-Path $PSScriptRoot 'RegistryLoaderEvidence.cs'), (Join-Path $PSScriptRoot 'RegistryLoaderFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageRegistryLoader.cs'), (Join-Path $PSScriptRoot 'SxsTraceSession.cs'), (Join-Path $PSScriptRoot 'SxsTraceCapture.cs'), (Join-Path $PSScriptRoot 'SxsTraceEvidence.cs'))
     [ScientificSecurity.Profile]::CheckSealComparison()
     [ScientificSecurity.Profile]::CheckRegistryMasks()
     [ScientificSecurity.LoaderSnaps]::CheckValidation()
@@ -303,6 +312,7 @@ try {
     [ScientificSecurity.ModuleActivationFixture]::Build($PSScriptRoot, $childPython, $state)
     [ScientificSecurity.SelfActivationFixture]::Build($PSScriptRoot, $childPython, $state)
     [ScientificSecurity.RegistryLoaderFixture]::CheckValidation()
+    [ScientificSecurity.SxsTraceCapture]::CheckValidation()
     [ScientificSecurity.RegistryLoaderFixture]::Build($PSScriptRoot, $Python, $childPython, $state)
     Protect-Tree $target
     Write-RunLog INFO 'protecting prepared Python runtime'
@@ -365,7 +375,9 @@ try {
     Write-RunLog INFO 'matched undebugged registry startup sufficiency starts; no target admission or production grant'
     [ScientificSecurity.RegistryStartupComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'fixed trusted registry authority prerequisite starts; read content and target admission remain unapproved'
-    [ScientificSecurity.RegistryAuthorityComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    [ScientificSecurity.SxsTraceCapture]::Run($runId, $state, $mountPath, $childPython, $package.Value, [Action]{
+        [ScientificSecurity.RegistryAuthorityComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
+    })
     Write-RunLog INFO 'matched undebugged Python activation preparation starts under constant readable key; no cache-reset or admission claim'
     [ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)
     Write-RunLog INFO 'matched undebugged Python host preparation starts after token comparison restoration; no image matrix or admission claim'
@@ -467,7 +479,15 @@ catch {
 finally {
     $cleanupErrors = [Collections.Generic.List[string]]::new()
     $registryRestored = $true
+    $traceStopped = $true
     try {
+        if ('ScientificSecurity.SxsTraceSession' -as [type]) {
+            try {
+                if (-not [ScientificSecurity.SxsTraceCapture]::StarterReaped) { throw 'SxS starter cleanup remains unqualified' }
+                [ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $true)
+            }
+            catch { $traceStopped = $false; $cleanupErrors.Add('owned SxS trace recovery failed'); if (-not $failure) { $failure = $_ } }
+        }
         if ('ScientificSecurity.RegistryPolicyLease' -as [type]) {
             try { [ScientificSecurity.RegistryPolicyLease]::Recover($runId, $state) }
             catch { $registryRestored = $false; $cleanupErrors.Add('fixed registry-policy recovery failed'); if (-not $failure) { $failure = $_ } }
@@ -497,9 +517,9 @@ finally {
         catch { $cleanupErrors.Add('owned profile cleanup failed'); if (-not $failure) { $failure = $_ } }
         finally {
         try {
-            if ($mounted) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
+            if ($mounted -and $traceStopped) { Dismount-VHD -Path $vhd -ErrorAction Stop; $mounted = $false }
             # Retain the log; remove only this run's detached disposable state.
-            if ($registryRestored -and -not $profileOwned -and -not (Test-Path -LiteralPath (Join-Path $state 'registry-policy.receipt')) -and
+            if ($traceStopped -and -not $mounted -and $registryRestored -and -not $profileOwned -and -not (Test-Path -LiteralPath (Join-Path $state 'registry-policy.receipt')) -and
                 -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps.receipt')) -and
                 -not (Test-Path -LiteralPath (Join-Path $state 'loader-snaps-python.receipt'))) {
                 Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop

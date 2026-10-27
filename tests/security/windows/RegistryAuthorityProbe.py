@@ -155,6 +155,7 @@ except Exception as error:
                 raise RuntimeError('fixed followup receipt is incomplete')
             sys.stderr.flush()
     except Exception:
+        # A broken report cannot safely emit a secondary traceback; failure still exits nonzero.
         pass
     raise SystemExit(1) from None
 

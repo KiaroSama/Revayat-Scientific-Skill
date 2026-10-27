@@ -14,6 +14,18 @@ namespace ScientificSecurity
     {
         public static string Run(string executable, string[] arguments, string cwd)
         { return RunFixed(executable, arguments, cwd, false); }
+        internal static void RunSxsTrace(string folder, bool parse, Func<double> remaining)
+        {
+            try {
+                SxsTraceCapture.RequireFolder(folder);
+                string executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "sxstrace.exe");
+                string etl = Path.Combine(folder, "capture.etl"), text = Path.Combine(folder, "capture.txt");
+                string[] arguments = parse ? new [] { "parse", "-logfile:" + etl, "-outfile:" + text, "-filter:python.exe" } :
+                    new [] { "trace", "-logfile:" + etl, "-nostop" };
+                RunFixed(executable, arguments, folder, false, sxsTrace: true, remaining: remaining);
+            }
+            catch (Exception failure) { throw SxsTraceSession.Safe(failure, parse ? "parse-tool" : "start-tool"); }
+        }
         internal static string RunSelfActivation(string python, SelfActivationRole role = SelfActivationRole.Original)
         {
             string executable = SelfActivationFixture.PreparedImage(python, role);
@@ -46,8 +58,15 @@ namespace ScientificSecurity
             string image = ChildActivationFixture.DllPreparedImage(python);
             return RunFixed(image, new string[0], Path.GetDirectoryName(image), false, dllRequest: true);
         }
-        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false, bool dllRequest = false, bool dispatch = false, bool moduleDispatch = false, bool pythonDispatch = false)
+        static string RunFixed(string executable, string[] arguments, string cwd, bool selfActivation, SelfActivationRole role = SelfActivationRole.Original, string entryPython = null, Action<string> retainMetadata = null, bool resource = false, bool dllRequest = false, bool dispatch = false, bool moduleDispatch = false, bool pythonDispatch = false, bool sxsTrace = false, Func<double> remaining = null)
         {
+            if (sxsTrace) {
+                if (selfActivation || role != SelfActivationRole.Original || entryPython != null || retainMetadata != null || resource || dllRequest || dispatch || moduleDispatch || pythonDispatch || remaining == null)
+                    throw new ArgumentException("unsupported fixed SxS tool role");
+                SxsTraceCapture.RequireFolder(cwd);
+                if (executable != Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "sxstrace.exe"))
+                    throw new ArgumentException("fixed SxS tool path differs");
+            }
             SelfActivationFixture.RequireKnownRole(role);
             if (pythonDispatch && (!dispatch || !resource || !selfActivation || moduleDispatch || dllRequest ||
                 role != SelfActivationRole.Original || entryPython == null || retainMetadata == null))
@@ -72,11 +91,11 @@ namespace ScientificSecurity
             if (pythonDispatch) PythonCsrDispatch.RequireLaunch(executable, arguments, cwd);
             else if (moduleDispatch) RequireModuleDispatchLaunch(executable, arguments, cwd);
             else if (selfActivation && !dllRequest) RequireSelfLaunch(executable, arguments, cwd, role);
-            if (compilerPreparation || selfActivation) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
-            if (!selfActivation && !compilerPreparation && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
+            if (compilerPreparation || selfActivation || sxsTrace) { NativeFixture.Plain(executable); NativeFixture.Plain(cwd); }
+            if (!selfActivation && !compilerPreparation && !sxsTrace && !new [] { "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe" }.Contains(name))
                 throw new ArgumentException("unsupported trusted CI preparation tool");
             bool executableExists = File.Exists(executable), cwdExists = Directory.Exists(cwd);
-            Console.Out.WriteLine(name == "dumpbin.exe" || selfActivation ?
+            Console.Out.WriteLine(name == "dumpbin.exe" || selfActivation || sxsTrace ?
                 "WINDOWS_SETUP_PATH tool=" + name + " executable_exists=" + executableExists + " cwd_exists=" + cwdExists :
                 "WINDOWS_SETUP_PATH executable=" + Quote(executable) + " cwd=" + Quote(cwd)
                 + " executable_exists=" + executableExists + " cwd_exists=" + cwdExists);
@@ -95,15 +114,15 @@ namespace ScientificSecurity
                 EmitStage(name, "prepare");
                 job = Native.CreateJobObject(IntPtr.Zero, null); Native.Check(job != IntPtr.Zero, "create trusted setup job");
                 var limits = new Native.ExtendedLimits();
-                limits.basic.flags = 0x2000 | 8 | 4; limits.basic.processes = selfActivation ? 1U : 16U;
-                limits.basic.jobTime = (selfActivation ? 10L : 60L) * 10000000L;
-                if (selfActivation) {
+                limits.basic.flags = 0x2000 | 8 | 4; limits.basic.processes = selfActivation || sxsTrace ? 1U : 16U;
+                limits.basic.jobTime = (selfActivation || sxsTrace ? 10L : 60L) * 10000000L;
+                if (selfActivation || sxsTrace) {
                     limits.basic.flags |= 0x200 | 0x100;
                     limits.processMemory = new UIntPtr(384UL * 1024 * 1024);
                     limits.jobMemory = new UIntPtr(512UL * 1024 * 1024);
                 }
                 Native.SetJob(job, 9, limits);
-                if (selfActivation) {
+                if (selfActivation || sxsTrace) {
                     Native.SetJob(job, 15, new Native.CpuLimits { flags = 5, rate = 1000 });
                     var actual = Native.QueryJob<Native.ExtendedLimits>(job, 9);
                     var cpu = Native.QueryJob<Native.CpuLimits>(job, 15);
@@ -111,7 +130,7 @@ namespace ScientificSecurity
                         actual.processMemory != limits.processMemory || actual.jobMemory != limits.jobMemory || cpu.flags != 5 || cpu.rate != 1000)
                         throw new InvalidOperationException("fixed host activation Job limits differ");
                 }
-                output = new Capture(selfActivation); error = new Capture(selfActivation);
+                output = new Capture(selfActivation || sxsTrace); error = new Capture(selfActivation || sxsTrace);
                 var sa = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), inherit = 1 };
                 input = Native.CreateFileW("NUL", 0x80000000, 3, ref sa, 3, 0x80, IntPtr.Zero);
                 Native.Check(input != Native.InvalidHandle, "open trusted setup stdin");
@@ -128,7 +147,7 @@ namespace ScientificSecurity
                 startup.attributes = attrs; startup.startup.flags = 0x100; startup.startup.input = input;
                 startup.startup.output = output.Writer; startup.startup.error = error.Writer;
                 string command = String.Join(" ", new [] { executable }.Concat(arguments).Select(Quote));
-                if (compilerPreparation || selfActivation) {
+                if (compilerPreparation || selfActivation || sxsTrace) {
                     string systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
                     if (String.IsNullOrEmpty(systemRoot) || !Path.IsPathFullyQualified(systemRoot))
                         throw new InvalidOperationException("compiler setup requires an absolute trusted Windows root");
@@ -145,9 +164,11 @@ namespace ScientificSecurity
                     }
                     environment = Marshal.StringToHGlobalUni(String.Join("\0", fixedEnvironment.Select(pair => pair.Key + "=" + pair.Value)) + "\0\0");
                 }
+                if (sxsTrace && remaining() <= 0) throw new TimeoutException("fixed SxS preparation deadline elapsed");
                 EmitStage(name, "create-before");
+                if (sxsTrace) SxsTraceCapture.StarterBeginning();
                 Native.Check(Native.CreateProcessW(executable, new StringBuilder(command), IntPtr.Zero, IntPtr.Zero,
-                    true, selfActivation ? SelfCreationFlags() | (loader == null ? 0U : 2U) : Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation ? Native.UnicodeEnvironment : 0U),
+                    true, selfActivation ? SelfCreationFlags() | (loader == null ? 0U : 2U) : Native.ExtendedStartup | Native.Suspended | Native.NoWindow | (compilerPreparation || sxsTrace ? Native.UnicodeEnvironment : 0U),
                     environment, cwd, ref startup, out child),
                     "create suspended trusted setup process tool=" + name + (name == "dumpbin.exe" || selfActivation ? "" : " cwd=" + cwd)); started = true;
                 if (loader != null) loader.Arm(child);
@@ -160,7 +181,7 @@ namespace ScientificSecurity
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume trusted setup process");
                 resumed = true; EmitStage(name, "resume-after");
                 output.CloseWriter(); error.CloseWriter();
-                if (selfActivation) { IntPtr owned = input; input = IntPtr.Zero; Native.Check(Native.CloseHandle(owned), "close fixed host activation stdin"); }
+                if (selfActivation || sxsTrace) { IntPtr owned = input; input = IntPtr.Zero; Native.Check(Native.CloseHandle(owned), "close fixed host activation stdin"); }
                 else { Native.CloseHandle(input); input = IntPtr.Zero; }
                 if (loader != null) {
                     uint observedExit = loader.Observe();
@@ -180,7 +201,9 @@ namespace ScientificSecurity
                     long count = output.Length() + error.Length();
                     if (count > 1048576) throw new InvalidOperationException("trusted setup output exceeded 1 MiB");
                     if (count != previous) { previous = count; progress = clock.Elapsed.TotalSeconds; }
-                    if (clock.Elapsed.TotalSeconds > (selfActivation ? 10 : 60) || clock.Elapsed.TotalSeconds - progress > 20)
+                    if (sxsTrace && (remaining() <= 0 || clock.Elapsed.TotalSeconds > 10 || clock.Elapsed.TotalSeconds - progress > 10))
+                        throw new TimeoutException("fixed SxS tool exceeded its remaining deadline");
+                    if (clock.Elapsed.TotalSeconds > (selfActivation || sxsTrace ? 10 : 60) || clock.Elapsed.TotalSeconds - progress > 20)
                         throw new TimeoutException(selfActivation ? "fixed host activation exceeded 10 seconds" : "trusted setup command exceeded wall=60s idle=20s");
                 }
                 if (firstWait) EmitStage(name, "wait-first");
@@ -196,6 +219,11 @@ namespace ScientificSecurity
                 }
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(diagnostics) > 1048576)
                     throw new InvalidOperationException("combined trusted setup output exceeded 1 MiB");
+                if (sxsTrace) {
+                    if (remaining() <= 0 || clock.Elapsed.TotalSeconds > 10 || exit != 0 || diagnostics.Length != 0)
+                        throw new InvalidOperationException("fixed SxS tool did not complete cleanly");
+                    return "";
+                }
                 if (name == "dumpbin.exe" && diagnostics.Length != 0)
                     throw new InvalidOperationException("trusted setup dumpbin.exe emitted stderr exit=" + exit + " static output withheld");
                 if (exit != 0) throw new InvalidOperationException("trusted setup " + name + " failed exit=" + exit +
@@ -212,10 +240,16 @@ namespace ScientificSecurity
                         loader.SuppressOriginalAliases(ref child); loader.TerminateAndDrain(job, retained);
                     } else if (started && !resumed) {
                         bool terminated = Native.TerminateProcess(child.process, 125);
-                        if (selfActivation) Native.Check(terminated, "terminate suspended fixed host activation");
+                        if (selfActivation || sxsTrace) Native.Check(terminated, "terminate suspended fixed host activation");
                     } },
                     () => { if (job != IntPtr.Zero) {
-                        if (loader == null) Reap(job);
+                        if (loader == null) {
+                            Reap(job);
+                            if (sxsTrace) {
+                                if (started) Native.Check(Native.WaitForSingleObject(child.process, 0) == 0, "confirm fixed SxS tool signal");
+                                SxsTraceCapture.StarterFinished();
+                            }
+                        }
                         else {
                             Native.Check(Native.TerminateJobObject(job, 125), "terminate fixed entry host Job");
                             Sandbox.AwaitActivationJobZero(() => Native.QueryJob<Native.Accounting>(job, 1).activeProcesses,
@@ -226,14 +260,14 @@ namespace ScientificSecurity
                         else if (selfActivation && started) Native.Check(Native.WaitForSingleObject(child.process, 0) == 0, "qualify fixed host activation process destruction"); },
                     () => { if (output != null) output.Dispose(); },
                     () => { if (error != null) error.Dispose(); },
-                    () => { if (child.thread != IntPtr.Zero) CloseOwned(child.thread, selfActivation); },
-                    () => { if (child.process != IntPtr.Zero) CloseOwned(child.process, selfActivation); },
-                    () => { if (input != IntPtr.Zero && input != Native.InvalidHandle) CloseOwned(input, selfActivation); },
+                    () => { if (child.thread != IntPtr.Zero) CloseOwned(child.thread, selfActivation || sxsTrace); },
+                    () => { if (child.process != IntPtr.Zero) CloseOwned(child.process, selfActivation || sxsTrace); },
+                    () => { if (input != IntPtr.Zero && input != Native.InvalidHandle) CloseOwned(input, selfActivation || sxsTrace); },
                     () => { if (attrs != IntPtr.Zero) Native.DeleteProcThreadAttributeList(attrs); },
                     () => { if (attrs != IntPtr.Zero) Marshal.FreeHGlobal(attrs); },
                     () => { if (list != IntPtr.Zero) Marshal.FreeHGlobal(list); },
                     () => { if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment); },
-                    () => { if (job != IntPtr.Zero) CloseOwned(job, selfActivation); },
+                    () => { if (job != IntPtr.Zero) CloseOwned(job, selfActivation || sxsTrace); },
                     () => EmitStage(name, "cleanup-after"));
                 if (loader != null) {
                     try { retainMetadata(dispatch ? loader.DispatchMetadata() : resource ? loader.ResourceMetadata() : loader.EntryMetadata()); }
@@ -307,7 +341,7 @@ namespace ScientificSecurity
         }
         static string Stage(string tool, string stage)
         {
-            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "startup-self-activation.exe", "startup-manual-activation.exe", "startup-explicit-id2.exe", "startup-dll-resource.exe", "startup-module.exe", "python.exe" }.Contains(tool) ||
+            if (!new [] { "cl.exe", "link.exe", "vswhere.exe", "dumpbin.exe", "rc.exe", "git.exe", "icacls.exe", "fsutil.exe", "csc.exe", "pwsh.exe", "sxstrace.exe", "startup-self-activation.exe", "startup-manual-activation.exe", "startup-explicit-id2.exe", "startup-dll-resource.exe", "startup-module.exe", "python.exe" }.Contains(tool) ||
                 !new [] { "prepare", "create-before", "create-after", "assign-before", "assign-after", "resume-before", "resume-after",
                     "wait-first", "wait-complete", "reap-before", "reap-after", "capture-after", "cleanup-before", "cleanup-after" }.Contains(stage))
                 throw new InvalidOperationException("unsupported trusted setup stage label");

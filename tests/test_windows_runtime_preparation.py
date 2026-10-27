@@ -68,6 +68,25 @@ class DiagnosticOrderTest(unittest.TestCase):
         positions = [controller.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions), 'Python diagnostic cleanup must precede debugger controls without bypassing later gates')
 
+    def test_standard_trace_has_one_owned_lifecycle_and_outer_recovery(self):
+        windows = ROOT / 'tests/security/windows'
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        self.assertEqual(controller.count('[ScientificSecurity.SxsTraceCapture]::Run('), 1)
+        self.assertIn('[ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $OuterOwnerReaped.IsPresent)', controller)
+        self.assertIn('[ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $true)', controller)
+        self.assertLess(controller.index('[ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $OuterOwnerReaped.IsPresent)'), controller.index('$disk = Get-VHD'))
+        self.assertIn('$mounted -and $traceStopped', controller)
+        preparation = (windows / 'RegistryStartupComparison.cs').read_text(encoding='utf-8')
+        self.assertIn('if (observation is RegistryAuthorityComparison.Observation) SxsTraceCapture.StartAuthority(child, package, clock);', preparation)
+        runner = (windows / 'TrustedSetup.cs').read_text(encoding='utf-8')
+        self.assertIn('internal static void RunSxsTrace(', runner)
+        self.assertNotIn('"pwsh.exe", "sxstrace.exe" }.Contains(name)', runner)
+        capture = (windows / 'SxsTraceCapture.cs').read_text(encoding='utf-8')
+        self.assertNotIn('Directory.CreateDirectory(folder)', capture)
+        self.assertIn('CreateDirectoryW(folder, ref attributes)', capture)
+        self.assertIn('CreateSealed(security, host.User.Value, package', capture)
+        self.assertIn('Acquired(SxsTraceSession.Exclusive', capture)
+
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
         block = '''    Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
