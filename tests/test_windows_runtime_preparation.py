@@ -72,6 +72,15 @@ class DiagnosticOrderTest(unittest.TestCase):
         windows = ROOT / 'tests/security/windows'
         controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
         self.assertEqual(controller.count('[ScientificSecurity.SxsTraceCapture]::Run('), 1)
+        anchors = (
+            "@('quota','query', $volume)",
+            '[ScientificSecurity.SxsTraceCapture]::PrepareStorage(',
+            '    Set-OwnedAccess $mountPath $true $true\n',
+            '[ScientificSecurity.SxsTraceCapture]::RequireStorageAfterSeal(',
+            '[ScientificSecurity.SxsTraceCapture]::Run(',
+        )
+        self.assertTrue(all(controller.count(anchor) == 1 for anchor in anchors), 'Missing or repeated sealed-storage phase')
+        self.assertEqual([controller.index(anchor) for anchor in anchors], sorted(controller.index(anchor) for anchor in anchors))
         self.assertIn('[ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $OuterOwnerReaped.IsPresent)', controller)
         self.assertIn('[ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $true)', controller)
         self.assertLess(controller.index('[ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $OuterOwnerReaped.IsPresent)'), controller.index('$disk = Get-VHD'))

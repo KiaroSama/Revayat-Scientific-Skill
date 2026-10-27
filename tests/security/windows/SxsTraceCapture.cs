@@ -12,9 +12,29 @@ namespace ScientificSecurity
     // One standard-tool capture around the existing trusted authority launch.
     public sealed class SxsTraceCapture
     {
-        static SxsTraceCapture current;
+        static SxsTraceCapture current, prepared;
         readonly string run, state, folder, python, package;
+        readonly StorageLifecycle storage = new StorageLifecycle();
         bool attempted, bound;
+        sealed class StorageLifecycle
+        {
+            bool attempted, ready, sealAttempted, sealedStorage, entered;
+            internal void Prepare(Action action) { Need(!attempted); attempted = true; action(); ready = true; }
+            internal void Seal(Action action) { Need(ready && !sealAttempted && !entered); sealAttempted = true; action(); sealedStorage = true; }
+            internal void Enter(Action action) { Need(ready && sealedStorage && !entered); entered = true; action(); }
+        }
+        enum BoundaryStage { PrepareStorage, AfterSeal, Enter }
+        static void Boundary(BoundaryStage stage, Action action)
+        {
+            string label;
+            switch (stage) {
+                case BoundaryStage.PrepareStorage: label = "storage-initialize"; break;
+                case BoundaryStage.AfterSeal: label = "storage-after-seal"; break;
+                case BoundaryStage.Enter: label = "storage-enter"; break;
+                default: throw new InvalidOperationException("unsupported fixed SxS storage boundary");
+            }
+            try { action(); } catch (Exception error) { throw SxsTraceSession.Safe(error, label); }
+        }
         public static bool StarterReaped { get; private set; } = true;
         internal static void StarterFinished() { StarterReaped = true; }
         [DllImport("advapi32.dll", SetLastError = true)]
@@ -51,17 +71,58 @@ namespace ScientificSecurity
             catch (Exception error) { primary = Combine(primary, SxsTraceSession.Safe(error, "release")); }
             if (primary != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primary).Throw();
         }
+        static void SameInputs(string[] expected, string[] actual)
+        { Need(expected.Length == 5 && actual.Length == 5 && expected.Zip(actual, (a, b) => a != null && String.Equals(a, b, StringComparison.Ordinal)).All(value => value)); }
+        void Matches(string run, string state, string volume, string python, string package)
+        {
+            SameInputs(new [] { this.run, this.state, folder, this.python, this.package },
+                new [] { run, SxsTraceSession.State(run, state), SxsTraceSession.Folder(run, volume), python, package });
+        }
+        public static void PrepareStorage(string run, string state, string volume, string python, string package)
+        {
+            Boundary(BoundaryStage.PrepareStorage, () => {
+                Need(prepared == null && current == null);
+                prepared = new SxsTraceCapture(run, state, volume, python, package);
+                prepared.storage.Prepare(prepared.Prepare);
+            });
+        }
+        public static void RequireStorageAfterSeal(string run, string state, string volume, string python, string package)
+        {
+            Boundary(BoundaryStage.AfterSeal, () => {
+                Need(prepared != null); prepared.Matches(run, state, volume, python, package);
+                prepared.storage.Seal(prepared.RequireStorage);
+            });
+        }
         public static void Run(string run, string state, string volume, string python, string package, Action operation)
         {
             SxsTraceCapture capture = null;
             try {
                 Acquired(SxsTraceSession.Exclusive,
-                    () => { Need(current == null && operation != null); capture = new SxsTraceCapture(run, state, volume, python, package); current = capture; },
-                    () => Execute(() => { capture.Prepare(); operation(); },
+                    () => Boundary(BoundaryStage.Enter, () => {
+                        Need(current == null && prepared != null && operation != null);
+                        capture = prepared; capture.Matches(run, state, volume, python, package);
+                        capture.storage.Enter(capture.RequireStorage); current = capture;
+                    }),
+                    () => Execute(operation,
                         () => SxsTraceSession.Stop(run, state, StarterReaped, capture.bound),
                         () => { if (capture.bound) capture.Parse(); }));
             }
             finally { if (capture != null && Object.ReferenceEquals(current, capture)) current = null; }
+        }
+        static void RequireCanary(byte[] bytes)
+        { Need(bytes != null && bytes.SequenceEqual(Encoding.UTF8.GetBytes("fixed SxS host control"))); }
+        void RequireStorage()
+        {
+            string canary = Path.Combine(folder, "canary");
+            StorageStep(StorageStage.DirectoryReadback, () => RequirePolicy(folder, true));
+            StorageStep(StorageStage.FileReadback, () => RequirePolicy(canary, false));
+            StorageStep(StorageStage.Canary, () => {
+                using (var file = new FileStream(canary, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                    Need(file.Length > 0 && file.Length <= 64); var bytes = new byte[(int)file.Length]; int offset = 0;
+                    while (offset < bytes.Length) { int read = file.Read(bytes, offset, bytes.Length - offset); Need(read > 0); offset += read; }
+                    Need(file.ReadByte() == -1); RequireCanary(bytes);
+                }
+            });
         }
         enum StorageStage { Path, Host, Policy, Create, Canary, DirectoryReadback, FileReadback }
         enum PolicyPredicate { Owner, Rules, Canonical, Protected, Propagation, Inherited, Inheritance, Package, OwnerRights, Allow, Distinct }
@@ -355,8 +416,50 @@ namespace ScientificSecurity
                 Object.ReferenceEquals(((SxsTraceSession.PrivateFailure)aggregate.InnerExceptions[1]).Original, errors[0]) &&
                 !aggregate.ToString().Contains("sentinel"));
         }
+        static void CheckStorageLifecycle()
+        {
+            var raw = new IOException("C:\\private-boundary-sentinel\\canary");
+            for (int phase = 0; phase < 3; phase++) {
+                Exception caught = null;
+                try { Boundary((BoundaryStage)phase, () => { throw raw; }); } catch (Exception error) { caught = error; }
+                var safe = caught as SxsTraceSession.PrivateFailure;
+                Need(safe != null && Object.ReferenceEquals(safe.Original, raw) && safe.InnerException == null && !safe.ToString().Contains("sentinel"));
+            }
+            foreach (int phase in new [] { -1, 3, Int32.MaxValue }) {
+                bool refused = false; int calls = 0;
+                try { Boundary((BoundaryStage)phase, () => calls++); } catch (InvalidOperationException) { refused = true; }
+                Need(refused && calls == 0);
+            }
+            string[] inputs = { "run", "state", "volume", "python", "package" };
+            SameInputs(inputs, inputs);
+            for (int field = 0; field < 5; field++) {
+                var other = (string[])inputs.Clone(); other[field] += "-foreign"; bool refused = false;
+                try { SameInputs(inputs, other); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            for (int failure = -1; failure < 3; failure++) {
+                var lifecycle = new StorageLifecycle(); string order = "";
+                Action<int> step = stage => { order += stage; if (stage == failure) throw raw; };
+                Exception caught = null;
+                try { lifecycle.Prepare(() => step(0)); lifecycle.Seal(() => step(1)); lifecycle.Enter(() => step(2)); }
+                catch (Exception error) { caught = error; }
+                Need(order == (failure == 0 ? "0" : failure == 1 ? "01" : "012") && (failure < 0 ? caught == null : Object.ReferenceEquals(caught, raw)));
+                foreach (Action retry in new Action[] { () => lifecycle.Prepare(() => order += "p"),
+                    () => lifecycle.Seal(() => order += "s"), () => lifecycle.Enter(() => order += "e") }) {
+                    bool refused = false; try { retry(); } catch (InvalidOperationException) { refused = true; } Need(refused);
+                }
+                Need(!order.Contains("p") && !order.Contains("s") && !order.Contains("e"));
+            }
+            var missing = new StorageLifecycle(); bool missingRefused = false;
+            try { missing.Enter(() => { throw raw; }); } catch (InvalidOperationException) { missingRefused = true; } Need(missingRefused);
+            RequireCanary(Encoding.UTF8.GetBytes("fixed SxS host control"));
+            foreach (byte[] bytes in new [] { new byte[0], Encoding.UTF8.GetBytes("fixed SxS host control!"), new byte[65] }) {
+                bool refused = false; try { RequireCanary(bytes); } catch (InvalidOperationException) { refused = true; } Need(refused);
+            }
+        }
         public static void CheckValidation()
         {
+            CheckStorageLifecycle();
             SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); SxsTraceStorage.CheckValidation();
             CheckStorageAndAcquisition(); CheckStorageFailureValidation();
             var operation = new IOException("fixed operation"); var stop = new IOException("private-stop-sentinel");

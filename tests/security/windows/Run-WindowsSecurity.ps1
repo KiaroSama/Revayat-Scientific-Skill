@@ -350,7 +350,9 @@ try {
     [ScientificSecurity.QuotaSid]::SetPackageEntry($volume, $package.Value)
     $null = Checked-Native $fsutil @('quota','enforce', $volume)
     $null = Checked-Native $fsutil @('quota','query', $volume)
+    [ScientificSecurity.SxsTraceCapture]::PrepareStorage($runId, $state, $mountPath, $childPython, $package.Value)
     Set-OwnedAccess $mountPath $true $true
+    [ScientificSecurity.SxsTraceCapture]::RequireStorageAfterSeal($runId, $state, $mountPath, $childPython, $package.Value)
     foreach ($relative in @('home','home/cache','temp','junction-target')) { $null = New-Item -ItemType Directory -Path (Join-Path $mountPath $relative) }
     $null = New-Item -ItemType Junction -Path (Join-Path $mountPath 'prepared-junction') -Target (Join-Path $mountPath 'junction-target')
     # The suspended child's TokenOwner is forced to TokenUser; trusted preflight compares
