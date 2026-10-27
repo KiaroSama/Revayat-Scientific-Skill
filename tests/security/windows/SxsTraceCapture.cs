@@ -205,14 +205,46 @@ namespace ScientificSecurity
                 });
                 string canary = Path.Combine(folder, "canary");
                 StorageStep(StorageStage.Canary, () => {
-                    using (var file = new FileStream(canary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) {
-                        byte[] bytes = Encoding.UTF8.GetBytes("fixed SxS host control"); file.Write(bytes, 0, bytes.Length); file.Flush(true);
+                    using (WindowsIdentity host = WindowsIdentity.GetCurrent()) {
+                        FileSecurity policy = CanaryPolicy(host.User);
+                        WriteCanary(() => FileSystemAclExtensions.Create(new FileInfo(canary), FileMode.CreateNew,
+                            FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.Synchronize,
+                            FileShare.None, 4096, FileOptions.None, policy), stream => ((FileStream)stream).Flush(true));
                     }
                 });
                 StorageStep(StorageStage.DirectoryReadback, () => RequirePolicy(folder, true));
                 StorageStep(StorageStage.FileReadback, () => RequirePolicy(canary, false));
             }
             catch (Exception error) { throw SxsTraceSession.Safe(error, "storage-prepare"); }
+        }
+        static void RequireCanaryPolicy(byte[] bytes, SecurityIdentifier owner)
+        {
+            var raw = new RawSecurityDescriptor(bytes, 0);
+            Need(raw.ControlFlags == ControlFlags.SelfRelative && raw.Owner != null && raw.Owner.Equals(owner) &&
+                raw.Group == null && raw.SystemAcl == null && raw.DiscretionaryAcl == null);
+        }
+        static FileSecurity CanaryPolicy(SecurityIdentifier owner)
+        {
+            Need(owner != null);
+            var raw = new RawSecurityDescriptor(ControlFlags.SelfRelative, owner, null, null, null);
+            var bytes = new byte[raw.BinaryLength]; raw.GetBinaryForm(bytes, 0);
+            var policy = new FileSecurity(); policy.SetSecurityDescriptorBinaryForm(bytes);
+            RequireCanaryPolicy(policy.GetSecurityDescriptorBinaryForm(), owner); return policy;
+        }
+        static void WriteCanary(Func<Stream> create, Action<Stream> flush)
+        {
+            Stream stream = null; Exception primary = null;
+            try {
+                stream = create(); Need(stream != null);
+                byte[] bytes = Encoding.UTF8.GetBytes("fixed SxS host control");
+                stream.Write(bytes, 0, bytes.Length); flush(stream);
+            }
+            catch (Exception error) { primary = error; throw; }
+            finally {
+                var failures = new System.Collections.Generic.List<Exception>();
+                StartupActivationAccess.Attempt(failures, () => { if (stream != null) stream.Dispose(); });
+                StartupActivationAccess.Finish(primary, failures);
+            }
         }
         internal static void CreateSealed(DirectorySecurity security, string owner, string package, Action<DirectorySecurity> create)
         { ValidatePolicy(security, true, owner, package); create(security); }
@@ -416,6 +448,55 @@ namespace ScientificSecurity
                 Object.ReferenceEquals(((SxsTraceSession.PrivateFailure)aggregate.InnerExceptions[1]).Original, errors[0]) &&
                 !aggregate.ToString().Contains("sentinel"));
         }
+        sealed class CanaryStream : MemoryStream
+        {
+            internal string order = "";
+            internal int failure;
+            internal readonly Exception error = new IOException("private-canary-sentinel");
+            public override void Write(byte[] bytes, int offset, int count)
+            {
+                order += "w"; Need(offset == 0 && count == 22); RequireCanary(bytes);
+                if ((failure & 1) != 0) throw error;
+                base.Write(bytes, offset, count);
+            }
+            internal void FlushFixed() { order += "f"; if ((failure & 2) != 0) throw error; }
+            protected override void Dispose(bool disposing)
+            { order += "d"; base.Dispose(disposing); if ((failure & 4) != 0) throw error; }
+        }
+        static void CheckCanaryCreation()
+        {
+            var owner = new SecurityIdentifier("S-1-5-21-1-2-3-1001");
+            FileSecurity policy = CanaryPolicy(owner);
+            byte[] actual = policy.GetSecurityDescriptorBinaryForm(); RequireCanaryPolicy(actual, owner);
+            var raw = new RawSecurityDescriptor(actual, 0);
+            Need(actual.Length == 48 && actual[0] == 1 && actual[2] == 0 && actual[3] == 0x80 &&
+                BitConverter.ToInt32(actual, 4) == 20 && BitConverter.ToInt32(actual, 8) == 0 &&
+                BitConverter.ToInt32(actual, 12) == 0 && BitConverter.ToInt32(actual, 16) == 0);
+            for (int kind = 0; kind < 6; kind++) {
+                var bad = new RawSecurityDescriptor(ControlFlags.SelfRelative |
+                    (kind == 0 || kind == 1 ? ControlFlags.DiscretionaryAclPresent : kind == 2 ? ControlFlags.DiscretionaryAclProtected : 0),
+                    kind == 3 ? new SecurityIdentifier("S-1-5-18") : owner, kind == 4 ? owner : null,
+                    kind == 5 ? new RawAcl(2, 0) : null, kind == 1 ? new RawAcl(2, 0) : null);
+                if (kind == 5) bad.SetFlags(bad.ControlFlags | ControlFlags.SystemAclPresent);
+                byte[] bytes = new byte[bad.BinaryLength]; bad.GetBinaryForm(bytes, 0); bool refused = false;
+                try { RequireCanaryPolicy(bytes, owner); } catch (InvalidOperationException) { refused = true; } Need(refused);
+            }
+            for (int mode = 0; mode < 8; mode++) {
+                var stream = new CanaryStream { failure = mode }; Exception caught = null; int acquired = 0;
+                try { WriteCanary(() => { acquired++; if (mode == 3) throw stream.error; return stream; },
+                    value => ((CanaryStream)value).FlushFixed()); }
+                catch (Exception error) { caught = error; }
+                Need(acquired == 1 && stream.order == (mode == 3 ? "" : (mode & 1) != 0 ? "wd" : "wfd"));
+                if (mode == 0) Need(caught == null);
+                else if ((mode & 4) != 0) {
+                    var aggregate = caught as AggregateException;
+                    Need(aggregate != null && aggregate.InnerExceptions.Count == ((mode & 3) == 0 ? 1 : 2) &&
+                        aggregate.InnerExceptions.All(value => Object.ReferenceEquals(value, stream.error)));
+                }
+                else Need(Object.ReferenceEquals(caught, stream.error));
+                if (mode == 3) stream.Dispose();
+            }
+        }
         static void CheckStorageLifecycle()
         {
             var raw = new IOException("C:\\private-boundary-sentinel\\canary");
@@ -459,7 +540,7 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
-            CheckStorageLifecycle();
+            CheckCanaryCreation(); CheckStorageLifecycle();
             SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); SxsTraceStorage.CheckValidation();
             CheckStorageAndAcquisition(); CheckStorageFailureValidation();
             var operation = new IOException("fixed operation"); var stop = new IOException("private-stop-sentinel");

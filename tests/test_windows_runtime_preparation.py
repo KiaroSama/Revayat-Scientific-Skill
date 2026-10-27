@@ -96,6 +96,8 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertNotIn('CreateDirectoryW', capture)
         self.assertIn('CreateSealed(security, host.User.Value, package', capture)
         self.assertIn('Acquired(SxsTraceSession.Exclusive', capture)
+        self.assertIn('FileSystemAclExtensions.Create(new FileInfo(canary)', capture)
+        self.assertNotIn('new FileStream(canary, FileMode.CreateNew', capture)
 
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
