@@ -220,8 +220,7 @@ namespace ScientificSecurity
                 if (Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(diagnostics) > 1048576)
                     throw new InvalidOperationException("combined trusted setup output exceeded 1 MiB");
                 if (sxsTrace) {
-                    if (remaining() <= 0 || clock.Elapsed.TotalSeconds > 10 || exit != 0 || diagnostics.Length != 0)
-                        throw new InvalidOperationException("fixed SxS tool did not complete cleanly");
+                    RequireSxsCompletion(exit, diagnostics.Length != 0, remaining(), clock.Elapsed.TotalSeconds);
                     return "";
                 }
                 if (name == "dumpbin.exe" && diagnostics.Length != 0)
@@ -276,6 +275,38 @@ namespace ScientificSecurity
                         throw;
                     }
                 }
+            }
+        }
+        internal static void RequireSxsCompletion(uint exit, bool stderr, double remaining, double elapsed)
+        {
+            bool expired = remaining <= 0, overrun = elapsed > 10;
+            if (expired || overrun || exit != 0 || stderr)
+                throw new SxsTraceSession.PrivateFailure(new InvalidOperationException("fixed SxS tool did not complete cleanly"),
+                    "tool-result exit32=" + exit.ToString("X8") + " stderr_present=" + stderr +
+                    " deadline_expired=" + expired + " wall_exceeded=" + overrun);
+        }
+        internal static void CheckSxsCompletion()
+        {
+            RequireSxsCompletion(0, false, 1, 10);
+            uint[] exits = { 0, 0, 0, 5, UInt32.MaxValue };
+            bool[] errors = { false, false, true, false, true };
+            double[] remaining = { 0, 1, 1, 1, 0 }, elapsed = { 10, 10.1, 10, 10, 11 };
+            string[] expected = {
+                "tool-result exit32=00000000 stderr_present=False deadline_expired=True wall_exceeded=False",
+                "tool-result exit32=00000000 stderr_present=False deadline_expired=False wall_exceeded=True",
+                "tool-result exit32=00000000 stderr_present=True deadline_expired=False wall_exceeded=False",
+                "tool-result exit32=00000005 stderr_present=False deadline_expired=False wall_exceeded=False",
+                "tool-result exit32=FFFFFFFF stderr_present=True deadline_expired=True wall_exceeded=True"
+            };
+            for (int index = 0; index < exits.Length; index++) {
+                Exception caught = null;
+                try { RequireSxsCompletion(exits[index], errors[index], remaining[index], elapsed[index]); }
+                catch (Exception failure) { caught = failure; }
+                var safe = caught as SxsTraceSession.PrivateFailure;
+                if (safe == null || safe.InnerException != null || safe.Original.GetType() != typeof(InvalidOperationException) ||
+                    safe.Message != "fixed SxS trace failed stage=" + expected[index] + " raw_error_withheld=True" ||
+                    safe.ToString().Contains("did not complete cleanly"))
+                    throw new InvalidOperationException("fixed SxS result projection self-check failed");
             }
         }
         static void CloseOwned(IntPtr handle, bool strict)

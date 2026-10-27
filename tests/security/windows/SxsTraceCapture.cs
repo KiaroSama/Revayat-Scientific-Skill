@@ -512,6 +512,7 @@ namespace ScientificSecurity
         {
             CheckCanaryCreation(); CheckStorageLifecycle();
             SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); SxsTraceStorage.CheckValidation();
+            TrustedSetup.CheckSxsCompletion();
             CheckStorageAndAcquisition(); CheckStorageFailureValidation();
             var operation = new IOException("fixed operation"); var stop = new IOException("private-stop-sentinel");
             for (int mode = 0; mode < 4; mode++) {

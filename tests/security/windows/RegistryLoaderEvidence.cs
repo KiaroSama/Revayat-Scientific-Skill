@@ -70,7 +70,7 @@ namespace ScientificSecurity
         }
         internal static Exception Sanitize(Exception failure)
         {
-            if (failure == null || failure is PrivateFailure || failure is ReceiptFailure) return failure;
+            if (failure == null || failure is PrivateFailure || failure is ReceiptFailure || failure is SxsTraceSession.PrivateFailure) return failure;
             var qualified = failure as ExplicitEntryComparison.QualifiedFailure;
             if (qualified != null) return new ExplicitEntryComparison.QualifiedFailure(Sanitize(qualified.Original));
             var group = failure as AggregateException;
@@ -82,6 +82,17 @@ namespace ScientificSecurity
         }
         internal static void CheckPrivacyValidation()
         {
+            var privateCause = new InvalidOperationException("C:\\private-sxs-sentinel\\capture.etl");
+            var trace = new SxsTraceSession.PrivateFailure(privateCause, "start-tool");
+            RegistryAuthorityComparison.Need(Object.ReferenceEquals(Sanitize(trace), trace));
+            var nested = Sanitize(new AggregateException("private-group-sentinel", trace,
+                new ExplicitEntryComparison.QualifiedFailure(trace), privateCause)) as AggregateException;
+            var qualified = nested.InnerExceptions[1] as ExplicitEntryComparison.QualifiedFailure;
+            RegistryAuthorityComparison.Need(Object.ReferenceEquals(nested.InnerExceptions[0], trace) &&
+                qualified != null && Object.ReferenceEquals(qualified.Original, trace) &&
+                Object.ReferenceEquals(trace.Original, privateCause) && trace.InnerException == null &&
+                trace.Message == "fixed SxS trace failed stage=start-tool raw_error_withheld=True" &&
+                nested.InnerExceptions[2] is PrivateFailure && !nested.ToString().Contains("sentinel"));
             const string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=import-ctypes:import-ctypes-native\n";
             byte[] bytes = Encoding.ASCII.GetBytes(frame + "private-sentinel").Concat(new byte[] { 0xED, 0xA0, 0x80 }).ToArray();
             Exception raw = null;
