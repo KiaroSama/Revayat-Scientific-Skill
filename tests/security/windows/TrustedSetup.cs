@@ -20,8 +20,7 @@ namespace ScientificSecurity
                 SxsTraceCapture.RequireFolder(folder);
                 string executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "sxstrace.exe");
                 string etl = Path.Combine(folder, "capture.etl"), text = Path.Combine(folder, "capture.txt");
-                string[] arguments = parse ? new [] { "parse", "-logfile:" + etl, "-outfile:" + text, "-filter:python.exe" } :
-                    new [] { "trace", "-logfile:" + etl, "-nostop" };
+                string[] arguments = SxsArguments(etl, text, parse);
                 RunFixed(executable, arguments, folder, false, sxsTrace: true, remaining: remaining);
             }
             catch (Exception failure) { throw SxsTraceSession.Safe(failure, parse ? "parse-tool" : "start-tool"); }
@@ -277,6 +276,8 @@ namespace ScientificSecurity
                 }
             }
         }
+        static string[] SxsArguments(string etl, string text, bool parse)
+        { return parse ? new [] { "parse", "-logfile:" + etl, "-outfile:" + text } : new [] { "trace", "-logfile:" + etl, "-nostop" }; }
         internal static void RequireSxsCompletion(uint exit, bool stderr, double remaining, double elapsed)
         {
             bool expired = remaining <= 0, overrun = elapsed > 10;
@@ -287,6 +288,9 @@ namespace ScientificSecurity
         }
         internal static void CheckSxsCompletion()
         {
+            if (!SxsArguments("fixed.etl", "fixed.txt", true).SequenceEqual(new [] { "parse", "-logfile:fixed.etl", "-outfile:fixed.txt" }) ||
+                !SxsArguments("fixed.etl", "fixed.txt", false).SequenceEqual(new [] { "trace", "-logfile:fixed.etl", "-nostop" }))
+                throw new InvalidOperationException("fixed SxS arguments differ");
             RequireSxsCompletion(0, false, 1, 10);
             uint[] exits = { 0, 0, 0, 5, UInt32.MaxValue };
             bool[] errors = { false, false, true, false, true };

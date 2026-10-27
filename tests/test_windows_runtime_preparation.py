@@ -89,6 +89,7 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn('if (observation is RegistryAuthorityComparison.Observation) SxsTraceCapture.StartAuthority(child, package, clock);', preparation)
         runner = (windows / 'TrustedSetup.cs').read_text(encoding='utf-8')
         self.assertIn('internal static void RunSxsTrace(', runner)
+        self.assertNotIn('"-filter:python.exe"', runner)
         self.assertNotIn('"pwsh.exe", "sxstrace.exe" }.Contains(name)', runner)
         capture = (windows / 'SxsTraceCapture.cs').read_text(encoding='utf-8')
         self.assertNotIn('Directory.CreateDirectory(folder)', capture)

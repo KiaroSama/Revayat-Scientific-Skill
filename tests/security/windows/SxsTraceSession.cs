@@ -30,8 +30,9 @@ namespace ScientificSecurity
         internal sealed class PrivateFailure : Exception
         {
             internal readonly Exception Original;
+            internal readonly string SafeStage;
             internal PrivateFailure(Exception original, string stage) : base("fixed SxS trace failed stage=" + stage + " raw_error_withheld=True")
-            { Original = original; }
+            { Original = original; SafeStage = stage; }
         }
         internal static Exception Safe(Exception error, string stage)
         { return error is PrivateFailure ? error : new PrivateFailure(error, stage); }

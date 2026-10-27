@@ -58,27 +58,88 @@ namespace ScientificSecurity
                 default: throw new InvalidOperationException("unsupported fixed SxS length phase");
             }
         }
-        static void LengthFailure(string phase, string comparison, long? observed, int maximum, bool? even)
+        static SxsTraceSession.PrivateFailure LengthFailure(string phase, string comparison, long? observed, int maximum, bool? even)
         {
-            throw new SxsTraceSession.PrivateFailure(new InvalidOperationException("fixed SxS evidence length rejected"),
+            return new SxsTraceSession.PrivateFailure(new InvalidOperationException("fixed SxS evidence length rejected"),
                 "evidence-length-" + phase + " comparison=" + comparison + " observed_bytes=" +
                 (observed.HasValue ? observed.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "absent") +
                 " maximum_bytes=" + maximum.ToString(System.Globalization.CultureInfo.InvariantCulture) +
                 " even=" + (even.HasValue ? even.Value.ToString() : "not-evaluated"));
         }
-        static void RequireSize(Func<long> length, int maximum, LengthPhase phase)
+        sealed class PrefixObservation
+        {
+            internal readonly SxsTraceSession.PrivateFailure Report;
+            internal PrefixObservation(SxsTraceSession.PrivateFailure report) { Report = report; }
+        }
+        static SxsTraceSession.PrivateFailure CombinePrivate(Exception first, Exception second, string secondStage)
+        {
+            var left = (SxsTraceSession.PrivateFailure)SxsTraceSession.Safe(first, "text-read");
+            var right = (SxsTraceSession.PrivateFailure)SxsTraceSession.Safe(second, secondStage);
+            return new SxsTraceSession.PrivateFailure(new AggregateException("fixed SxS rejected evidence", left, right),
+                left.SafeStage + " " + right.SafeStage);
+        }
+        static SxsTraceSession.PrivateFailure Supplement(SxsTraceSession.PrivateFailure original, Func<PrefixObservation> inspect)
+        {
+            PrefixObservation observation;
+            try { observation = inspect(); }
+            catch (Exception error) { observation = PrefixReport("unavailable", "unavailable", null, error); }
+            if (observation == null || observation.Report == null)
+                observation = PrefixReport("unavailable", "unavailable", null);
+            return CombinePrivate(original, observation.Report, "evidence-prefix");
+        }
+        static void RequireSize(Func<long> length, int maximum, LengthPhase phase, Func<PrefixObservation> inspectThree = null)
         {
             string label = LengthLabel(phase);
-            if (phase == LengthPhase.InputShape && length == null) LengthFailure(label, "present", null, maximum, null);
+            if (phase == LengthPhase.InputShape && length == null) throw LengthFailure(label, "present", null, maximum, null);
             // Retain each short-circuited observation; a changing file has no single snapshot length.
             long observed = length();
-            if (phase == LengthPhase.FileBound ? observed <= 0 : observed < 2) LengthFailure(label, "minimum", observed, maximum, null);
+            if (phase == LengthPhase.FileBound ? observed <= 0 : observed < 2) throw LengthFailure(label, "minimum", observed, maximum, null);
             observed = length();
-            if (observed > maximum) LengthFailure(label, "maximum", observed, maximum, null);
+            if (observed > maximum) throw LengthFailure(label, "maximum", observed, maximum, null);
             if (phase != LengthPhase.FileBound) {
                 observed = length();
-                if (observed % 2 != 0) LengthFailure(label, "even", observed, maximum, false);
+                if (observed % 2 != 0) {
+                    var original = LengthFailure(label, "even", observed, maximum, false);
+                    if (phase == LengthPhase.ReadShape && observed == 3 && inspectThree != null) throw Supplement(original, inspectThree);
+                    throw original;
+                }
             }
+        }
+        static string Signature(byte[] bytes, int count)
+        {
+            SxsTraceSession.Need(count >= 0 && count <= 3 && (bytes == null ? count == 0 : count <= bytes.Length));
+            if (count == 0) return "absent";
+            if (count >= 3 && bytes[0] == 239 && bytes[1] == 187 && bytes[2] == 191) return "utf8-bom";
+            if (count >= 2 && bytes[0] == 255 && bytes[1] == 254) return "utf16le-prefix";
+            return "other";
+        }
+        static PrefixObservation PrefixReport(string status, string signature, int? transferred, Exception original = null)
+        {
+            return new PrefixObservation(new SxsTraceSession.PrivateFailure(original ?? new InvalidOperationException("fixed SxS prefix observation"),
+                "evidence-prefix status=" + status + " signature=" + signature + " transferred_bytes=" +
+                (transferred.HasValue ? transferred.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unavailable")));
+        }
+        static PrefixObservation InspectThree(Stream stream)
+        {
+            var bytes = new byte[3]; int transferred = 0;
+            try {
+                try {
+                    while (transferred < 3) {
+                        int count = stream.Read(bytes, transferred, 3 - transferred);
+                        SxsTraceSession.Need(count >= 0 && count <= 3 - transferred);
+                        if (count == 0) return PrefixReport("short", Signature(bytes, transferred), transferred);
+                        transferred += count;
+                    }
+                }
+                catch (Exception error) { return PrefixReport("read-error", "unavailable", transferred, error); }
+                return PrefixReport("complete", Signature(bytes, transferred), transferred);
+            }
+            finally { Array.Clear(bytes, 0, bytes.Length); }
+        }
+        static PrefixObservation InspectArray(byte[] bytes)
+        {
+            int count = bytes == null ? 0 : Math.Min(3, bytes.Length);
+            return PrefixReport("array", Signature(bytes, count), count);
         }
         internal static void RequireLength(string path, int maximum)
         {
@@ -89,18 +150,35 @@ namespace ScientificSecurity
         internal static string Read(string path, string manifest)
         {
             RequireLength(path, 1048576);
-            using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
-                RequireSize(() => file.Length, 1048576, LengthPhase.ReadShape);
+            return ReadOwned(() => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), manifest);
+        }
+        static string ReadOwned(Func<Stream> open, string manifest)
+        {
+            Stream file = null; Exception primary = null;
+            try {
+                file = open();
+                RequireSize(() => file.Length, 1048576, LengthPhase.ReadShape, () => InspectThree(file));
                 byte[] bytes = new byte[(int)file.Length]; int offset = 0;
                 while (offset < bytes.Length) { int n = file.Read(bytes, offset, bytes.Length - offset); Check(n > 0, Predicate.ReadComplete); offset += n; }
                 return Parse(bytes, manifest);
+            }
+            catch (Exception error) { primary = error; throw; }
+            finally {
+                try { if (file != null) file.Dispose(); }
+                catch (Exception error) {
+                    var safe = new SxsTraceSession.PrivateFailure(error, "evidence-close");
+                    if (primary != null) throw CombinePrivate(primary, safe, "evidence-close");
+                    throw safe;
+                }
             }
         }
         internal static string Parse(byte[] bytes, string manifest)
         {
             Func<long> length = bytes == null ? (Func<long>)null : () => bytes.Length;
-            RequireSize(length, 1048576, LengthPhase.InputShape);
-            Check(bytes[0] == 255 && bytes[1] == 254, Predicate.Bom);
+            try { RequireSize(length, 1048576, LengthPhase.InputShape); }
+            catch (SxsTraceSession.PrivateFailure original) { throw Supplement(original, () => InspectArray(bytes)); }
+            try { Check(bytes[0] == 255 && bytes[1] == 254, Predicate.Bom); }
+            catch (SxsTraceSession.PrivateFailure original) { throw Supplement(original, () => InspectArray(bytes)); }
             string text;
             try { text = new UnicodeEncoding(false, false, true).GetString(bytes, 2, bytes.Length - 2); }
             catch (DecoderFallbackException error) { throw SxsTraceSession.Safe(error, "evidence-utf16"); }
@@ -201,14 +279,113 @@ namespace ScientificSecurity
                 SxsTraceSession.Need(refused && reads == 0);
             }
         }
+        sealed class PrefixStream : MemoryStream
+        {
+            internal byte[] retained;
+            internal int reads, lengths, closes, mode;
+            internal long? observed;
+            internal PrefixStream(byte[] bytes) : base(bytes) { }
+            public override long Length { get { lengths++; return observed ?? base.Length; } }
+            public override int Read(byte[] bytes, int offset, int count)
+            {
+                retained = bytes; reads++; SxsTraceSession.Need(count > 0 && (mode == 7 || count <= 3 && offset + count <= 3));
+                if (mode == 2 || mode == 5 && reads == 2 || mode == 6) throw new IOException("private-prefix-read-sentinel");
+                if (mode == 3) return 4;
+                return base.Read(bytes, offset, mode == 1 || mode == 5 ? Math.Min(1, count) : count);
+            }
+            protected override void Dispose(bool disposing)
+            { closes++; base.Dispose(disposing); if (mode == 4 || mode == 6) throw new IOException("private-prefix-close-sentinel"); }
+        }
+        static void CheckPrefixValidation()
+        {
+            byte[][] inputs = { null, new byte[0], new byte[] { 239 }, new byte[] { 239, 187 },
+                new byte[] { 239, 187, 191 }, new byte[] { 255, 254 }, new byte[] { 255, 254, 0 }, new byte[] { 239, 187, 0 } };
+            string[] signatures = { "absent", "absent", "other", "other", "utf8-bom", "utf16le-prefix", "utf16le-prefix", "other" };
+            for (int index = 0; index < inputs.Length; index++) {
+                var report = InspectArray(inputs[index]).Report;
+                int count = inputs[index] == null ? 0 : inputs[index].Length;
+                SxsTraceSession.Need(report.Message == "fixed SxS trace failed stage=evidence-prefix status=array signature=" +
+                    signatures[index] + " transferred_bytes=" + count + " raw_error_withheld=True");
+            }
+            for (int mode = 0; mode <= 6; mode++) {
+                var stream = new PrefixStream(new byte[] { 239, 187, 191 }) { mode = mode };
+                Exception caught = null;
+                try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
+                var safe = caught as SxsTraceSession.PrivateFailure;
+                SxsTraceSession.Need(safe != null && stream.lengths == 3 && stream.closes == 1 &&
+                    stream.reads == (mode == 1 ? 3 : mode == 5 ? 2 : 1) && stream.retained.All(value => value == 0) &&
+                    safe.Message.StartsWith("fixed SxS trace failed stage=evidence-length-read-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False ", StringComparison.Ordinal) &&
+                    !safe.ToString().Contains("sentinel") && safe.InnerException == null);
+                var group = safe.Original as AggregateException;
+                SxsTraceSession.Need(group != null && group.InnerExceptions.Count == 2);
+                if (mode == 4 || mode == 6) {
+                    SxsTraceSession.Need(group.InnerExceptions[0] is SxsTraceSession.PrivateFailure &&
+                        ((SxsTraceSession.PrivateFailure)group.InnerExceptions[0]).Original is AggregateException &&
+                        ((SxsTraceSession.PrivateFailure)group.InnerExceptions[1]).SafeStage == "evidence-close");
+                }
+                else SxsTraceSession.Need(((SxsTraceSession.PrivateFailure)group.InnerExceptions[0]).SafeStage ==
+                    "evidence-length-read-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False");
+                if (mode == 2 || mode == 3 || mode == 6) SxsTraceSession.Need(safe.Message.Contains("status=read-error signature=unavailable transferred_bytes=0"));
+                else if (mode == 5) SxsTraceSession.Need(safe.Message.Contains("status=read-error signature=unavailable transferred_bytes=1"));
+                else SxsTraceSession.Need(safe.Message.Contains("status=complete signature=utf8-bom transferred_bytes=3"));
+            }
+            for (int size = 0; size < 3; size++) {
+                var stream = new PrefixStream(new byte[size]); var result = InspectThree(stream).Report;
+                SxsTraceSession.Need(result.Message.Contains("status=short signature=" + (size == 0 ? "absent" : "other") + " transferred_bytes=" + size) &&
+                    stream.lengths == 0 && stream.reads == (size == 0 ? 1 : 2) && stream.retained.All(value => value == 0));
+                stream.Dispose();
+            }
+            for (int size = 0; size < 3; size++) {
+                var stream = new PrefixStream(new byte[size]) { observed = 3 }; Exception caught = null;
+                try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
+                var safe = caught as SxsTraceSession.PrivateFailure;
+                SxsTraceSession.Need(safe != null && stream.lengths == 3 && stream.closes == 1 &&
+                    stream.reads == (size == 0 ? 1 : 2) && stream.retained.All(value => value == 0) &&
+                    safe.Message.Contains("observed_bytes=3") && safe.Message.Contains("status=short signature=" +
+                        (size == 0 ? "absent" : "other") + " transferred_bytes=" + size) && !safe.ToString().Contains("sentinel"));
+            }
+            foreach (int size in new [] { 0, 1, 5, 1048577 }) {
+                var stream = new PrefixStream(new byte[size]); Exception caught = null;
+                try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && stream.reads == 0 && stream.closes == 1 &&
+                    !caught.Message.Contains("evidence-prefix"));
+            }
+            const string manifest = "F:\\private-manifest-sentinel\\_ctypes.pyd";
+            string block = Begin + "\nManifestPath = " + manifest + "\nERROR: Activation Context generation failed.\n" + End + "\n";
+            byte[] valid = new byte[] { 255, 254 }.Concat(new UnicodeEncoding(false, false, true).GetBytes(block)).ToArray();
+            var positive = new PrefixStream(valid) { mode = 7 };
+            SxsTraceSession.Need(ReadOwned(() => positive, manifest).Contains("activation_failed=True") &&
+                positive.lengths == 4 && positive.reads == 1 && positive.closes == 1);
+            Exception absent = null; var openError = new IOException("private-open-sentinel");
+            try { ReadOwned(() => { throw openError; }, manifest); } catch (Exception error) { absent = error; }
+            SxsTraceSession.Need(Object.ReferenceEquals(absent, openError));
+            var original = LengthFailure("read-shape", "even", 3, 1048576, false);
+            for (int mode = 0; mode < 4; mode++) {
+                int selected = mode;
+                var safe = Supplement(original, () => {
+                    if (selected == 0) return InspectArray(new byte[] { 239, 187, 191 });
+                    if (selected == 1) throw new IOException("private-callback-sentinel");
+                    if (selected == 2) throw new SxsTraceSession.PrivateFailure(new IOException("private-callback-sentinel"), "unrelated-stage");
+                    return null;
+                });
+                var group = (AggregateException)safe.Original;
+                SxsTraceSession.Need(Object.ReferenceEquals(group.InnerExceptions[0], original) && group.InnerExceptions.Count == 2 &&
+                    safe.Message.Contains(mode == 0 ? "status=array signature=utf8-bom transferred_bytes=3" :
+                        "status=unavailable signature=unavailable transferred_bytes=unavailable") &&
+                    !safe.ToString().Contains("sentinel") && !safe.Message.Contains("unrelated-stage"));
+            }
+            var field = typeof(SxsTraceSession.PrivateFailure).GetField("SafeStage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            SxsTraceSession.Need(field != null && field.IsInitOnly && original.SafeStage ==
+                "evidence-length-read-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False");
+        }
         internal static void CheckReportingValidation()
         {
-            CheckLengthValidation();
+            CheckLengthValidation(); CheckPrefixValidation();
             Exception caught = null;
             try { Parse(new byte[0], "private-manifest-sentinel"); }
             catch (Exception error) { caught = error; }
             SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && caught.InnerException == null &&
-                caught.Message == "fixed SxS trace failed stage=evidence-length-input-shape comparison=minimum observed_bytes=0 maximum_bytes=1048576 even=not-evaluated raw_error_withheld=True" &&
+                caught.Message == "fixed SxS trace failed stage=evidence-length-input-shape comparison=minimum observed_bytes=0 maximum_bytes=1048576 even=not-evaluated evidence-prefix status=array signature=absent transferred_bytes=0 raw_error_withheld=True" &&
                 !caught.ToString().Contains("sentinel"));
             const string manifest = "F:\\private-manifest-sentinel\\_ctypes.pyd";
             string block = Begin + "\nManifestPath = " + manifest + "\nERROR: Activation Context generation failed.\n" + End + "\n";
@@ -216,8 +393,11 @@ namespace ScientificSecurity
             Action<byte[], string> refuse = (bytes, label) => {
                 Exception failure = null;
                 try { Parse(bytes, manifest); } catch (Exception error) { failure = error; }
+                string prefix = label.StartsWith("length-input-shape", StringComparison.Ordinal) || label == "bom" ?
+                    " evidence-prefix status=array signature=" + (bytes == null || bytes.Length == 0 ? "absent" : "other") +
+                    " transferred_bytes=" + (bytes == null ? 0 : Math.Min(3, bytes.Length)) : "";
                 SxsTraceSession.Need(failure is SxsTraceSession.PrivateFailure && failure.InnerException == null &&
-                    failure.Message == "fixed SxS trace failed stage=evidence-" + label + " raw_error_withheld=True" &&
+                    failure.Message == "fixed SxS trace failed stage=evidence-" + label + prefix + " raw_error_withheld=True" &&
                     !failure.ToString().Contains("sentinel"));
             };
             SxsTraceSession.Need(Parse(encode(block), manifest).Contains("activation_failed=True"));
@@ -271,6 +451,7 @@ namespace ScientificSecurity
                 catch (Exception failure) {
                     var retained = failure as SxsTraceSession.PrivateFailure;
                     Exception original = retained == null ? failure : retained.Original;
+                    if (original is AggregateException) original = ((SxsTraceSession.PrivateFailure)((AggregateException)original).InnerExceptions[0]).Original;
                     SxsTraceSession.Need(original is InvalidOperationException || original is DecoderFallbackException);
                     var safe = SxsTraceSession.Safe(failure, "parse");
                     SxsTraceSession.Need(!safe.ToString().Contains("sentinel") && safe.InnerException == null);

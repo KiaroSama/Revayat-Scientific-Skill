@@ -604,7 +604,12 @@ namespace ScientificSecurity
             var group = combined as AggregateException;
             Need(group != null && group.InnerExceptions.Count == 2 && Object.ReferenceEquals(group.InnerExceptions[0], first) &&
                 group.InnerExceptions[1] is SxsTraceSession.PrivateFailure && group.InnerExceptions[1].Message ==
-                "fixed SxS trace failed stage=evidence-length-input-shape comparison=minimum observed_bytes=0 maximum_bytes=1048576 even=not-evaluated raw_error_withheld=True" && !group.ToString().Contains("sentinel"));
+                "fixed SxS trace failed stage=evidence-length-input-shape comparison=minimum observed_bytes=0 maximum_bytes=1048576 even=not-evaluated evidence-prefix status=array signature=absent transferred_bytes=0 raw_error_withheld=True" && !group.ToString().Contains("sentinel"));
+            var trace = (SxsTraceSession.PrivateFailure)group.InnerExceptions[1];
+            var ordered = trace.Original as AggregateException;
+            Need(ordered != null && ordered.InnerExceptions.Count == 2 &&
+                ((SxsTraceSession.PrivateFailure)ordered.InnerExceptions[0]).SafeStage.StartsWith("evidence-length-input-shape", StringComparison.Ordinal) &&
+                ((SxsTraceSession.PrivateFailure)ordered.InnerExceptions[1]).SafeStage == "evidence-prefix status=array signature=absent transferred_bytes=0");
         }
         public static void CheckValidation()
         {
