@@ -62,33 +62,51 @@ namespace ScientificSecurity
         KernelImage(byte[] bytes, ulong imageBase, string name)
         {
             data = bytes; Base = imageBase; Name = name;
-            Need(data != null && data.Length >= 256 && data.Length <= 16 * 1024 * 1024 && Base != 0);
-            Need(U16(0) == 0x5A4D); uint nt = U32(0x3C);
-            Need(U32(nt) == 0x4550 && U16((ulong)nt + 4) == 0x8664);
-            ushort count = U16((ulong)nt + 6), optionalBytes = U16((ulong)nt + 20);
-            Need(count > 0 && count <= 64 && optionalBytes >= 240);
-            ulong optional = (ulong)nt + 24; Range(optional, optionalBytes);
-            Need(U16(optional) == 0x20B && U32(optional + 108) >= 16);
-            Entry = U32(optional + 16); imageSize = U32(optional + 56); headers = U32(optional + 60);
-            Need(headers > 0 && headers <= data.Length && imageSize >= headers && imageSize <= 64 * 1024 * 1024);
-            ulong table = optional + optionalBytes; Range(table, (ulong)count * 40);
-            Need(table + (ulong)count * 40 <= headers && Base <= 0x7FFFFFFFFFFFFFFFUL - imageSize);
-            for (int index = 0; index < count; index++) {
-                ulong item = table + (ulong)index * 40;
-                var section = new Section { size = U32(item + 8), rva = U32(item + 12), rawSize = U32(item + 16),
-                    raw = U32(item + 20), flags = U32(item + 36) };
-                ulong extent = Math.Max(section.size, section.rawSize);
-                Need(section.rva >= headers && extent > 0 && (ulong)section.rva + extent <= imageSize);
-                Range(section.raw, section.rawSize);
-                foreach (var old in sections) {
-                    Need((ulong)section.rva + extent <= old.rva ||
-                        (ulong)old.rva + Math.Max(old.size, old.rawSize) <= section.rva);
-                    if (section.rawSize != 0 && old.rawSize != 0)
-                        Need((ulong)section.raw + section.rawSize <= old.raw || (ulong)old.raw + old.rawSize <= section.raw);
+            string stage = "input";
+            try {
+                Need(data != null && data.Length >= 256 && data.Length <= 16 * 1024 * 1024 && Base != 0);
+                stage = "dos-header";
+                Need(U16(0) == 0x5A4D); uint nt = U32(0x3C);
+                stage = "pe-header";
+                Need(U32(nt) == 0x4550 && U16((ulong)nt + 4) == 0x8664);
+                ushort count = U16((ulong)nt + 6), optionalBytes = U16((ulong)nt + 20);
+                stage = "section-count";
+                Need(count > 0 && count <= 64 && optionalBytes >= 240);
+                stage = "optional-header";
+                ulong optional = (ulong)nt + 24; Range(optional, optionalBytes);
+                Need(U16(optional) == 0x20B && U32(optional + 108) >= 16);
+                Entry = U32(optional + 16); imageSize = U32(optional + 56); headers = U32(optional + 60);
+                stage = "image-size";
+                Need(headers > 0 && headers <= data.Length && imageSize >= headers && imageSize <= 64 * 1024 * 1024);
+                stage = "section-table";
+                ulong table = optional + optionalBytes; Range(table, (ulong)count * 40);
+                Need(table + (ulong)count * 40 <= headers && Base <= 0x7FFFFFFFFFFFFFFFUL - imageSize);
+                for (int index = 0; index < count; index++) {
+                    stage = "section-fields";
+                    ulong item = table + (ulong)index * 40;
+                    var section = new Section { size = U32(item + 8), rva = U32(item + 12), rawSize = U32(item + 16),
+                        raw = U32(item + 20), flags = U32(item + 36) };
+                    ulong extent = Math.Max(section.size, section.rawSize);
+                    stage = "section-rva";
+                    Need(section.rva >= headers && extent > 0 && (ulong)section.rva + extent <= imageSize);
+                    stage = "section-file";
+                    Range(section.raw, section.rawSize);
+                    foreach (var old in sections) {
+                        stage = "section-overlap";
+                        Need((ulong)section.rva + extent <= old.rva ||
+                            (ulong)old.rva + Math.Max(old.size, old.rawSize) <= section.rva);
+                        if (section.rawSize != 0 && old.rawSize != 0)
+                            Need((ulong)section.raw + section.rawSize <= old.raw || (ulong)old.raw + old.rawSize <= section.raw);
+                    }
+                    sections.Add(section);
                 }
-                sections.Add(section);
+                stage = "entry";
+                if (Entry != 0) Need(Executable(Entry));
             }
-            if (Entry != 0) Need(Executable(Entry));
+            catch (InvalidOperationException error) {
+                if (Name != "registry-authority") throw;
+                throw new InvalidOperationException("fixed Rust registry authority header refused stage=" + stage, error);
+            }
         }
         static void Need(bool condition) { if (!condition) throw new InvalidOperationException("hardware OS image violates bounded PE contract"); }
         void Range(ulong offset, ulong bytes) { Need(offset <= (ulong)data.Length && bytes <= (ulong)data.Length - offset); }
