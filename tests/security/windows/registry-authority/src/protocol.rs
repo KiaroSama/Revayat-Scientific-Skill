@@ -75,7 +75,9 @@ pub fn identity(status: u32, returned: usize, data: &[u8], expected: usize) -> R
         "identity",
     )?;
     let units = data[4..4 + count]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect::<Vec<_>>();
     let text = String::from_utf16(&units).map_err(|_| Failure::new("identity", "decode"))?;
@@ -130,7 +132,9 @@ mod tests {
     fn hex(value: &str) -> Vec<u8> {
         value
             .as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| {
                 u8::from_str_radix(std::str::from_utf8(pair).expect("fixture ASCII"), 16)
                     .expect("fixture hex")

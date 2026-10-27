@@ -134,40 +134,39 @@ fn drain(handle: &Handle, bytes: &mut Vec<u8>, limit: usize, final_drain: bool) 
 fn child_failure(code: u32, errors: &[u8]) -> Failure {
     let mut result = Failure::new("descendant", "transport");
     result.child_exit = Some(code);
-    if errors.len() <= 512 && errors.is_ascii() {
-        if let Ok(text) = std::str::from_utf8(errors) {
-            if let Some(events) = text
-                .strip_prefix("REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=")
-                .and_then(|value| value.strip_suffix('\n'))
-            {
-                let mut parsed = Vec::new();
-                for item in events.split(',') {
-                    let Some((phase, kind)) = item.split_once(':') else {
-                        return result;
-                    };
-                    let phases = [
-                        "start",
-                        "token",
-                        "root",
-                        "mutation",
-                        "inventory",
-                        "identity",
-                        "close",
-                        "report",
-                    ];
-                    let kinds = ["control", "timeout", "decode", "native", "cleanup", "other"];
-                    let Some(phase) = phases.into_iter().find(|value| *value == phase) else {
-                        return result;
-                    };
-                    let Some(kind) = kinds.into_iter().find(|value| *value == kind) else {
-                        return result;
-                    };
-                    parsed.push((phase, kind));
-                }
-                if !parsed.is_empty() && parsed.len() <= 7 {
-                    result.events.extend(parsed);
-                }
-            }
+    if errors.len() <= 512
+        && errors.is_ascii()
+        && let Ok(text) = std::str::from_utf8(errors)
+        && let Some(events) = text
+            .strip_prefix("REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=")
+            .and_then(|value| value.strip_suffix('\n'))
+    {
+        let mut parsed = Vec::new();
+        for item in events.split(',') {
+            let Some((phase, kind)) = item.split_once(':') else {
+                return result;
+            };
+            let phases = [
+                "start",
+                "token",
+                "root",
+                "mutation",
+                "inventory",
+                "identity",
+                "close",
+                "report",
+            ];
+            let kinds = ["control", "timeout", "decode", "native", "cleanup", "other"];
+            let Some(phase) = phases.into_iter().find(|value| *value == phase) else {
+                return result;
+            };
+            let Some(kind) = kinds.into_iter().find(|value| *value == kind) else {
+                return result;
+            };
+            parsed.push((phase, kind));
+        }
+        if !parsed.is_empty() && parsed.len() <= 7 {
+            result.events.extend(parsed);
         }
     }
     result
