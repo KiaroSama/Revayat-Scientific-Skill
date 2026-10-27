@@ -10,12 +10,12 @@ namespace ScientificSecurity
     {
         const string Pattern = @"\A\{""accessible"":(0|[1-9][0-9]{0,2}),""capabilities"":0,""granted_access"":131097,""lpac"":true,""mutation_denied"":true,""no_reparse"":true,""read"":true,""read_surface_approved"":false,""restricted"":true,""role"":""(primary|descendant)"",""subkeys"":(0|[1-9][0-9]{0,2}),""version"":1,""x64"":true\}\n\z";
         static readonly Regex Wire = new Regex(Pattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-        static bool started;
+        static bool started, pythonStarted;
         internal static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed registry authority prerequisite is inconclusive"); }
         static Exception Combine(Exception first, Exception later)
         { return first == null ? later : later == null ? first : new AggregateException("registry authority operation/recovery failed", first, later); }
-        internal sealed class Observation : RegistryDiagnostic
+        internal class Observation : RegistryDiagnostic
         {
             readonly RegistryStartupComparison.Observation preparation = new RegistryStartupComparison.Observation(1);
             internal bool recorded;
@@ -30,6 +30,7 @@ namespace ScientificSecurity
             internal void Complete() { preparation.Complete(); Need(wire != null && !recorded); recorded = true; }
             internal void Clear() { preparation.Clear(); wire = null; }
         }
+        internal sealed class PythonObservation : Observation { }
         static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=((?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))(?:,(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
@@ -72,8 +73,20 @@ namespace ScientificSecurity
         public static void Run(string run, string state, string python, string root, string scratch, string powershell,
             string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
         {
-            Need(!started); started = true; PythonCsrDispatch.RequireHostPositive(python); LoaderSnaps.RequireClean(run, state);
-            RegistryAuthoritySurface.Snapshot before = null; var observation = new Observation();
+            Need(!started); started = true;
+            RunCore(run, state, python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, new Observation());
+        }
+        public static void RunPython(string run, string state, string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
+        {
+            Need(started && !pythonStarted); pythonStarted = true;
+            RunCore(run, state, python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, new PythonObservation());
+        }
+        static void RunCore(string run, string state, string python, string root, string scratch, string powershell,
+            string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, Observation observation)
+        {
+            PythonCsrDispatch.RequireHostPositive(python); LoaderSnaps.RequireClean(run, state);
+            RegistryAuthoritySurface.Snapshot before = null;
             try {
                 Execute(() => Sandbox.ObserveRegistryAuthority(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort, observation),
                     () => { var lease = RegistryPolicyLease.Begin(run, state); return Tuple.Create<Action, Action>(lease.Dispose, lease.DeferRecovery); },
@@ -81,7 +94,7 @@ namespace ScientificSecurity
                     () => { before.RequireEqual(RegistryAuthoritySurface.Read()); Need(observation.recorded); },
                     () => {
                         Console.Out.Write(observation.wire);
-                        Console.Out.WriteLine("WINDOWS_REGISTRY_AUTHORITY authority_qualified=True root_values=" + before.values + " root_subkeys=" + before.subkeys +
+                        Console.Out.WriteLine("WINDOWS_REGISTRY_AUTHORITY runtime=" + (observation is PythonObservation ? "python" : "rust") + " authority_qualified=True root_values=" + before.values + " root_subkeys=" + before.subkeys +
                             " value_type_mask=" + before.types + " host_surface_restored=True read_surface_approved=False production_grant=False target_admitted=False");
                         Console.Out.Flush();
                     });

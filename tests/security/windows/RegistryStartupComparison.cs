@@ -267,7 +267,7 @@ namespace ScientificSecurity
                 RequirePreparationHost(); new RegistryContext(token, duplicate, package); Deadline(clock);
                 first = ChildDefaultDacl.Read(token); second = ChildDefaultDacl.Read(duplicate);
                 observation.RequirePolicy(first, second); Deadline(clock);
-                if (observation is RegistryAuthorityComparison.Observation) SxsTraceCapture.StartAuthority(child, package, clock);
+                if (observation is RegistryAuthorityComparison.PythonObservation) SxsTraceCapture.StartAuthority(child, package, clock);
             }
             catch (Exception failure) { primary = failure; throw; }
             finally {

@@ -1,0 +1,6 @@
+# Dependency-free fixture lock; Cargo validates it in hosted CI.
+version = 4
+
+[[package]]
+name = "registry-authority"
+version = "0.1.0"

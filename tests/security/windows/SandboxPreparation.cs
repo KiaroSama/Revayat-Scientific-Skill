@@ -45,7 +45,9 @@ namespace ScientificSecurity
         }
         static List<string> RegistryArguments(string python, string root, RegistryDiagnostic observation)
         {
-            if (observation is RegistryAuthorityComparison.Observation) {
+            if (observation is RegistryAuthorityComparison.Observation && !(observation is RegistryAuthorityComparison.PythonObservation))
+                return new List<string> { RegistryAuthorityFixture.Image(python) };
+            if (observation is RegistryAuthorityComparison.PythonObservation) {
                 PythonCsrDispatch.PreparedImage(python);
                 return new List<string> { python, "-I", "-B", "-X", "utf8", Path.Combine(root, "tests", "security", "windows", "RegistryAuthorityProbe.py") };
             }

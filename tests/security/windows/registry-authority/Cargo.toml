@@ -1,0 +1,13 @@
+[package]
+name = "registry-authority"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.1"
+publish = false
+
+[profile.release]
+panic = "abort"
+strip = "debuginfo"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

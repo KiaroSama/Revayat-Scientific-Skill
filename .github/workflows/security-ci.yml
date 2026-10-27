@@ -35,6 +35,33 @@ jobs:
           python-version: '3.11'
       - name: Prepare declared native Python dependencies
         run: python -m pip install -r skills/revayat-scientific/requirements.txt
+      - name: Prepare pinned Rust verifier toolchain
+        shell: pwsh
+        run: |
+          python tools/run-check.py --timeout 180 --idle-timeout 60 -- rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Generate source oracle and qualify Rust verifier
+        shell: pwsh
+        env:
+          RUSTFLAGS: '-C target-feature=+crt-static'
+          CARGO_BUILD_JOBS: '1'
+          RUST_TEST_THREADS: '1'
+        run: |
+          $manifest = 'tests/security/windows/registry-authority/Cargo.toml'
+          $oracle = Join-Path $PWD '.scratch/registry-authority-oracle.tsv'
+          New-Item -ItemType Directory -Force .scratch | Out-Null
+          $rows = & python -I -B tests/security/windows/registry_authority_oracle.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [IO.File]::WriteAllText($oracle, (($rows -join "`n") + "`n"), [Text.UTF8Encoding]::new($false, $true))
+          $env:REGISTRY_AUTHORITY_ORACLE = $oracle
+          python tools/run-check.py --timeout 60 --idle-timeout 30 -- cargo +1.99.1 fmt --manifest-path $manifest --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/run-check.py --timeout 180 --idle-timeout 60 -- cargo +1.99.1 clippy --offline --locked --manifest-path $manifest --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/run-check.py --timeout 180 --idle-timeout 60 -- cargo +1.99.1 test --offline --locked --manifest-path $manifest --target x86_64-pc-windows-msvc -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/run-check.py --timeout 180 --idle-timeout 60 -- cargo +1.99.1 build --offline --locked --manifest-path $manifest --target x86_64-pc-windows-msvc --release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prove native containment before Windows junction and OPC scenarios
         shell: pwsh
         run: |

@@ -31,6 +31,7 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.PythonCsrDispatch]::RunHost($childPython)',
             '[ScientificSecurity.RegistryStartupComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.RegistryAuthorityComparison]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
+            '[ScientificSecurity.RegistryAuthorityComparison]::RunPython($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::Run($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunHost($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
             '[ScientificSecurity.PythonActivationPreparation]::RunImages($runId, $state, $childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $tcpPort, $udpPort)',
@@ -86,7 +87,7 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertLess(controller.index('[ScientificSecurity.SxsTraceSession]::Recover($runId, $state, $OuterOwnerReaped.IsPresent)'), controller.index('$disk = Get-VHD'))
         self.assertIn('$mounted -and $traceStopped', controller)
         preparation = (windows / 'RegistryStartupComparison.cs').read_text(encoding='utf-8')
-        self.assertIn('if (observation is RegistryAuthorityComparison.Observation) SxsTraceCapture.StartAuthority(child, package, clock);', preparation)
+        self.assertIn('if (observation is RegistryAuthorityComparison.PythonObservation) SxsTraceCapture.StartAuthority(child, package, clock);', preparation)
         runner = (windows / 'TrustedSetup.cs').read_text(encoding='utf-8')
         self.assertIn('internal static void RunSxsTrace(', runner)
         self.assertNotIn('"-filter:python.exe"', runner)
@@ -106,6 +107,22 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn('new FileStream(canary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)', capture)
         self.assertNotIn('CanaryPolicy(', capture)
         self.assertIn("(Join-Path $PSScriptRoot 'SxsCanaryOwner.cs')", controller)
+
+    def test_rust_authority_keeps_python_diagnostic_separate(self):
+        windows = ROOT / 'tests/security/windows'
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        authority = controller.index('[ScientificSecurity.RegistryAuthorityComparison]::Run(')
+        trace = controller.index('[ScientificSecurity.SxsTraceCapture]::Run(')
+        python = controller.index('[ScientificSecurity.RegistryAuthorityComparison]::RunPython(')
+        admission = controller.index('$preflightText = [ScientificSecurity.Sandbox]::Run(')
+        self.assertLess(authority, trace)
+        self.assertLess(trace, python)
+        self.assertLess(python, admission)
+        preparation = (windows / 'SandboxPreparation.cs').read_text(encoding='utf-8')
+        self.assertIn('new List<string> { RegistryAuthorityFixture.Image(python) }', preparation)
+        self.assertIn('RegistryAuthorityProbe.py', preparation)
+        self.assertIn("[ScientificSecurity.RegistryAuthorityFixture]::Prepare($PSScriptRoot, $childPython)", controller)
+        self.assertLess(controller.index('[ScientificSecurity.RegistryAuthorityFixture]::Prepare('), controller.index('    Protect-Tree $runtime\n'))
 
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')

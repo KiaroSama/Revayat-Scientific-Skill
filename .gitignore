@@ -44,3 +44,4 @@ Thumbs.db
 /specs/
 /plans/
 /.revayat-tex-owner-*/
+/tests/security/windows/registry-authority/target/

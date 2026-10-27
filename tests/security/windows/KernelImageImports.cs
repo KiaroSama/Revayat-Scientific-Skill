@@ -23,6 +23,16 @@ namespace ScientificSecurity
                 throw new InvalidOperationException("prepared Python physical direct imports differ from reviewed profile label=" + label);
             return names.Length - physical.Length;
         }
+        internal static void QualifyRegistryAuthority(byte[] bytes)
+        {
+            var image = new KernelImage(bytes, 1, "registry-authority");
+            ulong pe = image.U32(60), optional = pe + 24;
+            Need(image.Entry != 0 && (image.U16(pe + 22) & 0x2002) == 2 && image.U16(optional + 68) == 3);
+            Need(image.U32(optional + 112 + 14 * 8) == 0 && image.U32(optional + 116 + 14 * 8) == 0);
+            string[] allowed = { "kernel32.dll", "ntdll.dll", "advapi32.dll", "bcrypt.dll", "userenv.dll", "ws2_32.dll", "synchronization.dll", "bcryptprimitives.dll" };
+            string[] names = image.DirectImportNames();
+            Need(names.Length > 0 && names.All(name => allowed.Contains(name)));
+        }
         string[] DirectImportNames()
         {
             ulong optional = (ulong)U32(0x3C) + 24;
@@ -80,6 +90,20 @@ namespace ScientificSecurity
             Need(drift);
             byte[] python = ImportFixture(new [] { "KERNEL32.dll", "python311.dll", "VCRUNTIME140.dll", "api-ms-win-crt-runtime-l1-1-0.dll" });
             Need(QualifyPythonImports(python, "python-exe") == 1);
+            byte[] authority = ImportFixture(new [] { "KERNEL32.dll", "ntdll.dll", "advapi32.dll" });
+            Put16(authority, 0x96, 2); Put16(authority, 0x98 + 68, 3);
+            QualifyRegistryAuthority(authority);
+            foreach (Action<byte[]> change in new Action<byte[]>[] {
+                b => Put16(b, 0x84, 0x14C), b => Put16(b, 0x96, 0x2002),
+                b => Put16(b, 0x98 + 68, 2), b => Put(b, 0x98 + 16, 0),
+                b => Put(b, 0x98 + 112 + 14 * 8, 0x1000),
+                b => System.Text.Encoding.ASCII.GetBytes("libffi-8.dll\0").CopyTo(b, 0x300),
+                b => System.Text.Encoding.ASCII.GetBytes("vcruntime140.dll\0").CopyTo(b, 0x300)
+            }) {
+                byte[] bad = (byte[])authority.Clone(); change(bad); bool rejected = false;
+                try { QualifyRegistryAuthority(bad); } catch (InvalidOperationException) { rejected = true; }
+                Need(rejected);
+            }
             Need(QualifyPythonImports(ImportFixture(new [] { "KERNEL32.dll" }), "vcruntime140") == 0);
             Need(QualifyPythonImports(ImportFixture(new [] { "ADVAPI32.dll", "bcrypt.dll", "KERNEL32.dll", "VCRUNTIME140.dll", "VERSION.dll", "WS2_32.dll" }), "python311") == 0);
             foreach (string[] invalid in new [] {

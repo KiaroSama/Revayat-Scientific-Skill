@@ -220,7 +220,11 @@ namespace ScientificSecurity
             string executable = python;
             if (loaderProbe || defaultDacl != null || pythonDispatch || passComparison) arguments = new List<string> { python, "-I", "-B", "-c", "pass" };
             if (preparation != null) { phase = preparation.activationBundle ? "python-activation-bundle" : preparation.image ? "python-image-preparation" : preparation.host ? "python-host-preparation" : "python-activation-preparation"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
-            if (registryStartup != null) { phase = registryStartup is RegistryAuthorityComparison.Observation ? "registry-authority" : "registry-startup-pass"; arguments = RegistryArguments(python, root, registryStartup); }
+            if (registryStartup != null) {
+                phase = registryStartup is RegistryAuthorityComparison.PythonObservation ? "registry-python-diagnostic" : registryStartup is RegistryAuthorityComparison.Observation ? "registry-authority" : "registry-startup-pass";
+                arguments = RegistryArguments(python, root, registryStartup); executable = arguments[0];
+                if (registryStartup is RegistryAuthorityComparison.Observation && !(registryStartup is RegistryAuthorityComparison.PythonObservation)) probe = executable;
+            }
             if (pythonDispatch) { phase = "original-python-csr-pass"; PythonCsrDispatch.RequireLaunch(python, arguments.Skip(1).ToArray(), launchCwd); }
             if (defaultDacl != null) phase = "child-default-dacl-pass";
             if (nativeFixture) {
@@ -283,7 +287,8 @@ namespace ScientificSecurity
             var activationClock = new Stopwatch();
             try
             {
-                if (registryStartup is RegistryAuthorityComparison.Observation) activationLease = RegistryLoaderFixture.Hold(python);
+                if (registryStartup is RegistryAuthorityComparison.PythonObservation) activationLease = RegistryLoaderFixture.Hold(python);
+                else if (registryStartup is RegistryAuthorityComparison.Observation) activationLease = RegistryAuthorityFixture.Hold(python);
                 else if (pythonDispatch || passComparison) activationLease = PythonCsrDispatch.Hold(python);
                 if (dllRequest) activationLease = ChildActivationFixture.HoldDllRequest(python);
                 if (activationProbe || activationTrace) activationLease = ChildActivationFixture.Hold(python);

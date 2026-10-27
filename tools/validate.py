@@ -7,7 +7,7 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-TEXT = {'.py', '.ps1', '.sh', '.md', '.json', '.yaml', '.yml', '.tex', '.html', '.tsv', '.txt'}
+TEXT = {'.py', '.ps1', '.sh', '.cs', '.rs', '.toml', '.lock', '.md', '.json', '.yaml', '.yml', '.tex', '.html', '.tsv', '.txt'}
 
 
 def validate_family_layout():
@@ -55,7 +55,7 @@ def main():
         if path.suffix not in TEXT:
             continue
         text = path.read_text(encoding='utf-8-sig')
-        if path.suffix in {'.py', '.sh', '.ps1'} and len(text.splitlines()) > 800:
+        if path.suffix in {'.py', '.sh', '.ps1', '.cs', '.rs'} and len(text.splitlines()) > 800:
             raise ValueError(f'{name}: exceeds 800 lines')
         if path.suffix == '.py':
             ast.parse(text, filename=name)
