@@ -5,7 +5,7 @@ using System.Security.Principal;
 
 namespace ScientificSecurity
 {
-    // Only the trusted canary's default owner changes, on a disposable token duplicate.
+    // A disposable token scopes creation of only the fixed canary and empty ETL seed.
     internal static class SxsCanaryOwner
     {
         const int Capacity = 256;
