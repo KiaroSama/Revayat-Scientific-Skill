@@ -100,7 +100,7 @@ namespace ScientificSecurity
                 observed = length();
                 if (observed % 2 != 0) {
                     var original = LengthFailure(label, "even", observed, maximum, false);
-                    if (phase == LengthPhase.ReadShape && observed == 3 && inspectThree != null) throw Supplement(original, inspectThree);
+                    if (phase == LengthPhase.ReadShape && observed >= 2 && observed <= maximum && inspectThree != null) throw Supplement(original, inspectThree);
                     throw original;
                 }
             }
@@ -344,7 +344,28 @@ namespace ScientificSecurity
                     safe.Message.Contains("observed_bytes=3") && safe.Message.Contains("status=short signature=" +
                         (size == 0 ? "absent" : "other") + " transferred_bytes=" + size) && !safe.ToString().Contains("sentinel"));
             }
-            foreach (int size in new [] { 0, 1, 5, 1048577 }) {
+            foreach (int size in new [] { 5, 3177 }) {
+                var stream = new PrefixStream(new byte[] { 239, 187, 191 }) { observed = size }; Exception caught = null;
+                try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && stream.lengths == 3 && stream.reads == 1 &&
+                    stream.closes == 1 && stream.retained.All(value => value == 0) &&
+                    caught.Message.Contains("observed_bytes=" + size) &&
+                    caught.Message.Contains("status=complete signature=utf8-bom transferred_bytes=3"));
+            }
+            foreach (long third in new long[] { -1, 1, 1048577, Int64.MaxValue }) {
+                int reads = 0, inspections = 0; Exception caught = null;
+                try { RequireSize(() => ++reads < 3 ? 2 : third, 1048576, LengthPhase.ReadShape,
+                    () => { inspections++; return InspectArray(null); }); } catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && reads == 3 && inspections == 0 &&
+                    !caught.Message.Contains("evidence-prefix"));
+            }
+            foreach (LengthPhase phase in new [] { LengthPhase.FileBound, LengthPhase.InputShape }) {
+                int inspections = 0; Exception caught = null;
+                try { RequireSize(() => 5, 1048576, phase, () => { inspections++; return InspectArray(null); }); }
+                catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(inspections == 0 && (phase == LengthPhase.FileBound ? caught == null : caught is SxsTraceSession.PrivateFailure));
+            }
+            foreach (int size in new [] { 0, 1, 1048577 }) {
                 var stream = new PrefixStream(new byte[size]); Exception caught = null;
                 try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
                 SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && stream.reads == 0 && stream.closes == 1 &&
