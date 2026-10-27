@@ -23,8 +23,6 @@ namespace ScientificSecurity
         [DllImport("advapi32.dll", SetLastError = true)] static extern bool RevertToSelf();
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         static extern IntPtr CreateFileW(string path, uint access, uint sharing, IntPtr attributes, uint disposition, uint flags, IntPtr template);
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        static extern bool CreateDirectoryW(string path, ref Native.SecurityAttributes attributes);
         static void Need(bool value) { SxsTraceSession.Need(value); }
         SxsTraceCapture(string run, string state, string volume, string python, string package)
         {
@@ -139,15 +137,8 @@ namespace ScientificSecurity
                                     inheritance, PropagationFlags.None, AccessControlType.Deny));
                             foreach (SecurityIdentifier sid in new [] { host.User, new SecurityIdentifier("S-1-5-18") })
                                 security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, inheritance, PropagationFlags.None, AccessControlType.Allow));
-                            CreateSealed(security, host.User.Value, package, policy => StorageStep(StorageStage.Create, () => {
-                                byte[] bytes = policy.GetSecurityDescriptorBinaryForm(); IntPtr descriptor = Marshal.AllocHGlobal(bytes.Length);
-                                try {
-                                    Marshal.Copy(bytes, 0, descriptor, bytes.Length);
-                                    var attributes = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), descriptor = descriptor };
-                                    Native.Check(CreateDirectoryW(folder, ref attributes), "create fixed SxS directory with protected policy");
-                                }
-                                finally { Marshal.FreeHGlobal(descriptor); Array.Clear(bytes, 0, bytes.Length); }
-                            }));
+                            CreateSealed(security, host.User.Value, package,
+                                policy => StorageStep(StorageStage.Create, () => SxsTraceStorage.Create(folder, policy)));
                         });
                     }
                 });
@@ -366,7 +357,8 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
-            SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); CheckStorageAndAcquisition(); CheckStorageFailureValidation();
+            SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); SxsTraceStorage.CheckValidation();
+            CheckStorageAndAcquisition(); CheckStorageFailureValidation();
             var operation = new IOException("fixed operation"); var stop = new IOException("private-stop-sentinel");
             for (int mode = 0; mode < 4; mode++) {
                 string order = ""; Exception caught = null;

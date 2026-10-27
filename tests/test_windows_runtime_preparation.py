@@ -83,7 +83,8 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertNotIn('"pwsh.exe", "sxstrace.exe" }.Contains(name)', runner)
         capture = (windows / 'SxsTraceCapture.cs').read_text(encoding='utf-8')
         self.assertNotIn('Directory.CreateDirectory(folder)', capture)
-        self.assertIn('CreateDirectoryW(folder, ref attributes)', capture)
+        self.assertIn('SxsTraceStorage.Create(folder, policy)', capture)
+        self.assertNotIn('CreateDirectoryW', capture)
         self.assertIn('CreateSealed(security, host.User.Value, package', capture)
         self.assertIn('Acquired(SxsTraceSession.Exclusive', capture)
 
