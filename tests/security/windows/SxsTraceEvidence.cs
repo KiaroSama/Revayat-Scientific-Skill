@@ -13,12 +13,11 @@ namespace ScientificSecurity
         const string Unresolved = "ERROR: Cannot resolve reference ";
         static readonly Regex Dependency = new Regex(@"\A(?:Microsoft\.Windows\.Common-Controls|Microsoft\.VC(?:80|90|100|110|120|140)\.CRT)(?:,[A-Za-z]+=""[A-Za-z0-9.*_-]{1,64}""){0,6}\.?\z",
             RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-        enum Predicate { Length, ReadComplete, Bom, Nul, LineCount, LineWidth, Cr, Framing, Nested, BlockCount, End,
+        enum Predicate { ReadComplete, Bom, Nul, LineCount, LineWidth, Cr, Framing, Nested, BlockCount, End,
             SelectedCount, ManifestCount, Unsupported, Empty, Final, Output }
         static string Label(Predicate predicate)
         {
             switch (predicate) {
-                case Predicate.Length: return "length";
                 case Predicate.ReadComplete: return "read-complete";
                 case Predicate.Bom: return "bom";
                 case Predicate.Nul: return "nul";
@@ -49,17 +48,49 @@ namespace ScientificSecurity
             try { return Dependency.IsMatch(identity); }
             catch (RegexMatchTimeoutException error) { throw SxsTraceSession.Safe(error, "evidence-regex"); }
         }
+        enum LengthPhase { FileBound, ReadShape, InputShape }
+        static string LengthLabel(LengthPhase phase)
+        {
+            switch (phase) {
+                case LengthPhase.FileBound: return "file-bound";
+                case LengthPhase.ReadShape: return "read-shape";
+                case LengthPhase.InputShape: return "input-shape";
+                default: throw new InvalidOperationException("unsupported fixed SxS length phase");
+            }
+        }
+        static void LengthFailure(string phase, string comparison, long? observed, int maximum, bool? even)
+        {
+            throw new SxsTraceSession.PrivateFailure(new InvalidOperationException("fixed SxS evidence length rejected"),
+                "evidence-length-" + phase + " comparison=" + comparison + " observed_bytes=" +
+                (observed.HasValue ? observed.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "absent") +
+                " maximum_bytes=" + maximum.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " even=" + (even.HasValue ? even.Value.ToString() : "not-evaluated"));
+        }
+        static void RequireSize(Func<long> length, int maximum, LengthPhase phase)
+        {
+            string label = LengthLabel(phase);
+            if (phase == LengthPhase.InputShape && length == null) LengthFailure(label, "present", null, maximum, null);
+            // Retain each short-circuited observation; a changing file has no single snapshot length.
+            long observed = length();
+            if (phase == LengthPhase.FileBound ? observed <= 0 : observed < 2) LengthFailure(label, "minimum", observed, maximum, null);
+            observed = length();
+            if (observed > maximum) LengthFailure(label, "maximum", observed, maximum, null);
+            if (phase != LengthPhase.FileBound) {
+                observed = length();
+                if (observed % 2 != 0) LengthFailure(label, "even", observed, maximum, false);
+            }
+        }
         internal static void RequireLength(string path, int maximum)
         {
             SxsTraceSession.Plain(path);
             using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                Check(file.Length > 0 && file.Length <= maximum, Predicate.Length);
+                RequireSize(() => file.Length, maximum, LengthPhase.FileBound);
         }
         internal static string Read(string path, string manifest)
         {
             RequireLength(path, 1048576);
             using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
-                Check(file.Length >= 2 && file.Length <= 1048576 && file.Length % 2 == 0, Predicate.Length);
+                RequireSize(() => file.Length, 1048576, LengthPhase.ReadShape);
                 byte[] bytes = new byte[(int)file.Length]; int offset = 0;
                 while (offset < bytes.Length) { int n = file.Read(bytes, offset, bytes.Length - offset); Check(n > 0, Predicate.ReadComplete); offset += n; }
                 return Parse(bytes, manifest);
@@ -67,7 +98,8 @@ namespace ScientificSecurity
         }
         internal static string Parse(byte[] bytes, string manifest)
         {
-            Check(bytes != null && bytes.Length >= 2 && bytes.Length <= 1048576 && bytes.Length % 2 == 0, Predicate.Length);
+            Func<long> length = bytes == null ? (Func<long>)null : () => bytes.Length;
+            RequireSize(length, 1048576, LengthPhase.InputShape);
             Check(bytes[0] == 255 && bytes[1] == 254, Predicate.Bom);
             string text;
             try { text = new UnicodeEncoding(false, false, true).GetString(bytes, 2, bytes.Length - 2); }
@@ -123,13 +155,60 @@ namespace ScientificSecurity
                 " original_call_attributed=False cause_claimed=False target_admitted=False";
             Check(output.Length <= 4096, Predicate.Output); return output;
         }
+        static void CheckLengthValidation()
+        {
+            long[][] observations = { new long[] { 0 }, new long[] { 1, 9 }, new long[] { 8, 0 },
+                new long[] { 1 }, new long[] { 2, 9 }, new long[] { 2, 8, 3 }, new long[] { 2, 8, 8 },
+                new long[] { Int64.MinValue }, new long[] { 1, Int64.MaxValue } };
+            LengthPhase[] phases = { LengthPhase.FileBound, LengthPhase.FileBound, LengthPhase.FileBound,
+                LengthPhase.ReadShape, LengthPhase.ReadShape, LengthPhase.ReadShape, LengthPhase.ReadShape,
+                LengthPhase.FileBound, LengthPhase.FileBound };
+            string[] failures = {
+                "file-bound comparison=minimum observed_bytes=0 maximum_bytes=8 even=not-evaluated",
+                "file-bound comparison=maximum observed_bytes=9 maximum_bytes=8 even=not-evaluated", null,
+                "read-shape comparison=minimum observed_bytes=1 maximum_bytes=8 even=not-evaluated",
+                "read-shape comparison=maximum observed_bytes=9 maximum_bytes=8 even=not-evaluated",
+                "read-shape comparison=even observed_bytes=3 maximum_bytes=8 even=False", null,
+                "file-bound comparison=minimum observed_bytes=-9223372036854775808 maximum_bytes=8 even=not-evaluated",
+                "file-bound comparison=maximum observed_bytes=9223372036854775807 maximum_bytes=8 even=not-evaluated" };
+            for (int index = 0; index < observations.Length; index++) {
+                int reads = 0; Exception caught = null; long[] values = observations[index];
+                try { RequireSize(() => { SxsTraceSession.Need(reads < values.Length); return values[reads++]; }, 8, phases[index]); }
+                catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(reads == values.Length);
+                if (failures[index] == null) SxsTraceSession.Need(caught == null);
+                else SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && caught.InnerException == null && caught.Message ==
+                    "fixed SxS trace failed stage=evidence-length-" + failures[index] + " raw_error_withheld=True");
+            }
+            foreach (int maximum in new [] { 1048576, 8388608 }) {
+                int reads = 0; RequireSize(() => { reads++; return maximum; }, maximum, LengthPhase.FileBound);
+                SxsTraceSession.Need(reads == 2);
+                reads = 0; RequireSize(() => { reads++; return maximum; }, maximum, LengthPhase.ReadShape);
+                SxsTraceSession.Need(reads == 3);
+            }
+            foreach (LengthPhase phase in Enum.GetValues(typeof(LengthPhase))) {
+                for (int failAt = 1; failAt <= (phase == LengthPhase.FileBound ? 2 : 3); failAt++) {
+                    var raw = new IOException("private-length-sentinel"); int reads = 0; Exception caught = null;
+                    try { RequireSize(() => { if (++reads == failAt) throw raw; return 2; }, 8, phase); }
+                    catch (Exception error) { caught = error; }
+                    SxsTraceSession.Need(reads == failAt && Object.ReferenceEquals(caught, raw));
+                }
+            }
+            foreach (int invalid in new [] { -1, 3, Int32.MaxValue }) {
+                int reads = 0; bool refused = false;
+                try { RequireSize(() => { reads++; return 2; }, 8, (LengthPhase)invalid); }
+                catch (InvalidOperationException) { refused = true; }
+                SxsTraceSession.Need(refused && reads == 0);
+            }
+        }
         internal static void CheckReportingValidation()
         {
+            CheckLengthValidation();
             Exception caught = null;
             try { Parse(new byte[0], "private-manifest-sentinel"); }
             catch (Exception error) { caught = error; }
             SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && caught.InnerException == null &&
-                caught.Message == "fixed SxS trace failed stage=evidence-length raw_error_withheld=True" &&
+                caught.Message == "fixed SxS trace failed stage=evidence-length-input-shape comparison=minimum observed_bytes=0 maximum_bytes=1048576 even=not-evaluated raw_error_withheld=True" &&
                 !caught.ToString().Contains("sentinel"));
             const string manifest = "F:\\private-manifest-sentinel\\_ctypes.pyd";
             string block = Begin + "\nManifestPath = " + manifest + "\nERROR: Activation Context generation failed.\n" + End + "\n";
@@ -142,7 +221,11 @@ namespace ScientificSecurity
                     !failure.ToString().Contains("sentinel"));
             };
             SxsTraceSession.Need(Parse(encode(block), manifest).Contains("activation_failed=True"));
-            refuse(null, "length"); refuse(new byte[1048578], "length"); refuse(new byte[3], "length");
+            refuse(null, "length-input-shape comparison=present observed_bytes=absent maximum_bytes=1048576 even=not-evaluated");
+            refuse(new byte[1], "length-input-shape comparison=minimum observed_bytes=1 maximum_bytes=1048576 even=not-evaluated");
+            refuse(new byte[1048578], "length-input-shape comparison=maximum observed_bytes=1048578 maximum_bytes=1048576 even=not-evaluated");
+            refuse(new byte[3], "length-input-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False");
+            refuse(new byte[1048576], "bom");
             refuse(new byte[2], "bom"); refuse(encode("\0"), "nul");
             refuse(encode(new string('\n', 4096)), "line-count");
             refuse(encode("\r\n" + new string('x', 2049)), "line-width");
@@ -162,7 +245,7 @@ namespace ScientificSecurity
                 SxsTraceSession.Need(failure is SxsTraceSession.PrivateFailure && failure.Message ==
                     "fixed SxS trace failed stage=evidence-" + Label(predicate) + " raw_error_withheld=True");
             }
-            foreach (int invalid in new [] { -1, 17, Int32.MaxValue }) {
+            foreach (int invalid in new [] { -1, 16, Int32.MaxValue }) {
                 bool rejected = false;
                 try { Check(true, (Predicate)invalid); } catch (InvalidOperationException) { rejected = true; }
                 SxsTraceSession.Need(rejected);

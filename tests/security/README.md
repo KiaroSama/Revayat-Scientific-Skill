@@ -139,4 +139,6 @@ The original/restored registry comparison must retain its exact `C0000022` negat
 
 ## Current evidence
 
+Standard trace size errors retain closed `file-bound`, `read-shape` or `input-shape` labels and the first failed comparison's existing byte-length observation and maximum. Null remains `absent`; parity is `not-evaluated` until the original modulo check executes. No extra file-length query, content/path disclosure or acceptance relaxation is added. Changing file observations do not establish a snapshot, and a size refusal does not select an encoding/filter repair or prove the original import cause.
+
 Authored tests are not execution evidence. Before the first exact-SHA hosted run, native controls and regression red/green results are unverified. A failing admission assertion is retained for a root fix, not changed to a skip or unconditional success. Review the actual job output and scenario IDs before claiming completion.
