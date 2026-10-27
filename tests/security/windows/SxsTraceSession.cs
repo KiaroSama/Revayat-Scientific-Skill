@@ -37,6 +37,28 @@ namespace ScientificSecurity
         { return error is PrivateFailure ? error : new PrivateFailure(error, stage); }
         internal static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed SxS trace contract is inconclusive"); }
+        internal enum Stage { Initial, Intent, StartTool, PostTool, Bind, PostBind, BindSave }
+        internal static void At(Stage stage, Action operation)
+        {
+            string label;
+            switch (stage) {
+                case Stage.Initial: label = "initial"; break;
+                case Stage.Intent: label = "intent"; break;
+                case Stage.StartTool: label = "start-tool"; break;
+                case Stage.PostTool: label = "post-tool"; break;
+                case Stage.Bind: label = "bind"; break;
+                case Stage.PostBind: label = "post-bind"; break;
+                case Stage.BindSave: label = "bind-save"; break;
+                default: throw new InvalidOperationException("unsupported fixed SxS start stage");
+            }
+            try { operation(); } catch (Exception error) { throw Safe(error, label); }
+        }
+        enum Predicate { Length, Header, Offsets, TextOffset, Terminator, Selection, Present, Handle, Guid, Name, Path, Mode }
+        static void Check(bool value, Predicate predicate)
+        {
+            if (!value) throw new PrivateFailure(new InvalidOperationException("fixed SxS session predicate rejected"),
+                "session-predicate check=" + predicate.ToString().ToLowerInvariant());
+        }
         internal static IDisposable Exclusive()
         {
             bool created; var mutex = new Mutex(false, @"Local\Scientific.Security.SxsTrace", out created);
@@ -104,17 +126,19 @@ namespace ScientificSecurity
         }
         static string Text(byte[] bytes, int offset)
         {
-            Need(offset == Header || offset == Header + 2048);
+            Check(offset == Header || offset == Header + 2048, Predicate.TextOffset);
             int end = offset;
             while (end - offset < 2048 && (bytes[end] != 0 || bytes[end + 1] != 0)) end += 2;
-            Need(end - offset < 2048);
-            return new UnicodeEncoding(false, false, true).GetString(bytes, offset, end - offset);
+            Check(end - offset < 2048, Predicate.Terminator);
+            try { return new UnicodeEncoding(false, false, true).GetString(bytes, offset, end - offset); }
+            catch (DecoderFallbackException error) { throw Safe(error, "session-text-encoding"); }
         }
         internal static Snapshot Decode(byte[] bytes)
         {
-            Need(bytes != null && bytes.Length == Capacity && BitConverter.ToInt32(bytes, 0) == Capacity);
+            Check(bytes != null && bytes.Length == Capacity, Predicate.Length);
+            Check(BitConverter.ToInt32(bytes, 0) == Capacity, Predicate.Header);
             int path = BitConverter.ToInt32(bytes, 112), name = BitConverter.ToInt32(bytes, 116);
-            Need(name == Header && path == Header + 2048);
+            Check(name == Header && path == Header + 2048, Predicate.Offsets);
             return new Snapshot { handle = BitConverter.ToUInt64(bytes, 8), guid = new Guid(bytes.Skip(24).Take(16).ToArray()),
                 name = Text(bytes, name), path = Text(bytes, path), mode = BitConverter.ToUInt32(bytes, 64),
                 bufferSize = BitConverter.ToUInt32(bytes, 48), maximumBuffers = BitConverter.ToUInt32(bytes, 56),
@@ -128,7 +152,9 @@ namespace ScientificSecurity
             try {
                 uint status = ControlTraceW(0, SessionName, p, 0);
                 if (status == Missing) return null;
-                Need(status == 0); return Result(p);
+                if (status != 0) throw new PrivateFailure(new InvalidOperationException("fixed SxS session query failed"),
+                    "session-query win32=" + status.ToString("X8"));
+                return Result(p);
             }
             finally { Marshal.FreeHGlobal(p); }
         }
@@ -145,28 +171,41 @@ namespace ScientificSecurity
             finally { foreach (IntPtr p in pointers) if (p != IntPtr.Zero) Marshal.FreeHGlobal(p); }
         }
         internal static void RequireEnumeration(uint status, uint count)
-        { Need(status == 0 && count <= Slots); }
+        {
+            if (status != 0 || count > Slots)
+                throw new PrivateFailure(new InvalidOperationException("fixed SxS session enumeration failed"),
+                    "session-enumeration win32=" + status.ToString("X8") + " count=" + count);
+        }
         static bool PathEqual(string a, string b)
         { return String.Equals(a, b, StringComparison.OrdinalIgnoreCase); }
         internal static Snapshot Select(Snapshot[] sessions, string path)
         {
-            Need(sessions != null && sessions.Length <= Slots);
+            Check(sessions != null && sessions.Length <= Slots, Predicate.Selection);
             var matches = sessions.Where(s => s.name == SessionName || PathEqual(s.path, path)).ToArray();
-            Need(matches.Length <= 1);
+            if (matches.Length > 1) throw new PrivateFailure(new InvalidOperationException("fixed SxS session match collision"),
+                "session-selection matches=" + matches.Length);
             if (matches.Length == 0) return null;
             Snapshot found = matches[0];
-            Need(found.name == SessionName && PathEqual(found.path, path) && found.handle != 0 && found.guid != Guid.Empty);
+            Check(found.name == SessionName, Predicate.Name); Check(PathEqual(found.path, path), Predicate.Path);
+            Check(found.handle != 0, Predicate.Handle); Check(found.guid != Guid.Empty, Predicate.Guid);
             return found;
         }
         internal static void RequireCapture(Snapshot s)
         {
-            Need(s != null && s.mode == 1 && s.bufferSize > 0 && s.maximumBuffers > 0 &&
-                (ulong)s.bufferSize * s.maximumBuffers <= 16384 && s.lost == 0 && s.logLost == 0 && s.realLost == 0);
+            Check(s != null, Predicate.Present);
+            if (s.mode != 1 || s.bufferSize == 0 || s.maximumBuffers == 0 ||
+                (ulong)s.bufferSize * s.maximumBuffers > 16384 || s.lost != 0 || s.logLost != 0 || s.realLost != 0)
+                throw new PrivateFailure(new InvalidOperationException("fixed SxS capture policy rejected"),
+                    "session-capture mode=" + s.mode.ToString("X8") + " buffer_kib=" + s.bufferSize +
+                    " maximum_buffers=" + s.maximumBuffers + " events_lost=" + s.lost +
+                    " log_lost=" + s.logLost + " realtime_lost=" + s.realLost);
         }
         internal static void RequireSame(Snapshot expected, Snapshot actual)
         {
-            Need(expected != null && actual != null && expected.handle == actual.handle && expected.guid == actual.guid &&
-                expected.name == actual.name && PathEqual(expected.path, actual.path) && expected.mode == actual.mode);
+            Check(expected != null && actual != null, Predicate.Present);
+            Check(expected.handle == actual.handle, Predicate.Handle); Check(expected.guid == actual.guid, Predicate.Guid);
+            Check(expected.name == actual.name, Predicate.Name); Check(PathEqual(expected.path, actual.path), Predicate.Path);
+            Check(expected.mode == actual.mode, Predicate.Mode);
         }
         internal static void Intent(string run, string state, string volume)
         {
@@ -178,7 +217,7 @@ namespace ScientificSecurity
         {
             string path = Path.Combine(Folder(run, volume), "capture.etl"); Snapshot found = Select(All(), path);
             RequireSame(found, Query()); RequireCapture(found);
-            Save(Path.Combine(state, "sxs-trace.bound"), BoundText(run, found));
+            At(Stage.BindSave, () => Save(Path.Combine(state, "sxs-trace.bound"), BoundText(run, found)));
         }
         internal static string IntentText(string run, string volume)
         { Folder(run, volume); return "sxs-intent-v1\n" + run + "\n" + volume + "\n"; }
@@ -239,7 +278,11 @@ namespace ScientificSecurity
         static void Refuse(Action action)
         {
             bool rejected = false;
-            try { action(); } catch (Exception failure) { Need(failure is InvalidOperationException || failure is DecoderFallbackException); rejected = true; }
+            try { action(); } catch (Exception failure) {
+                var safe = failure as PrivateFailure;
+                Exception original = safe == null ? failure : safe.Original;
+                Need(original is InvalidOperationException || original is DecoderFallbackException); rejected = true;
+            }
             Need(rejected);
         }
         static byte[] Fixture(Snapshot value)
@@ -280,12 +323,53 @@ namespace ScientificSecurity
             foreach (string text in new [] { "", IntentText(run, "F:\\") + "x", IntentText(run, "F:\\").Replace(run, "bad"), IntentText(run, "F:\\").Replace("F:\\", "C:\\") })
                 Refuse(() => IntentVolume(text, run));
         }
+        static void CheckReporting()
+        {
+            var raw = new IOException("C:\\private-session-sentinel\\capture.etl");
+            string[] stages = { "initial", "intent", "start-tool", "post-tool", "bind", "post-bind", "bind-save" };
+            for (int index = 0; index < stages.Length; index++) {
+                Exception caught = null;
+                try { At((Stage)index, () => { throw raw; }); } catch (Exception error) { caught = error; }
+                var safe = caught as PrivateFailure;
+                Need(safe != null && Object.ReferenceEquals(safe.Original, raw) && safe.InnerException == null &&
+                    safe.Message == "fixed SxS trace failed stage=" + stages[index] + " raw_error_withheld=True" &&
+                    !safe.ToString().Contains("sentinel"));
+                Exception retained = null;
+                try { At((Stage)index, () => { throw safe; }); } catch (Exception error) { retained = error; }
+                Need(Object.ReferenceEquals(retained, safe));
+            }
+            foreach (int invalid in new [] { -1, 7, Int32.MaxValue }) {
+                int calls = 0; Refuse(() => At((Stage)invalid, () => calls++)); Need(calls == 0);
+            }
+            for (int index = 0; index < 12; index++) {
+                Predicate predicate = (Predicate)index; Exception caught = null;
+                Check(true, predicate);
+                try { Check(false, predicate); } catch (Exception error) { caught = error; }
+                Need(caught is PrivateFailure && caught.InnerException == null && caught.Message.Length < 160);
+            }
+        }
         public static void CheckValidation()
         {
+            CheckReporting();
+            var rejectedCapture = new Snapshot { mode = 0, bufferSize = 64, maximumBuffers = 16 };
+            Exception projection = null;
+            try { RequireCapture(rejectedCapture); } catch (Exception error) { projection = error; }
+            Need(projection is PrivateFailure && projection.Message ==
+                "fixed SxS trace failed stage=session-capture mode=00000000 buffer_kib=64 maximum_buffers=16 events_lost=0 log_lost=0 realtime_lost=0 raw_error_withheld=True");
             var a = new Snapshot { handle = 7, guid = new Guid("12345678-1234-1234-1234-123456789abc"), name = SessionName,
                 path = "F:\\sxs-trace-fixed\\capture.etl", mode = 1, bufferSize = 64, maximumBuffers = 16 };
             RequireSame(a, Select(new [] { a }, a.path)); RequireCapture(a); Need(Select(new Snapshot[0], a.path) == null);
             RequireSame(a, Decode(Fixture(a))); CheckRecovery(a);
+            Action[] firstPredicates = { () => Decode(null), () => Decode(new byte[Capacity]),
+                () => Select(null, a.path), () => RequireSame(null, a), () => RequireSame(a, new Snapshot()),
+                () => RequireCapture(null) };
+            string[] labels = { "length", "header", "selection", "present", "handle", "present" };
+            for (int index = 0; index < firstPredicates.Length; index++) {
+                Exception caught = null;
+                try { firstPredicates[index](); } catch (Exception error) { caught = error; }
+                Need(caught is PrivateFailure && caught.InnerException == null && caught.Message ==
+                    "fixed SxS trace failed stage=session-predicate check=" + labels[index] + " raw_error_withheld=True");
+            }
             foreach (int offset in new [] { 0, 112, 116 }) {
                 byte[] bytes = Fixture(a); Array.Copy(BitConverter.GetBytes(1), 0, bytes, offset, 4); Refuse(() => Decode(bytes));
             }
@@ -312,7 +396,7 @@ namespace ScientificSecurity
                 () => Select(new [] { a, a }, a.path), () => Select(new [] { a }, "F:\\other.etl"),
                 () => RequireSame(a, new Snapshot()), () => RequireCapture(new Snapshot()),
                 () => Decode(new byte[Capacity]), () => Decode(new byte[Capacity + 1])
-            }) { bool rejected = false; try { invalid(); } catch (InvalidOperationException) { rejected = true; } Need(rejected); }
+            }) Refuse(invalid);
         }
     }
 }

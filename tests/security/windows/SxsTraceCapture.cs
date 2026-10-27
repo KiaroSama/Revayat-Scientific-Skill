@@ -308,8 +308,12 @@ namespace ScientificSecurity
         }
         internal static void StartSequence(Func<double> remaining, Action intent, Action start, Func<bool> reaped, Action bind)
         {
-            Need(remaining() > 0); intent(); Need(remaining() > 0); start();
-            Need(reaped() && remaining() > 0); bind(); Need(remaining() > 0);
+            SxsTraceSession.At(SxsTraceSession.Stage.Initial, () => Need(remaining() > 0));
+            SxsTraceSession.At(SxsTraceSession.Stage.Intent, intent);
+            SxsTraceSession.At(SxsTraceSession.Stage.StartTool, () => { Need(remaining() > 0); start(); });
+            SxsTraceSession.At(SxsTraceSession.Stage.PostTool, () => Need(reaped() && remaining() > 0));
+            SxsTraceSession.At(SxsTraceSession.Stage.Bind, bind);
+            SxsTraceSession.At(SxsTraceSession.Stage.PostBind, () => Need(remaining() > 0));
         }
         internal static void StarterBeginning() { StarterReaped = false; }
         void Parse()
@@ -373,6 +377,12 @@ namespace ScientificSecurity
                 Need(order == (failure == 1 ? "" : failure == 2 ? "i" : failure >= 3 ? "is" : "isb"));
                 Need((caught == null) == (failure == 0));
             }
+            int remainingReads = 0; Exception postTool = null;
+            try { StartSequence(() => { remainingReads++; return 1; }, () => { }, () => { },
+                () => false, () => { throw raw; }); }
+            catch (Exception error) { postTool = error; }
+            Need(remainingReads == 2 && postTool is SxsTraceSession.PrivateFailure &&
+                postTool.Message == "fixed SxS trace failed stage=post-tool raw_error_withheld=True");
         }
         sealed class CustomWin32Failure : System.ComponentModel.Win32Exception
         { internal CustomWin32Failure() : base(99, "private-native-sentinel") { } }
