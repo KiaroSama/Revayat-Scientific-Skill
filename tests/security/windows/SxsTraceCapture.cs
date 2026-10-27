@@ -65,35 +65,100 @@ namespace ScientificSecurity
             }
             finally { if (capture != null && Object.ReferenceEquals(current, capture)) current = null; }
         }
+        enum StorageStage { Path, Host, Policy, Create, Canary, DirectoryReadback, FileReadback }
+        enum PolicyPredicate { Owner, Rules, Canonical, Protected, Propagation, Inherited, Inheritance, Package, OwnerRights, Allow, Distinct }
+        sealed class PolicyFailure : InvalidOperationException
+        {
+            internal readonly PolicyPredicate Predicate;
+            internal PolicyFailure(PolicyPredicate predicate) : base("fixed SxS storage policy rejected predicate=" + PolicyName(predicate))
+            { Predicate = predicate; }
+        }
+        static string PolicyName(PolicyPredicate predicate)
+        {
+            switch (predicate) {
+                case PolicyPredicate.Owner: return "owner";
+                case PolicyPredicate.Rules: return "rules";
+                case PolicyPredicate.Canonical: return "canonical";
+                case PolicyPredicate.Protected: return "protected";
+                case PolicyPredicate.Propagation: return "propagation";
+                case PolicyPredicate.Inherited: return "inherited";
+                case PolicyPredicate.Inheritance: return "inheritance";
+                case PolicyPredicate.Package: return "package";
+                case PolicyPredicate.OwnerRights: return "owner-rights";
+                case PolicyPredicate.Allow: return "allow";
+                case PolicyPredicate.Distinct: return "distinct";
+                default: throw new InvalidOperationException("unsupported fixed SxS policy predicate");
+            }
+        }
+        static string StorageName(StorageStage stage)
+        {
+            switch (stage) {
+                case StorageStage.Path: return "path";
+                case StorageStage.Host: return "host";
+                case StorageStage.Policy: return "policy";
+                case StorageStage.Create: return "create";
+                case StorageStage.Canary: return "canary";
+                case StorageStage.DirectoryReadback: return "directory-readback";
+                case StorageStage.FileReadback: return "file-readback";
+                default: throw new InvalidOperationException("unsupported fixed SxS storage stage");
+            }
+        }
+        static void StorageStep(StorageStage stage, Action operation)
+        {
+            string name = StorageName(stage);
+            try { operation(); }
+            catch (Exception error) {
+                if (error is SxsTraceSession.PrivateFailure) throw;
+                Exception safe;
+                try {
+                    string native = error.GetType() == typeof(System.ComponentModel.Win32Exception) ?
+                        unchecked((uint)((System.ComponentModel.Win32Exception)error).NativeErrorCode).ToString("X8") : "unavailable";
+                    string predicate = error.GetType() == typeof(PolicyFailure) ? PolicyName(((PolicyFailure)error).Predicate) : "unavailable";
+                    safe = new SxsTraceSession.PrivateFailure(error, "storage-" + name + " exception_hresult=" +
+                        unchecked((uint)error.HResult).ToString("X8") + " exception_win32=" + native + " policy_predicate=" + predicate);
+                }
+                catch { safe = SxsTraceSession.Safe(error, "storage-prepare"); }
+                throw safe;
+            }
+        }
+        static void PolicyNeed(bool value, PolicyPredicate predicate)
+        { if (!value) throw new PolicyFailure(predicate); }
         void Prepare()
         {
             try {
-                SxsTraceSession.Plain(folder, true); Need(!SxsTraceSession.Exists(folder));
-                using (WindowsIdentity host = WindowsIdentity.GetCurrent()) {
-                    Need(host.User != null && !host.IsSystem);
-                    var security = new DirectorySecurity(); security.SetAccessRuleProtection(true, false); security.SetOwner(host.User);
-                    var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
-                    foreach (string sid in new [] { package, "S-1-3-4" })
-                        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid),
-                            sid == package ? FileSystemRights.FullControl : FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership,
-                            inheritance, PropagationFlags.None, AccessControlType.Deny));
-                    foreach (SecurityIdentifier sid in new [] { host.User, new SecurityIdentifier("S-1-5-18") })
-                        security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, inheritance, PropagationFlags.None, AccessControlType.Allow));
-                    CreateSealed(security, host.User.Value, package, policy => {
-                        byte[] bytes = policy.GetSecurityDescriptorBinaryForm(); IntPtr descriptor = Marshal.AllocHGlobal(bytes.Length);
-                        try {
-                            Marshal.Copy(bytes, 0, descriptor, bytes.Length);
-                            var attributes = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), descriptor = descriptor };
-                            Native.Check(CreateDirectoryW(folder, ref attributes), "create fixed SxS directory with protected policy");
-                        }
-                        finally { Marshal.FreeHGlobal(descriptor); Array.Clear(bytes, 0, bytes.Length); }
-                    });
-                }
+                StorageStep(StorageStage.Path, () => { SxsTraceSession.Plain(folder, true); Need(!SxsTraceSession.Exists(folder)); });
+                StorageStep(StorageStage.Host, () => {
+                    using (WindowsIdentity host = WindowsIdentity.GetCurrent()) {
+                        Need(host.User != null && !host.IsSystem);
+                        StorageStep(StorageStage.Policy, () => {
+                            var security = new DirectorySecurity(); security.SetAccessRuleProtection(true, false); security.SetOwner(host.User);
+                            var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+                            foreach (string sid in new [] { package, "S-1-3-4" })
+                                security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid),
+                                    sid == package ? FileSystemRights.FullControl : FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership,
+                                    inheritance, PropagationFlags.None, AccessControlType.Deny));
+                            foreach (SecurityIdentifier sid in new [] { host.User, new SecurityIdentifier("S-1-5-18") })
+                                security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, inheritance, PropagationFlags.None, AccessControlType.Allow));
+                            CreateSealed(security, host.User.Value, package, policy => StorageStep(StorageStage.Create, () => {
+                                byte[] bytes = policy.GetSecurityDescriptorBinaryForm(); IntPtr descriptor = Marshal.AllocHGlobal(bytes.Length);
+                                try {
+                                    Marshal.Copy(bytes, 0, descriptor, bytes.Length);
+                                    var attributes = new Native.SecurityAttributes { size = (uint)Marshal.SizeOf(typeof(Native.SecurityAttributes)), descriptor = descriptor };
+                                    Native.Check(CreateDirectoryW(folder, ref attributes), "create fixed SxS directory with protected policy");
+                                }
+                                finally { Marshal.FreeHGlobal(descriptor); Array.Clear(bytes, 0, bytes.Length); }
+                            }));
+                        });
+                    }
+                });
                 string canary = Path.Combine(folder, "canary");
-                using (var file = new FileStream(canary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) {
-                    byte[] bytes = Encoding.UTF8.GetBytes("fixed SxS host control"); file.Write(bytes, 0, bytes.Length); file.Flush(true);
-                }
-                RequirePolicy(folder, true); RequirePolicy(canary, false);
+                StorageStep(StorageStage.Canary, () => {
+                    using (var file = new FileStream(canary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) {
+                        byte[] bytes = Encoding.UTF8.GetBytes("fixed SxS host control"); file.Write(bytes, 0, bytes.Length); file.Flush(true);
+                    }
+                });
+                StorageStep(StorageStage.DirectoryReadback, () => RequirePolicy(folder, true));
+                StorageStep(StorageStage.FileReadback, () => RequirePolicy(canary, false));
             }
             catch (Exception error) { throw SxsTraceSession.Safe(error, "storage-prepare"); }
         }
@@ -101,19 +166,22 @@ namespace ScientificSecurity
         { ValidatePolicy(security, true, owner, package); create(security); }
         internal static void ValidatePolicy(FileSystemSecurity security, bool directory, string owner, string package)
         {
-            Need(security.GetOwner(typeof(SecurityIdentifier)).Value == owner);
+            PolicyNeed(security.GetOwner(typeof(SecurityIdentifier)).Value == owner, PolicyPredicate.Owner);
             var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
-            Need(rules.Length == 4 && security.AreAccessRulesCanonical && (!directory || security.AreAccessRulesProtected));
+            PolicyNeed(rules.Length == 4, PolicyPredicate.Rules);
+            PolicyNeed(security.AreAccessRulesCanonical, PolicyPredicate.Canonical);
+            PolicyNeed(!directory || security.AreAccessRulesProtected, PolicyPredicate.Protected);
             foreach (var rule in rules) {
                 string sid = rule.IdentityReference.Value;
-                Need(rule.PropagationFlags == PropagationFlags.None && (directory ? !rule.IsInherited : rule.IsInherited));
-                Need(rule.InheritanceFlags == (directory ? InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit : InheritanceFlags.None));
-                if (sid == package) Need(rule.AccessControlType == AccessControlType.Deny && rule.FileSystemRights == FileSystemRights.FullControl);
-                else if (sid == "S-1-3-4") Need(rule.AccessControlType == AccessControlType.Deny &&
-                    rule.FileSystemRights == (FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership));
-                else Need((sid == owner || sid == "S-1-5-18") && rule.AccessControlType == AccessControlType.Allow && rule.FileSystemRights == FileSystemRights.FullControl);
+                PolicyNeed(rule.PropagationFlags == PropagationFlags.None, PolicyPredicate.Propagation);
+                PolicyNeed(directory ? !rule.IsInherited : rule.IsInherited, PolicyPredicate.Inherited);
+                PolicyNeed(rule.InheritanceFlags == (directory ? InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit : InheritanceFlags.None), PolicyPredicate.Inheritance);
+                if (sid == package) PolicyNeed(rule.AccessControlType == AccessControlType.Deny && rule.FileSystemRights == FileSystemRights.FullControl, PolicyPredicate.Package);
+                else if (sid == "S-1-3-4") PolicyNeed(rule.AccessControlType == AccessControlType.Deny &&
+                    rule.FileSystemRights == (FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership), PolicyPredicate.OwnerRights);
+                else PolicyNeed((sid == owner || sid == "S-1-5-18") && rule.AccessControlType == AccessControlType.Allow && rule.FileSystemRights == FileSystemRights.FullControl, PolicyPredicate.Allow);
             }
-            Need(rules.Select(r => r.IdentityReference.Value).Distinct().Count() == 4);
+            PolicyNeed(rules.Select(r => r.IdentityReference.Value).Distinct().Count() == 4, PolicyPredicate.Distinct);
         }
         void RequirePolicy(string path, bool directory)
         {
@@ -191,11 +259,13 @@ namespace ScientificSecurity
             AceFlags flags = directory ? AceFlags.ContainerInherit | AceFlags.ObjectInherit : AceFlags.Inherited;
             string[] ids = { package, "S-1-3-4", owner, "S-1-5-18" };
             for (int i = 0; i < ids.Length; i++) {
-                if (corruption == 3 && i == 1) continue;
+                if ((corruption == 3 || corruption == 5) && i == 1) continue;
                 acl.InsertAce(acl.Count, new CommonAce(corruption == 4 && i == 1 ? flags | AceFlags.Inherited : flags,
                     i < 2 ? AceQualifier.AccessDenied : AceQualifier.AccessAllowed,
                     i == 1 ? 0xC0000 : 0x1F01FF, new SecurityIdentifier(ids[i]), false, null));
             }
+            if (corruption == 5) acl.InsertAce(acl.Count, new CommonAce(flags | AceFlags.Inherited,
+                AceQualifier.AccessDenied, 0xC0000, new SecurityIdentifier("S-1-3-4"), false, null));
             var descriptor = new RawSecurityDescriptor(ControlFlags.DiscretionaryAclPresent | ControlFlags.SelfRelative |
                 (directory && corruption != 2 ? ControlFlags.DiscretionaryAclProtected : 0),
                 new SecurityIdentifier(corruption == 1 ? "S-1-5-18" : owner), new SecurityIdentifier(owner), null, acl);
@@ -235,9 +305,68 @@ namespace ScientificSecurity
                 Need((caught == null) == (failure == 0));
             }
         }
+        sealed class CustomWin32Failure : System.ComponentModel.Win32Exception
+        { internal CustomWin32Failure() : base(99, "private-native-sentinel") { } }
+        public static void CheckStorageFailureValidation()
+        {
+            const string owner = "S-1-5-21-1-2-3-1001", package = "S-1-15-2-1-2-3-4-5-6-7";
+            Exception caught = null;
+            try { ValidatePolicy(PolicyFixture(true, 1, owner, package), true, owner, package); }
+            catch (Exception error) { caught = error; }
+            Need(caught != null && caught.Message == "fixed SxS storage policy rejected predicate=owner");
+            string[] stages = { "path", "host", "policy", "create", "canary", "directory-readback", "file-readback" };
+            var errors = new Exception[] { new System.ComponentModel.Win32Exception(5, "C:\\private-path-sentinel"),
+                new IOException("private-io-sentinel", unchecked((int)0x80070005)), new CustomWin32Failure() };
+            string[] native = { "00000005", "unavailable", "unavailable" };
+            string[] hresult = { "80004005", "80070005", "80004005" };
+            for (int stage = 0; stage < stages.Length; stage++) {
+                int calls = 0; StorageStep((StorageStage)stage, () => calls++); Need(calls == 1);
+                for (int kind = 0; kind < errors.Length; kind++) {
+                    Exception raw = errors[kind]; caught = null;
+                    try { StorageStep((StorageStage)stage, () => { throw raw; }); } catch (Exception error) { caught = error; }
+                    var safe = caught as SxsTraceSession.PrivateFailure;
+                    Need(safe != null && Object.ReferenceEquals(safe.Original, raw) && safe.InnerException == null &&
+                        safe.Message == "fixed SxS trace failed stage=storage-" + stages[stage] + " exception_hresult=" + hresult[kind] +
+                        " exception_win32=" + native[kind] + " policy_predicate=unavailable raw_error_withheld=True" &&
+                        !safe.ToString().Contains("sentinel") && safe.Message.Length <= 256);
+                }
+            }
+            foreach (int stage in new [] { -1, 7, Int32.MaxValue }) {
+                int calls = 0; bool refused = false;
+                try { StorageStep((StorageStage)stage, () => calls++); } catch (InvalidOperationException) { refused = true; }
+                Need(refused && calls == 0);
+            }
+            string[] predicates = { "owner", "rules", "canonical", "protected", "propagation", "inherited", "inheritance", "package", "owner-rights", "allow", "distinct" };
+            for (int predicate = 0; predicate < predicates.Length; predicate++) {
+                caught = null;
+                try { StorageStep(StorageStage.Policy, () => PolicyNeed(false, (PolicyPredicate)predicate)); }
+                catch (Exception error) { caught = error; }
+                var safe = caught as SxsTraceSession.PrivateFailure;
+                Need(safe != null && safe.Original.GetType() == typeof(PolicyFailure) &&
+                    safe.Message.Contains("policy_predicate=" + predicates[predicate] + " raw_error_withheld=True"));
+            }
+            string[] first = { "owner", "protected", "rules", "canonical", "inherited" };
+            for (int corruption = 1; corruption <= 5; corruption++) {
+                caught = null;
+                try { ValidatePolicy(PolicyFixture(true, corruption, owner, package), true, owner, package); }
+                catch (Exception error) { caught = error; }
+                Need(caught != null && caught.Message == "fixed SxS storage policy rejected predicate=" + first[corruption - 1]);
+            }
+            ValidatePolicy(PolicyFixture(true, 0, owner, package), true, owner, package);
+            ValidatePolicy(PolicyFixture(false, 0, owner, package), false, owner, package);
+            Exception original = null;
+            try { Execute(() => StorageStep(StorageStage.Canary, () => { throw errors[1]; }),
+                () => { throw errors[0]; }, () => { throw new InvalidOperationException("parse must not run"); }); }
+            catch (Exception error) { original = error; }
+            var aggregate = original as AggregateException;
+            Need(aggregate != null && aggregate.InnerExceptions.Count == 2 &&
+                Object.ReferenceEquals(((SxsTraceSession.PrivateFailure)aggregate.InnerExceptions[0]).Original, errors[1]) &&
+                Object.ReferenceEquals(((SxsTraceSession.PrivateFailure)aggregate.InnerExceptions[1]).Original, errors[0]) &&
+                !aggregate.ToString().Contains("sentinel"));
+        }
         public static void CheckValidation()
         {
-            SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); CheckStorageAndAcquisition();
+            SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); CheckStorageAndAcquisition(); CheckStorageFailureValidation();
             var operation = new IOException("fixed operation"); var stop = new IOException("private-stop-sentinel");
             for (int mode = 0; mode < 4; mode++) {
                 string order = ""; Exception caught = null;
