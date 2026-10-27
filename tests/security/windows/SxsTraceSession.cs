@@ -193,7 +193,7 @@ namespace ScientificSecurity
         internal static void RequireCapture(Snapshot s)
         {
             Check(s != null, Predicate.Present);
-            if (s.mode != 1 || s.bufferSize == 0 || s.maximumBuffers == 0 ||
+            if ((s.mode != 1 && s.mode != 0x00400000) || s.bufferSize == 0 || s.maximumBuffers == 0 ||
                 (ulong)s.bufferSize * s.maximumBuffers > 16384 || s.lost != 0 || s.logLost != 0 || s.realLost != 0)
                 throw new PrivateFailure(new InvalidOperationException("fixed SxS capture policy rejected"),
                     "session-capture mode=" + s.mode.ToString("X8") + " buffer_kib=" + s.bufferSize +
@@ -359,7 +359,26 @@ namespace ScientificSecurity
             var a = new Snapshot { handle = 7, guid = new Guid("12345678-1234-1234-1234-123456789abc"), name = SessionName,
                 path = "F:\\sxs-trace-fixed\\capture.etl", mode = 1, bufferSize = 64, maximumBuffers = 16 };
             RequireSame(a, Select(new [] { a }, a.path)); RequireCapture(a); Need(Select(new Snapshot[0], a.path) == null);
+            Snapshot standardTool = Decode(Fixture(a)); standardTool.mode = 0x00400000;
+            RequireCapture(standardTool);
+            Refuse(() => RequireSame(a, standardTool));
             RequireSame(a, Decode(Fixture(a))); CheckRecovery(a);
+            foreach (uint mode in new uint[] { 1, 0x00400000 }) {
+                Snapshot candidate = Decode(Fixture(a)); candidate.mode = mode;
+                candidate.bufferSize = 64; candidate.maximumBuffers = 256; RequireCapture(candidate);
+                foreach (uint invalid in new uint[] { 0, 2, 4, 8, 0x100, 0x400, 0x800, 0x00400001,
+                    0x00400002, 0x00400004, 0x00400008, 0x00400100, 0x00400400, 0x00400800, 0x00800000, UInt32.MaxValue }) {
+                    Snapshot bad = Decode(Fixture(a)); bad.mode = invalid; Refuse(() => RequireCapture(bad));
+                }
+                foreach (int field in new [] { 48, 56, 88, 96, 100 }) {
+                    byte[] bytes = Fixture(candidate);
+                    Array.Copy(BitConverter.GetBytes(field == 48 || field == 56 ? 0U : 1U), 0, bytes, field, 4);
+                    Refuse(() => RequireCapture(Decode(bytes)));
+                }
+                candidate.maximumBuffers = 257; Refuse(() => RequireCapture(candidate));
+                candidate.bufferSize = UInt32.MaxValue; candidate.maximumBuffers = UInt32.MaxValue;
+                Refuse(() => RequireCapture(candidate));
+            }
             Action[] firstPredicates = { () => Decode(null), () => Decode(new byte[Capacity]),
                 () => Select(null, a.path), () => RequireSame(null, a), () => RequireSame(a, new Snapshot()),
                 () => RequireCapture(null) };
