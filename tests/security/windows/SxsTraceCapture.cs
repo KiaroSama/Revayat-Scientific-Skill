@@ -206,30 +206,15 @@ namespace ScientificSecurity
                 string canary = Path.Combine(folder, "canary");
                 StorageStep(StorageStage.Canary, () => {
                     using (WindowsIdentity host = WindowsIdentity.GetCurrent()) {
-                        FileSecurity policy = CanaryPolicy(host.User);
-                        WriteCanary(() => FileSystemAclExtensions.Create(new FileInfo(canary), FileMode.CreateNew,
-                            FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.Synchronize,
-                            FileShare.None, 4096, FileOptions.None, policy), stream => ((FileStream)stream).Flush(true));
+                        SxsCanaryOwner.Run(host.User, () => WriteCanary(
+                            () => new FileStream(canary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None),
+                            stream => ((FileStream)stream).Flush(true)));
                     }
                 });
                 StorageStep(StorageStage.DirectoryReadback, () => RequirePolicy(folder, true));
                 StorageStep(StorageStage.FileReadback, () => RequirePolicy(canary, false));
             }
             catch (Exception error) { throw SxsTraceSession.Safe(error, "storage-prepare"); }
-        }
-        static void RequireCanaryPolicy(byte[] bytes, SecurityIdentifier owner)
-        {
-            var raw = new RawSecurityDescriptor(bytes, 0);
-            Need(raw.ControlFlags == ControlFlags.SelfRelative && raw.Owner != null && raw.Owner.Equals(owner) &&
-                raw.Group == null && raw.SystemAcl == null && raw.DiscretionaryAcl == null);
-        }
-        static FileSecurity CanaryPolicy(SecurityIdentifier owner)
-        {
-            Need(owner != null);
-            var raw = new RawSecurityDescriptor(ControlFlags.SelfRelative, owner, null, null, null);
-            var bytes = new byte[raw.BinaryLength]; raw.GetBinaryForm(bytes, 0);
-            var policy = new FileSecurity(); policy.SetSecurityDescriptorBinaryForm(bytes);
-            RequireCanaryPolicy(policy.GetSecurityDescriptorBinaryForm(), owner); return policy;
         }
         static void WriteCanary(Func<Stream> create, Action<Stream> flush)
         {
@@ -465,22 +450,7 @@ namespace ScientificSecurity
         }
         static void CheckCanaryCreation()
         {
-            var owner = new SecurityIdentifier("S-1-5-21-1-2-3-1001");
-            FileSecurity policy = CanaryPolicy(owner);
-            byte[] actual = policy.GetSecurityDescriptorBinaryForm(); RequireCanaryPolicy(actual, owner);
-            var raw = new RawSecurityDescriptor(actual, 0);
-            Need(actual.Length == 48 && actual[0] == 1 && actual[2] == 0 && actual[3] == 0x80 &&
-                BitConverter.ToInt32(actual, 4) == 20 && BitConverter.ToInt32(actual, 8) == 0 &&
-                BitConverter.ToInt32(actual, 12) == 0 && BitConverter.ToInt32(actual, 16) == 0);
-            for (int kind = 0; kind < 6; kind++) {
-                var bad = new RawSecurityDescriptor(ControlFlags.SelfRelative |
-                    (kind == 0 || kind == 1 ? ControlFlags.DiscretionaryAclPresent : kind == 2 ? ControlFlags.DiscretionaryAclProtected : 0),
-                    kind == 3 ? new SecurityIdentifier("S-1-5-18") : owner, kind == 4 ? owner : null,
-                    kind == 5 ? new RawAcl(2, 0) : null, kind == 1 ? new RawAcl(2, 0) : null);
-                if (kind == 5) bad.SetFlags(bad.ControlFlags | ControlFlags.SystemAclPresent);
-                byte[] bytes = new byte[bad.BinaryLength]; bad.GetBinaryForm(bytes, 0); bool refused = false;
-                try { RequireCanaryPolicy(bytes, owner); } catch (InvalidOperationException) { refused = true; } Need(refused);
-            }
+            SxsCanaryOwner.CheckValidation();
             for (int mode = 0; mode < 8; mode++) {
                 var stream = new CanaryStream { failure = mode }; Exception caught = null; int acquired = 0;
                 try { WriteCanary(() => { acquired++; if (mode == 3) throw stream.error; return stream; },
