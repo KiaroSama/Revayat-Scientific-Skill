@@ -33,15 +33,11 @@ namespace ScientificSecurity
                 Need(image.Entry != 0 && (image.U16(pe + 22) & 0x2002) == 2 && image.U16(optional + 68) == 3);
                 stage = "clr";
                 Need(image.U32(optional + 112 + 14 * 8) == 0 && image.U32(optional + 116 + 14 * 8) == 0);
-                string[] allowed = { "kernel32.dll", "ntdll.dll", "advapi32.dll", "bcrypt.dll", "userenv.dll", "ws2_32.dll", "synchronization.dll", "bcryptprimitives.dll" };
+                string[] allowed = { "kernel32.dll", "ntdll.dll", "advapi32.dll", "bcrypt.dll", "userenv.dll", "ws2_32.dll", "api-ms-win-core-synch-l1-2-0.dll", "bcryptprimitives.dll" };
                 stage = "imports";
                 string[] names = image.DirectImportNames();
                 stage = "import-profile";
-                Need(names.Length > 0);
-                foreach (string name in names) {
-                    stage = name == "api-ms-win-core-synch-l1-2-0.dll" ? "import-profile-synch-contract" : "import-profile";
-                    Need(allowed.Contains(name));
-                }
+                Need(names.Length > 0 && names.All(name => allowed.Contains(name)));
             }
             catch (InvalidOperationException error) {
                 throw new InvalidOperationException("fixed Rust registry authority PE refused stage=" + stage, error);
@@ -118,6 +114,9 @@ namespace ScientificSecurity
             byte[] authority = ImportFixture(new [] { "KERNEL32.dll", "ntdll.dll", "advapi32.dll" });
             Put16(authority, 0x96, 2); Put16(authority, 0x98 + 68, 3);
             QualifyRegistryAuthority(authority);
+            byte[] synchronized = ImportFixture(new [] { "KERNEL32.dll", "ntdll.dll", "advapi32.dll", "api-ms-win-core-synch-l1-2-0.dll" });
+            Put16(synchronized, 0x96, 2); Put16(synchronized, 0x98 + 68, 3);
+            QualifyRegistryAuthority(synchronized);
             Action<byte[]>[] changes = {
                 b => Put16(b, 0x84, 0x14C), b => Put16(b, 0x96, 0x2002),
                 b => Put16(b, 0x98 + 68, 2), b => Put(b, 0x98 + 16, 0),
@@ -129,7 +128,7 @@ namespace ScientificSecurity
                 b => b[0x300] = (byte)'\\', b => Put(b, 0x210, 0),
                 b => { Put(b, 0x98 + 124, 100); b[0x25F] = 1; },
                 b => { Put(b, 0x98 + 124, 60); Array.Copy(b, 0x200, b, 0x214, 20); },
-                b => { Put(b, 0x20C, 0x1180); System.Text.Encoding.ASCII.GetBytes("api-ms-win-core-synch-l1-2-0.dll\0").CopyTo(b, 0x380); }
+                b => { Put(b, 0x20C, 0x1180); System.Text.Encoding.ASCII.GetBytes("synchronization.dll\0").CopyTo(b, 0x380); }
             };
             string[] predicates = { "header refused stage=pe-header", "PE refused stage=executable",
                 "PE refused stage=executable", "PE refused stage=executable", "PE refused stage=clr",
@@ -137,7 +136,7 @@ namespace ScientificSecurity
                 "import refused stage=directory-shape", "import refused stage=directory-map",
                 "import refused stage=delay-import", "import refused stage=name-character",
                 "import refused stage=descriptor", "import refused stage=directory-tail",
-                "import refused stage=name-shape-or-duplicate", "PE refused stage=import-profile-synch-contract" };
+                "import refused stage=name-shape-or-duplicate", "PE refused stage=import-profile" };
             Need(changes.Length == predicates.Length);
             for (int index = 0; index < changes.Length; index++) {
                 byte[] bad = (byte[])authority.Clone(); changes[index](bad); bool rejected = false;
@@ -150,6 +149,15 @@ namespace ScientificSecurity
                             !cause.Message.Contains("api-ms-win") && !cause.Message.Contains("private"));
                     }
                     Need(observed);
+                }
+                Need(rejected);
+            }
+            foreach (string name in new [] { "api-ms-win-core-synch-l1-2-1.dll", "api-ms-win-core-synch-l1-2-0-extra.dll", "unexpected.dll" }) {
+                byte[] bad = ImportFixture(new [] { "KERNEL32.dll", "ntdll.dll", "advapi32.dll", name });
+                Put16(bad, 0x96, 2); Put16(bad, 0x98 + 68, 3); bool rejected = false;
+                try { QualifyRegistryAuthority(bad); }
+                catch (InvalidOperationException error) {
+                    rejected = error.Message == "fixed Rust registry authority PE refused stage=import-profile";
                 }
                 Need(rejected);
             }
