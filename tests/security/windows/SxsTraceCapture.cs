@@ -316,15 +316,39 @@ namespace ScientificSecurity
             SxsTraceSession.At(SxsTraceSession.Stage.PostBind, () => Need(remaining() > 0));
         }
         internal static void StarterBeginning() { StarterReaped = false; }
+        enum ParseStage { EtlPolicy, EtlLength, TextAbsent, ParseTool, TextPolicy, TextRead, EvidenceOutput }
+        static void AtParse(ParseStage stage, Action action)
+        {
+            string label;
+            switch (stage) {
+                case ParseStage.EtlPolicy: label = "etl-policy"; break;
+                case ParseStage.EtlLength: label = "etl-length"; break;
+                case ParseStage.TextAbsent: label = "text-absent"; break;
+                case ParseStage.ParseTool: label = "parse-tool"; break;
+                case ParseStage.TextPolicy: label = "text-policy"; break;
+                case ParseStage.TextRead: label = "text-read"; break;
+                case ParseStage.EvidenceOutput: label = "evidence-output"; break;
+                default: throw new InvalidOperationException("unsupported fixed SxS parse stage");
+            }
+            try { action(); }
+            catch (Exception error) {
+                if (error is SxsTraceSession.PrivateFailure) throw;
+                var policy = error as PolicyFailure;
+                throw SxsTraceSession.Safe(error, label + (policy == null ? "" : " policy_predicate=" + PolicyName(policy.Predicate)));
+            }
+        }
         void Parse()
         {
-            RequirePolicy(Path.Combine(folder, "capture.etl"), false);
-            SxsTraceEvidence.RequireLength(Path.Combine(folder, "capture.etl"), 8388608);
-            Need(!SxsTraceSession.Exists(Path.Combine(folder, "capture.txt")));
-            var clock = Stopwatch.StartNew(); TrustedSetup.RunSxsTrace(folder, true, () => 10 - clock.Elapsed.TotalSeconds);
-            RequirePolicy(Path.Combine(folder, "capture.txt"), false);
-            string evidence = SxsTraceEvidence.Read(Path.Combine(folder, "capture.txt"), Path.Combine(Path.GetDirectoryName(python), "DLLs", "_ctypes.pyd"));
-            Console.Out.WriteLine(evidence); Console.Out.Flush();
+            AtParse(ParseStage.EtlPolicy, () => RequirePolicy(Path.Combine(folder, "capture.etl"), false));
+            AtParse(ParseStage.EtlLength, () => SxsTraceEvidence.RequireLength(Path.Combine(folder, "capture.etl"), 8388608));
+            AtParse(ParseStage.TextAbsent, () => Need(!SxsTraceSession.Exists(Path.Combine(folder, "capture.txt"))));
+            AtParse(ParseStage.ParseTool, () => {
+                var clock = Stopwatch.StartNew(); TrustedSetup.RunSxsTrace(folder, true, () => 10 - clock.Elapsed.TotalSeconds);
+            });
+            AtParse(ParseStage.TextPolicy, () => RequirePolicy(Path.Combine(folder, "capture.txt"), false));
+            string evidence = null;
+            AtParse(ParseStage.TextRead, () => evidence = SxsTraceEvidence.Read(Path.Combine(folder, "capture.txt"), Path.Combine(Path.GetDirectoryName(python), "DLLs", "_ctypes.pyd")));
+            AtParse(ParseStage.EvidenceOutput, () => { Console.Out.WriteLine(evidence); Console.Out.Flush(); });
         }
         static FileSystemSecurity PolicyFixture(bool directory, int corruption, string owner, string package)
         {
@@ -518,9 +542,49 @@ namespace ScientificSecurity
                 bool refused = false; try { RequireCanary(bytes); } catch (InvalidOperationException) { refused = true; } Need(refused);
             }
         }
+        public static void CheckParseValidation()
+        {
+            SxsTraceEvidence.CheckReportingValidation();
+            var raw = new IOException("F:\\private-parse-sentinel\\capture.etl");
+            string[] labels = { "etl-policy", "etl-length", "text-absent", "parse-tool", "text-policy", "text-read", "evidence-output" };
+            for (int index = 0; index < labels.Length; index++) {
+                Exception caught = null;
+                try { AtParse((ParseStage)index, () => { throw raw; }); } catch (Exception error) { caught = error; }
+                var safe = caught as SxsTraceSession.PrivateFailure;
+                Need(safe != null && Object.ReferenceEquals(safe.Original, raw) && safe.InnerException == null &&
+                    safe.Message == "fixed SxS trace failed stage=" + labels[index] + " raw_error_withheld=True" &&
+                    !safe.ToString().Contains("sentinel"));
+                Exception retained = null;
+                try { AtParse((ParseStage)index, () => { throw safe; }); } catch (Exception error) { retained = error; }
+                Need(Object.ReferenceEquals(retained, safe));
+            }
+            const string owner = "S-1-5-21-1-2-3-1001", package = "S-1-15-2-1-2-3-4-5-6-7";
+            foreach (ParseStage stage in new [] { ParseStage.EtlPolicy, ParseStage.TextPolicy }) {
+                string label = stage == ParseStage.EtlPolicy ? "etl-policy" : "text-policy";
+                AtParse(stage, () => ValidatePolicy(PolicyFixture(false, 0, owner, package), false, owner, package));
+                Exception caught = null;
+                try { AtParse(stage, () => ValidatePolicy(PolicyFixture(false, 1, owner, package), false, owner, package)); }
+                catch (Exception error) { caught = error; }
+                Need(caught is SxsTraceSession.PrivateFailure && caught.Message ==
+                    "fixed SxS trace failed stage=" + label + " policy_predicate=owner raw_error_withheld=True");
+            }
+            foreach (int invalid in new [] { -1, 7, Int32.MaxValue }) {
+                int calls = 0; bool refused = false;
+                try { AtParse((ParseStage)invalid, () => calls++); } catch (InvalidOperationException) { refused = true; }
+                Need(refused && calls == 0);
+            }
+            var first = new RegistryLoaderEvidence.ReceiptFailure(1, "unqualified"); Exception combined = null;
+            try { Execute(() => { throw first; }, () => { },
+                () => AtParse(ParseStage.TextRead, () => SxsTraceEvidence.Parse(new byte[0], "private-manifest-sentinel"))); }
+            catch (Exception error) { combined = RegistryLoaderEvidence.Sanitize(error); }
+            var group = combined as AggregateException;
+            Need(group != null && group.InnerExceptions.Count == 2 && Object.ReferenceEquals(group.InnerExceptions[0], first) &&
+                group.InnerExceptions[1] is SxsTraceSession.PrivateFailure && group.InnerExceptions[1].Message ==
+                "fixed SxS trace failed stage=evidence-length raw_error_withheld=True" && !group.ToString().Contains("sentinel"));
+        }
         public static void CheckValidation()
         {
-            CheckCanaryCreation(); CheckStorageLifecycle();
+            CheckCanaryCreation(); CheckStorageLifecycle(); CheckParseValidation();
             SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); SxsTraceStorage.CheckValidation();
             TrustedSetup.CheckSxsCompletion();
             CheckStorageAndAcquisition(); CheckStorageFailureValidation();
