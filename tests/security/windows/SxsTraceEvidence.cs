@@ -87,7 +87,7 @@ namespace ScientificSecurity
                 observation = PrefixReport("unavailable", "unavailable", null);
             return CombinePrivate(original, observation.Report, "evidence-prefix");
         }
-        static void RequireSize(Func<long> length, int maximum, LengthPhase phase, Func<PrefixObservation> inspectThree = null)
+        static void RequireSize(Func<long> length, int maximum, LengthPhase phase)
         {
             string label = LengthLabel(phase);
             if (phase == LengthPhase.InputShape && length == null) throw LengthFailure(label, "present", null, maximum, null);
@@ -96,14 +96,12 @@ namespace ScientificSecurity
             if (phase == LengthPhase.FileBound ? observed <= 0 : observed < 2) throw LengthFailure(label, "minimum", observed, maximum, null);
             observed = length();
             if (observed > maximum) throw LengthFailure(label, "maximum", observed, maximum, null);
-            if (phase != LengthPhase.FileBound) {
-                observed = length();
-                if (observed % 2 != 0) {
-                    var original = LengthFailure(label, "even", observed, maximum, false);
-                    if (phase == LengthPhase.ReadShape && observed >= 2 && observed <= maximum && inspectThree != null) throw Supplement(original, inspectThree);
-                    throw original;
-                }
-            }
+        }
+        static int AllocationLength(long observed)
+        {
+            if (observed < 2) throw LengthFailure("allocation", "minimum", observed, 1048576, null);
+            if (observed > 1048576) throw LengthFailure("allocation", "maximum", observed, 1048576, null);
+            return (int)observed;
         }
         static string Signature(byte[] bytes, int count)
         {
@@ -118,23 +116,6 @@ namespace ScientificSecurity
             return new PrefixObservation(new SxsTraceSession.PrivateFailure(original ?? new InvalidOperationException("fixed SxS prefix observation"),
                 "evidence-prefix status=" + status + " signature=" + signature + " transferred_bytes=" +
                 (transferred.HasValue ? transferred.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unavailable")));
-        }
-        static PrefixObservation InspectThree(Stream stream)
-        {
-            var bytes = new byte[3]; int transferred = 0;
-            try {
-                try {
-                    while (transferred < 3) {
-                        int count = stream.Read(bytes, transferred, 3 - transferred);
-                        SxsTraceSession.Need(count >= 0 && count <= 3 - transferred);
-                        if (count == 0) return PrefixReport("short", Signature(bytes, transferred), transferred);
-                        transferred += count;
-                    }
-                }
-                catch (Exception error) { return PrefixReport("read-error", "unavailable", transferred, error); }
-                return PrefixReport("complete", Signature(bytes, transferred), transferred);
-            }
-            finally { Array.Clear(bytes, 0, bytes.Length); }
         }
         static PrefixObservation InspectArray(byte[] bytes)
         {
@@ -154,16 +135,20 @@ namespace ScientificSecurity
         }
         static string ReadOwned(Func<Stream> open, string manifest)
         {
-            Stream file = null; Exception primary = null;
+            Stream file = null; byte[] bytes = null; Exception primary = null;
             try {
                 file = open();
-                RequireSize(() => file.Length, 1048576, LengthPhase.ReadShape, () => InspectThree(file));
-                byte[] bytes = new byte[(int)file.Length]; int offset = 0;
-                while (offset < bytes.Length) { int n = file.Read(bytes, offset, bytes.Length - offset); Check(n > 0, Predicate.ReadComplete); offset += n; }
+                RequireSize(() => file.Length, 1048576, LengthPhase.ReadShape);
+                bytes = new byte[AllocationLength(file.Length)]; int offset = 0;
+                while (offset < bytes.Length) {
+                    int n = file.Read(bytes, offset, bytes.Length - offset);
+                    Check(n > 0 && n <= bytes.Length - offset, Predicate.ReadComplete); offset += n;
+                }
                 return Parse(bytes, manifest);
             }
             catch (Exception error) { primary = error; throw; }
             finally {
+                if (bytes != null) Array.Clear(bytes, 0, bytes.Length);
                 try { if (file != null) file.Dispose(); }
                 catch (Exception error) {
                     var safe = new SxsTraceSession.PrivateFailure(error, "evidence-close");
@@ -177,11 +162,19 @@ namespace ScientificSecurity
             Func<long> length = bytes == null ? (Func<long>)null : () => bytes.Length;
             try { RequireSize(length, 1048576, LengthPhase.InputShape); }
             catch (SxsTraceSession.PrivateFailure original) { throw Supplement(original, () => InspectArray(bytes)); }
-            try { Check(bytes[0] == 255 && bytes[1] == 254, Predicate.Bom); }
+            bool utf16 = bytes[0] == 255 && bytes[1] == 254;
+            bool utf8 = bytes.Length >= 3 && bytes[0] == 239 && bytes[1] == 187 && bytes[2] == 191;
+            try {
+                Check(utf16 || utf8, Predicate.Bom);
+                if (utf16 && bytes.Length % 2 != 0) throw LengthFailure("utf16-shape", "even", bytes.Length, 1048576, false);
+            }
             catch (SxsTraceSession.PrivateFailure original) { throw Supplement(original, () => InspectArray(bytes)); }
-            string text;
-            try { text = new UnicodeEncoding(false, false, true).GetString(bytes, 2, bytes.Length - 2); }
-            catch (DecoderFallbackException error) { throw SxsTraceSession.Safe(error, "evidence-utf16"); }
+            int preamble = utf16 ? 2 : 3; string text;
+            try {
+                Encoding encoding = utf16 ? (Encoding)new UnicodeEncoding(false, false, true) : new UTF8Encoding(false, true);
+                text = encoding.GetString(bytes, preamble, bytes.Length - preamble);
+            }
+            catch (DecoderFallbackException error) { throw SxsTraceSession.Safe(error, utf16 ? "evidence-utf16" : "evidence-utf8"); }
             Check(!text.Contains('\0'), Predicate.Nul);
             string[] lines = text.Replace("\r\n", "\n").Split('\n');
             Check(lines.Length <= 4096, Predicate.LineCount);
@@ -236,7 +229,7 @@ namespace ScientificSecurity
         static void CheckLengthValidation()
         {
             long[][] observations = { new long[] { 0 }, new long[] { 1, 9 }, new long[] { 8, 0 },
-                new long[] { 1 }, new long[] { 2, 9 }, new long[] { 2, 8, 3 }, new long[] { 2, 8, 8 },
+                new long[] { 1 }, new long[] { 2, 9 }, new long[] { 3, 8 }, new long[] { 2, 8 },
                 new long[] { Int64.MinValue }, new long[] { 1, Int64.MaxValue } };
             LengthPhase[] phases = { LengthPhase.FileBound, LengthPhase.FileBound, LengthPhase.FileBound,
                 LengthPhase.ReadShape, LengthPhase.ReadShape, LengthPhase.ReadShape, LengthPhase.ReadShape,
@@ -246,7 +239,7 @@ namespace ScientificSecurity
                 "file-bound comparison=maximum observed_bytes=9 maximum_bytes=8 even=not-evaluated", null,
                 "read-shape comparison=minimum observed_bytes=1 maximum_bytes=8 even=not-evaluated",
                 "read-shape comparison=maximum observed_bytes=9 maximum_bytes=8 even=not-evaluated",
-                "read-shape comparison=even observed_bytes=3 maximum_bytes=8 even=False", null,
+                null, null,
                 "file-bound comparison=minimum observed_bytes=-9223372036854775808 maximum_bytes=8 even=not-evaluated",
                 "file-bound comparison=maximum observed_bytes=9223372036854775807 maximum_bytes=8 even=not-evaluated" };
             for (int index = 0; index < observations.Length; index++) {
@@ -262,10 +255,10 @@ namespace ScientificSecurity
                 int reads = 0; RequireSize(() => { reads++; return maximum; }, maximum, LengthPhase.FileBound);
                 SxsTraceSession.Need(reads == 2);
                 reads = 0; RequireSize(() => { reads++; return maximum; }, maximum, LengthPhase.ReadShape);
-                SxsTraceSession.Need(reads == 3);
+                SxsTraceSession.Need(reads == 2);
             }
             foreach (LengthPhase phase in Enum.GetValues(typeof(LengthPhase))) {
-                for (int failAt = 1; failAt <= (phase == LengthPhase.FileBound ? 2 : 3); failAt++) {
+                for (int failAt = 1; failAt <= 2; failAt++) {
                     var raw = new IOException("private-length-sentinel"); int reads = 0; Exception caught = null;
                     try { RequireSize(() => { if (++reads == failAt) throw raw; return 2; }, 8, phase); }
                     catch (Exception error) { caught = error; }
@@ -283,12 +276,12 @@ namespace ScientificSecurity
         {
             internal byte[] retained;
             internal int reads, lengths, closes, mode;
-            internal long? observed;
+            internal long? observed, allocation;
             internal PrefixStream(byte[] bytes) : base(bytes) { }
-            public override long Length { get { lengths++; return observed ?? base.Length; } }
+            public override long Length { get { lengths++; return lengths == 3 && allocation.HasValue ? allocation.Value : observed ?? base.Length; } }
             public override int Read(byte[] bytes, int offset, int count)
             {
-                retained = bytes; reads++; SxsTraceSession.Need(count > 0 && (mode == 7 || count <= 3 && offset + count <= 3));
+                retained = bytes; reads++; SxsTraceSession.Need(count > 0 && offset >= 0 && offset + count <= bytes.Length);
                 if (mode == 2 || mode == 5 && reads == 2 || mode == 6) throw new IOException("private-prefix-read-sentinel");
                 if (mode == 3) return 4;
                 return base.Read(bytes, offset, mode == 1 || mode == 5 ? Math.Min(1, count) : count);
@@ -308,62 +301,34 @@ namespace ScientificSecurity
                     signatures[index] + " transferred_bytes=" + count + " raw_error_withheld=True");
             }
             for (int mode = 0; mode <= 6; mode++) {
-                var stream = new PrefixStream(new byte[] { 239, 187, 191 }) { mode = mode };
-                Exception caught = null;
+                var stream = new PrefixStream(new byte[] { 239, 187, 191 }) { mode = mode }; Exception caught = null;
                 try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
-                var safe = caught as SxsTraceSession.PrivateFailure;
-                SxsTraceSession.Need(safe != null && stream.lengths == 3 && stream.closes == 1 &&
-                    stream.reads == (mode == 1 ? 3 : mode == 5 ? 2 : 1) && stream.retained.All(value => value == 0) &&
-                    safe.Message.StartsWith("fixed SxS trace failed stage=evidence-length-read-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False ", StringComparison.Ordinal) &&
-                    !safe.ToString().Contains("sentinel") && safe.InnerException == null);
-                var group = safe.Original as AggregateException;
-                SxsTraceSession.Need(group != null && group.InnerExceptions.Count == 2);
+                SxsTraceSession.Need(caught != null && stream.lengths == 3 && stream.closes == 1 &&
+                    stream.reads == (mode == 1 ? 3 : mode == 5 ? 2 : 1) && stream.retained.All(value => value == 0));
+                var safe = (SxsTraceSession.PrivateFailure)SxsTraceSession.Safe(caught, "text-read");
+                SxsTraceSession.Need(!safe.ToString().Contains("sentinel") && safe.InnerException == null);
                 if (mode == 4 || mode == 6) {
-                    SxsTraceSession.Need(group.InnerExceptions[0] is SxsTraceSession.PrivateFailure &&
-                        ((SxsTraceSession.PrivateFailure)group.InnerExceptions[0]).Original is AggregateException &&
+                    var group = safe.Original as AggregateException;
+                    SxsTraceSession.Need(group != null && group.InnerExceptions.Count == 2 &&
+                        ((SxsTraceSession.PrivateFailure)group.InnerExceptions[0]).SafeStage == (mode == 4 ? "evidence-final" : "text-read") &&
                         ((SxsTraceSession.PrivateFailure)group.InnerExceptions[1]).SafeStage == "evidence-close");
                 }
-                else SxsTraceSession.Need(((SxsTraceSession.PrivateFailure)group.InnerExceptions[0]).SafeStage ==
-                    "evidence-length-read-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False");
-                if (mode == 2 || mode == 3 || mode == 6) SxsTraceSession.Need(safe.Message.Contains("status=read-error signature=unavailable transferred_bytes=0"));
-                else if (mode == 5) SxsTraceSession.Need(safe.Message.Contains("status=read-error signature=unavailable transferred_bytes=1"));
-                else SxsTraceSession.Need(safe.Message.Contains("status=complete signature=utf8-bom transferred_bytes=3"));
-            }
-            for (int size = 0; size < 3; size++) {
-                var stream = new PrefixStream(new byte[size]); var result = InspectThree(stream).Report;
-                SxsTraceSession.Need(result.Message.Contains("status=short signature=" + (size == 0 ? "absent" : "other") + " transferred_bytes=" + size) &&
-                    stream.lengths == 0 && stream.reads == (size == 0 ? 1 : 2) && stream.retained.All(value => value == 0));
-                stream.Dispose();
+                else if (mode == 0 || mode == 1) SxsTraceSession.Need(safe.SafeStage == "evidence-final");
+                else if (mode == 3) SxsTraceSession.Need(safe.SafeStage == "evidence-read-complete");
+                else SxsTraceSession.Need(Object.ReferenceEquals(safe.Original, caught));
             }
             for (int size = 0; size < 3; size++) {
                 var stream = new PrefixStream(new byte[size]) { observed = 3 }; Exception caught = null;
                 try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
-                var safe = caught as SxsTraceSession.PrivateFailure;
-                SxsTraceSession.Need(safe != null && stream.lengths == 3 && stream.closes == 1 &&
+                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && stream.lengths == 3 && stream.closes == 1 &&
                     stream.reads == (size == 0 ? 1 : 2) && stream.retained.All(value => value == 0) &&
-                    safe.Message.Contains("observed_bytes=3") && safe.Message.Contains("status=short signature=" +
-                        (size == 0 ? "absent" : "other") + " transferred_bytes=" + size) && !safe.ToString().Contains("sentinel"));
+                    caught.Message.Contains("stage=evidence-read-complete") && !caught.ToString().Contains("sentinel"));
             }
-            foreach (int size in new [] { 5, 3177 }) {
-                var stream = new PrefixStream(new byte[] { 239, 187, 191 }) { observed = size }; Exception caught = null;
+            foreach (long size in new long[] { -1, 1, 1048577, Int64.MaxValue }) {
+                var stream = new PrefixStream(new byte[2]) { allocation = size }; Exception caught = null;
                 try { ReadOwned(() => stream, "private-manifest-sentinel"); } catch (Exception error) { caught = error; }
-                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && stream.lengths == 3 && stream.reads == 1 &&
-                    stream.closes == 1 && stream.retained.All(value => value == 0) &&
-                    caught.Message.Contains("observed_bytes=" + size) &&
-                    caught.Message.Contains("status=complete signature=utf8-bom transferred_bytes=3"));
-            }
-            foreach (long third in new long[] { -1, 1, 1048577, Int64.MaxValue }) {
-                int reads = 0, inspections = 0; Exception caught = null;
-                try { RequireSize(() => ++reads < 3 ? 2 : third, 1048576, LengthPhase.ReadShape,
-                    () => { inspections++; return InspectArray(null); }); } catch (Exception error) { caught = error; }
-                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && reads == 3 && inspections == 0 &&
-                    !caught.Message.Contains("evidence-prefix"));
-            }
-            foreach (LengthPhase phase in new [] { LengthPhase.FileBound, LengthPhase.InputShape }) {
-                int inspections = 0; Exception caught = null;
-                try { RequireSize(() => 5, 1048576, phase, () => { inspections++; return InspectArray(null); }); }
-                catch (Exception error) { caught = error; }
-                SxsTraceSession.Need(inspections == 0 && (phase == LengthPhase.FileBound ? caught == null : caught is SxsTraceSession.PrivateFailure));
+                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && stream.lengths == 3 && stream.reads == 0 &&
+                    stream.closes == 1 && caught.Message.Contains("evidence-length-allocation"));
             }
             foreach (int size in new [] { 0, 1, 1048577 }) {
                 var stream = new PrefixStream(new byte[size]); Exception caught = null;
@@ -376,7 +341,7 @@ namespace ScientificSecurity
             byte[] valid = new byte[] { 255, 254 }.Concat(new UnicodeEncoding(false, false, true).GetBytes(block)).ToArray();
             var positive = new PrefixStream(valid) { mode = 7 };
             SxsTraceSession.Need(ReadOwned(() => positive, manifest).Contains("activation_failed=True") &&
-                positive.lengths == 4 && positive.reads == 1 && positive.closes == 1);
+                positive.lengths == 3 && positive.reads == 1 && positive.closes == 1 && positive.retained.All(value => value == 0));
             Exception absent = null; var openError = new IOException("private-open-sentinel");
             try { ReadOwned(() => { throw openError; }, manifest); } catch (Exception error) { absent = error; }
             SxsTraceSession.Need(Object.ReferenceEquals(absent, openError));
@@ -399,9 +364,57 @@ namespace ScientificSecurity
             SxsTraceSession.Need(field != null && field.IsInitOnly && original.SafeStage ==
                 "evidence-length-read-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False");
         }
+        static void CheckCodecValidation()
+        {
+            const string manifest = "F:\\private-codec-sentinel\\_ctypes.pyd";
+            string block = Begin + "\nManifestPath = " + manifest + "\nERROR: Activation Context generation failed.\n" + End + "\n";
+            Func<string, byte[]> utf8 = value => new byte[] { 239, 187, 191 }.Concat(new UTF8Encoding(false, true).GetBytes(value)).ToArray();
+            Func<string, byte[]> utf16 = value => new byte[] { 255, 254 }.Concat(new UnicodeEncoding(false, false, true).GetBytes(value)).ToArray();
+            string expected = Parse(utf16(block), manifest);
+            foreach (string value in new [] { block, block + "\n", block.Replace("ERROR:", "INFO: \u03A9\nERROR:") }) {
+                byte[] bytes = utf8(value);
+                SxsTraceSession.Need(Parse(bytes, manifest) == expected && Parse(utf16(value), manifest) == expected);
+                var stream = new PrefixStream(bytes) { mode = 7 };
+                SxsTraceSession.Need(ReadOwned(() => stream, manifest) == expected && stream.lengths == 3 && stream.reads == 1 &&
+                    stream.closes == 1 && stream.retained.All(item => item == 0));
+            }
+            SxsTraceSession.Need(utf8(block).Length % 2 != utf8(block + "\n").Length % 2);
+            byte[][] malformed = { new byte[] { 194 }, new byte[] { 128 }, new byte[] { 192, 175 },
+                new byte[] { 237, 160, 128 }, new byte[] { 244, 144, 128, 128 }, new byte[] { 226, 130 } };
+            foreach (byte[] body in malformed) {
+                Exception caught = null;
+                byte[] bytes = new byte[] { 239, 187, 191 }.Concat(body).ToArray();
+                try { Parse(bytes, manifest); } catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && caught.InnerException == null &&
+                    caught.Message == "fixed SxS trace failed stage=evidence-utf8 raw_error_withheld=True" &&
+                    ((SxsTraceSession.PrivateFailure)caught).Original is DecoderFallbackException && !caught.ToString().Contains("sentinel"));
+                var stream = new PrefixStream(bytes) { mode = 7 }; Exception readFailure = null;
+                try { ReadOwned(() => stream, manifest); } catch (Exception error) { readFailure = error; }
+                SxsTraceSession.Need(readFailure is SxsTraceSession.PrivateFailure && readFailure.Message == caught.Message &&
+                    stream.closes == 1 && stream.retained.All(value => value == 0));
+            }
+            foreach (byte[] bytes in new [] { new byte[] { 239, 187, 191 }, new byte[] { 255, 254 },
+                new byte[] { 255, 254, 0 }, new byte[] { 254, 255, 0, 65 }, new byte[] { 255, 254, 0, 0 },
+                new byte[] { 0, 0, 254, 255 }, Encoding.UTF8.GetBytes(block), utf8(block + block),
+                utf8(block.Replace(manifest, "private-wrong-manifest")), utf8(block.Replace("ERROR:", "ERROR: private-unknown")),
+                utf8("\0"), utf8(new string('x', 2049)), utf8(new string('\n', 4096)), utf8("\r"), new byte[1048577] }) {
+                Exception caught = null;
+                try { Parse(bytes, manifest); } catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(caught != null && !caught.ToString().Contains("sentinel"));
+                if (bytes.Length == 3 && bytes[0] == 255 && bytes[1] == 254)
+                    SxsTraceSession.Need(caught.Message == "fixed SxS trace failed stage=evidence-length-utf16-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False evidence-prefix status=array signature=utf16le-prefix transferred_bytes=3 raw_error_withheld=True");
+            }
+            foreach (int maximum in new [] { 1048576 }) {
+                SxsTraceSession.Need(AllocationLength(2) == 2 && AllocationLength(maximum) == maximum);
+                byte[] bytes = Enumerable.Repeat((byte)32, maximum).ToArray(); bytes[0] = 239; bytes[1] = 187; bytes[2] = 191;
+                Exception caught = null;
+                try { Parse(bytes, manifest); } catch (Exception error) { caught = error; }
+                SxsTraceSession.Need(caught is SxsTraceSession.PrivateFailure && caught.Message.Contains("evidence-line-width"));
+            }
+        }
         internal static void CheckReportingValidation()
         {
-            CheckLengthValidation(); CheckPrefixValidation();
+            CheckLengthValidation(); CheckPrefixValidation(); CheckCodecValidation();
             Exception caught = null;
             try { Parse(new byte[0], "private-manifest-sentinel"); }
             catch (Exception error) { caught = error; }
@@ -422,10 +435,12 @@ namespace ScientificSecurity
                     !failure.ToString().Contains("sentinel"));
             };
             SxsTraceSession.Need(Parse(encode(block), manifest).Contains("activation_failed=True"));
+            byte[] utf8 = new byte[] { 239, 187, 191 }.Concat(new UTF8Encoding(false, true).GetBytes(block)).ToArray();
+            SxsTraceSession.Need(Parse(utf8, manifest) == Parse(encode(block), manifest));
             refuse(null, "length-input-shape comparison=present observed_bytes=absent maximum_bytes=1048576 even=not-evaluated");
             refuse(new byte[1], "length-input-shape comparison=minimum observed_bytes=1 maximum_bytes=1048576 even=not-evaluated");
             refuse(new byte[1048578], "length-input-shape comparison=maximum observed_bytes=1048578 maximum_bytes=1048576 even=not-evaluated");
-            refuse(new byte[3], "length-input-shape comparison=even observed_bytes=3 maximum_bytes=1048576 even=False");
+            refuse(new byte[3], "bom");
             refuse(new byte[1048576], "bom");
             refuse(new byte[2], "bom"); refuse(encode("\0"), "nul");
             refuse(encode(new string('\n', 4096)), "line-count");
