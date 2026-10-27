@@ -5,7 +5,7 @@ using System.Security.Principal;
 
 namespace ScientificSecurity
 {
-    // A disposable token scopes creation of only the fixed canary and empty ETL seed.
+    // A disposable token scopes creation of only the fixed canary and empty ETL/text seeds.
     internal static class SxsCanaryOwner
     {
         const int Capacity = 256;

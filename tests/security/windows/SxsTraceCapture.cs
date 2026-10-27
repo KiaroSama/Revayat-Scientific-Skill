@@ -125,36 +125,13 @@ namespace ScientificSecurity
             });
             RequireSeed();
         }
-        static void Empty(Stream stream) { Need(stream != null && stream.Length == 0); }
-        static void SeedRead(Action policy, Func<Stream> open)
-        {
-            policy(); Stream stream = null; Exception primary = null;
-            try { stream = open(); Empty(stream); }
-            catch (Exception error) { primary = error; throw; }
-            finally {
-                var failures = new System.Collections.Generic.List<Exception>();
-                StartupActivationAccess.Attempt(failures, () => { if (stream != null) stream.Dispose(); });
-                StartupActivationAccess.Finish(primary, failures);
-            }
-        }
         void RequireSeed()
         {
             StorageStep(StorageStage.Seed, () => {
                 string seed = Path.Combine(folder, "capture.etl");
-                SeedRead(() => RequirePolicy(seed, false),
+                SxsTraceSeed.Read(() => RequirePolicy(seed, false),
                     () => new FileStream(seed, FileMode.Open, FileAccess.Read, FileShare.None));
             });
-        }
-        static void CreateSeed(Func<Stream> create, Action<Stream> flush)
-        {
-            Stream stream = null; Exception primary = null;
-            try { stream = create(); Empty(stream); flush(stream); }
-            catch (Exception error) { primary = error; throw; }
-            finally {
-                var failures = new System.Collections.Generic.List<Exception>();
-                StartupActivationAccess.Attempt(failures, () => { if (stream != null) stream.Dispose(); });
-                StartupActivationAccess.Finish(primary, failures);
-            }
         }
         enum StorageStage { Path, Host, Policy, Create, Canary, DirectoryReadback, FileReadback, Seed }
         enum PolicyPredicate { Owner, Rules, Canonical, Protected, Propagation, Inherited, Inheritance, Package, OwnerRights, Allow, Distinct }
@@ -243,7 +220,7 @@ namespace ScientificSecurity
                             WriteCanary(() => new FileStream(canary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None),
                                 stream => ((FileStream)stream).Flush(true));
                             string seed = Path.Combine(folder, "capture.etl");
-                            StorageStep(StorageStage.Seed, () => CreateSeed(() => new FileStream(seed, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None),
+                            StorageStep(StorageStage.Seed, () => SxsTraceSeed.Create(() => new FileStream(seed, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None),
                                 stream => ((FileStream)stream).Flush(true)));
                         });
                     }
@@ -380,10 +357,18 @@ namespace ScientificSecurity
         {
             AtParse(ParseStage.EtlPolicy, () => RequirePolicy(Path.Combine(folder, "capture.etl"), false));
             AtParse(ParseStage.EtlLength, () => SxsTraceEvidence.RequireLength(Path.Combine(folder, "capture.etl"), 8388608));
-            AtParse(ParseStage.TextAbsent, () => Need(!SxsTraceSession.Exists(Path.Combine(folder, "capture.txt"))));
-            AtParse(ParseStage.ParseTool, () => {
-                var clock = Stopwatch.StartNew(); TrustedSetup.RunSxsTrace(folder, true, () => 10 - clock.Elapsed.TotalSeconds);
-            });
+            var clock = Stopwatch.StartNew();
+            AtParse(ParseStage.TextAbsent, () => SxsTraceSeed.PrepareText(() => 10 - clock.Elapsed.TotalSeconds,
+                () => Need(!SxsTraceSession.Exists(Path.Combine(folder, "capture.txt"))),
+                () => {
+                    using (WindowsIdentity host = WindowsIdentity.GetCurrent()) {
+                        SxsCanaryOwner.Run(host.User, () => SxsTraceSeed.Create(
+                            () => new FileStream(Path.Combine(folder, "capture.txt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None),
+                            stream => ((FileStream)stream).Flush(true)));
+                    }
+                }, () => SxsTraceSeed.Read(() => RequirePolicy(Path.Combine(folder, "capture.txt"), false),
+                    () => new FileStream(Path.Combine(folder, "capture.txt"), FileMode.Open, FileAccess.Read, FileShare.None))));
+            AtParse(ParseStage.ParseTool, () => TrustedSetup.RunSxsTrace(folder, true, () => 10 - clock.Elapsed.TotalSeconds));
             AtParse(ParseStage.TextPolicy, () => RequirePolicy(Path.Combine(folder, "capture.txt"), false));
             string evidence = null;
             AtParse(ParseStage.TextRead, () => evidence = SxsTraceEvidence.Read(Path.Combine(folder, "capture.txt"), Path.Combine(Path.GetDirectoryName(python), "DLLs", "_ctypes.pyd")));
@@ -540,47 +525,6 @@ namespace ScientificSecurity
                 if (mode == 3) stream.Dispose();
             }
         }
-        static void CheckSeedCreation()
-        {
-            for (int mode = 0; mode < 6; mode++) {
-                var stream = new CanaryStream { failure = mode == 2 ? 2 : mode == 3 ? 4 : mode == 4 ? 6 : 0 };
-                if (mode == 5) stream.SetLength(1);
-                Exception caught = null; int acquired = 0;
-                try { CreateSeed(() => { acquired++; if (mode == 1) throw stream.error; return stream; },
-                    value => ((CanaryStream)value).FlushFixed()); }
-                catch (Exception error) { caught = error; }
-                Need(acquired == 1 && stream.order == (mode == 1 ? "" : mode == 5 ? "d" : "fd"));
-                if (mode == 0) Need(caught == null);
-                else if (mode == 3 || mode == 4) {
-                    var group = caught as AggregateException;
-                    Need(group != null && group.InnerExceptions.Count == (mode == 3 ? 1 : 2) &&
-                        group.InnerExceptions.All(error => Object.ReferenceEquals(error, stream.error)));
-                }
-                else if (mode == 5) Need(caught is InvalidOperationException);
-                else Need(Object.ReferenceEquals(caught, stream.error));
-                if (mode == 1) stream.Dispose();
-            }
-            for (int mode = 0; mode < 3; mode++) {
-                string order = ""; var stream = new CanaryStream(); Exception caught = null;
-                if (mode == 2) stream.SetLength(1);
-                try { SeedRead(() => { order += "p"; if (mode == 1) throw stream.error; },
-                    () => { order += "r"; return stream; }); } catch (Exception error) { caught = error; }
-                Need(order == (mode == 1 ? "p" : "pr") && stream.order == (mode == 1 ? "" : "d"));
-                Need((caught == null) == (mode == 0));
-                if (mode == 1) { Need(Object.ReferenceEquals(caught, stream.error)); stream.Dispose(); }
-            }
-            var closing = new CanaryStream { failure = 4 };
-            var first = new IOException("private-seed-first"); Exception combined = null;
-            try { CreateSeed(() => closing, _ => { throw first; }); } catch (Exception error) { combined = error; }
-            var ordered = combined as AggregateException;
-            Need(ordered != null && ordered.InnerExceptions.Count == 2 && Object.ReferenceEquals(ordered.InnerExceptions[0], first) &&
-                Object.ReferenceEquals(ordered.InnerExceptions[1], closing.error) && closing.order == "d");
-            closing = new CanaryStream { failure = 4 }; closing.SetLength(1); combined = null;
-            try { SeedRead(() => { }, () => closing); } catch (Exception error) { combined = error; }
-            ordered = combined as AggregateException;
-            Need(ordered != null && ordered.InnerExceptions.Count == 2 && ordered.InnerExceptions[0] is InvalidOperationException &&
-                Object.ReferenceEquals(ordered.InnerExceptions[1], closing.error) && closing.order == "d");
-        }
         static void CheckStorageLifecycle()
         {
             var raw = new IOException("C:\\private-boundary-sentinel\\canary");
@@ -664,7 +608,7 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
-            CheckCanaryCreation(); CheckSeedCreation(); CheckStorageLifecycle(); CheckParseValidation();
+            CheckCanaryCreation(); SxsTraceSeed.CheckValidation(); CheckStorageLifecycle(); CheckParseValidation();
             SxsTraceSession.CheckValidation(); SxsTraceEvidence.CheckValidation(); SxsTraceStorage.CheckValidation();
             TrustedSetup.CheckSxsCompletion();
             CheckStorageAndAcquisition(); CheckStorageFailureValidation();
