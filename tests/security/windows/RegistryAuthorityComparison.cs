@@ -31,7 +31,9 @@ namespace ScientificSecurity
             internal void Clear() { preparation.Clear(); wire = null; }
         }
         internal sealed class PythonObservation : Observation { }
-        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=((?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))(?:,(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        const string TokenStages = "console|stdin|stdout|stderr|job|open|type-query|elevation-query|restrictions-query|primary-fields|lpac-abi|lpac-query|lpac-header|lpac-entry|lpac-type|lpac-name-length|lpac-name-span|lpac-value-span|lpac-value|app-size|app-read|app-bounds|app-value|caps-size|caps-read|caps-bounds|caps-value|traversal|priv-size|priv-read|priv-bounds|priv-count|priv-value|groups-size|groups-read|groups-bounds|groups-count|sid-head-span|sid-header|sid-span|admin";
+        const string FailureEvent = @"(?:(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))|token:control-(?:" + TokenStages + "))";
+        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + FailureEvent + "(?:," + FailureEvent + @"){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
             string detail = RegistryLoaderEvidence.Detail(errors == null ? null : errors.Replace("\r\n", "\n")) ?? "unqualified";
@@ -112,6 +114,22 @@ namespace ScientificSecurity
                 actual = null; try { ValidateWire(code, "private-stdout-sentinel", "private-error-sentinel"); } catch (Exception failure) { actual = failure; }
                 Need(actual != null && actual.Message.Contains("primary_exit=0x" + code.ToString("X8")) && actual.Message.Contains("unqualified") && !actual.ToString().Contains("sentinel"));
             }
+            foreach (string stage in TokenStages.Split('|')) {
+                string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=descendant:transport,token:control-" + stage + ",close:cleanup\n";
+                string message = TransportFailure(1, token).Message;
+                Need(message.Contains("child_exit=00000007 errors=descendant:transport,token:control-" + stage + ",close:cleanup"));
+                string direct = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:control-" + stage + "\n";
+                Need(TransportFailure(1, direct).Message.Contains("child_exit=none errors=token:control-" + stage));
+            }
+            foreach (string tokenEvent in new [] { "token:control-private-sentinel", "root:control-open", "token:control-openx" }) {
+                string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=" + tokenEvent + "\n";
+                string message = TransportFailure(1, token).Message;
+                Need(message.Contains("unqualified") && !message.Contains("sentinel") && !message.Contains(tokenEvent));
+            }
+            string longest = TokenStages.Split('|').OrderByDescending(stage => stage.Length).First();
+            string worst = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=FFFFFFFF errors=" +
+                String.Join(",", Enumerable.Repeat("token:control-" + longest, 8)) + "\n";
+            Need(worst.Length <= 512 && worst.All(c => c <= 127) && TransportFailure(1, worst).Message.Contains("child_exit=FFFFFFFF"));
             string timeout = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:timeout\n";
             Need(TransportFailure(1, timeout).Message.Contains("child_exit=none errors=descendant:timeout"));
             foreach (string phase in new [] { "ctypes", "ctypes-wintypes", "json", "os", "pathlib", "runpy", "subprocess", "time" }) {

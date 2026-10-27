@@ -4,6 +4,61 @@ pub const KEY: &str = r"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVers
 pub const DENIED: u32 = 0xC0000022;
 pub const READ: u32 = 0x20019;
 pub type Result<T> = std::result::Result<T, Failure>;
+pub const TOKEN_CHECKS: &[&str] = &[
+    "control-console",
+    "control-stdin",
+    "control-stdout",
+    "control-stderr",
+    "control-job",
+    "control-open",
+    "control-type-query",
+    "control-elevation-query",
+    "control-restrictions-query",
+    "control-primary-fields",
+    "control-lpac-abi",
+    "control-lpac-query",
+    "control-lpac-header",
+    "control-lpac-entry",
+    "control-lpac-type",
+    "control-lpac-name-length",
+    "control-lpac-name-span",
+    "control-lpac-value-span",
+    "control-lpac-value",
+    "control-app-size",
+    "control-app-read",
+    "control-app-bounds",
+    "control-app-value",
+    "control-caps-size",
+    "control-caps-read",
+    "control-caps-bounds",
+    "control-caps-value",
+    "control-traversal",
+    "control-priv-size",
+    "control-priv-read",
+    "control-priv-bounds",
+    "control-priv-count",
+    "control-priv-value",
+    "control-groups-size",
+    "control-groups-read",
+    "control-groups-bounds",
+    "control-groups-count",
+    "control-sid-head-span",
+    "control-sid-header",
+    "control-sid-span",
+    "control-admin",
+];
+
+pub fn token_kind(value: &str) -> Option<&'static str> {
+    TOKEN_CHECKS.iter().copied().find(|kind| *kind == value)
+}
+
+pub fn token_need(value: bool, kind: &'static str) -> Result<()> {
+    match token_kind(kind) {
+        Some(_) if value => Ok(()),
+        Some(kind) => Err(Failure::new("token", kind)),
+        None => Err(Failure::new("token", "control")),
+    }
+}
 
 #[derive(Debug)]
 pub struct Failure {
@@ -172,6 +227,40 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 41);
+    }
+
+    #[test]
+    fn token_stages_are_closed_and_fit_complete_failure_frames() {
+        for &kind in TOKEN_CHECKS {
+            assert!(token_need(true, kind).is_ok());
+            let error = token_need(false, kind).expect_err("predicate refused");
+            assert_eq!(error.events, vec![("token", kind)]);
+            assert!(
+                error
+                    .wire("primary")
+                    .ends_with(&format!("errors=token:{kind}\n"))
+            );
+        }
+        for value in [true, false] {
+            let error = token_need(value, "private-sentinel").expect_err("unknown stage");
+            assert_eq!(error.events, vec![("token", "control")]);
+            assert!(!error.wire("primary").contains("private"));
+        }
+        let longest = TOKEN_CHECKS
+            .iter()
+            .copied()
+            .max_by_key(|kind| kind.len())
+            .expect("stages");
+        for role in ["primary", "descendant"] {
+            let error = Failure {
+                events: vec![("token", longest); 8],
+                child_exit: Some(u32::MAX),
+            };
+            let wire = error.wire(role);
+            assert!(wire.is_ascii() && wire.len() <= 512);
+            assert_eq!(wire.matches("token:").count(), 8);
+            assert!(wire.contains("child_exit=FFFFFFFF"));
+        }
     }
 
     #[test]

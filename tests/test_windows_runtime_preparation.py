@@ -124,6 +124,19 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn("[ScientificSecurity.RegistryAuthorityFixture]::Prepare($PSScriptRoot, $childPython)", controller)
         self.assertLess(controller.index('[ScientificSecurity.RegistryAuthorityFixture]::Prepare('), controller.index('    Protect-Tree $runtime\n'))
 
+    def test_rust_token_stage_allowlists_match_controller(self):
+        import re
+        windows = ROOT / 'tests/security/windows'
+        protocol = (windows / 'registry-authority/src/protocol.rs').read_text(encoding='utf-8')
+        token = protocol.split('pub const TOKEN_CHECKS: &[&str] = &[', 1)[1].split('];', 1)[0]
+        rust = re.findall(r'"(control-[a-z-]+)"', token)
+        comparison = (windows / 'RegistryAuthorityComparison.cs').read_text(encoding='utf-8')
+        managed = re.search(r'const string TokenStages = "([^"]+)";', comparison)[1].split('|')
+        self.assertEqual(rust, ['control-' + stage for stage in managed])
+        self.assertEqual(len(rust), len(set(rust)))
+        self.assertEqual(len(rust), 41)
+        self.assertIn('|token:control-(?:', comparison)
+
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
         block = '''    Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'

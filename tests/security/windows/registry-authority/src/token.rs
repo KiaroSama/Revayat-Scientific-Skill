@@ -1,5 +1,5 @@
 use crate::native::*;
-use crate::protocol::{Result, need, token_fields};
+use crate::protocol::{Failure, Result, token_fields, token_need};
 use std::ptr::{null, null_mut};
 
 #[repr(C)]
@@ -30,20 +30,18 @@ fn span(
     pointer: usize,
     bytes: usize,
     alignment: usize,
+    kind: &'static str,
 ) -> Result<usize> {
-    need(
-        pointer >= base && pointer.is_multiple_of(alignment),
-        "token",
-    )?;
+    token_need(pointer >= base && pointer.is_multiple_of(alignment), kind)?;
     let offset = pointer - base;
-    need(offset <= length && bytes <= length - offset, "token")?;
+    token_need(offset <= length && bytes <= length - offset, kind)?;
     Ok(offset)
 }
 
 fn lpac(token: Raw) -> Result<()> {
-    need(
+    token_need(
         size_of::<AttributeHeader>() == 16 && size_of::<Attribute>() == 40,
-        "token",
+        "control-lpac-abi",
     )?;
     let name = wide("WIN://NOALLAPPPKG");
     let query = Unicode {
@@ -64,58 +62,94 @@ fn lpac(token: Raw) -> Result<()> {
             &mut returned,
         )
     };
-    need(status == 0 && (16..=512).contains(&returned), "token")?;
+    token_need(
+        status == 0 && (16..=512).contains(&returned),
+        "control-lpac-query",
+    )?;
     let base = data.as_ptr() as usize;
     let length = returned as usize;
     // SAFETY: header fits the returned initialized buffer and has matching eight-byte alignment.
     let header = unsafe { data.as_ptr().cast::<AttributeHeader>().read() };
-    need(
+    token_need(
         header.version == 1 && header.reserved == 0 && header.count == 1,
-        "token",
+        "control-lpac-header",
     )?;
-    span(base, length, header.entries, 40, 8)?;
+    span(base, length, header.entries, 40, 8, "control-lpac-entry")?;
     // SAFETY: the complete attribute span and alignment were checked inside the live buffer.
     let attribute = unsafe { (header.entries as *const Attribute).read() };
-    need(
+    token_need(
         attribute.kind == 2
             && attribute.reserved == 0
             && attribute.count == 1
             && attribute.flags & 0x10 == 0,
-        "token",
+        "control-lpac-type",
     )?;
-    need(
+    token_need(
         attribute.length == query.length
             && attribute.maximum >= query.length
             && attribute.maximum.is_multiple_of(2),
-        "token",
+        "control-lpac-name-length",
     )?;
-    span(base, length, attribute.name, attribute.maximum as usize, 2)?;
-    span(base, length, attribute.values, 8, 8)?;
+    span(
+        base,
+        length,
+        attribute.name,
+        attribute.maximum as usize,
+        2,
+        "control-lpac-name-span",
+    )?;
+    span(
+        base,
+        length,
+        attribute.values,
+        8,
+        8,
+        "control-lpac-value-span",
+    )?;
     // SAFETY: both spans were checked against actual returned bytes, with required alignment.
     unsafe {
         let actual =
             std::slice::from_raw_parts(attribute.name as *const u16, attribute.length as usize / 2);
-        need(
+        token_need(
             actual == &name[..name.len() - 1] && (attribute.values as *const u64).read() == 1,
-            "token",
+            "control-lpac-value",
         )?;
     }
     Ok(())
 }
 
 fn data(token: Raw, class: i32) -> Result<(Vec<u64>, usize)> {
+    let stages = match class {
+        29 => ["control-app-size", "control-app-read", "control-app-bounds"],
+        30 => [
+            "control-caps-size",
+            "control-caps-read",
+            "control-caps-bounds",
+        ],
+        3 => [
+            "control-priv-size",
+            "control-priv-read",
+            "control-priv-bounds",
+        ],
+        2 => [
+            "control-groups-size",
+            "control-groups-read",
+            "control-groups-bounds",
+        ],
+        _ => return Err(Failure::new("token", "control")),
+    };
     let mut returned = 0;
     // SAFETY: first call only obtains length; second writes into sufficiently sized aligned storage.
     unsafe {
         let initial = GetTokenInformation(token, class, null_mut(), 0, &mut returned);
         let error = GetLastError();
-        need(
+        token_need(
             initial == 0 && error == 122 && (4..=65536).contains(&returned),
-            "token",
+            stages[0],
         )?;
         let capacity = returned;
         let mut bytes = vec![0u64; (capacity as usize).div_ceil(8)];
-        need(
+        token_need(
             GetTokenInformation(
                 token,
                 class,
@@ -123,9 +157,9 @@ fn data(token: Raw, class: i32) -> Result<(Vec<u64>, usize)> {
                 capacity,
                 &mut returned,
             ) != 0,
-            "token",
+            stages[1],
         )?;
-        need(returned >= 4 && returned <= capacity, "token")?;
+        token_need(returned >= 4 && returned <= capacity, stages[2])?;
         Ok((bytes, returned as usize))
     }
 }
@@ -146,7 +180,7 @@ pub fn controls() -> Result<()> {
     // SAFETY: pseudo process handle is borrowed and output token is immediately owned.
     let opened = unsafe { OpenProcessToken(GetCurrentProcess(), 8, &mut raw) };
     let token = Handle::new(raw, false);
-    need(opened != 0 && token.valid(), "token")?;
+    token_need(opened != 0 && token.valid(), "control-open")?;
     let mut fields = [0u32; 3];
     for (index, class) in [8, 20, 21].iter().enumerate() {
         let mut returned = 0;
@@ -160,33 +194,49 @@ pub fn controls() -> Result<()> {
                 &mut returned,
             )
         };
-        need(success != 0 && returned == 4, "token")?;
+        token_need(
+            success != 0 && returned == 4,
+            [
+                "control-type-query",
+                "control-elevation-query",
+                "control-restrictions-query",
+            ][index],
+        )?;
     }
-    need(token_fields(fields[0], fields[1], fields[2]), "token")?;
+    token_need(
+        token_fields(fields[0], fields[1], fields[2]),
+        "control-primary-fields",
+    )?;
     lpac(token.raw)?;
     let (app, length) = data(token.raw, 29)?;
-    need(length == 4 && u32_at(&app, 0) == 1, "token")?;
+    token_need(length == 4 && u32_at(&app, 0) == 1, "control-app-value")?;
     let (capabilities, _) = data(token.raw, 30)?;
-    need(u32_at(&capabilities, 0) == 0, "token")?;
+    token_need(u32_at(&capabilities, 0) == 0, "control-caps-value")?;
     let mut traverse = 0u64;
     let name = wide("SeChangeNotifyPrivilege");
     // SAFETY: live NUL-terminated name and exact LUID-sized writable output.
-    need(
+    token_need(
         unsafe { LookupPrivilegeValueW(null(), name.as_ptr(), &mut traverse) } != 0,
-        "token",
+        "control-traversal",
     )?;
     let (privileges, length) = data(token.raw, 3)?;
     let count = u32_at(&privileges, 0) as usize;
-    need(count <= 128 && 4 + count * 12 <= length, "token")?;
+    token_need(
+        count <= 128 && 4 + count * 12 <= length,
+        "control-priv-count",
+    )?;
     for index in 0..count {
         let offset = 4 + index * 12;
         let luid = u64::from(u32_at(&privileges, offset))
             | (u64::from(u32_at(&privileges, offset + 4)) << 32);
-        need(luid == traverse, "token")?;
+        token_need(luid == traverse, "control-priv-value")?;
     }
     let (groups, length) = data(token.raw, 2)?;
     let count = u32_at(&groups, 0) as usize;
-    need(count <= 256 && 8 + count * 16 <= length, "token")?;
+    token_need(
+        count <= 256 && 8 + count * 16 <= length,
+        "control-groups-count",
+    )?;
     let base = groups.as_ptr() as usize;
     for index in 0..count {
         let offset = 8 + index * 16;
@@ -199,21 +249,55 @@ pub fn controls() -> Result<()> {
                 .cast::<usize>()
                 .read()
         };
-        span(base, length, pointer, 8, 4)?;
+        span(base, length, pointer, 8, 4, "control-sid-head-span")?;
         // SAFETY: fixed SID header is bounded; validate subauthority length before inspecting any SID data.
         let header = unsafe { std::slice::from_raw_parts(pointer as *const u8, 8) };
-        need(header[0] == 1 && header[1] <= 15, "token")?;
+        token_need(header[0] == 1 && header[1] <= 15, "control-sid-header")?;
         let size = 8 + header[1] as usize * 4;
-        span(base, length, pointer, size, 4)?;
+        span(base, length, pointer, size, 4, "control-sid-span")?;
         // SAFETY: complete SID data fits the same live token buffer.
         let sid = unsafe { std::slice::from_raw_parts(pointer as *const u8, size) };
         if sid == [1, 2, 0, 0, 0, 0, 0, 5, 32, 0, 0, 0, 32, 2, 0, 0] {
             let attributes = u32_at(&groups, offset + 8);
-            need(
+            token_need(
                 attributes & (8 | 4 | 2) == 0 && attributes & 16 != 0,
-                "token",
+                "control-admin",
             )?;
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_spans_keep_bounds_alignment_and_first_failure() {
+        assert_eq!(
+            span(0x1000, 128, 0x1010, 40, 8, "control-lpac-entry").expect("span"),
+            16
+        );
+        for (pointer, bytes, alignment) in [
+            (0x0FF8, 8, 8),
+            (0x1011, 8, 8),
+            (0x1080, 8, 8),
+            (0x1010, 120, 8),
+        ] {
+            let error = span(0x1000, 128, pointer, bytes, alignment, "control-lpac-entry")
+                .expect_err("invalid span");
+            assert_eq!(error.events, vec![("token", "control-lpac-entry")]);
+        }
+        let mut later = false;
+        let result = (|| {
+            token_need(false, "control-open")?;
+            later = true;
+            token_need(false, "control-lpac-header")
+        })();
+        assert!(!later);
+        assert_eq!(
+            result.expect_err("first refusal").events,
+            vec![("token", "control-open")]
+        );
+    }
 }

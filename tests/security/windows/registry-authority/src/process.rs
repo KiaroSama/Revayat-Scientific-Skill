@@ -1,5 +1,5 @@
 use crate::native::*;
-use crate::protocol::{Failure, Result, child_record, cleanup_failed, need};
+use crate::protocol::{Failure, Result, child_record, cleanup_failed, need, token_kind};
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
@@ -160,7 +160,13 @@ fn child_failure(code: u32, errors: &[u8]) -> Failure {
             let Some(phase) = phases.into_iter().find(|value| *value == phase) else {
                 return result;
             };
-            let Some(kind) = kinds.into_iter().find(|value| *value == kind) else {
+            let Some(kind) = kinds.into_iter().find(|value| *value == kind).or_else(|| {
+                if phase == "token" {
+                    token_kind(kind)
+                } else {
+                    None
+                }
+            }) else {
                 return result;
             };
             parsed.push((phase, kind));
@@ -406,5 +412,28 @@ mod tests {
         let failure = child_failure(0xC0000022, b"private-sentinel");
         assert_eq!(failure.child_exit, Some(0xC0000022));
         assert!(!failure.wire("primary").contains("private"));
+        for &kind in crate::protocol::TOKEN_CHECKS {
+            let frame = format!(
+                "REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=token:{kind},close:cleanup\n"
+            );
+            let failure = child_failure(7, frame.as_bytes());
+            assert_eq!(failure.child_exit, Some(7));
+            assert_eq!(
+                failure.events,
+                vec![
+                    ("descendant", "transport"),
+                    ("token", kind),
+                    ("close", "cleanup")
+                ]
+            );
+        }
+        for event in ["token:control-private-sentinel", "root:control-open"] {
+            let frame = format!(
+                "REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors={event}\n"
+            );
+            let failure = child_failure(7, frame.as_bytes());
+            assert_eq!(failure.events, vec![("descendant", "transport")]);
+            assert!(!failure.wire("primary").contains("private"));
+        }
     }
 }

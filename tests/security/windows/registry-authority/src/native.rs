@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use crate::protocol::{Failure, Result, cleanup_failed, need};
+use crate::protocol::{Failure, Result, cleanup_failed, need, token_need};
 use std::ffi::c_void;
 use std::ptr::null_mut;
 
@@ -263,18 +263,22 @@ pub fn detached() -> Result<()> {
         SetLastError(0);
         let count = GetConsoleProcessList(&mut console, 1);
         let error = GetLastError();
-        need(count == 0 && error == 6, "token")?;
-        for (id, kind) in [(-10i32, 2), (-11, 3), (-12, 3)] {
+        token_need(count == 0 && error == 6, "control-console")?;
+        for (id, kind, stage) in [
+            (-10i32, 2, "control-stdin"),
+            (-11, 3, "control-stdout"),
+            (-12, 3, "control-stderr"),
+        ] {
             let handle = GetStdHandle(id as u32);
-            need(
+            token_need(
                 !handle.is_null() && handle as isize != -1 && GetFileType(handle) == kind,
-                "token",
+                stage,
             )?;
         }
         let mut in_job = 0;
-        need(
+        token_need(
             IsProcessInJob(GetCurrentProcess(), null_mut(), &mut in_job) != 0 && in_job != 0,
-            "token",
+            "control-job",
         )
     }
 }
