@@ -124,6 +124,32 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn("[ScientificSecurity.RegistryAuthorityFixture]::Prepare($PSScriptRoot, $childPython)", controller)
         self.assertLess(controller.index('[ScientificSecurity.RegistryAuthorityFixture]::Prepare('), controller.index('    Protect-Tree $runtime\n'))
 
+    def test_fixed_dll_preparation_stays_outside_trace_and_admission(self):
+        windows = ROOT / 'tests/security/windows'
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        anchors = ('[ScientificSecurity.RegistryAuthorityComparison]::Run(',
+                   '[ScientificSecurity.StartupActivationAccess]::ObserveFixedDll(',
+                   '[ScientificSecurity.SxsTraceCapture]::Run(',
+                   '[ScientificSecurity.RegistryAuthorityComparison]::RunPython(',
+                   '$preflightText = [ScientificSecurity.Sandbox]::Run(')
+        self.assertTrue(all(controller.count(anchor) == 1 for anchor in anchors))
+        positions = [controller.index(anchor) for anchor in anchors]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("(Join-Path $PSScriptRoot 'DllActivationPreparation.cs')", controller)
+        self.assertIn('[ScientificSecurity.StartupActivationAccess]::CheckFixedDllValidation()', controller)
+        source = (windows / 'DllActivationPreparation.cs').read_text(encoding='utf-8')
+        for literal in ('size = 56, flags = 8, source = path, resource = new IntPtr(2)',
+                        'RegistryLoaderFixture.Hold(python)', 'KernelImage.ModuleManifest(bytes, false)',
+                        'DefaultActivationFixture.NoOverrides(path)', 'Marshal.GetLastWin32Error()',
+                        'ReleaseActCtx(handle)', 'RegistryLoaderEvidence.Sanitize(failure)',
+                        'cache_reset_claimed=False cause_claimed=False child_equivalence_claimed=False'):
+            self.assertIn(literal, source)
+        for forbidden in ('LoadLibrary', 'ActivateActCtx(', 'SetSecurity', 'RegistryPolicyLease.Begin(',
+                          'SxsTraceEvidence.Parse(', 'CreateProcess', 'CloseHandle('):
+            self.assertNotIn(forbidden, source)
+        self.assertIn('observation is RegistryAuthorityComparison.PythonObservation',
+                      (windows / 'SandboxPreparation.cs').read_text(encoding='utf-8'))
+
     def test_rust_token_stage_allowlists_match_controller(self):
         import re
         windows = ROOT / 'tests/security/windows'
