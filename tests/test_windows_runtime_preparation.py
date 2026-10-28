@@ -142,8 +142,8 @@ class DiagnosticOrderTest(unittest.TestCase):
         windows = ROOT / 'tests/security/windows'
         protocol = (windows / 'registry-authority/src/protocol.rs').read_text(encoding='utf-8')
         comparison = (windows / 'RegistryAuthorityComparison.cs').read_text(encoding='utf-8')
-        for rust_name, managed_name, count in (('DESCENDANT_CHECKS', 'DescendantStages', 34),
-                                                ('NATIVE_CHECKS', 'NativeStages', 19)):
+        for rust_name, managed_name, count in (('DESCENDANT_CHECKS', 'DescendantStages', 35),
+                                                ('NATIVE_CHECKS', 'NativeStages', 20)):
             block = protocol.split('pub const ' + rust_name + ': &[&str] = &[', 1)[1].split('];', 1)[0]
             rust = re.findall(r'"(control-[a-z-]+)"', block)
             managed = re.search(r'const string ' + managed_name + r' = "([^"]+)";', comparison)[1].split('|')
@@ -189,7 +189,21 @@ class DiagnosticOrderTest(unittest.TestCase):
             self.assertNotIn(forbidden, production)
         self.assertIn('if error == 109', source)
         self.assertIn('wait != u32::MAX', source)
-        self.assertIn('raw_input as isize == -1', source)
+        standard = source.split('fn input()', 1)[1].split('fn collect(', 1)[0]
+        self.assertIn('GetStdHandle((-10i32) as u32)', standard)
+        self.assertIn('!borrowed.is_null()', standard)
+        self.assertIn('borrowed as isize != -1', standard)
+        self.assertIn('unsafe { GetFileType(borrowed) } == 2', standard)
+        self.assertIn('DuplicateHandle(current, borrowed, current, &mut raw, 0, 1, 2)', standard)
+        anchors = ('let mut raw = null_mut()', 'DuplicateHandle(', 'let error =',
+                   'let owned = Handle::new(', 'checked_input(')
+        self.assertEqual([standard.index(anchor) for anchor in anchors],
+                         sorted(standard.index(anchor) for anchor in anchors))
+        self.assertNotIn('Handle::new(borrowed', standard)
+        self.assertNotIn('CloseHandle(borrowed', standard)
+        self.assertNotIn('CreateFileW(', source)
+        self.assertNotIn('wide("NUL")', source)
+        self.assertIn('let input = input()?;', source)
         child_parser = source.split('fn child_failure(', 1)[1].split('pub fn descendant(', 1)[0]
         self.assertNotIn('descendant_need', child_parser)
         self.assertNotIn('native_error', child_parser)

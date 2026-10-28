@@ -95,6 +95,7 @@ pub const DESCENDANT_CHECKS: &[&str] = &[
     "control-pipe-endpoint-query",
     "control-pipe-endpoint",
     "control-pipe-server-inheritance",
+    "control-input-duplicate",
 ];
 
 pub const NATIVE_CHECKS: &[&str] = &[
@@ -117,6 +118,7 @@ pub const NATIVE_CHECKS: &[&str] = &[
     "control-pipe-connect",
     "control-pipe-endpoint-query",
     "control-pipe-server-inheritance",
+    "control-input-duplicate",
 ];
 
 pub fn descendant_need(value: bool, kind: &'static str) -> Result<()> {

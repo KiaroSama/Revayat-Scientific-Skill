@@ -136,6 +136,15 @@ unsafe extern "system" {
     pub fn GetCurrentProcess() -> Raw;
     pub fn GetCurrentProcessId() -> u32;
     pub fn CloseHandle(handle: Raw) -> i32;
+    pub fn DuplicateHandle(
+        source_process: Raw,
+        source: Raw,
+        target_process: Raw,
+        target: *mut Raw,
+        access: u32,
+        inherit: i32,
+        options: u32,
+    ) -> i32;
     pub fn GetLastError() -> u32;
     pub fn SetLastError(error: u32);
     pub fn IsProcessInJob(process: Raw, job: Raw, result: *mut i32) -> i32;

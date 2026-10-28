@@ -39,6 +39,40 @@ impl Drop for AttributeList {
     }
 }
 
+fn checked_input<T>(
+    owned: T,
+    success: bool,
+    error: Option<u32>,
+    valid: impl FnOnce(&T) -> bool,
+) -> Result<T> {
+    descendant_result(success, error, "control-input-duplicate")?;
+    descendant_need(valid(&owned), "control-input-handle")?;
+    Ok(owned)
+}
+
+fn input() -> Result<Handle> {
+    // SAFETY: borrowed host-provisioned read-only NUL, never owned, closed or changed here.
+    let borrowed = unsafe { GetStdHandle((-10i32) as u32) };
+    descendant_need(
+        !borrowed.is_null() && borrowed as isize != -1 && unsafe { GetFileType(borrowed) } == 2,
+        "control-input-handle",
+    )?;
+    // SAFETY: pseudo process handles are borrowed; only the new same-access duplicate is inheritable.
+    let current = unsafe { GetCurrentProcess() };
+    let mut raw = null_mut();
+    let success = unsafe { DuplicateHandle(current, borrowed, current, &mut raw, 0, 1, 2) };
+    let error = if success == 0 {
+        Some(unsafe { GetLastError() })
+    } else {
+        None
+    };
+    let owned = Handle::new(raw, false);
+    checked_input(owned, success != 0, error, |handle| {
+        // SAFETY: query only the valid owned duplicate; no last-error inference from file type.
+        handle.valid() && unsafe { GetFileType(handle.raw) } == 2
+    })
+}
+
 fn collect(
     bytes: &mut Vec<u8>,
     limit: usize,
@@ -216,25 +250,9 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();
-    let security = Security {
-        length: size_of::<Security>() as u32,
-        descriptor: null_mut(),
-        inherit: 1,
-    };
     let (output, mut output_write) = crate::pipe::pair(true)?;
     let (error, mut error_write) = crate::pipe::pair(false)?;
-    let nul = wide("NUL");
-    // SAFETY: fixed NUL input only; capture failure before wrapping, then own before propagation.
-    let raw_input =
-        unsafe { CreateFileW(nul.as_ptr(), 0x80000000, 3, &security, 3, 0, null_mut()) };
-    let input_error = if raw_input as isize == -1 {
-        Some(unsafe { GetLastError() })
-    } else {
-        None
-    };
-    let input = Handle::new(raw_input, false);
-    descendant_result(raw_input as isize != -1, input_error, "control-input-open")?;
-    descendant_need(input.valid(), "control-input-handle")?;
+    let input = input()?;
     let mut size = 0;
     // SAFETY: null list is documented size query; validate size before allocation.
     let initial = unsafe { InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut size) };
@@ -400,6 +418,55 @@ mod tests {
             },
         )?;
         Ok(bytes)
+    }
+
+    #[test]
+    fn owned_input_refusals_close_only_the_duplicate() {
+        struct Owned<'a>(&'a Cell<u32>);
+        impl Drop for Owned<'_> {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        for success in [false, true] {
+            for valid in [false, true] {
+                for code in [0, 5, u32::MAX] {
+                    let closes = Cell::new(0);
+                    let checks = Cell::new(0);
+                    let result = checked_input(
+                        Owned(&closes),
+                        success,
+                        if success { None } else { Some(code) },
+                        |_| {
+                            checks.set(checks.get() + 1);
+                            valid
+                        },
+                    );
+                    assert_eq!(checks.get(), u32::from(success));
+                    assert_eq!(result.is_ok(), success && valid);
+                    assert_eq!(closes.get(), u32::from(!(success && valid)));
+                    if let Err(failure) = &result {
+                        assert_eq!(
+                            failure.events,
+                            vec![(
+                                "descendant",
+                                if success {
+                                    "control-input-handle"
+                                } else {
+                                    "control-input-duplicate"
+                                }
+                            )]
+                        );
+                        assert_eq!(
+                            failure.native_error,
+                            if success { None } else { Some(code) }
+                        );
+                    }
+                    drop(result);
+                    assert_eq!(closes.get(), 1);
+                }
+            }
+        }
     }
 
     #[test]
