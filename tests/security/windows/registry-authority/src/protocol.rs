@@ -86,6 +86,15 @@ pub const DESCENDANT_CHECKS: &[&str] = &[
     "control-exit-query",
     "control-capture-limit",
     "control-capture-eof",
+    "control-pipe-rng",
+    "control-pipe-server-create",
+    "control-pipe-server-handle",
+    "control-pipe-client-open",
+    "control-pipe-client-handle",
+    "control-pipe-connect",
+    "control-pipe-endpoint-query",
+    "control-pipe-endpoint",
+    "control-pipe-server-inheritance",
 ];
 
 pub const NATIVE_CHECKS: &[&str] = &[
@@ -103,6 +112,11 @@ pub const NATIVE_CHECKS: &[&str] = &[
     "control-pipe-read",
     "control-wait-api",
     "control-exit-query",
+    "control-pipe-server-create",
+    "control-pipe-client-open",
+    "control-pipe-connect",
+    "control-pipe-endpoint-query",
+    "control-pipe-server-inheritance",
 ];
 
 pub fn descendant_need(value: bool, kind: &'static str) -> Result<()> {

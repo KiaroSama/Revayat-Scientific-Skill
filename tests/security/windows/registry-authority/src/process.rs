@@ -39,41 +39,6 @@ impl Drop for AttributeList {
     }
 }
 
-fn pipe(security: &Security, output: bool) -> Result<(Handle, Handle)> {
-    let stages = if output {
-        [
-            "control-output-pipe-create",
-            "control-output-pipe-handles",
-            "control-output-pipe-inheritance",
-        ]
-    } else {
-        [
-            "control-error-pipe-create",
-            "control-error-pipe-handles",
-            "control-error-pipe-inheritance",
-        ]
-    };
-    let (mut read, mut write) = (null_mut(), null_mut());
-    // SAFETY: immediate failed-call error precedes ownership; both outputs are wrapped before propagation.
-    let success = unsafe { CreatePipe(&mut read, &mut write, security, 4096) };
-    let error = if success == 0 {
-        Some(unsafe { GetLastError() })
-    } else {
-        None
-    };
-    let read = Handle::new(read, false);
-    let write = Handle::new(write, false);
-    descendant_result(success != 0, error, stages[0])?;
-    descendant_need(read.valid() && write.valid(), stages[1])?;
-    // SAFETY: live owned read end; immediate error is read only on failed BOOL.
-    descendant_native(
-        unsafe { SetHandleInformation(read.raw, 1, 0) } != 0,
-        stages[2],
-        || unsafe { GetLastError() },
-    )?;
-    Ok((read, write))
-}
-
 fn collect(
     bytes: &mut Vec<u8>,
     limit: usize,
@@ -256,8 +221,8 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
         descriptor: null_mut(),
         inherit: 1,
     };
-    let (output, mut output_write) = pipe(&security, true)?;
-    let (error, mut error_write) = pipe(&security, false)?;
+    let (output, mut output_write) = crate::pipe::pair(true)?;
+    let (error, mut error_write) = crate::pipe::pair(false)?;
     let nul = wide("NUL");
     // SAFETY: fixed NUL input only; capture failure before wrapping, then own before propagation.
     let raw_input =

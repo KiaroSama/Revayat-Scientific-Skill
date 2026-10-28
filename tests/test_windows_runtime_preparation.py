@@ -142,8 +142,8 @@ class DiagnosticOrderTest(unittest.TestCase):
         windows = ROOT / 'tests/security/windows'
         protocol = (windows / 'registry-authority/src/protocol.rs').read_text(encoding='utf-8')
         comparison = (windows / 'RegistryAuthorityComparison.cs').read_text(encoding='utf-8')
-        for rust_name, managed_name, count in (('DESCENDANT_CHECKS', 'DescendantStages', 25),
-                                                ('NATIVE_CHECKS', 'NativeStages', 14)):
+        for rust_name, managed_name, count in (('DESCENDANT_CHECKS', 'DescendantStages', 34),
+                                                ('NATIVE_CHECKS', 'NativeStages', 19)):
             block = protocol.split('pub const ' + rust_name + ': &[&str] = &[', 1)[1].split('];', 1)[0]
             rust = re.findall(r'"(control-[a-z-]+)"', block)
             managed = re.search(r'const string ' + managed_name + r' = "([^"]+)";', comparison)[1].split('|')
@@ -151,15 +151,42 @@ class DiagnosticOrderTest(unittest.TestCase):
             self.assertEqual(len(rust), count)
             self.assertEqual(len(rust), len(set(rust)))
         source = (windows / 'registry-authority/src/process.rs').read_text(encoding='utf-8')
-        for start, end, anchors in (
-            ('fn pipe(', 'fn collect(', ('let success = unsafe { CreatePipe(', 'let error =',
-             'let read = Handle::new(', 'let write = Handle::new(', 'descendant_result(')),
-            ('let created = unsafe {', 'let mut in_job =', ('CreateProcessW(', 'let create_error =',
-             'let process = Handle::new(', 'let thread = Handle::new(', 'descendant_result(', 'let mut child = Child {')),
+        block = source.split('let created = unsafe {', 1)[1].split('let mut in_job =', 1)[0]
+        anchors = ('CreateProcessW(', 'let create_error =', 'let process = Handle::new(',
+                   'let thread = Handle::new(', 'descendant_result(', 'let mut child = Child {')
+        self.assertEqual([block.index(anchor) for anchor in anchors],
+                         sorted(block.index(anchor) for anchor in anchors))
+        self.assertIn('crate::pipe::pair(true)?', source)
+        self.assertIn('crate::pipe::pair(false)?', source)
+        self.assertNotIn('CreatePipe(', source)
+        adapter = (windows / 'registry-authority/src/pipe.rs').read_text(encoding='utf-8')
+        production = adapter.split('#[cfg(test)]', 1)[0]
+        self.assertIn(r'\\.\pipe\LOCAL\RegistryAuthority-', production)
+        self.assertIn('BCryptGenRandom(null_mut(), nonce.as_mut_ptr(), 16, 2)', production)
+        self.assertIn('const SERVER_ACCESS: u32 = 1 | 0x80000;', production)
+        self.assertIn('const SERVER_MODE: u32 = 1 | 8;', production)
+        self.assertIn('const CLIENT_FLAGS: u32 = 0x100000;', production)
+        self.assertIn('!success && error == Some(535)', production)
+        for start, end, owner, stage in (
+            ('CreateNamedPipeW(', 'finish_pair(', 'let server = Handle::new(',
+             'control-pipe-server-create'),
+            ('CreateFileW(', 'Ok(client)', 'let client = Handle::new(',
+             'control-pipe-client-open'),
         ):
-            block = source.split(start, 1)[1].split(end, 1)[0]
-            self.assertEqual([block.index(anchor) for anchor in anchors],
-                             sorted(block.index(anchor) for anchor in anchors))
+            block = production.split(start, 1)[1].split(end, 1)[0]
+            self.assertLess(block.index('let error ='), block.index(owner))
+            self.assertLess(block.index(owner), block.index(stage))
+        sequence = production.split('fn finish_pair<T>(', 1)[1].split('pub fn pair(', 1)[0]
+        anchors = ('let client = open()?', 'connect(&server)?', 'endpoint(&server)?',
+                   'noninherit(&server)?', 'Ok((server, client))')
+        self.assertEqual([sequence.index(anchor) for anchor in anchors],
+                         sorted(sequence.index(anchor) for anchor in anchors))
+        self.assertIn('GetNamedPipeClientProcessId(server.raw, &mut client)', production)
+        self.assertIn('endpoint(client, unsafe { GetCurrentProcessId() })', production)
+        self.assertIn('SetHandleInformation(server.raw, 1, 0)', production)
+        for forbidden in ('CreatePipe(', 'SetNamedPipeHandleState(', 'GetNamedPipeServerProcessId(',
+                          'DisconnectNamedPipe(', 'WaitNamedPipeW(', 'SetSecurityInfo('):
+            self.assertNotIn(forbidden, production)
         self.assertIn('if error == 109', source)
         self.assertIn('wait != u32::MAX', source)
         self.assertIn('raw_input as isize == -1', source)

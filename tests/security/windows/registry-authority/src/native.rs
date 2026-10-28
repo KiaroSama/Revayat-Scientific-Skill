@@ -126,9 +126,15 @@ unsafe extern "system" {
     ) -> i32;
 }
 
+#[link(name = "bcrypt")]
+unsafe extern "system" {
+    pub fn BCryptGenRandom(algorithm: Raw, buffer: *mut u8, size: u32, flags: u32) -> i32;
+}
+
 #[link(name = "kernel32")]
 unsafe extern "system" {
     pub fn GetCurrentProcess() -> Raw;
+    pub fn GetCurrentProcessId() -> u32;
     pub fn CloseHandle(handle: Raw) -> i32;
     pub fn GetLastError() -> u32;
     pub fn SetLastError(error: u32);
@@ -143,8 +149,18 @@ unsafe extern "system" {
         second_len: i32,
         ignore_case: i32,
     ) -> i32;
-    pub fn CreatePipe(read: *mut Raw, write: *mut Raw, security: *const Security, size: u32)
-    -> i32;
+    pub fn CreateNamedPipeW(
+        name: *const u16,
+        access: u32,
+        mode: u32,
+        instances: u32,
+        output_size: u32,
+        input_size: u32,
+        timeout: u32,
+        security: *const Security,
+    ) -> Raw;
+    pub fn ConnectNamedPipe(pipe: Raw, overlapped: Raw) -> i32;
+    pub fn GetNamedPipeClientProcessId(pipe: Raw, process: *mut u32) -> i32;
     pub fn SetHandleInformation(handle: Raw, mask: u32, flags: u32) -> i32;
     pub fn CreateFileW(
         path: *const u16,

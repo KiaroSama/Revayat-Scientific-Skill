@@ -2,6 +2,7 @@
 compile_error!("registry-authority requires Windows x64");
 
 mod native;
+mod pipe;
 mod process;
 mod protocol;
 mod registry;
