@@ -1,5 +1,7 @@
 use crate::native::*;
-use crate::protocol::{Failure, Result, child_record, cleanup_failed, need, token_kind};
+use crate::protocol::{
+    Failure, RestrictionQuery, Result, child_record, cleanup_failed, need, token_kind,
+};
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
@@ -141,6 +143,15 @@ fn child_failure(code: u32, errors: &[u8]) -> Failure {
             .strip_prefix("REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=")
             .and_then(|value| value.strip_suffix('\n'))
     {
+        let (events, restrictions) = match events.split_once(" restrictions=") {
+            Some((events, detail)) => {
+                let Some(query) = RestrictionQuery::parse(detail) else {
+                    return result;
+                };
+                (events, Some(query))
+            }
+            None => (events, None),
+        };
         let mut parsed = Vec::new();
         for item in events.split(',') {
             let Some((phase, kind)) = item.split_once(':') else {
@@ -171,8 +182,12 @@ fn child_failure(code: u32, errors: &[u8]) -> Failure {
             };
             parsed.push((phase, kind));
         }
-        if !parsed.is_empty() && parsed.len() <= 7 {
+        if !parsed.is_empty()
+            && parsed.len() <= 7
+            && (restrictions.is_none() || parsed.contains(&("token", "control-restrictions-query")))
+        {
             result.events.extend(parsed);
+            result.restrictions = restrictions;
         }
     }
     result
@@ -426,6 +441,53 @@ mod tests {
                     ("close", "cleanup")
                 ]
             );
+        }
+        for detail in [
+            "0:00000004:00000005",
+            "0:00000000:00000000",
+            "1:00000000:none",
+        ] {
+            let frame = format!(
+                "REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=token:control-restrictions-query,close:cleanup restrictions={detail}\n"
+            );
+            let failure = child_failure(7, frame.as_bytes());
+            assert_eq!(failure.child_exit, Some(7));
+            assert_eq!(
+                failure.events,
+                vec![
+                    ("descendant", "transport"),
+                    ("token", "control-restrictions-query"),
+                    ("close", "cleanup")
+                ]
+            );
+            assert_eq!(failure.restrictions, RestrictionQuery::parse(detail));
+            assert!(
+                failure
+                    .wire("primary")
+                    .ends_with(&format!(" restrictions={detail}\n"))
+            );
+        }
+        for (event, detail) in [
+            ("token:control-primary-fields", "0:00000004:00000005"),
+            ("token:control-restrictions-query", "1:00000004:none"),
+            ("token:control-restrictions-query", "1:00000000:00000005"),
+            (
+                "token:control-restrictions-query",
+                "0:00000004:private-sentinel",
+            ),
+            (
+                "token:control-restrictions-query",
+                "0:00000004:00000005 restrictions=0:00000004:00000005",
+            ),
+        ] {
+            let frame = format!(
+                "REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors={event} restrictions={detail}\n"
+            );
+            let failure = child_failure(7, frame.as_bytes());
+            assert_eq!(failure.child_exit, Some(7));
+            assert_eq!(failure.events, vec![("descendant", "transport")]);
+            assert!(failure.restrictions.is_none());
+            assert!(!failure.wire("primary").contains("private"));
         }
         for event in ["token:control-private-sentinel", "root:control-open"] {
             let frame = format!(

@@ -1,5 +1,5 @@
 use crate::native::*;
-use crate::protocol::{Failure, Result, token_fields, token_need};
+use crate::protocol::{Failure, Result, restriction_need, token_fields, token_need};
 use std::ptr::{null, null_mut};
 
 #[repr(C)]
@@ -194,14 +194,15 @@ pub fn controls() -> Result<()> {
                 &mut returned,
             )
         };
-        token_need(
-            success != 0 && returned == 4,
-            [
-                "control-type-query",
-                "control-elevation-query",
-                "control-restrictions-query",
-            ][index],
-        )?;
+        if *class == 21 {
+            // SAFETY: called immediately and only when the preceding query returned FALSE.
+            restriction_need(success, returned, || unsafe { GetLastError() })?;
+        } else {
+            token_need(
+                success != 0 && returned == 4,
+                ["control-type-query", "control-elevation-query"][index],
+            )?;
+        }
     }
     token_need(
         token_fields(fields[0], fields[1], fields[2]),

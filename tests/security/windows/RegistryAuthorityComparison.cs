@@ -33,13 +33,15 @@ namespace ScientificSecurity
         internal sealed class PythonObservation : Observation { }
         const string TokenStages = "console|stdin|stdout|stderr|job|open|type-query|elevation-query|restrictions-query|primary-fields|lpac-abi|lpac-query|lpac-header|lpac-entry|lpac-type|lpac-name-length|lpac-name-span|lpac-value-span|lpac-value|app-size|app-read|app-bounds|app-value|caps-size|caps-read|caps-bounds|caps-value|traversal|priv-size|priv-read|priv-bounds|priv-count|priv-value|groups-size|groups-read|groups-bounds|groups-count|sid-head-span|sid-header|sid-span|admin";
         const string FailureEvent = @"(?:(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))|token:control-(?:" + TokenStages + "))";
-        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + FailureEvent + "(?:," + FailureEvent + @"){0,7})\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        const string Restrictions = @"(?:0:[0-9A-F]{8}:[0-9A-F]{8}|1:(?!00000004:)[0-9A-F]{8}:none)";
+        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + FailureEvent + "(?:," + FailureEvent + @"){0,7})( restrictions=(" + Restrictions + @"))?\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
             string detail = RegistryLoaderEvidence.Detail(errors == null ? null : errors.Replace("\r\n", "\n")) ?? "unqualified";
             if (detail == "unqualified" && errors != null && errors.Length <= 512 && errors.All(c => c <= 127)) {
                 var match = FailureWire.Match(errors.Replace("\r\n", "\n"));
-                if (match.Success) detail = "child_exit=" + match.Groups[1].Value + " errors=" + match.Groups[2].Value;
+                if (match.Success && (!match.Groups[3].Success || match.Groups[2].Value.Split(',').Contains("token:control-restrictions-query")))
+                    detail = "child_exit=" + match.Groups[1].Value + " errors=" + match.Groups[2].Value + match.Groups[3].Value;
             }
             return new RegistryLoaderEvidence.ReceiptFailure(code, detail);
         }
@@ -121,6 +123,22 @@ namespace ScientificSecurity
                 string direct = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:control-" + stage + "\n";
                 Need(TransportFailure(1, direct).Message.Contains("child_exit=none errors=token:control-" + stage));
             }
+            foreach (string query in new [] { "0:00000004:00000005", "0:00000000:00000000", "1:00000000:none", "0:FFFFFFFF:FFFFFFFF" })
+                foreach (string events in new [] { "token:control-restrictions-query", "descendant:transport,token:control-restrictions-query,close:cleanup" }) {
+                    string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=" + events + " restrictions=" + query + "\n";
+                    Need(TransportFailure(1, token).Message.Contains("child_exit=00000007 errors=" + events + " restrictions=" + query));
+                }
+            foreach (string query in new [] { "1:00000004:none", "1:00000000:00000005", "0:00000004:none", "2:00000000:none",
+                "0:ffffffff:00000005", "0:000000004:00000005", "0:00000004:private-sentinel", "0:00000004:00000005:extra",
+                "0:00000004:00000005 restrictions=0:00000004:00000005" }) {
+                string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:control-restrictions-query restrictions=" + query + "\n";
+                string message = TransportFailure(1, token).Message;
+                Need(message.Contains("unqualified") && !message.Contains("sentinel") && !message.Contains("restrictions="));
+            }
+            foreach (string stage in new [] { "primary-fields", "open" }) {
+                string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:control-" + stage + " restrictions=0:00000004:00000005\n";
+                Need(TransportFailure(1, token).Message.Contains("unqualified"));
+            }
             foreach (string tokenEvent in new [] { "token:control-private-sentinel", "root:control-open", "token:control-openx" }) {
                 string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=" + tokenEvent + "\n";
                 string message = TransportFailure(1, token).Message;
@@ -130,6 +148,9 @@ namespace ScientificSecurity
             string worst = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=FFFFFFFF errors=" +
                 String.Join(",", Enumerable.Repeat("token:control-" + longest, 8)) + "\n";
             Need(worst.Length <= 512 && worst.All(c => c <= 127) && TransportFailure(1, worst).Message.Contains("child_exit=FFFFFFFF"));
+            string queryWorst = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=FFFFFFFF errors=token:control-restrictions-query," +
+                String.Join(",", Enumerable.Repeat("token:control-" + longest, 7)) + " restrictions=0:FFFFFFFF:FFFFFFFF\n";
+            Need(queryWorst.Length <= 512 && queryWorst.All(c => c <= 127) && TransportFailure(1, queryWorst).Message.Contains(" restrictions=0:FFFFFFFF:FFFFFFFF"));
             string timeout = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:timeout\n";
             Need(TransportFailure(1, timeout).Message.Contains("child_exit=none errors=descendant:timeout"));
             foreach (string phase in new [] { "ctypes", "ctypes-wintypes", "json", "os", "pathlib", "runpy", "subprocess", "time" }) {

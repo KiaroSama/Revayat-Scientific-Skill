@@ -137,6 +137,23 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertEqual(len(rust), 41)
         self.assertIn('|token:control-(?:', comparison)
 
+    def test_restrictions_query_uses_existing_call_and_failure_only_error(self):
+        windows = ROOT / 'tests/security/windows'
+        source = (windows / 'registry-authority/src/token.rs').read_text(encoding='utf-8')
+        scalar = source.split('for (index, class) in [8, 20, 21].iter().enumerate() {', 1)[1].split('    lpac(token.raw)?;', 1)[0]
+        self.assertEqual(scalar.count('GetTokenInformation('), 1)
+        self.assertEqual(scalar.count('GetLastError()'), 1)
+        self.assertIn('if *class == 21 {', scalar)
+        self.assertIn('restriction_need(success, returned, || unsafe { GetLastError() })?;', scalar)
+        protocol = (windows / 'registry-authority/src/protocol.rs').read_text(encoding='utf-8')
+        guard = protocol.split('pub fn restriction_need(', 1)[1].split('#[derive(Debug)]', 1)[0]
+        self.assertLess(guard.index('Some(error())'), guard.index('Failure::new('))
+        self.assertIn('if success == 0', guard)
+        self.assertIn('success != 0 && returned == 4', guard)
+        comparison = (windows / 'RegistryAuthorityComparison.cs').read_text(encoding='utf-8')
+        self.assertIn('(?!00000004:)', comparison)
+        self.assertIn('.Contains("token:control-restrictions-query")', comparison)
+
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
         block = '''    Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'

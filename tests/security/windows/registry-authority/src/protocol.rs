@@ -60,10 +60,80 @@ pub fn token_need(value: bool, kind: &'static str) -> Result<()> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RestrictionQuery {
+    succeeded: bool,
+    returned: u32,
+    error: Option<u32>,
+}
+
+impl RestrictionQuery {
+    pub fn wire(self) -> String {
+        let error = self
+            .error
+            .map_or_else(|| "none".into(), |code| format!("{code:08X}"));
+        format!("{}:{:08X}:{error}", u8::from(self.succeeded), self.returned)
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        let mut parts = value.split(':');
+        let succeeded = match parts.next()? {
+            "0" => false,
+            "1" => true,
+            _ => return None,
+        };
+        let hex = |text: &str| {
+            if text.len() == 8
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'A'..=b'F').contains(&byte))
+            {
+                u32::from_str_radix(text, 16).ok()
+            } else {
+                None
+            }
+        };
+        let returned = hex(parts.next()?)?;
+        let error = parts.next()?;
+        let error = if succeeded {
+            if returned == 4 || error != "none" {
+                return None;
+            }
+            None
+        } else {
+            Some(hex(error)?)
+        };
+        if parts.next().is_some() {
+            return None;
+        }
+        Some(Self {
+            succeeded,
+            returned,
+            error,
+        })
+    }
+}
+
+pub fn restriction_need(success: i32, returned: u32, error: impl FnOnce() -> u32) -> Result<()> {
+    // Read the failed call's thread-local error before allocating or formatting; never read it on success.
+    let error = if success == 0 { Some(error()) } else { None };
+    if success != 0 && returned == 4 {
+        return Ok(());
+    }
+    let mut failure = Failure::new("token", "control-restrictions-query");
+    failure.restrictions = Some(RestrictionQuery {
+        succeeded: success != 0,
+        returned,
+        error,
+    });
+    Err(failure)
+}
+
 #[derive(Debug)]
 pub struct Failure {
     pub events: Vec<(&'static str, &'static str)>,
     pub child_exit: Option<u32>,
+    pub restrictions: Option<RestrictionQuery>,
 }
 
 thread_local! { static CLEANUP_FAILED: Cell<bool> = const { Cell::new(false) }; }
@@ -81,6 +151,7 @@ impl Failure {
         Self {
             events: vec![(phase, kind)],
             child_exit: None,
+            restrictions: None,
         }
     }
 
@@ -95,7 +166,20 @@ impl Failure {
             .map(|(phase, kind)| format!("{phase}:{kind}"))
             .collect::<Vec<_>>()
             .join(",");
-        format!("REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}\n")
+        let restrictions = self
+            .restrictions
+            .filter(|_| {
+                self.events
+                    .iter()
+                    .take(8)
+                    .any(|event| *event == ("token", "control-restrictions-query"))
+            })
+            .map_or_else(String::new, |query| {
+                format!(" restrictions={}", query.wire())
+            });
+        format!(
+            "REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}{restrictions}\n"
+        )
     }
 }
 
@@ -255,11 +339,73 @@ mod tests {
             let error = Failure {
                 events: vec![("token", longest); 8],
                 child_exit: Some(u32::MAX),
+                restrictions: None,
             };
             let wire = error.wire(role);
             assert!(wire.is_ascii() && wire.len() <= 512);
             assert_eq!(wire.matches("token:").count(), 8);
             assert!(wire.contains("child_exit=FFFFFFFF"));
+        }
+    }
+
+    #[test]
+    fn restriction_query_retains_only_immediate_failed_result() {
+        use std::cell::Cell;
+        for success in [0, 1, -1] {
+            for returned in [0, 1, 4, u32::MAX] {
+                let calls = Cell::new(0);
+                let result = restriction_need(success, returned, || {
+                    calls.set(calls.get() + 1);
+                    5
+                });
+                assert_eq!(calls.get(), u32::from(success == 0));
+                assert_eq!(result.is_ok(), success != 0 && returned == 4);
+                if let Err(mut failure) = result {
+                    assert_eq!(
+                        failure.events,
+                        vec![("token", "control-restrictions-query")]
+                    );
+                    let detail = failure.restrictions.expect("query result");
+                    let expected = if success == 0 {
+                        format!("0:{returned:08X}:00000005")
+                    } else {
+                        format!("1:{returned:08X}:none")
+                    };
+                    assert_eq!(detail.wire(), expected);
+                    assert_eq!(RestrictionQuery::parse(&expected), Some(detail));
+                    failure.events.push(("close", "cleanup"));
+                    assert!(failure.wire("primary").ends_with(&format!(
+                        "errors=token:control-restrictions-query,close:cleanup restrictions={expected}\n"
+                    )));
+                }
+            }
+        }
+        assert!(RestrictionQuery::parse("0:00000004:00000000").is_some());
+        for bad in [
+            "1:00000004:none",
+            "1:00000000:00000005",
+            "0:00000004:none",
+            "2:00000000:none",
+            "0:ffffffff:00000005",
+            "0:000000004:00000005",
+            "0:00000004:private",
+            "0:00000004:00000005:extra",
+            "0:00000004:00000005\n",
+        ] {
+            assert!(RestrictionQuery::parse(bad).is_none(), "{bad}");
+        }
+        let longest = TOKEN_CHECKS
+            .iter()
+            .copied()
+            .max_by_key(|kind| kind.len())
+            .expect("stages");
+        for role in ["primary", "descendant"] {
+            let mut failure = restriction_need(0, u32::MAX, || u32::MAX).expect_err("failed query");
+            failure.events.extend(vec![("token", longest); 7]);
+            failure.child_exit = Some(u32::MAX);
+            let wire = failure.wire(role);
+            assert!(wire.is_ascii() && wire.len() <= 512);
+            assert!(wire.ends_with(" restrictions=0:FFFFFFFF:FFFFFFFF\n"));
         }
     }
 
