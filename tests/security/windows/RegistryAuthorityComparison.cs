@@ -32,16 +32,23 @@ namespace ScientificSecurity
         }
         internal sealed class PythonObservation : Observation { }
         const string TokenStages = "console|stdin|stdout|stderr|job|open|type-query|elevation-query|restrictions-query|primary-fields|lpac-abi|lpac-query|lpac-header|lpac-entry|lpac-type|lpac-name-length|lpac-name-span|lpac-value-span|lpac-value|app-size|app-read|app-bounds|app-value|caps-size|caps-read|caps-bounds|caps-value|traversal|priv-size|priv-read|priv-bounds|priv-count|priv-value|groups-size|groups-read|groups-bounds|groups-count|sid-head-span|sid-header|sid-span|admin";
-        const string FailureEvent = @"(?:(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))|token:control-(?:" + TokenStages + "))";
+        const string DescendantStages = "image-parent|image-path|output-pipe-create|output-pipe-handles|output-pipe-inheritance|error-pipe-create|error-pipe-handles|error-pipe-inheritance|input-open|input-handle|attribute-size|attribute-init|attribute-update|create-process|process-handles|job-query|job-membership|resume|pipe-peek|pipe-read|wait-api|wait-state|exit-query|capture-limit|capture-eof";
+        const string NativeStages = "output-pipe-create|output-pipe-inheritance|error-pipe-create|error-pipe-inheritance|input-open|attribute-init|attribute-update|create-process|job-query|resume|pipe-peek|pipe-read|wait-api|exit-query";
+        const string FailureEvent = @"(?:(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))|token:control-(?:" + TokenStages + ")|descendant:control-(?:" + DescendantStages + "))";
         const string Restrictions = @"(?:0:[0-9A-F]{8}:[0-9A-F]{8}|1:(?!0000000[14]:)[0-9A-F]{8}:none)";
-        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + FailureEvent + "(?:," + FailureEvent + @"){0,7})( restrictions=(" + Restrictions + @"))?\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + FailureEvent + "(?:," + FailureEvent + @"){0,7})(?:( restrictions=(" + Restrictions + @"))|( native_error=[0-9A-F]{8}))?\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
             string detail = RegistryLoaderEvidence.Detail(errors == null ? null : errors.Replace("\r\n", "\n")) ?? "unqualified";
             if (detail == "unqualified" && errors != null && errors.Length <= 512 && errors.All(c => c <= 127)) {
                 var match = FailureWire.Match(errors.Replace("\r\n", "\n"));
-                if (match.Success && (!match.Groups[3].Success || match.Groups[2].Value.Split(',').Contains("token:control-restrictions-query")))
-                    detail = "child_exit=" + match.Groups[1].Value + " errors=" + match.Groups[2].Value + match.Groups[3].Value;
+                if (match.Success) {
+                    string[] events = match.Groups[2].Value.Split(',');
+                    bool restrictions = !match.Groups[3].Success || events.Contains("token:control-restrictions-query");
+                    bool native = !match.Groups[5].Success || NativeStages.Split('|').Any(stage => events.Contains("descendant:control-" + stage));
+                    if (restrictions && native)
+                        detail = "child_exit=" + match.Groups[1].Value + " errors=" + match.Groups[2].Value + match.Groups[3].Value + match.Groups[5].Value;
+                }
             }
             return new RegistryLoaderEvidence.ReceiptFailure(code, detail);
         }
@@ -123,6 +130,32 @@ namespace ScientificSecurity
                 string direct = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:control-" + stage + "\n";
                 Need(TransportFailure(1, direct).Message.Contains("child_exit=none errors=token:control-" + stage));
             }
+            foreach (string stage in DescendantStages.Split('|')) {
+                string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:control-" + stage + "\n";
+                Need(TransportFailure(1, frame).Message.Contains("errors=descendant:control-" + stage));
+            }
+            foreach (string stage in NativeStages.Split('|'))
+                foreach (string code in new [] { "00000000", "00000005", "FFFFFFFF" }) {
+                    string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:control-" + stage + ",close:cleanup native_error=" + code + "\n";
+                    Need(TransportFailure(1, frame).Message.Contains("errors=descendant:control-" + stage + ",close:cleanup native_error=" + code));
+                }
+            foreach (string invalid in new [] {
+                "descendant:control-create-process native_error=ffffffff",
+                "descendant:control-create-process native_error=000000005",
+                "descendant:control-create-process native_error=private-sentinel",
+                "descendant:control-create-process native_error=00000005 native_error=00000005",
+                "descendant:control-create-process restrictions=0:00000004:00000005 native_error=00000005",
+                "token:control-restrictions-query restrictions=0:00000004:00000005 native_error=00000005",
+                "token:control-open native_error=00000005", "root:control-create-process native_error=00000005",
+                "descendant:control native_error=00000005", "descendant:control-input-handle native_error=00000005",
+                "descendant:control-capture-eof native_error=00000005", "descendant:control-private-sentinel" }) {
+                string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=" + invalid + "\n";
+                string message = TransportFailure(1, frame).Message;
+                Need(message.Contains("unqualified") && !message.Contains("native_error=") && !message.Contains("sentinel"));
+            }
+            string nativeWorst = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=FFFFFFFF errors=" +
+                String.Join(",", Enumerable.Repeat("descendant:control-output-pipe-inheritance", 8)) + " native_error=FFFFFFFF\n";
+            Need(nativeWorst.Length <= 512 && TransportFailure(1, nativeWorst).Message.Contains(" native_error=FFFFFFFF"));
             foreach (string query in new [] { "0:00000004:00000005", "0:00000000:00000000", "1:00000000:none", "0:FFFFFFFF:FFFFFFFF" })
                 foreach (string events in new [] { "token:control-restrictions-query", "descendant:transport,token:control-restrictions-query,close:cleanup" }) {
                     string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=" + events + " restrictions=" + query + "\n";

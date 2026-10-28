@@ -1,6 +1,7 @@
 use crate::native::*;
 use crate::protocol::{
-    Failure, RestrictionQuery, Result, child_record, cleanup_failed, need, token_kind,
+    Failure, RestrictionQuery, Result, child_record, cleanup_failed, descendant_native,
+    descendant_need, descendant_result, token_kind,
 };
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::null_mut;
@@ -38,17 +39,37 @@ impl Drop for AttributeList {
     }
 }
 
-fn pipe(security: &Security) -> Result<(Handle, Handle)> {
+fn pipe(security: &Security, output: bool) -> Result<(Handle, Handle)> {
+    let stages = if output {
+        [
+            "control-output-pipe-create",
+            "control-output-pipe-handles",
+            "control-output-pipe-inheritance",
+        ]
+    } else {
+        [
+            "control-error-pipe-create",
+            "control-error-pipe-handles",
+            "control-error-pipe-inheritance",
+        ]
+    };
     let (mut read, mut write) = (null_mut(), null_mut());
-    // SAFETY: writable outputs and exact initialized descriptor; owners wrap both outputs.
+    // SAFETY: immediate failed-call error precedes ownership; both outputs are wrapped before propagation.
     let success = unsafe { CreatePipe(&mut read, &mut write, security, 4096) };
+    let error = if success == 0 {
+        Some(unsafe { GetLastError() })
+    } else {
+        None
+    };
     let read = Handle::new(read, false);
     let write = Handle::new(write, false);
-    need(success != 0 && read.valid() && write.valid(), "descendant")?;
-    // SAFETY: live owned read end; only the other end may be inherited by the fixed child.
-    need(
+    descendant_result(success != 0, error, stages[0])?;
+    descendant_need(read.valid() && write.valid(), stages[1])?;
+    // SAFETY: live owned read end; immediate error is read only on failed BOOL.
+    descendant_native(
         unsafe { SetHandleInformation(read.raw, 1, 0) } != 0,
-        "descendant",
+        stages[2],
+        || unsafe { GetLastError() },
     )?;
     Ok((read, write))
 }
@@ -65,9 +86,12 @@ fn collect(
         let Some(available) = peek()? else {
             return Ok(());
         };
-        need(available <= limit.saturating_sub(bytes.len()), "descendant")?;
+        descendant_need(
+            available <= limit.saturating_sub(bytes.len()),
+            "control-capture-limit",
+        )?;
         if available == 0 {
-            return need(!final_drain, "descendant");
+            return descendant_need(!final_drain, "control-capture-eof");
         }
         let mut buffer = [0u8; 1024];
         let capacity = available.min(buffer.len());
@@ -111,8 +135,13 @@ fn drain(handle: &Handle, bytes: &mut Vec<u8>, limit: usize, final_drain: bool) 
             if status != 0 {
                 return Ok(Some(available as usize));
             }
-            // SAFETY: immediate last error belongs to the failed peek, not another API.
-            need(unsafe { GetLastError() } == 109, "descendant")?;
+            // SAFETY: one immediate failed-peek error; broken pipe retains its existing EOF meaning.
+            let error = unsafe { GetLastError() };
+            descendant_result(
+                error == 109,
+                if error == 109 { None } else { Some(error) },
+                "control-pipe-peek",
+            )?;
             Ok(None)
         },
         |buffer| {
@@ -127,7 +156,10 @@ fn drain(handle: &Handle, bytes: &mut Vec<u8>, limit: usize, final_drain: bool) 
                     null_mut(),
                 )
             };
-            need(status != 0, "descendant")?;
+            // SAFETY: GetLastError is read immediately only for the failed synchronous read.
+            descendant_native(status != 0, "control-pipe-read", || unsafe {
+                GetLastError()
+            })?;
             Ok(count as usize)
         },
     )
@@ -197,14 +229,14 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
     let image = std::env::current_exe().map_err(|_| Failure::new("descendant", "native"))?;
     let home = image
         .parent()
-        .ok_or_else(|| Failure::new("descendant", "control"))?;
+        .ok_or_else(|| Failure::new("descendant", "control-image-parent"))?;
     let image_units = image.as_os_str().encode_wide().collect::<Vec<_>>();
-    need(
+    descendant_need(
         image.is_absolute()
             && image_units.len() < 512
             && !image_units.contains(&0)
             && !image_units.contains(&34),
-        "descendant",
+        "control-image-path",
     )?;
     let mut command = vec![34u16];
     command.extend(&image_units);
@@ -224,30 +256,39 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
         descriptor: null_mut(),
         inherit: 1,
     };
-    let (output, mut output_write) = pipe(&security)?;
-    let (error, mut error_write) = pipe(&security)?;
+    let (output, mut output_write) = pipe(&security, true)?;
+    let (error, mut error_write) = pipe(&security, false)?;
     let nul = wide("NUL");
-    // SAFETY: fixed NUL input only; returned handle immediately owned.
-    let input = Handle::new(
-        unsafe { CreateFileW(nul.as_ptr(), 0x80000000, 3, &security, 3, 0, null_mut()) },
-        false,
-    );
-    need(input.valid(), "descendant")?;
+    // SAFETY: fixed NUL input only; capture failure before wrapping, then own before propagation.
+    let raw_input =
+        unsafe { CreateFileW(nul.as_ptr(), 0x80000000, 3, &security, 3, 0, null_mut()) };
+    let input_error = if raw_input as isize == -1 {
+        Some(unsafe { GetLastError() })
+    } else {
+        None
+    };
+    let input = Handle::new(raw_input, false);
+    descendant_result(raw_input as isize != -1, input_error, "control-input-open")?;
+    descendant_need(input.valid(), "control-input-handle")?;
     let mut size = 0;
     // SAFETY: null list is documented size query; validate size before allocation.
     let initial = unsafe { InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut size) };
-    need(initial == 0 && (1..=65536).contains(&size), "descendant")?;
+    descendant_need(
+        initial == 0 && (1..=65536).contains(&size),
+        "control-attribute-size",
+    )?;
     let mut storage = vec![0u64; size.div_ceil(8)];
     // SAFETY: aligned storage holds the complete requested attribute list.
-    need(
+    descendant_native(
         unsafe { InitializeProcThreadAttributeList(storage.as_mut_ptr().cast(), 1, 0, &mut size) }
             != 0,
-        "descendant",
+        "control-attribute-init",
+        || unsafe { GetLastError() },
     )?;
     let mut attributes = AttributeList { data: storage };
     let mut inherited = [input.raw, output_write.raw, error_write.raw];
     // SAFETY: exact three live inheritable handles remain held through CreateProcessW.
-    need(
+    descendant_native(
         unsafe {
             UpdateProcThreadAttribute(
                 attributes.data.as_mut_ptr().cast(),
@@ -259,7 +300,8 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
                 null_mut(),
             )
         } != 0,
-        "descendant",
+        "control-attribute-update",
+        || unsafe { GetLastError() },
     )?;
     let startup = StartupEx {
         startup: Startup {
@@ -289,12 +331,16 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
             &mut info,
         )
     };
+    // SAFETY: capture the failed call before any owner or diagnostic can affect last-error.
+    let create_error = if created == 0 {
+        Some(unsafe { GetLastError() })
+    } else {
+        None
+    };
     let process = Handle::new(info.process, false);
     let thread = Handle::new(info.thread, false);
-    need(
-        created != 0 && process.valid() && thread.valid(),
-        "descendant",
-    )?;
+    descendant_result(created != 0, create_error, "control-create-process")?;
+    descendant_need(process.valid() && thread.valid(), "control-process-handles")?;
     let mut child = Child {
         process,
         thread,
@@ -303,11 +349,17 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
     let mut in_job = 0;
     // SAFETY: exact live suspended process/thread; no remote data writes.
     unsafe {
-        need(
-            IsProcessInJob(child.process.raw, null_mut(), &mut in_job) != 0 && in_job != 0,
-            "descendant",
+        descendant_native(
+            IsProcessInJob(child.process.raw, null_mut(), &mut in_job) != 0,
+            "control-job-query",
+            || GetLastError(),
         )?;
-        need(ResumeThread(child.thread.raw) != u32::MAX, "descendant")?;
+        descendant_need(in_job != 0, "control-job-membership")?;
+        descendant_native(
+            ResumeThread(child.thread.raw) != u32::MAX,
+            "control-resume",
+            || GetLastError(),
+        )?;
     }
     output_write.close()?;
     error_write.close()?;
@@ -321,7 +373,11 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
         if wait == 0 {
             break;
         }
-        need(wait == 0x102, "descendant")?;
+        // SAFETY: only WAIT_FAILED permits an immediate native error, not timeout or other state.
+        descendant_native(wait != u32::MAX, "control-wait-api", || unsafe {
+            GetLastError()
+        })?;
+        descendant_need(wait == 0x102, "control-wait-state")?;
         if clock.elapsed() >= Duration::from_secs(5) {
             return Err(Failure::new("descendant", "timeout"));
         }
@@ -329,9 +385,10 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
     child.complete = true;
     let mut code = 0;
     // SAFETY: process was observed signaled; actual exit only, never an invented timeout exit.
-    need(
+    descendant_native(
         unsafe { GetExitCodeProcess(child.process.raw, &mut code) } != 0,
-        "descendant",
+        "control-exit-query",
+        || unsafe { GetLastError() },
     )?;
     *observed_exit = Some(code);
     let complete = (|| {
@@ -490,7 +547,13 @@ mod tests {
             assert!(failure.restrictions.is_none());
             assert!(!failure.wire("primary").contains("private"));
         }
-        for event in ["token:control-private-sentinel", "root:control-open"] {
+        for event in [
+            "token:control-private-sentinel",
+            "root:control-open",
+            "descendant:control-create-process",
+            "descendant:control-create-process native_error=00000005",
+            "token:control-open native_error=00000005",
+        ] {
             let frame = format!(
                 "REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors={event}\n"
             );

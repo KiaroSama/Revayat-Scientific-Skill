@@ -137,6 +137,39 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertEqual(len(rust), 41)
         self.assertIn('|token:control-(?:', comparison)
 
+    def test_descendant_stages_preserve_ownership_and_native_error_boundaries(self):
+        import re
+        windows = ROOT / 'tests/security/windows'
+        protocol = (windows / 'registry-authority/src/protocol.rs').read_text(encoding='utf-8')
+        comparison = (windows / 'RegistryAuthorityComparison.cs').read_text(encoding='utf-8')
+        for rust_name, managed_name, count in (('DESCENDANT_CHECKS', 'DescendantStages', 25),
+                                                ('NATIVE_CHECKS', 'NativeStages', 14)):
+            block = protocol.split('pub const ' + rust_name + ': &[&str] = &[', 1)[1].split('];', 1)[0]
+            rust = re.findall(r'"(control-[a-z-]+)"', block)
+            managed = re.search(r'const string ' + managed_name + r' = "([^"]+)";', comparison)[1].split('|')
+            self.assertEqual(rust, ['control-' + stage for stage in managed])
+            self.assertEqual(len(rust), count)
+            self.assertEqual(len(rust), len(set(rust)))
+        source = (windows / 'registry-authority/src/process.rs').read_text(encoding='utf-8')
+        for start, end, anchors in (
+            ('fn pipe(', 'fn collect(', ('let success = unsafe { CreatePipe(', 'let error =',
+             'let read = Handle::new(', 'let write = Handle::new(', 'descendant_result(')),
+            ('let created = unsafe {', 'let mut in_job =', ('CreateProcessW(', 'let create_error =',
+             'let process = Handle::new(', 'let thread = Handle::new(', 'descendant_result(', 'let mut child = Child {')),
+        ):
+            block = source.split(start, 1)[1].split(end, 1)[0]
+            self.assertEqual([block.index(anchor) for anchor in anchors],
+                             sorted(block.index(anchor) for anchor in anchors))
+        self.assertIn('if error == 109', source)
+        self.assertIn('wait != u32::MAX', source)
+        self.assertIn('raw_input as isize == -1', source)
+        child_parser = source.split('fn child_failure(', 1)[1].split('pub fn descendant(', 1)[0]
+        self.assertNotIn('descendant_need', child_parser)
+        self.assertNotIn('native_error', child_parser)
+        self.assertIn('role == "primary"', protocol)
+        self.assertIn('self.restrictions.is_none()', protocol)
+        self.assertIn('NativeStages.Split', comparison)
+
     def test_restrictions_query_uses_existing_call_and_failure_only_error(self):
         windows = ROOT / 'tests/security/windows'
         source = (windows / 'registry-authority/src/token.rs').read_text(encoding='utf-8')

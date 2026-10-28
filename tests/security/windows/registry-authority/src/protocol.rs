@@ -60,6 +60,85 @@ pub fn token_need(value: bool, kind: &'static str) -> Result<()> {
     }
 }
 
+pub const DESCENDANT_CHECKS: &[&str] = &[
+    "control-image-parent",
+    "control-image-path",
+    "control-output-pipe-create",
+    "control-output-pipe-handles",
+    "control-output-pipe-inheritance",
+    "control-error-pipe-create",
+    "control-error-pipe-handles",
+    "control-error-pipe-inheritance",
+    "control-input-open",
+    "control-input-handle",
+    "control-attribute-size",
+    "control-attribute-init",
+    "control-attribute-update",
+    "control-create-process",
+    "control-process-handles",
+    "control-job-query",
+    "control-job-membership",
+    "control-resume",
+    "control-pipe-peek",
+    "control-pipe-read",
+    "control-wait-api",
+    "control-wait-state",
+    "control-exit-query",
+    "control-capture-limit",
+    "control-capture-eof",
+];
+
+pub const NATIVE_CHECKS: &[&str] = &[
+    "control-output-pipe-create",
+    "control-output-pipe-inheritance",
+    "control-error-pipe-create",
+    "control-error-pipe-inheritance",
+    "control-input-open",
+    "control-attribute-init",
+    "control-attribute-update",
+    "control-create-process",
+    "control-job-query",
+    "control-resume",
+    "control-pipe-peek",
+    "control-pipe-read",
+    "control-wait-api",
+    "control-exit-query",
+];
+
+pub fn descendant_need(value: bool, kind: &'static str) -> Result<()> {
+    if !DESCENDANT_CHECKS.contains(&kind) {
+        return Err(Failure::new("descendant", "control"));
+    }
+    if value {
+        Ok(())
+    } else {
+        Err(Failure::new("descendant", kind))
+    }
+}
+
+pub fn descendant_result(success: bool, error: Option<u32>, kind: &'static str) -> Result<()> {
+    if !NATIVE_CHECKS.contains(&kind) {
+        return Err(Failure::new("descendant", "control"));
+    }
+    if success && error.is_none() {
+        return Ok(());
+    }
+    let mut failure = Failure::new("descendant", kind);
+    if !success {
+        failure.native_error = error;
+    }
+    Err(failure)
+}
+
+pub fn descendant_native(
+    success: bool,
+    kind: &'static str,
+    error: impl FnOnce() -> u32,
+) -> Result<()> {
+    let error = if success { None } else { Some(error()) };
+    descendant_result(success, error, kind)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RestrictionQuery {
     succeeded: bool,
@@ -142,6 +221,7 @@ pub struct Failure {
     pub events: Vec<(&'static str, &'static str)>,
     pub child_exit: Option<u32>,
     pub restrictions: Option<RestrictionQuery>,
+    pub native_error: Option<u32>,
 }
 
 thread_local! { static CLEANUP_FAILED: Cell<bool> = const { Cell::new(false) }; }
@@ -160,6 +240,7 @@ impl Failure {
             events: vec![(phase, kind)],
             child_exit: None,
             restrictions: None,
+            native_error: None,
         }
     }
 
@@ -177,16 +258,28 @@ impl Failure {
         let restrictions = self
             .restrictions
             .filter(|_| {
-                self.events
-                    .iter()
-                    .take(8)
-                    .any(|event| *event == ("token", "control-restrictions-query"))
+                self.native_error.is_none()
+                    && self
+                        .events
+                        .iter()
+                        .take(8)
+                        .any(|event| *event == ("token", "control-restrictions-query"))
             })
             .map_or_else(String::new, |query| {
                 format!(" restrictions={}", query.wire())
             });
+        let native =
+            self.native_error
+                .filter(|_| {
+                    role == "primary"
+                        && self.restrictions.is_none()
+                        && self.events.iter().take(8).any(|(phase, kind)| {
+                            *phase == "descendant" && NATIVE_CHECKS.contains(kind)
+                        })
+                })
+                .map_or_else(String::new, |error| format!(" native_error={error:08X}"));
         format!(
-            "REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}{restrictions}\n"
+            "REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}{restrictions}{native}\n"
         )
     }
 }
@@ -348,12 +441,67 @@ mod tests {
                 events: vec![("token", longest); 8],
                 child_exit: Some(u32::MAX),
                 restrictions: None,
+                native_error: None,
             };
             let wire = error.wire(role);
             assert!(wire.is_ascii() && wire.len() <= 512);
             assert_eq!(wire.matches("token:").count(), 8);
             assert!(wire.contains("child_exit=FFFFFFFF"));
         }
+    }
+
+    #[test]
+    fn descendant_stages_and_native_errors_are_closed() {
+        for &stage in DESCENDANT_CHECKS {
+            assert!(descendant_need(true, stage).is_ok());
+            assert_eq!(
+                descendant_need(false, stage).expect_err("refused").events,
+                vec![("descendant", stage)]
+            );
+        }
+        for &stage in NATIVE_CHECKS {
+            for success in [true, false] {
+                for code in [0, 5, u32::MAX] {
+                    let calls = Cell::new(0);
+                    let result = descendant_native(success, stage, || {
+                        calls.set(calls.get() + 1);
+                        code
+                    });
+                    assert_eq!(calls.get(), u32::from(!success));
+                    assert_eq!(result.is_ok(), success);
+                    if let Err(mut failure) = result {
+                        assert_eq!(failure.native_error, Some(code));
+                        assert_eq!(failure.events, vec![("descendant", stage)]);
+                        failure
+                            .events
+                            .extend(vec![("token", "control-restrictions-query"); 7]);
+                        failure.child_exit = Some(u32::MAX);
+                        let wire = failure.wire("primary");
+                        assert!(wire.is_ascii() && wire.len() <= 512);
+                        assert!(wire.ends_with(&format!(" native_error={code:08X}\n")));
+                        assert!(!failure.wire("descendant").contains("native_error="));
+                        failure.events.insert(0, ("close", "cleanup"));
+                        failure.events.swap(1, 8);
+                        assert!(!failure.wire("primary").contains("native_error="));
+                    }
+                }
+            }
+            for (success, error) in [(false, None), (true, Some(5))] {
+                let failure = descendant_result(success, error, stage).expect_err("inconsistent");
+                assert!(failure.native_error.is_none());
+            }
+        }
+        for stage in ["private-sentinel", "control-image-path"] {
+            let failure = descendant_result(false, Some(5), stage).expect_err("not native");
+            assert!(failure.native_error.is_none());
+            assert!(!failure.wire("primary").contains("private"));
+        }
+        let mut failure = descendant_result(false, Some(5), "control-create-process")
+            .expect_err("native refusal");
+        failure.restrictions = RestrictionQuery::parse("0:00000004:00000005");
+        failure.events.push(("token", "control-restrictions-query"));
+        let wire = failure.wire("primary");
+        assert!(!wire.contains("native_error=") && !wire.contains(" restrictions="));
     }
 
     #[test]
