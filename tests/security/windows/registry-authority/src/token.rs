@@ -2,7 +2,7 @@ use crate::native::*;
 use crate::protocol::{
     Failure, Result, restriction_need, restriction_value, token_fields, token_need,
 };
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -166,6 +166,27 @@ fn data(token: Raw, class: i32) -> Result<(Vec<u64>, usize)> {
     }
 }
 
+// Windows defines SE_CHANGE_NOTIFY_PRIVILEGE as LUID { LowPart: 23, HighPart: 0 }.
+const SE_CHANGE_NOTIFY_PRIVILEGE: u64 = 23;
+
+fn privileges(data: &[u64], length: usize) -> Result<()> {
+    token_need(
+        length >= 4 && length <= std::mem::size_of_val(data),
+        "control-priv-bounds",
+    )?;
+    let count = u32_at(data, 0) as usize;
+    token_need(
+        count <= 128 && 4 + count * 12 <= length,
+        "control-priv-count",
+    )?;
+    for index in 0..count {
+        let offset = 4 + index * 12;
+        let luid = u64::from(u32_at(data, offset)) | (u64::from(u32_at(data, offset + 4)) << 32);
+        token_need(luid == SE_CHANGE_NOTIFY_PRIVILEGE, "control-priv-value")?;
+    }
+    Ok(())
+}
+
 fn u32_at(data: &[u64], offset: usize) -> u32 {
     // SAFETY: callers bound each field within initialized data; read_unaligned handles packed fields.
     unsafe {
@@ -216,25 +237,8 @@ pub fn controls() -> Result<()> {
     token_need(length == 4 && u32_at(&app, 0) == 1, "control-app-value")?;
     let (capabilities, _) = data(token.raw, 30)?;
     token_need(u32_at(&capabilities, 0) == 0, "control-caps-value")?;
-    let mut traverse = 0u64;
-    let name = wide("SeChangeNotifyPrivilege");
-    // SAFETY: live NUL-terminated name and exact LUID-sized writable output.
-    token_need(
-        unsafe { LookupPrivilegeValueW(null(), name.as_ptr(), &mut traverse) } != 0,
-        "control-traversal",
-    )?;
-    let (privileges, length) = data(token.raw, 3)?;
-    let count = u32_at(&privileges, 0) as usize;
-    token_need(
-        count <= 128 && 4 + count * 12 <= length,
-        "control-priv-count",
-    )?;
-    for index in 0..count {
-        let offset = 4 + index * 12;
-        let luid = u64::from(u32_at(&privileges, offset))
-            | (u64::from(u32_at(&privileges, offset + 4)) << 32);
-        token_need(luid == traverse, "control-priv-value")?;
-    }
+    let (privilege_data, length) = data(token.raw, 3)?;
+    privileges(&privilege_data, length)?;
     let (groups, length) = data(token.raw, 2)?;
     let count = u32_at(&groups, 0) as usize;
     token_need(
@@ -275,6 +279,66 @@ pub fn controls() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn privilege_inventory_requires_the_complete_traversal_luid() {
+        let inventory = |entries: &[(u32, u32, u32)]| {
+            let length = 4 + entries.len() * 12;
+            let mut data = vec![0u64; length.div_ceil(8)];
+            let mut put = |offset: usize, value: u32| {
+                data[offset / 8] |= u64::from(value) << ((offset % 8) * 8);
+            };
+            put(0, entries.len() as u32);
+            for (index, &(low, high, attributes)) in entries.iter().enumerate() {
+                put(4 + index * 12, low);
+                put(8 + index * 12, high);
+                put(12 + index * 12, attributes);
+            }
+            (data, length)
+        };
+        let check = |entries: &[(u32, u32, u32)], expected: Option<&str>| {
+            let (data, length) = inventory(entries);
+            let result = privileges(&data, length);
+            match expected {
+                None => assert!(result.is_ok()),
+                Some(kind) => assert_eq!(
+                    result.expect_err("inventory must be refused").events,
+                    vec![("token", kind)]
+                ),
+            }
+        };
+        check(&[], None);
+        for attributes in [0, 2, u32::MAX] {
+            check(&[(23, 0, attributes)], None);
+        }
+        for (low, high) in [
+            (0, 0),
+            (22, 0),
+            (24, 0),
+            (u32::MAX, 0),
+            (23, 1),
+            (23, 0x80000000),
+            (23, u32::MAX),
+        ] {
+            check(&[(low, high, 0)], Some("control-priv-value"));
+        }
+        check(&[(23, 0, 2), (24, 0, 0)], Some("control-priv-value"));
+        check(&[(24, 0, 0), (23, 0, 2)], Some("control-priv-value"));
+        for (data, length, kind) in [
+            (vec![], 0, "control-priv-bounds"),
+            (vec![0], 3, "control-priv-bounds"),
+            (vec![0], 9, "control-priv-bounds"),
+            (vec![129], 4, "control-priv-count"),
+            (vec![1, 0], 15, "control-priv-count"),
+        ] {
+            assert_eq!(
+                privileges(&data, length)
+                    .expect_err("malformed inventory")
+                    .events,
+                vec![("token", kind)]
+            );
+        }
+    }
 
     #[test]
     fn token_spans_keep_bounds_alignment_and_first_failure() {

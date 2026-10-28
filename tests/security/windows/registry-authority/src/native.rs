@@ -100,7 +100,6 @@ unsafe extern "system" {
         size: u32,
         returned: *mut u32,
     ) -> i32;
-    pub fn LookupPrivilegeValueW(system: *const u16, name: *const u16, luid: *mut u64) -> i32;
     pub fn RegQueryInfoKeyW(
         key: Raw,
         class: Raw,

@@ -156,6 +156,29 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn('(?!0000000[14]:)', comparison)
         self.assertIn('.Contains("token:control-restrictions-query")', comparison)
 
+    def test_rust_privileges_use_full_luid_without_worker_name_resolution(self):
+        windows = ROOT / 'tests/security/windows'
+        source = (windows / 'registry-authority/src/token.rs').read_text(encoding='utf-8')
+        native = (windows / 'registry-authority/src/native.rs').read_text(encoding='utf-8')
+        self.assertNotIn('LookupPrivilegeValueW', source + native)
+        self.assertIn('const SE_CHANGE_NOTIFY_PRIVILEGE: u64 = 23;', source)
+        inventory = source.split('fn privileges(', 1)[1].split('fn u32_at(', 1)[0]
+        self.assertIn('length >= 4 && length <= std::mem::size_of_val(data)', inventory)
+        self.assertIn('count <= 128 && 4 + count * 12 <= length', inventory)
+        self.assertIn('u64::from(u32_at(data, offset + 4)) << 32', inventory)
+        self.assertIn('luid == SE_CHANGE_NOTIFY_PRIVILEGE', inventory)
+        controls = source.split('pub fn controls()', 1)[1].split('#[cfg(test)]', 1)[0]
+        anchors = ('let (privilege_data, length) = data(token.raw, 3)?;',
+                   'privileges(&privilege_data, length)?;', 'let (groups, length) = data(token.raw, 2)?;')
+        for anchor in anchors:
+            self.assertEqual(controls.count(anchor), 1)
+        self.assertEqual([controls.index(anchor) for anchor in anchors],
+                         sorted(controls.index(anchor) for anchor in anchors))
+        host = (windows / 'TokenPolicy.cs').read_text(encoding='utf-8')
+        self.assertIn('LookupPrivilegeValueW(null, "SeChangeNotifyPrivilege", out traverse)', host)
+        for name in ('KernelProbe.py', 'RegistryAuthorityProbe.py'):
+            self.assertIn('LookupPrivilegeValueW', (windows / name).read_text(encoding='utf-8'))
+
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
         block = '''    Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
