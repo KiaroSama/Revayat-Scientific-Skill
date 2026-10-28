@@ -149,9 +149,11 @@ class DiagnosticOrderTest(unittest.TestCase):
         guard = protocol.split('pub fn restriction_need(', 1)[1].split('#[derive(Debug)]', 1)[0]
         self.assertLess(guard.index('Some(error())'), guard.index('Failure::new('))
         self.assertIn('if success == 0', guard)
-        self.assertIn('success != 0 && returned == 4', guard)
+        self.assertIn('success != 0 && matches!(returned, 1 | 4)', guard)
+        self.assertIn('restriction_value(&fields[index].to_le_bytes()[..returned as usize])?', scalar)
+        self.assertIn('success != 0 && returned == 4', scalar)
         comparison = (windows / 'RegistryAuthorityComparison.cs').read_text(encoding='utf-8')
-        self.assertIn('(?!00000004:)', comparison)
+        self.assertIn('(?!0000000[14]:)', comparison)
         self.assertIn('.Contains("token:control-restrictions-query")', comparison)
 
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):

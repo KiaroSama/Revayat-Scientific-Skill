@@ -96,7 +96,7 @@ impl RestrictionQuery {
         let returned = hex(parts.next()?)?;
         let error = parts.next()?;
         let error = if succeeded {
-            if returned == 4 || error != "none" {
+            if matches!(returned, 1 | 4) || error != "none" {
                 return None;
             }
             None
@@ -117,7 +117,7 @@ impl RestrictionQuery {
 pub fn restriction_need(success: i32, returned: u32, error: impl FnOnce() -> u32) -> Result<()> {
     // Read the failed call's thread-local error before allocating or formatting; never read it on success.
     let error = if success == 0 { Some(error()) } else { None };
-    if success != 0 && returned == 4 {
+    if success != 0 && matches!(returned, 1 | 4) {
         return Ok(());
     }
     let mut failure = Failure::new("token", "control-restrictions-query");
@@ -127,6 +127,14 @@ pub fn restriction_need(success: i32, returned: u32, error: impl FnOnce() -> u32
         error,
     });
     Err(failure)
+}
+
+pub fn restriction_value(bytes: &[u8]) -> Result<u32> {
+    match bytes {
+        [value] => Ok(u32::from(*value)),
+        [a, b, c, d] => Ok(u32::from_le_bytes([*a, *b, *c, *d])),
+        _ => Err(Failure::new("token", "control-restrictions-query")),
+    }
 }
 
 #[derive(Debug)]
@@ -352,14 +360,14 @@ mod tests {
     fn restriction_query_retains_only_immediate_failed_result() {
         use std::cell::Cell;
         for success in [0, 1, -1] {
-            for returned in [0, 1, 4, u32::MAX] {
+            for returned in [0, 1, 2, 3, 4, 5, u32::MAX] {
                 let calls = Cell::new(0);
                 let result = restriction_need(success, returned, || {
                     calls.set(calls.get() + 1);
                     5
                 });
                 assert_eq!(calls.get(), u32::from(success == 0));
-                assert_eq!(result.is_ok(), success != 0 && returned == 4);
+                assert_eq!(result.is_ok(), success != 0 && matches!(returned, 1 | 4));
                 if let Err(mut failure) = result {
                     assert_eq!(
                         failure.events,
@@ -382,6 +390,7 @@ mod tests {
         }
         assert!(RestrictionQuery::parse("0:00000004:00000000").is_some());
         for bad in [
+            "1:00000001:none",
             "1:00000004:none",
             "1:00000000:00000005",
             "0:00000004:none",
@@ -406,6 +415,31 @@ mod tests {
             let wire = failure.wire(role);
             assert!(wire.is_ascii() && wire.len() <= 512);
             assert!(wire.ends_with(" restrictions=0:FFFFFFFF:FFFFFFFF\n"));
+        }
+    }
+
+    #[test]
+    fn restriction_representations_preserve_exact_true_and_returned_span() {
+        for bytes in [[1, 0, 0, 0], [1, 2, 3, 4], [1, 255, 254, 253]] {
+            let filtered = restriction_value(&bytes[..1]).expect("byte representation");
+            assert_eq!(filtered, 1);
+            assert!(token_fields(1, 0, filtered));
+        }
+        for value in [0u32, 1, 2, 255, 0x101] {
+            let bytes = value.to_le_bytes();
+            let filtered = restriction_value(&bytes).expect("DWORD representation");
+            assert_eq!(filtered, value);
+            assert_eq!(token_fields(1, 0, filtered), value == 1);
+        }
+        for value in [0u8, 2, 255] {
+            let filtered = restriction_value(&[value]).expect("byte representation");
+            let failure = token_need(token_fields(1, 0, filtered), "control-primary-fields")
+                .expect_err("not exact true");
+            assert_eq!(failure.events, vec![("token", "control-primary-fields")]);
+            assert!(failure.restrictions.is_none());
+        }
+        for length in [0, 2, 3, 5] {
+            assert!(restriction_value(&[1; 5][..length]).is_err());
         }
     }
 

@@ -469,6 +469,7 @@ mod tests {
         }
         for (event, detail) in [
             ("token:control-primary-fields", "0:00000004:00000005"),
+            ("token:control-restrictions-query", "1:00000001:none"),
             ("token:control-restrictions-query", "1:00000004:none"),
             ("token:control-restrictions-query", "1:00000000:00000005"),
             (

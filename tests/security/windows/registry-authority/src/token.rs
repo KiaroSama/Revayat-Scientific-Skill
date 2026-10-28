@@ -1,5 +1,7 @@
 use crate::native::*;
-use crate::protocol::{Failure, Result, restriction_need, token_fields, token_need};
+use crate::protocol::{
+    Failure, Result, restriction_need, restriction_value, token_fields, token_need,
+};
 use std::ptr::{null, null_mut};
 
 #[repr(C)]
@@ -184,7 +186,7 @@ pub fn controls() -> Result<()> {
     let mut fields = [0u32; 3];
     for (index, class) in [8, 20, 21].iter().enumerate() {
         let mut returned = 0;
-        // SAFETY: scalar token classes have exact four-byte writable storage.
+        // SAFETY: aligned four-byte capacity; class 21 consumes only its qualified returned span.
         let success = unsafe {
             GetTokenInformation(
                 token.raw,
@@ -197,6 +199,7 @@ pub fn controls() -> Result<()> {
         if *class == 21 {
             // SAFETY: called immediately and only when the preceding query returned FALSE.
             restriction_need(success, returned, || unsafe { GetLastError() })?;
+            fields[index] = restriction_value(&fields[index].to_le_bytes()[..returned as usize])?;
         } else {
             token_need(
                 success != 0 && returned == 4,

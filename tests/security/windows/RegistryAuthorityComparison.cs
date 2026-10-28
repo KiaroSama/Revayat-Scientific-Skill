@@ -33,7 +33,7 @@ namespace ScientificSecurity
         internal sealed class PythonObservation : Observation { }
         const string TokenStages = "console|stdin|stdout|stderr|job|open|type-query|elevation-query|restrictions-query|primary-fields|lpac-abi|lpac-query|lpac-header|lpac-entry|lpac-type|lpac-name-length|lpac-name-span|lpac-value-span|lpac-value|app-size|app-read|app-bounds|app-value|caps-size|caps-read|caps-bounds|caps-value|traversal|priv-size|priv-read|priv-bounds|priv-count|priv-value|groups-size|groups-read|groups-bounds|groups-count|sid-head-span|sid-header|sid-span|admin";
         const string FailureEvent = @"(?:(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))|token:control-(?:" + TokenStages + "))";
-        const string Restrictions = @"(?:0:[0-9A-F]{8}:[0-9A-F]{8}|1:(?!00000004:)[0-9A-F]{8}:none)";
+        const string Restrictions = @"(?:0:[0-9A-F]{8}:[0-9A-F]{8}|1:(?!0000000[14]:)[0-9A-F]{8}:none)";
         static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + FailureEvent + "(?:," + FailureEvent + @"){0,7})( restrictions=(" + Restrictions + @"))?\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
@@ -128,7 +128,7 @@ namespace ScientificSecurity
                     string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=" + events + " restrictions=" + query + "\n";
                     Need(TransportFailure(1, token).Message.Contains("child_exit=00000007 errors=" + events + " restrictions=" + query));
                 }
-            foreach (string query in new [] { "1:00000004:none", "1:00000000:00000005", "0:00000004:none", "2:00000000:none",
+            foreach (string query in new [] { "1:00000001:none", "1:00000004:none", "1:00000000:00000005", "0:00000004:none", "2:00000000:none",
                 "0:ffffffff:00000005", "0:000000004:00000005", "0:00000004:private-sentinel", "0:00000004:00000005:extra",
                 "0:00000004:00000005 restrictions=0:00000004:00000005" }) {
                 string token = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:control-restrictions-query restrictions=" + query + "\n";
