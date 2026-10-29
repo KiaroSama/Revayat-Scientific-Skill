@@ -10,6 +10,8 @@ A one-shot trusted-host DLL activation diagnostic runs after Rust authority and 
 
 The reusable token/stdio helpers do not initialize Winsock merely when their module is loaded. `KernelProbe.py` imports `socket` only immediately before the unchanged ordinary-preflight network block; that block still checks IPv4/IPv6 and TCP/UDP with a one-second timeout, requires exact access-denied error 10013 and rejects permitted operations. Socket-import failure remains fatal for full preflight, never a successful network-denial observation. A bounded inert full-source import regression verifies this dependency separation without calling native declarations; neither that regression nor a changed diagnostic stage proves the current native failure's cause or ordinary admission.
 
+The retained Python authority diagnostic labels existing token boundaries with closed `ti-` (initial) and `tf-` (post-inventory) phases. Query result, returned length, scalar value, helper invocation, Job membership and final deadline stay distinct; a helper label does not identify its internal native failure. `restrictions-len1` means only that the existing class-21 query succeeded and returned one byte before the unchanged four-byte requirement rejected it. No additional query, last-error read, value acceptance, retry or grant is introduced. Legacy frames and Rust suffix validation remain unchanged; primary/descendant/controller validation retains at most eight events and 512 ASCII bytes, actual child exits and original-first cleanup. Finite inert production-seam regressions are not native containment or repair evidence.
+
 ## Evidence boundaries
 
 - A requested container option is not an observed kernel control.

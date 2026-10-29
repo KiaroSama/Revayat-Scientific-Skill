@@ -35,8 +35,11 @@ namespace ScientificSecurity
         const string DescendantStages = "image-parent|image-path|output-pipe-create|output-pipe-handles|output-pipe-inheritance|error-pipe-create|error-pipe-handles|error-pipe-inheritance|input-open|input-handle|attribute-size|attribute-init|attribute-update|create-process|process-handles|job-query|job-membership|resume|pipe-peek|pipe-read|wait-api|wait-state|exit-query|capture-limit|capture-eof|pipe-rng|pipe-server-create|pipe-server-handle|pipe-client-open|pipe-client-handle|pipe-connect|pipe-endpoint-query|pipe-endpoint|pipe-server-inheritance|input-duplicate";
         const string NativeStages = "output-pipe-create|output-pipe-inheritance|error-pipe-create|error-pipe-inheritance|input-open|attribute-init|attribute-update|create-process|job-query|resume|pipe-peek|pipe-read|wait-api|exit-query|pipe-server-create|pipe-client-open|pipe-connect|pipe-endpoint-query|pipe-server-inheritance|input-duplicate";
         const string FailureEvent = @"(?:(?:start|token|root|mutation|inventory|identity|close|descendant|report|import-ctypes|import-ctypes-wintypes|import-json|import-os|import-pathlib|import-runpy|import-subprocess|import-time):(?:control|timeout|decode|encode|native|transport|other|cleanup|import|import-ctypes-(?:denied|module|procedure|init|memory|format)|(?:import|missing)-(?:ctypes|ctypes-native|struct|struct-native|endian|os|types|absent|unrecognized))|token:control-(?:" + TokenStages + ")|descendant:control-(?:" + DescendantStages + "))";
+        const string PythonTokenStages = "platform|x64|version|abi|import|detached|open|type-query|type-length|elevation-query|elevation-length|restrictions-query|restrictions-length|restrictions-len1|primary-fields|lpac-query|lpac-value|app-read|app-value|caps-read|caps-value|traversal|priv-read|priv-count|priv-value|groups-read|groups-count|sid-read|admin|libraries|prototypes|job-query|job-value|deadline";
+        const string PythonFailureEvent = @"(?:ti|tf)-(?:" + PythonTokenStages + @"):(?:control|timeout|decode|encode|native|transport|other|cleanup)";
         const string Restrictions = @"(?:0:[0-9A-F]{8}:[0-9A-F]{8}|1:(?!0000000[14]:)[0-9A-F]{8}:none)";
-        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + FailureEvent + "(?:," + FailureEvent + @"){0,7})(?:( restrictions=(" + Restrictions + @"))|( native_error=[0-9A-F]{8}))?\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        const string AllFailureEvents = "(?:" + FailureEvent + "|" + PythonFailureEvent + ")";
+        static readonly Regex FailureWire = new Regex(@"\AREGISTRY_AUTHORITY_FAILURE role=primary child_exit=(none|[0-9A-F]{8}) errors=(" + AllFailureEvents + "(?:," + AllFailureEvents + @"){0,7})(?:( restrictions=(" + Restrictions + @"))|( native_error=[0-9A-F]{8}))?\n\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
         static Exception TransportFailure(uint code, string errors)
         {
             string detail = RegistryLoaderEvidence.Detail(errors == null ? null : errors.Replace("\r\n", "\n")) ?? "unqualified";
@@ -130,6 +133,23 @@ namespace ScientificSecurity
                 string direct = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:control-" + stage + "\n";
                 Need(TransportFailure(1, direct).Message.Contains("child_exit=none errors=token:control-" + stage));
             }
+            foreach (string prefix in new [] { "ti-", "tf-" })
+                foreach (string stage in PythonTokenStages.Split('|'))
+                    foreach (string kind in new [] { "control", "other", "native" }) {
+                        string events = "descendant:transport," + prefix + stage + ":" + kind + ",close:cleanup";
+                        string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=" + events + "\n";
+                        Need(TransportFailure(1, frame).Message.Contains("child_exit=00000007 errors=" + events));
+                    }
+            foreach (string invalid in new [] { "ti-private:control", "tf-openx:control", "ti-open:import",
+                "token-initial:control", "ti-restrictions-len1:control restrictions=1:00000001:none",
+                "tf-restrictions-query:control restrictions=0:00000004:00000005",
+                "ti-open:control native_error=00000005" }) {
+                string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=" + invalid + "\n";
+                Need(TransportFailure(1, frame).Message.Contains("unqualified"));
+            }
+            string pythonWorst = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=FFFFFFFF errors=" +
+                String.Join(",", Enumerable.Repeat("tf-restrictions-length:control", 8)) + "\n";
+            Need(pythonWorst.Length <= 512 && TransportFailure(1, pythonWorst).Message.Contains("child_exit=FFFFFFFF"));
             foreach (string stage in DescendantStages.Split('|')) {
                 string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:control-" + stage + "\n";
                 Need(TransportFailure(1, frame).Message.Contains("errors=descendant:control-" + stage));

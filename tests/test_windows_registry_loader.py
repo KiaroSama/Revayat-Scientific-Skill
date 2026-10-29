@@ -43,7 +43,7 @@ class RegistryLoaderTest(unittest.TestCase):
             return getattr(ctypes, name)
 
         fake = SimpleNamespace(**{name: ctypes_value(name) for name in
-                                  ('Structure', 'c_void_p', 'c_size_t', 'c_longlong', 'c_ulonglong',
+                                  ('Structure', 'c_void_p', 'c_int', 'c_size_t', 'c_longlong', 'c_ulonglong',
                                    'POINTER', 'WinDLL')}, wintypes=ctypes.wintypes)
 
         def importer(name, *args, **kwargs):

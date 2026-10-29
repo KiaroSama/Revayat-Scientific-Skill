@@ -166,6 +166,16 @@ PHASE = 'start'
 PHASES = ('start', 'token', 'root', 'mutation', 'inventory', 'identity', 'close', 'descendant', 'report',
           'import-ctypes', 'import-ctypes-wintypes', 'import-json', 'import-os', 'import-pathlib',
           'import-runpy', 'import-subprocess', 'import-time')
+PYTHON_TOKEN_STAGES = (
+    'platform', 'x64', 'version', 'abi', 'import', 'detached', 'open',
+    'type-query', 'type-length', 'elevation-query', 'elevation-length',
+    'restrictions-query', 'restrictions-length', 'restrictions-len1', 'primary-fields',
+    'lpac-query', 'lpac-value', 'app-read', 'app-value', 'caps-read', 'caps-value',
+    'traversal', 'priv-read', 'priv-count', 'priv-value', 'groups-read', 'groups-count',
+    'sid-read', 'admin', 'libraries', 'prototypes', 'job-query', 'job-value', 'deadline',
+)
+PYTHON_TOKEN_PHASES = tuple(prefix + stage for prefix in ('ti-', 'tf-') for stage in PYTHON_TOKEN_STAGES)
+PYTHON_TOKEN_KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup')
 KINDS = ('control', 'timeout', 'decode', 'encode', 'native', 'transport', 'other', 'cleanup', 'import',
          'import-ctypes-denied', 'import-ctypes-module', 'import-ctypes-procedure',
          'import-ctypes-init', 'import-ctypes-memory', 'import-ctypes-format') + tuple(
@@ -196,6 +206,7 @@ def failure_wire(error, role):
     error = failure(error, PHASE)
     require(role in ('primary', 'descendant') and 1 <= len(error.events) <= 8)
     require(all((phase in PHASES and kind in KINDS) or
+                (phase in PYTHON_TOKEN_PHASES and kind in PYTHON_TOKEN_KINDS) or
                 (phase == 'loader' and kind in ('unqualified', 'loaded')) or
                 (phase == 'loader-release' and kind == 'released') or
                 (phase in ('loader', 'loader-release') and kind.startswith('win32-'))
@@ -215,12 +226,14 @@ def descendant_result(child):
         raise Failure(bootstrap + (('descendant', 'transport'),), child.returncode)
     if child.returncode != 0:
         import re
-        pattern = r'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=([a-z:,\-]+)\n'
+        pattern = r'REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=([a-z0-9:,\-]+)\n'
         match = re.fullmatch(pattern, child.stderr) if len(child.stderr) <= 512 else None
         events = [('descendant', 'transport')]
         if match:
             candidate = tuple(tuple(item.split(':')) for item in match[1].split(','))
-            if 1 <= len(candidate) <= 7 and all(len(item) == 2 and item[0] in PHASES and item[1] in KINDS for item in candidate):
+            if 1 <= len(candidate) <= 7 and all(len(item) == 2 and
+                    ((item[0] in PHASES and item[1] in KINDS) or
+                     (item[0] in PYTHON_TOKEN_PHASES and item[1] in PYTHON_TOKEN_KINDS)) for item in candidate):
                 events.extend(candidate)
         raise Failure(events, child.returncode)
     if child.stderr or len(child.stdout) > 1024:
@@ -274,40 +287,63 @@ def read_identity(status, returned, data, expected_bytes):
     return value
 
 
-def token_controls(trusted):
+def token_controls(trusted, final=False):
+    global PHASE
+    prefix = 'tf-' if final else 'ti-'
+    PHASE = prefix + 'open'
     token = P()
     a, k = trusted['A'], trusted['K']
     require(a.OpenProcessToken(k.GetCurrentProcess(), 8, ctypes.byref(token)))
     primary = None
     try:
         values = []
-        for kind in (8, 20, 21):
+        for kind, stage in ((8, 'type'), (20, 'elevation'), (21, 'restrictions')):
+            PHASE = prefix + stage + '-query'
             value, returned = w.DWORD(), w.DWORD()
             require(a.GetTokenInformation(token, kind, ctypes.byref(value), 4, ctypes.byref(returned)))
+            PHASE = prefix + stage + '-length'
+            if kind == 21 and returned.value == 1:
+                PHASE = prefix + 'restrictions-len1'
             require(returned.value == 4)
             values.append(value.value)
+        PHASE = prefix + 'primary-fields'
         require_token_fields(*values)
-        require(trusted['lpac_enabled'](token))
+        PHASE = prefix + 'lpac-query'
+        lpac = trusted['lpac_enabled'](token)
+        PHASE = prefix + 'lpac-value'
+        require(lpac)
+        PHASE = prefix + 'app-read'
         data = trusted['token_data'](token, 29)
+        PHASE = prefix + 'app-value'
         require(len(data) == 4 and w.DWORD.from_buffer(data).value == 1)
+        PHASE = prefix + 'caps-read'
         data = trusted['token_data'](token, 30)
+        PHASE = prefix + 'caps-value'
         require(w.DWORD.from_buffer(data).value == 0)
+        PHASE = prefix + 'traversal'
         a.LookupPrivilegeValueW.argtypes = [w.LPCWSTR, w.LPCWSTR, ctypes.POINTER(trusted['Luid'])]
         traverse = trusted['Luid']()
         require(a.LookupPrivilegeValueW(None, 'SeChangeNotifyPrivilege', ctypes.byref(traverse)))
+        PHASE = prefix + 'priv-read'
         data = trusted['token_data'](token, 3)
+        PHASE = prefix + 'priv-count'
         count, stride = w.DWORD.from_buffer(data).value, ctypes.sizeof(trusted['Privilege'])
         require(count <= 128 and 4 + count * stride <= len(data))
         for index in range(count):
+            PHASE = prefix + 'priv-value'
             item = trusted['Privilege'].from_buffer(data, 4 + index * stride)
             require((item.luid.low, item.luid.high) == (traverse.low, traverse.high))
+        PHASE = prefix + 'groups-read'
         data = trusted['token_data'](token, 2)
+        PHASE = prefix + 'groups-count'
         count, offset = w.DWORD.from_buffer(data).value, trusted['Groups'].first.offset
         stride = ctypes.sizeof(trusted['SidAttributes'])
         require(count <= 256 and offset + count * stride <= len(data))
         for index in range(count):
+            PHASE = prefix + 'sid-read'
             item = trusted['SidAttributes'].from_buffer(data, offset + index * stride)
             if trusted['sid_text'](item.sid) == 'S-1-5-32-544':
+                PHASE = prefix + 'admin'
                 require(not item.attributes & (8 | 4 | 2) and item.attributes & 16)
     except Exception as failure:
         primary = failure
@@ -317,15 +353,24 @@ def token_controls(trusted):
 
 def controls():
     global PHASE
-    PHASE = 'token'
-    require(os.name == 'nt' and ctypes.sizeof(P) == 8 and sys.version_info[:2] == (3, 11))
+    PHASE = 'ti-platform'
+    require(os.name == 'nt')
+    PHASE = 'ti-x64'
+    require(ctypes.sizeof(P) == 8)
+    PHASE = 'ti-version'
+    require(sys.version_info[:2] == (3, 11))
+    PHASE = 'ti-abi'
     require(ctypes.sizeof(Unicode) == 16 and ctypes.sizeof(Attributes) == 48)
+    PHASE = 'ti-import'
     trusted = runpy.run_path(str(Path(__file__).with_name('KernelProbe.py')))
+    PHASE = 'ti-detached'
     trusted['require_detached_stdio']()
     token_controls(trusted)
+    PHASE = 'ti-libraries'
     n = ctypes.WinDLL('ntdll')
     a = ctypes.WinDLL('advapi32', use_last_error=True)
     k = ctypes.WinDLL('kernel32', use_last_error=True)
+    PHASE = 'ti-prototypes'
     n.NtOpenKeyEx.argtypes = [ctypes.POINTER(P), w.ULONG, ctypes.POINTER(Attributes), w.ULONG]
     n.NtOpenKeyEx.restype = w.LONG
     n.NtClose.argtypes = [P]
@@ -345,8 +390,12 @@ def controls():
         result = k.CompareStringOrdinal(first, -1, second, -1, True)
         require(result in (1, 2, 3))
         return result == 2
+    PHASE = 'ti-job-query'
     in_job = w.BOOL()
-    require(k.IsProcessInJob(k.GetCurrentProcess(), None, ctypes.byref(in_job)) and in_job.value)
+    queried = k.IsProcessInJob(k.GetCurrentProcess(), None, ctypes.byref(in_job))
+    require(queried)
+    PHASE = 'ti-job-value'
+    require(in_job.value)
     started = time.monotonic()
 
     def deadline():
@@ -431,8 +480,8 @@ def controls():
             finish(error, [lambda: close(child)])
         PHASE = 'inventory'
         require(counts(root) == before and len(names) == before[0])
-        PHASE = 'token'
-        token_controls(trusted)
+        token_controls(trusted, final=True)
+        PHASE = 'tf-deadline'
         deadline()
         return {'accessible': accessible, 'capabilities': 0, 'granted_access': 0x20019,
                 'lpac': True, 'mutation_denied': True, 'no_reparse': True, 'read': True,
