@@ -512,11 +512,12 @@ def main():
             if not receipt and error.code is not None:
                 try:
                     from types import SimpleNamespace
-                    captured = bytes(error.stderr).decode('ascii', errors='strict')
+                    captured = bytes(error.stderr).decode('ascii', errors='strict').replace('\r\n', '\n').replace('\r', '\n')
                     descendant_result(SimpleNamespace(returncode=error.code, stdout='', stderr=captured))
                 except Failure as diagnostic:
                     receipt = diagnostic.events
                 except UnicodeError:
+                    # The original decode fault remains private and fatal below; no receipt is qualified.
                     pass
             events = receipt + (failure(error.original, 'descendant').events if error.original is not None else ())
             events += (('close', 'cleanup'),) * len(error.cleanup)

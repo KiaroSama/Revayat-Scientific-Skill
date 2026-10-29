@@ -1,4 +1,6 @@
 """Inert checks of the fixed Python descendant transport; no native execution."""
+import io
+import json
 from pathlib import Path
 import runpy
 from types import SimpleNamespace
@@ -110,6 +112,81 @@ class DescendantTransportTest(unittest.TestCase):
             self.assertFalse(child._child_created)
             self.assertEqual(child.returncode, code)
 
+    def primary_wire(self, output, probe=None):
+        if probe is None:
+            probe = runpy.run_path(str(SOURCE.with_name('RegistryAuthorityProbe.py')))
+        scope = probe['main'].__globals__
+        result = {'accessible': 0, 'capabilities': 0, 'granted_access': 0x20019,
+                  'lpac': True, 'mutation_denied': True, 'no_reparse': True, 'read': True,
+                  'read_surface_approved': False, 'restricted': True, 'subkeys': 0, 'version': 1, 'x64': True}
+        primary = json.dumps(dict(result, role='primary'), sort_keys=True, separators=(',', ':')) + '\n'
+        descendant = json.dumps(dict(result, role='descendant'), sort_keys=True, separators=(',', ':')) + '\n'
+        api, spawn, clock, _, _, _, _ = self.fixture(output=output(descendant))
+        raw = io.BytesIO()
+        with io.TextIOWrapper(raw, encoding='ascii', errors='strict', newline='\r\n') as stream:
+            scope['controls'] = lambda: dict(result)
+            scope['sys'] = SimpleNamespace(argv=['fixed.py'], stdout=stream)
+            scope['runpy'] = SimpleNamespace(run_path=lambda _: dict(
+                self.module, run=lambda: self.module['_run'](api, spawn, clock)))
+            probe['main']()
+            stream.flush()
+            wire = raw.getvalue().decode('ascii', errors='strict').replace('\r\n', '\n')
+        return wire, primary + descendant
+
+    def test_actual_primary_windows_output_keeps_exact_two_record_wire(self):
+        for ending in ('\n', '\r\n', '\r'):
+            with self.subTest(ending=repr(ending)):
+                wire, expected = self.primary_wire(lambda record: (record[:-1] + ending).encode('ascii'))
+                self.assertEqual(wire, expected)
+                lines = wire.split('\n')
+                self.assertEqual(len(lines), 3)
+                self.assertEqual(lines[2], '')
+                records = [json.loads(line) for line in lines[:2]]
+                self.assertEqual([record['role'] for record in records], ['primary', 'descendant'])
+                self.assertEqual(records[0].keys(), records[1].keys())
+
+    def test_extra_terminators_are_not_trimmed_into_host_success(self):
+        for ending in ('\n\n', '\r\n\r\n', '\r\r\n'):
+            with self.subTest(ending=repr(ending)):
+                wire, expected = self.primary_wire(lambda record: (record[:-1] + ending).encode('ascii'))
+                self.assertNotEqual(wire, expected)
+                self.assertEqual(len(wire.split('\n')), 4)
+        probe = runpy.run_path(str(SOURCE.with_name('RegistryAuthorityProbe.py')))
+        for suffix in ('garbage\n', '{}\n'):
+            with self.subTest(suffix=suffix), self.assertRaises(probe['Failure']):
+                self.primary_wire(lambda record: (record + suffix).encode('ascii'), probe)
+
+    def test_universal_newlines_follow_raw_caps_and_strict_ascii(self):
+        api, spawn, clock, _, _, _, _ = self.fixture(output=b'a\r\nb\rc\n', errors=b'd\r\ne\rf\n', code=7)
+        result = self.module['_run'](api, spawn, clock)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (7, 'a\nb\nc\n', 'd\ne\nf\n'))
+        api, spawn, clock, _, _, _, _ = self.fixture(output=b'\r\n' * 512, errors=b'\r\n' * 256)
+        result = self.module['_run'](api, spawn, clock)
+        self.assertEqual((result.stdout, result.stderr), ('\n' * 512, '\n' * 256))
+        for arguments in ({'output': b'\r\n' * 513}, {'errors': b'\r\n' * 257},
+                          {'output': b'\xff\r\n'}, {'errors': b'\xff\r\n'}):
+            api, spawn, clock, _, closed, child, _ = self.fixture(**arguments)
+            with self.subTest(stream=next(iter(arguments))), self.assertRaises(self.module['CaptureFailure']):
+                self.module['_run'](api, spawn, clock)
+            self.assertEqual(sorted(closed), [1, 2, 3, 4, 5])
+            self.assertFalse(child._child_created)
+
+    def test_non_ascii_failure_receipt_retains_private_decode_fault(self):
+        probe = runpy.run_path(str(SOURCE.with_name('RegistryAuthorityProbe.py')))
+        scope = probe['main'].__globals__
+        api, spawn, clock, _, _, _, _ = self.fixture(errors=b'\xff\r\n', code=7)
+        scope['controls'] = lambda: {}
+        scope['sys'] = SimpleNamespace(argv=['fixed.py'])
+        scope['runpy'] = SimpleNamespace(run_path=lambda _: dict(
+            self.module, run=lambda: self.module['_run'](api, spawn, clock)))
+        with self.assertRaises(probe['Failure']) as caught:
+            probe['main']()
+        self.assertEqual(caught.exception.child_exit, 7)
+        self.assertEqual(caught.exception.events, (('descendant', 'decode'),))
+        carrier = caught.exception.original
+        self.assertIsInstance(carrier.original, UnicodeDecodeError)
+        self.assertEqual(carrier.stderr, b'\0' * 3)
+
     def test_each_acquisition_failure_closes_only_obtained_owners(self):
         for fault, expected in (('output-pair', [1]), ('error-pair', [1, 2, 3]),
                                 ('input', [1, 2, 3, 4, 5]), ('standards', [1, 2, 3, 4, 5]),
@@ -210,24 +287,25 @@ class DescendantTransportTest(unittest.TestCase):
         probe = runpy.run_path(str(SOURCE.with_name('RegistryAuthorityProbe.py')))
         scope = probe['main'].__globals__
         for phase in ('ti-admin', 'tf-priv-value'):
-            receipt = ('REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=' + phase + ':control\n').encode('ascii')
-            for operation in (None, OSError('private-transport')):
-                captured = self.module['CaptureFailure'](operation, [OSError('private-close')], 7, receipt)
-                def refused():
-                    raise captured
-                scope['controls'] = lambda: {}
-                scope['sys'] = SimpleNamespace(argv=['fixed.py'])
-                scope['runpy'] = SimpleNamespace(run_path=lambda _: dict(self.module, run=refused))
-                with self.subTest(phase=phase, operation=operation), self.assertRaises(probe['Failure']) as caught:
-                    probe['main']()
-                self.assertEqual(caught.exception.child_exit, 7)
-                events = caught.exception.events
-                self.assertEqual(events[:2], (('descendant', 'transport'), (phase, 'control')))
-                self.assertEqual(events[-1], ('close', 'cleanup'))
-                if operation is not None:
-                    self.assertEqual(events[2], ('descendant', 'native'))
-                self.assertNotIn('private', probe['failure_wire'](caught.exception, 'primary'))
-                self.assertEqual(captured.stderr, b'\0' * len(receipt))
+            for ending in ('\n', '\r\n', '\r'):
+                receipt = ('REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=' + phase + ':control' + ending).encode('ascii')
+                for operation in (None, OSError('private-transport')):
+                    captured = self.module['CaptureFailure'](operation, [OSError('private-close')], 7, receipt)
+                    def refused():
+                        raise captured
+                    scope['controls'] = lambda: {}
+                    scope['sys'] = SimpleNamespace(argv=['fixed.py'])
+                    scope['runpy'] = SimpleNamespace(run_path=lambda _: dict(self.module, run=refused))
+                    with self.subTest(phase=phase, ending=repr(ending), operation=operation), self.assertRaises(probe['Failure']) as caught:
+                        probe['main']()
+                    self.assertEqual(caught.exception.child_exit, 7)
+                    events = caught.exception.events
+                    self.assertEqual(events[:2], (('descendant', 'transport'), (phase, 'control')))
+                    self.assertEqual(events[-1], ('close', 'cleanup'))
+                    if operation is not None:
+                        self.assertEqual(events[2], ('descendant', 'native'))
+                    self.assertNotIn('private', probe['failure_wire'](caught.exception, 'primary'))
+                    self.assertEqual(captured.stderr, b'\0' * len(receipt))
 
     def test_natural_exit_survives_decode_eof_and_close_failures(self):
         for fault in ('decode', 'eof', 'close'):
@@ -342,7 +420,7 @@ class DescendantTransportTest(unittest.TestCase):
             return sentinel
 
         self.scope['subprocess'] = SimpleNamespace(
-            STARTUPINFO=lambda **kwargs: SimpleNamespace(**kwargs), Popen=popen,
+            STARTUPINFO=SimpleNamespace, Popen=popen,
             STARTF_USESTDHANDLES=0x100, DETACHED_PROCESS=8, CREATE_NO_WINDOW=0x08000000)
         self.scope['sys'] = SimpleNamespace(executable=str(ROOT / 'python.exe'))
         self.scope['os'] = SimpleNamespace(environ={'FIXED': 'value'})

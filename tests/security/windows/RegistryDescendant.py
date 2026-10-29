@@ -176,7 +176,7 @@ def _spawn(handles):
 def _run(api, spawn, clock):
     end = clock() + 5
     handles, output, errors = [], bytearray(), bytearray()
-    child, original, code = None, None, None
+    child, original, code, result = None, None, None, None
     signaled = False
     cleanup = []
 
@@ -209,6 +209,16 @@ def _run(api, spawn, clock):
             raise RuntimeError('fixed descendant EOF is incomplete')
         return False
 
+    def attempt(operation, *arguments):
+        try:
+            operation(*arguments)
+        except Exception as error:
+            cleanup.append(error)
+
+    def reap(cleanup_end):
+        remaining = max(0, int((cleanup_end - clock()) * 1000))
+        require(api.wait(child._handle, remaining))
+
     try:
         stdout, stdout_write = api.pair('output', own, check)
         stderr, stderr_write = api.pair('error', own, check)
@@ -240,40 +250,34 @@ def _run(api, spawn, clock):
             if all(ended):
                 break
         require(all(ended))
-        text, error_text = output.decode('ascii', errors='strict'), errors.decode('ascii', errors='strict')
+        # Match the former subprocess text mode only after raw caps and EOF qualify.
+        text = output.decode('ascii', errors='strict').replace('\r\n', '\n').replace('\r', '\n')
+        error_text = errors.decode('ascii', errors='strict').replace('\r\n', '\n').replace('\r', '\n')
+        result = subprocess.CompletedProcess([], code, text, error_text)
     except Exception as error:
         original = error
     finally:
         cleanup_end = clock() + 2
-
-        def attempt(operation):
-            try:
-                operation()
-            except Exception as error:
-                cleanup.append(error)
-
         if child is not None:
             if not signaled:
-                attempt(lambda: api.kill(child._handle))
-                def reap():
-                    remaining = max(0, int((cleanup_end - clock()) * 1000))
-                    require(api.wait(child._handle, remaining))
-                attempt(reap)
+                attempt(api.kill, child._handle)
+                attempt(reap, cleanup_end)
             for handle in tuple(handles):
-                attempt(lambda handle=handle: close(handle))
+                attempt(close, handle)
             try:
                 attempt(child._handle.Close)
             finally:
                 child._child_created = False
         else:
             for handle in tuple(handles):
-                attempt(lambda handle=handle: close(handle))
+                attempt(close, handle)
         if clock() >= cleanup_end:
             cleanup.append(TimeoutError('fixed descendant cleanup deadline exceeded'))
     try:
         if original is not None or cleanup:
             raise CaptureFailure(original, cleanup, code, errors)
-        return subprocess.CompletedProcess([], code, text, error_text)
+        require(result is not None)
+        return result
     finally:
         output[:] = b'\0' * len(output)
         errors[:] = b'\0' * len(errors)

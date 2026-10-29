@@ -45,7 +45,7 @@ class PythonTokenTest(unittest.TestCase):
 
         class Authority:
             def __getattr__(self, _name):
-                raise AssertionError('Traversal resolver must not be accessed')
+                raise AttributeError('Traversal resolver must not be accessed')
 
         def query(_token, kind, value, _capacity, returned):
             stage = {8: 'type', 20: 'elevation', 21: 'restrictions'}[kind]
