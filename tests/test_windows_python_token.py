@@ -24,7 +24,7 @@ class PythonTokenTest(unittest.TestCase):
         self.probe = runpy.run_path(str(WINDOWS / 'RegistryAuthorityProbe.py'))
         self.scope = self.probe['token_controls'].__globals__
 
-    def token_fixture(self, selected, final=False, close_fault=False):
+    def token_fixture(self, selected, final=False, close_fault=False, restriction=None):
         seen = []
         prefix = 'tf-' if final else 'ti-'
 
@@ -55,8 +55,9 @@ class PythonTokenTest(unittest.TestCase):
                 return 0
             if selected == stage + '-length':
                 returned._obj.value = 2
-            if selected == 'restrictions-len1' and kind == 21:
-                returned._obj.value = 1
+            if restriction is not None and kind == 21:
+                returned._obj.value, value._obj.value, success = restriction
+                return success
             if selected == 'primary-fields' and kind == 20:
                 value._obj.value = 1
             return 1
@@ -119,7 +120,7 @@ class PythonTokenTest(unittest.TestCase):
         return lambda: self.probe['token_controls'](trusted, final=final), seen, prefix
 
     def test_existing_token_predicates_keep_first_failure_and_occurrence(self):
-        tested = STAGES[6:29]
+        tested = tuple(stage for stage in STAGES[6:29] if stage != 'restrictions-len1')
         for final in (False, True):
             for selected in tested:
                 operation, seen, prefix = self.token_fixture(selected, final)
@@ -134,6 +135,39 @@ class PythonTokenTest(unittest.TestCase):
             operation()
             self.assertEqual(seen, ['open', 'type', 'elevation', 'restrictions', 'lpac', 'app', 'caps',
                                     'traversal', 'priv', 'groups', 'sid', 'close'])
+
+    def test_restrictions_decode_only_the_successful_returned_span(self):
+        cases = [
+            (1, 1, 1, None), (1, 0xAABBCC01, 1, None), (4, 1, 1, None),
+            (1, 0, 1, 'primary-fields'), (1, 2, 1, 'primary-fields'),
+            (1, 255, 1, 'primary-fields'), (4, 0x10001, 1, 'primary-fields'),
+            (4, 0xAABBCC01, 1, 'primary-fields'), (4, 0, 1, 'primary-fields'),
+        ]
+        cases += [(length, 1, 1, 'restrictions-length') for length in (0, 2, 3, 5, 0xFFFFFFFF)]
+        cases += [(length, 1, 0, 'restrictions-query') for length in (1, 4)]
+        real = ctypes.string_at
+        for final in (False, True):
+            for length, value, success, refused in cases:
+                operation, seen, prefix = self.token_fixture(None, final, restriction=(length, value, success))
+                reads = []
+
+                def read(pointer, count):
+                    reads.append(count)
+                    self.assertIn(count, (1, 4))
+                    return real(pointer, count)
+
+                self.scope['ctypes'] = SimpleNamespace(**dict(vars(ctypes), string_at=read))
+                with self.subTest(final=final, length=length, value=value, success=success):
+                    if refused is None:
+                        operation()
+                        self.assertEqual(seen[-1], 'close')
+                    else:
+                        with self.assertRaises(self.probe['Failure']) as caught:
+                            operation()
+                        self.assertEqual(caught.exception.events, ((prefix + refused, 'control'),))
+                        self.assertEqual(seen[-1], 'close')
+                    self.assertEqual(reads, [length] if success and length in (1, 4) else [])
+                self.scope['ctypes'] = ctypes
 
     def test_actual_preamble_stops_at_each_existing_boundary(self):
         real_ctypes = ctypes
@@ -196,21 +230,21 @@ class PythonTokenTest(unittest.TestCase):
 
     def test_operation_close_and_report_failures_remain_fatal(self):
         for final in (False, True):
-            operation, seen, prefix = self.token_fixture('restrictions-len1', final, close_fault=True)
+            operation, seen, prefix = self.token_fixture('restrictions-length', final, close_fault=True)
             with self.assertRaises(self.probe['Failure']) as caught:
                 operation()
-            self.assertEqual(caught.exception.events, ((prefix + 'restrictions-len1', 'control'), ('close', 'cleanup')))
+            self.assertEqual(caught.exception.events, ((prefix + 'restrictions-length', 'control'), ('close', 'cleanup')))
             self.assertIsNone(caught.exception.child_exit)
             self.assertEqual(seen[-1], 'close')
             self.assertNotIn('private', self.probe['failure_wire'](caught.exception, 'primary'))
-            operation, _, prefix = self.token_fixture('restrictions-len1', final)
+            operation, _, prefix = self.token_fixture('restrictions-length', final)
 
             def refused(_text):
                 raise OSError('private-report-sentinel')
 
             with self.assertRaises(self.probe['Failure']) as caught:
                 self.probe['entry'](operation, refused, 'primary')
-            self.assertEqual(caught.exception.events, ((prefix + 'restrictions-len1', 'control'), ('report', 'other')))
+            self.assertEqual(caught.exception.events, ((prefix + 'restrictions-length', 'control'), ('report', 'other')))
             self.assertIsNone(caught.exception.child_exit)
 
     def test_closed_phases_descendant_retention_and_transport_limits(self):

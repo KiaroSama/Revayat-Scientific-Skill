@@ -302,10 +302,12 @@ def token_controls(trusted, final=False):
             value, returned = w.DWORD(), w.DWORD()
             require(a.GetTokenInformation(token, kind, ctypes.byref(value), 4, ctypes.byref(returned)))
             PHASE = prefix + stage + '-length'
-            if kind == 21 and returned.value == 1:
-                PHASE = prefix + 'restrictions-len1'
-            require(returned.value == 4)
-            values.append(value.value)
+            if kind == 21:
+                require(returned.value in (1, 4))
+                values.append(int.from_bytes(ctypes.string_at(ctypes.byref(value), returned.value), 'little'))
+            else:
+                require(returned.value == 4)
+                values.append(value.value)
         PHASE = prefix + 'primary-fields'
         require_token_fields(*values)
         PHASE = prefix + 'lpac-query'
