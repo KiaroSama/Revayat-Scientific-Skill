@@ -5,7 +5,6 @@ import errno
 import json
 import os
 from pathlib import Path
-import socket
 import subprocess
 import sys
 import time
@@ -485,6 +484,7 @@ def run():
         winreg.CloseKey(key)
         raise AssertionError('LPAC registry write was permitted')
 
+    import socket
     for family, address in ((socket.AF_INET, '127.0.0.1'), (socket.AF_INET6, '::1')):
         for kind, port in ((socket.SOCK_STREAM, int(sys.argv[4])), (socket.SOCK_DGRAM, int(sys.argv[5]))):
             with socket.socket(family, kind) as client:

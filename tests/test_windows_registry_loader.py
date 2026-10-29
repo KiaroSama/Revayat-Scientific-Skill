@@ -9,6 +9,64 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RegistryLoaderTest(unittest.TestCase):
+    def test_reusable_kernel_helpers_do_not_initialize_network(self):
+        import ast
+        import ctypes
+        import ctypes.wintypes
+        source = (ROOT / 'tests/security/windows/KernelProbe.py').read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        run = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run')
+        imports = [node for node in ast.walk(tree) if isinstance(node, ast.Import)
+                   and any(alias.name == 'socket' for alias in node.names)]
+        self.assertEqual(len(imports), 1)
+        index = run.body.index(imports[0])
+        network = run.body[index + 1]
+        self.assertIsInstance(network, ast.For)
+        self.assertIn('socket.AF_INET6', ast.get_source_segment(source, network))
+        self.assertIn("error.winerror == 10013", ast.get_source_segment(source, network))
+        self.assertIn('client.settimeout(1)', ast.get_source_segment(source, network))
+        attempts = []
+
+        class Declaration:
+            def __call__(self, *args, **kwargs):
+                raise AssertionError('Native declarations must not execute')
+
+        class Library:
+            def __init__(self):
+                self.functions = {}
+            def __getattr__(self, name):
+                return self.functions.setdefault(name, Declaration())
+
+        def ctypes_value(name):
+            if name == 'WinDLL':
+                return lambda *args, **kwargs: Library()
+            return getattr(ctypes, name)
+
+        fake = SimpleNamespace(**{name: ctypes_value(name) for name in
+                                  ('Structure', 'c_void_p', 'c_size_t', 'c_longlong', 'c_ulonglong',
+                                   'POINTER', 'WinDLL')}, wintypes=ctypes.wintypes)
+
+        def importer(name, *args, **kwargs):
+            if name == 'socket':
+                attempts.append(name)
+                raise ImportError('fixed network initialization refusal')
+            if name == 'ctypes':
+                return fake
+            if name == 'ctypes.wintypes':
+                return fake
+            return builtins.__import__(name, *args, **kwargs)
+
+        namespace = {'__name__': 'fixed-helper-import',
+                     '__builtins__': dict(vars(builtins), __import__=importer)}
+        exec(compile(source, 'fixed-kernel-helper', 'exec'), namespace)
+        self.assertEqual(attempts, [])
+        self.assertTrue(callable(namespace['require_detached_stdio']))
+        self.assertTrue(callable(namespace['token_controls']))
+        seam = ast.Module(body=[imports[0], network], type_ignores=[])
+        with self.assertRaisesRegex(ImportError, 'fixed network initialization refusal'):
+            exec(compile(seam, 'fixed-network-import', 'exec'), namespace)
+        self.assertEqual(attempts, ['socket'])
+
     def test_original_receipt_precedes_fixed_loader_effects(self):
         source = (ROOT / 'tests/security/windows/RegistryAuthorityProbe.py').read_text(encoding='utf-8')
         code = compile(source, 'fixed-registry-authority', 'exec')
