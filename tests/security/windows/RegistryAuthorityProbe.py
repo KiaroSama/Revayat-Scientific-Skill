@@ -503,14 +503,26 @@ def main():
         sys.stdout.flush()
         return
     PHASE = 'descendant'
+    transport = runpy.run_path(str(Path(__file__).with_name('RegistryDescendant.py')))
     try:
-        child = subprocess.run([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__).resolve()), '--descendant'],
-                               stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', errors='strict',
-                               timeout=5, creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
-                               close_fds=True, env=dict(os.environ), cwd=str(Path(sys.executable).parent))
-    except subprocess.TimeoutExpired as error:
-        original = bootstrap_evidence(error.stderr, 'descendant') or ()
-        raise Failure(original + (('descendant', 'timeout'),), original=error) from None
+        child = transport['run']()
+    except transport['CaptureFailure'] as error:
+        try:
+            receipt = bootstrap_evidence(bytes(error.stderr), 'descendant') or ()
+            if not receipt and error.code is not None:
+                try:
+                    from types import SimpleNamespace
+                    captured = bytes(error.stderr).decode('ascii', errors='strict')
+                    descendant_result(SimpleNamespace(returncode=error.code, stdout='', stderr=captured))
+                except Failure as diagnostic:
+                    receipt = diagnostic.events
+                except UnicodeError:
+                    pass
+            events = receipt + (failure(error.original, 'descendant').events if error.original is not None else ())
+            events += (('close', 'cleanup'),) * len(error.cleanup)
+            raise Failure(events[:8], error.code, error) from None
+        finally:
+            error.stderr[:] = b'\0' * len(error.stderr)
     complete_descendant(child, result, sys.stdout)
 
 

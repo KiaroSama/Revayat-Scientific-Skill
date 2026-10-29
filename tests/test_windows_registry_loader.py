@@ -207,16 +207,19 @@ class RegistryLoaderTest(unittest.TestCase):
                              ','.join(phase + ':' + kind for phase, kind in expected_events) + '\n')
             self.assertEqual(reports, [expected_wire])
             self.assertNotIn('private', reports[0])
-        error = subprocess.TimeoutExpired('private-command', 5, stderr=first.encode('ascii'))
-        def timeout(*args, **kwargs):
-            self.assertEqual(kwargs['timeout'], 5)
-            self.assertTrue(kwargs['close_fds'])
-            raise error
+        import runpy
+        adapter = runpy.run_path(str(ROOT / 'tests/security/windows/RegistryDescendant.py'))
+        error = TimeoutError('private-command')
+        captured = adapter['CaptureFailure'](error, (), None, first.encode('ascii'))
+        def timeout():
+            raise captured
         operation = probe['main']
         environment = operation.__globals__
+        def load(path):
+            self.assertEqual(Path(path).name, 'RegistryDescendant.py')
+            return dict(adapter, run=timeout)
         replacements = {'controls': lambda: {}, 'sys': SimpleNamespace(argv=['fixed.py'], executable=str(ROOT / 'python.exe')),
-                        'subprocess': SimpleNamespace(run=timeout, TimeoutExpired=subprocess.TimeoutExpired,
-                                                      DEVNULL=subprocess.DEVNULL, DETACHED_PROCESS=8, CREATE_NO_WINDOW=0x08000000)}
+                        'runpy': SimpleNamespace(run_path=load)}
         original = {key: environment[key] for key in replacements}
         try:
             environment.update(replacements)
@@ -224,7 +227,9 @@ class RegistryLoaderTest(unittest.TestCase):
                 operation()
         finally:
             environment.update(original)
-        self.assertIs(caught.exception.original, error)
+        self.assertIs(caught.exception.original, captured)
+        self.assertIs(captured.original, error)
+        self.assertEqual(captured.stderr, b'\0' * len(first.encode('ascii')))
         self.assertIsNone(caught.exception.child_exit)
         wire = probe['failure_wire'](caught.exception, 'primary')
         self.assertEqual(wire, 'REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=import-ctypes:import-ctypes-native,descendant:timeout\n')
