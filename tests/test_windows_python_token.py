@@ -24,7 +24,7 @@ class PythonTokenTest(unittest.TestCase):
         self.probe = runpy.run_path(str(WINDOWS / 'RegistryAuthorityProbe.py'))
         self.scope = self.probe['token_controls'].__globals__
 
-    def token_fixture(self, selected, final=False, close_fault=False, restriction=None):
+    def token_fixture(self, selected, final=False, close_fault=False, restriction=None, privileges=None, privilege_length=None):
         seen = []
         prefix = 'tf-' if final else 'ti-'
 
@@ -34,17 +34,18 @@ class PythonTokenTest(unittest.TestCase):
         class Privilege(ctypes.Structure):
             _fields_ = [('luid', Luid), ('attributes', ctypes.c_uint32)]
 
+        self.assertEqual(ctypes.sizeof(Luid), 8)
+        self.assertEqual(ctypes.sizeof(Privilege), 12)
+
         class SidAttributes(ctypes.Structure):
             _fields_ = [('sid', ctypes.c_void_p), ('attributes', ctypes.c_uint32)]
 
         class Groups(ctypes.Structure):
             _fields_ = [('count', ctypes.c_uint32), ('first', SidAttributes)]
 
-        class Function:
-            def __init__(self, call):
-                self.call = call
-            def __call__(self, *args):
-                return self.call(*args)
+        class Authority:
+            def __getattr__(self, _name):
+                raise AssertionError('Traversal resolver must not be accessed')
 
         def query(_token, kind, value, _capacity, returned):
             stage = {8: 'type', 20: 'elevation', 21: 'restrictions'}[kind]
@@ -71,11 +72,14 @@ class PythonTokenTest(unittest.TestCase):
                 value = (0 if selected == 'app-value' else 1) if kind == 29 else (1 if selected == 'caps-value' else 0)
                 return bytearray(value.to_bytes(4, 'little'))
             if kind == 3:
-                count = 129 if selected == 'priv-count' else 1
-                result = bytearray(4 + ctypes.sizeof(Privilege))
+                entries = [(24 if selected == 'priv-value' else 23, 0, 0)] if privileges is None else privileges
+                count = 129 if selected == 'priv-count' else len(entries)
+                result = bytearray(4 + len(entries) * ctypes.sizeof(Privilege))
                 result[:4] = count.to_bytes(4, 'little')
-                Privilege.from_buffer(result, 4).luid.low = 24 if selected == 'priv-value' else 23
-                return result
+                for index, (low, high, attributes) in enumerate(entries):
+                    item = Privilege.from_buffer(result, 4 + index * ctypes.sizeof(Privilege))
+                    item.luid.low, item.luid.high, item.attributes = low, high, attributes
+                return result if privilege_length is None else result[:privilege_length]
             count = 257 if selected == 'groups-count' else 1
             result = bytearray(Groups.first.offset + ctypes.sizeof(SidAttributes))
             result[:4] = count.to_bytes(4, 'little')
@@ -94,11 +98,6 @@ class PythonTokenTest(unittest.TestCase):
                 raise AssertionError('private-lpac-sentinel')
             return selected != 'lpac-value'
 
-        def traverse(_system, _name, luid):
-            seen.append('traversal')
-            luid._obj.low = 23
-            return selected != 'traversal'
-
         def sid(_value):
             seen.append('sid')
             if selected == 'sid-read':
@@ -112,15 +111,16 @@ class PythonTokenTest(unittest.TestCase):
             return 1
 
         self.scope['w'] = SimpleNamespace(DWORD=ctypes.c_uint32, LPCWSTR=object())
-        trusted = {'A': SimpleNamespace(OpenProcessToken=opened, GetTokenInformation=query,
-                                        LookupPrivilegeValueW=Function(traverse)),
+        authority = Authority()
+        authority.OpenProcessToken, authority.GetTokenInformation = opened, query
+        trusted = {'A': authority,
                    'K': SimpleNamespace(GetCurrentProcess=lambda: 1, CloseHandle=close),
                    'lpac_enabled': lpac, 'token_data': data, 'sid_text': sid,
                    'Luid': Luid, 'Privilege': Privilege, 'Groups': Groups, 'SidAttributes': SidAttributes}
         return lambda: self.probe['token_controls'](trusted, final=final), seen, prefix
 
     def test_existing_token_predicates_keep_first_failure_and_occurrence(self):
-        tested = tuple(stage for stage in STAGES[6:29] if stage != 'restrictions-len1')
+        tested = tuple(stage for stage in STAGES[6:29] if stage not in ('restrictions-len1', 'traversal'))
         for final in (False, True):
             for selected in tested:
                 operation, seen, prefix = self.token_fixture(selected, final)
@@ -134,7 +134,27 @@ class PythonTokenTest(unittest.TestCase):
             operation, seen, _ = self.token_fixture(None, final)
             operation()
             self.assertEqual(seen, ['open', 'type', 'elevation', 'restrictions', 'lpac', 'app', 'caps',
-                                    'traversal', 'priv', 'groups', 'sid', 'close'])
+                                    'priv', 'groups', 'sid', 'close'])
+
+    def test_privileges_require_full_canonical_identity_without_a_resolver(self):
+        cases = [([], None, None)] + [([(23, 0, flags)], None, None) for flags in (0, 2, 0xFFFFFFFF)]
+        cases += [([(low, high, 0)], None, 'priv-value')
+                  for low, high in ((0, 0), (22, 0), (24, 0), (0xFFFFFFFF, 0), (23, 1), (23, -1))]
+        cases += [(entries, None, 'priv-value') for entries in
+                  ([(23, 0, 0), (24, 0, 0)], [(24, 0, 0), (23, 0, 0)])]
+        cases += [([(23, 0, 0)], length, 'priv-count') for length in (4, 15)]
+        for final in (False, True):
+            for entries, length, refused in cases:
+                operation, seen, prefix = self.token_fixture(None, final, privileges=entries, privilege_length=length)
+                with self.subTest(final=final, entries=entries, length=length):
+                    if refused is None:
+                        operation()
+                    else:
+                        with self.assertRaises(self.probe['Failure']) as caught:
+                            operation()
+                        self.assertEqual(caught.exception.events, ((prefix + refused, 'control'),))
+                    self.assertEqual(seen[-1], 'close')
+                    self.assertNotIn('traversal', seen)
 
     def test_restrictions_decode_only_the_successful_returned_span(self):
         cases = [

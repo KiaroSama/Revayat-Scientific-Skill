@@ -162,6 +162,7 @@ except Exception as error:
 P = ctypes.c_void_p
 KEY = r'\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide'
 DENIED = 0xC0000022
+SE_CHANGE_NOTIFY_PRIVILEGE = (23, 0)
 PHASE = 'start'
 PHASES = ('start', 'token', 'root', 'mutation', 'inventory', 'identity', 'close', 'descendant', 'report',
           'import-ctypes', 'import-ctypes-wintypes', 'import-json', 'import-os', 'import-pathlib',
@@ -322,10 +323,6 @@ def token_controls(trusted, final=False):
         data = trusted['token_data'](token, 30)
         PHASE = prefix + 'caps-value'
         require(w.DWORD.from_buffer(data).value == 0)
-        PHASE = prefix + 'traversal'
-        a.LookupPrivilegeValueW.argtypes = [w.LPCWSTR, w.LPCWSTR, ctypes.POINTER(trusted['Luid'])]
-        traverse = trusted['Luid']()
-        require(a.LookupPrivilegeValueW(None, 'SeChangeNotifyPrivilege', ctypes.byref(traverse)))
         PHASE = prefix + 'priv-read'
         data = trusted['token_data'](token, 3)
         PHASE = prefix + 'priv-count'
@@ -334,7 +331,7 @@ def token_controls(trusted, final=False):
         for index in range(count):
             PHASE = prefix + 'priv-value'
             item = trusted['Privilege'].from_buffer(data, 4 + index * stride)
-            require((item.luid.low, item.luid.high) == (traverse.low, traverse.high))
+            require((item.luid.low, item.luid.high) == SE_CHANGE_NOTIFY_PRIVILEGE)
         PHASE = prefix + 'groups-read'
         data = trusted['token_data'](token, 2)
         PHASE = prefix + 'groups-count'

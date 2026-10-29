@@ -276,8 +276,11 @@ class DiagnosticOrderTest(unittest.TestCase):
                          sorted(controls.index(anchor) for anchor in anchors))
         host = (windows / 'TokenPolicy.cs').read_text(encoding='utf-8')
         self.assertIn('LookupPrivilegeValueW(null, "SeChangeNotifyPrivilege", out traverse)', host)
-        for name in ('KernelProbe.py', 'RegistryAuthorityProbe.py'):
-            self.assertIn('LookupPrivilegeValueW', (windows / name).read_text(encoding='utf-8'))
+        self.assertIn('LookupPrivilegeValueW', (windows / 'KernelProbe.py').read_text(encoding='utf-8'))
+        authority = (windows / 'RegistryAuthorityProbe.py').read_text(encoding='utf-8')
+        self.assertNotIn('LookupPrivilegeValueW', authority)
+        self.assertIn('SE_CHANGE_NOTIFY_PRIVILEGE = (23, 0)', authority)
+        self.assertIn('(item.luid.low, item.luid.high) == SE_CHANGE_NOTIFY_PRIVILEGE', authority)
 
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
