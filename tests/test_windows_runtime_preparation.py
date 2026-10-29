@@ -108,6 +108,30 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertNotIn('CanaryPolicy(', capture)
         self.assertIn("(Join-Path $PSScriptRoot 'SxsCanaryOwner.cs')", controller)
 
+    def test_successful_consumer_requires_independent_trace_control(self):
+        windows = ROOT / 'tests/security/windows'
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        for name in ('SxsTraceControl.cs', 'SxsTraceControlValidation.cs', 'SxsTraceSuccess.cs'):
+            self.assertIn("(Join-Path $PSScriptRoot '" + name + "')", controller)
+        self.assertIn('[ScientificSecurity.StartupActivationAccess]::CheckTraceControlValidation()', controller)
+        capture = (windows / 'SxsTraceCapture.cs').read_text(encoding='utf-8')
+        self.assertIn('Execute(operation, capture.Collect,', capture)
+        self.assertIn('if (completed) try { control(); qualified = true; }', capture)
+        self.assertIn('if (stopped && (!completed || qualified)) try { parse(qualified); }', capture)
+        self.assertIn('SxsTraceEvidence.ReadSuccess(text, manifest, Path.Combine(folder, "collector.manifest"))', capture)
+        self.assertIn('SxsTraceEvidence.Read(text, manifest)', capture)
+        control = (windows / 'SxsTraceControl.cs').read_text(encoding='utf-8')
+        self.assertIn('handle == Native.InvalidHandle && error == 14001', control)
+        self.assertIn('RequirePreparationHost(); ActCtx context = TraceControlContext(path);', control)
+        self.assertIn('SxsTraceCapture.RequireCollector(path)', control)
+        self.assertIn('ModuleActivationFixture.Same((FileStream)held, bytes)', control)
+        for forbidden in ('ActivateActCtx(', 'LoadLibrary', 'CreateProcess', 'SetSecurity', 'StartTrace', 'ControlTrace'):
+            self.assertNotIn(forbidden, control)
+        success = (windows / 'SxsTraceSuccess.cs').read_text(encoding='utf-8')
+        self.assertIn('SxsTraceEvidence.DecodeLines(bytes)', success)
+        self.assertIn('Need(!inside && controls == 1, "final")', success)
+        self.assertIn('child_visibility_claimed=False', success)
+
     def test_rust_authority_keeps_python_diagnostic_separate(self):
         windows = ROOT / 'tests/security/windows'
         controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')

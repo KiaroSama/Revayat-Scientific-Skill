@@ -15,7 +15,7 @@ namespace ScientificSecurity
         static SxsTraceCapture current, prepared;
         readonly string run, state, folder, python, package;
         readonly StorageLifecycle storage = new StorageLifecycle();
-        bool attempted, bound;
+        bool attempted, bound, collectorAttempted;
         sealed class StorageLifecycle
         {
             bool attempted, ready, sealAttempted, sealedStorage, entered;
@@ -54,11 +54,16 @@ namespace ScientificSecurity
         static Exception Combine(Exception first, Exception later)
         { return first == null ? later : later == null ? first : new AggregateException("fixed SxS operation/finalization failed", first, later); }
         internal static void Execute(Action operation, Action stop, Action parse)
+        { Execute(operation, () => { }, stop, _ => parse()); }
+        internal static void Execute(Action operation, Action control, Action stop, Action<bool> parse)
         {
-            Exception primary = null; bool stopped = false;
-            try { operation(); } catch (Exception error) { primary = error; }
+            Exception primary = null; bool completed = false, qualified = false, stopped = false;
+            try { operation(); completed = true; } catch (Exception error) { primary = error; }
+            if (completed) try { control(); qualified = true; }
+                catch (Exception error) { primary = SxsTraceSession.Safe(error, "collector-control"); }
             try { stop(); stopped = true; } catch (Exception error) { primary = Combine(primary, SxsTraceSession.Safe(error, "stop")); }
-            if (stopped) try { parse(); } catch (Exception error) { primary = Combine(primary, SxsTraceSession.Safe(error, "parse")); }
+            if (stopped && (!completed || qualified)) try { parse(qualified); }
+                catch (Exception error) { primary = Combine(primary, SxsTraceSession.Safe(error, "parse")); }
             if (primary != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primary).Throw();
         }
         internal static void Acquired(Func<IDisposable> acquire, Action initialize, Action execute)
@@ -103,9 +108,9 @@ namespace ScientificSecurity
                         capture = prepared; capture.Matches(run, state, volume, python, package);
                         capture.storage.Enter(capture.RequireStorage); current = capture;
                     }),
-                    () => Execute(operation,
+                    () => Execute(operation, capture.Collect,
                         () => SxsTraceSession.Stop(run, state, StarterReaped, capture.bound),
-                        () => { if (capture.bound) capture.Parse(); }));
+                        success => { if (capture.bound) capture.Parse(success); }));
             }
             finally { if (capture != null && Object.ReferenceEquals(current, capture)) current = null; }
         }
@@ -232,11 +237,12 @@ namespace ScientificSecurity
             catch (Exception error) { throw SxsTraceSession.Safe(error, "storage-prepare"); }
         }
         static void WriteCanary(Func<Stream> create, Action<Stream> flush)
+        { WriteFixed(create, flush, Encoding.UTF8.GetBytes("fixed SxS host control")); }
+        internal static void WriteFixed(Func<Stream> create, Action<Stream> flush, byte[] bytes)
         {
             Stream stream = null; Exception primary = null;
             try {
                 stream = create(); Need(stream != null);
-                byte[] bytes = Encoding.UTF8.GetBytes("fixed SxS host control");
                 stream.Write(bytes, 0, bytes.Length); flush(stream);
             }
             catch (Exception error) { primary = error; throw; }
@@ -353,7 +359,26 @@ namespace ScientificSecurity
                 throw SxsTraceSession.Safe(error, label + (policy == null ? "" : " policy_predicate=" + PolicyName(policy.Predicate)));
             }
         }
-        void Parse()
+        internal static void RequireCollector(string path)
+        {
+            Need(current != null && current.bound && current.collectorAttempted &&
+                String.Equals(path, Path.Combine(current.folder, "collector.manifest"), StringComparison.Ordinal));
+            SxsTraceSession.Plain(current.folder);
+        }
+        void Collect()
+        {
+            Need(bound && !collectorAttempted); collectorAttempted = true;
+            string path = Path.Combine(folder, "collector.manifest");
+            StartupActivationAccess.ObserveTraceControl(run, path, bytes => {
+                SxsTraceSession.Plain(path, true); Need(!SxsTraceSession.Exists(path));
+                using (WindowsIdentity host = WindowsIdentity.GetCurrent()) {
+                    SxsCanaryOwner.Run(host.User, () => WriteFixed(
+                        () => new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None),
+                        stream => ((FileStream)stream).Flush(true), bytes));
+                }
+            }, () => RequirePolicy(path, false));
+        }
+        void Parse(bool success)
         {
             AtParse(ParseStage.EtlPolicy, () => RequirePolicy(Path.Combine(folder, "capture.etl"), false));
             AtParse(ParseStage.EtlLength, () => SxsTraceEvidence.RequireLength(Path.Combine(folder, "capture.etl"), 8388608));
@@ -371,7 +396,11 @@ namespace ScientificSecurity
             AtParse(ParseStage.ParseTool, () => TrustedSetup.RunSxsTrace(folder, true, () => 10 - clock.Elapsed.TotalSeconds));
             AtParse(ParseStage.TextPolicy, () => RequirePolicy(Path.Combine(folder, "capture.txt"), false));
             string evidence = null;
-            AtParse(ParseStage.TextRead, () => evidence = SxsTraceEvidence.Read(Path.Combine(folder, "capture.txt"), Path.Combine(Path.GetDirectoryName(python), "DLLs", "_ctypes.pyd")));
+            AtParse(ParseStage.TextRead, () => {
+                string text = Path.Combine(folder, "capture.txt"), manifest = Path.Combine(Path.GetDirectoryName(python), "DLLs", "_ctypes.pyd");
+                evidence = success ? SxsTraceEvidence.ReadSuccess(text, manifest, Path.Combine(folder, "collector.manifest")) :
+                    SxsTraceEvidence.Read(text, manifest);
+            });
             AtParse(ParseStage.EvidenceOutput, () => { Console.Out.WriteLine(evidence); Console.Out.Flush(); });
         }
         static FileSystemSecurity PolicyFixture(bool directory, int corruption, string owner, string package)

@@ -59,7 +59,7 @@ namespace ScientificSecurity
             }
             catch { return original; }
         }
-        static bool KnownDependency(string identity)
+        internal static bool KnownDependency(string identity)
         {
             try { return Dependency.IsMatch(identity); }
             catch (RegexMatchTimeoutException error) { throw SxsTraceSession.Safe(error, "evidence-regex"); }
@@ -149,7 +149,15 @@ namespace ScientificSecurity
             RequireLength(path, 1048576);
             return ReadOwned(() => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), manifest);
         }
+        internal static string ReadSuccess(string path, string manifest, string control)
+        {
+            RequireLength(path, 1048576);
+            return ReadOwned(() => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read),
+                bytes => SxsTraceSuccess.Parse(bytes, manifest, control));
+        }
         static string ReadOwned(Func<Stream> open, string manifest)
+        { return ReadOwned(open, bytes => Parse(bytes, manifest)); }
+        static string ReadOwned(Func<Stream> open, Func<byte[], string> parse)
         {
             Stream file = null; byte[] bytes = null; Exception primary = null;
             try {
@@ -160,7 +168,7 @@ namespace ScientificSecurity
                     int n = file.Read(bytes, offset, bytes.Length - offset);
                     Check(n > 0 && n <= bytes.Length - offset, Predicate.ReadComplete); offset += n;
                 }
-                return Parse(bytes, manifest);
+                return parse(bytes);
             }
             catch (Exception error) { primary = error; throw; }
             finally {
@@ -173,7 +181,7 @@ namespace ScientificSecurity
                 }
             }
         }
-        internal static string Parse(byte[] bytes, string manifest)
+        internal static string[] DecodeLines(byte[] bytes)
         {
             Func<long> length = bytes == null ? (Func<long>)null : () => bytes.Length;
             try { RequireSize(length, 1048576, LengthPhase.InputShape); }
@@ -195,6 +203,11 @@ namespace ScientificSecurity
             string[] lines = text.Replace("\r\n", "\n").Split('\n');
             Check(lines.Length <= 4096, Predicate.LineCount);
             foreach (string line in lines) { Check(line.Length <= 2048, Predicate.LineWidth); Check(!line.Contains('\r'), Predicate.Cr); }
+            return lines;
+        }
+        internal static string Parse(byte[] bytes, string manifest)
+        {
+            string[] lines = DecodeLines(bytes);
             bool inside = false, selected = false, unresolved = false, denied = false, malformed = false, failed = false;
             bool common = false, crt = false, unsupported = false; int blocks = 0, matches = 0, manifestFields = 0;
             string result = null;
