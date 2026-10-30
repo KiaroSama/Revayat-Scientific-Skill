@@ -28,10 +28,16 @@ authenticate signatures or certify PDF conformance. No attachment is executed.
 Text and table output are UTF-8 **JSON**, regardless of output filename. Page
 numbers are one-based. Text stays in source stream order; this is not proof of
 logical Persian reading order. Compare against the rendered page before reordering.
-Tables include page, bounding box, rows, columns and cells. Detection is heuristic;
-empty results mean no table detected, not proof no table exists. Review merged
-cells, continued tables, footnotes, signs and units. Scanned tables may need OCR
-and manual reconstruction. Do not merge separate pages' tables without review.
+Tables include page, bounding box, rows, columns and cells. The helper explicitly
+uses line-based detection without layout gating and temporarily enables PyMuPDF's
+character-quad corrections so decimal glyphs stay with their values. The caller's
+correction setting is restored on success or failure, before report publication;
+cell text is not rewritten and columns are not filtered. This does not make PyMuPDF
+thread-safe; use separate processes rather than concurrent threads.
+Detection is heuristic; empty results mean no table detected, not proof no table
+exists. Review merged cells, continued tables, footnotes, signs and units. Scanned
+tables may need OCR and manual reconstruction. Do not merge separate pages' tables
+without review.
 
 Reports contain source text and form values. Keep them private to the translation
 job; do not send them to public logs or repositories.

@@ -156,6 +156,89 @@ class PdfOperationsTest(unittest.TestCase):
             self.assertEqual(images['placements'][0]['page'], 1)
             self.assertEqual(source.read_bytes(), original)
 
+    def test_table_decimals_and_grid_preserve_rotation_and_caller_settings(self):
+        pdf = helper()
+        import pymupdf
+        expected = [['Quantity', 'Value'], ['Temperature', '+23.5 C'],
+                    ['Potential', '-0.25 mV']]
+        saved = pymupdf.TOOLS.unset_quad_corrections()
+        try:
+            with tempfile.TemporaryDirectory(dir=SCRATCH, prefix='table settings ') as directory:
+                source, output = (Path(directory) / name for name in ('source.pdf', 'tables.json'))
+                with pymupdf.open() as document:
+                    for rotation in (0, 90):
+                        page = document.new_page(width=420, height=600)
+                        page.set_rotation(rotation)
+                        # Both pages display the same upright table despite stored rotation.
+                        matrix = page.derotation_matrix
+                        for x in (30, 180, 330):
+                            page.draw_line(pymupdf.Point(x, 60) * matrix,
+                                           pymupdf.Point(x, 210) * matrix)
+                        for y in (60, 110, 160, 210):
+                            page.draw_line(pymupdf.Point(30, y) * matrix,
+                                           pymupdf.Point(330, y) * matrix)
+                        for row, cells in enumerate(expected):
+                            for column, text in enumerate(cells):
+                                point = pymupdf.Point(40 + column * 150, 90 + row * 50)
+                                page.insert_text(point * matrix, text, rotate=rotation)
+                    document.save(source)
+                original = source.read_bytes()
+                for disabled in (False, True):
+                    with self.subTest(quad_corrections_disabled=disabled):
+                        pymupdf.TOOLS.unset_quad_corrections(disabled)
+                        pdf.extract_tables(source, output)
+                        self.assertEqual(pymupdf.TOOLS.unset_quad_corrections(), disabled)
+                        previous = output.read_bytes()
+                        with mock.patch.object(pymupdf.table.Table, 'extract',
+                                               side_effect=RuntimeError('injected cell extraction failure')):
+                            with self.assertRaisesRegex(RuntimeError, 'injected cell extraction failure'):
+                                pdf.extract_tables(source, output)
+                        self.assertEqual(pymupdf.TOOLS.unset_quad_corrections(), disabled)
+                        self.assertEqual(output.read_bytes(), previous)
+                        report = json.loads(output.read_text(encoding='utf-8'))
+                        self.assertEqual([page['page'] for page in report['pages']], [1, 2])
+                        for page in report['pages']:
+                            self.assertEqual(len(page['tables']), 1)
+                            table = page['tables'][0]
+                            self.assertEqual((table['row_count'], table['column_count']), (3, 2))
+                            self.assertEqual(table['cells'], expected)
+                        self.assertEqual(source.read_bytes(), original)
+                with pymupdf.open(source) as document:
+                    self.assertEqual([page.rotation for page in document], [0, 90])
+                self.assertFalse(list(Path(directory).glob('.revayat-*')))
+        finally:
+            pymupdf.TOOLS.unset_quad_corrections(saved)
+
+    def test_table_failure_restores_settings_and_preserves_previous_output(self):
+        pdf = helper()
+        import pymupdf
+        saved = pymupdf.TOOLS.unset_quad_corrections()
+        try:
+            with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+                source, output = (Path(directory) / name for name in ('source.pdf', 'tables.json'))
+                form_fixture(source)
+                original = source.read_bytes()
+                output.write_bytes(b'previous approved output')
+
+                def fail_discovery(page, *args, **kwargs):
+                    self.assertFalse(pymupdf.TOOLS.unset_quad_corrections())
+                    raise RuntimeError('injected table discovery failure')
+
+                for disabled in (False, True):
+                    with self.subTest(quad_corrections_disabled=disabled):
+                        pymupdf.TOOLS.unset_quad_corrections(disabled)
+                        with mock.patch.object(pymupdf.Page, 'find_tables', autospec=True,
+                                               side_effect=fail_discovery) as finder:
+                            with self.assertRaisesRegex(RuntimeError, 'injected table discovery failure'):
+                                pdf.extract_tables(source, output)
+                            finder.assert_called_once()
+                        self.assertEqual(pymupdf.TOOLS.unset_quad_corrections(), disabled)
+                        self.assertEqual(source.read_bytes(), original)
+                        self.assertEqual(output.read_bytes(), b'previous approved output')
+                        self.assertFalse(list(Path(directory).glob('.revayat-*')))
+        finally:
+            pymupdf.TOOLS.unset_quad_corrections(saved)
+
     def test_merge_geometry_and_late_input_failure(self):
         pdf = helper()
         import pymupdf

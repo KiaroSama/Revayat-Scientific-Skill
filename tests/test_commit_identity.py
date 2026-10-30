@@ -48,6 +48,38 @@ class CommitIdentityTest(unittest.TestCase):
         self.commit();self.commit()
         self.assertEqual(IDENTITY.inspect_identities(self.root),(2,[]))
 
+    def test_exact_service_identities_pass_in_permitted_roles(self):
+        bot='49699333+dependabot[bot]@users.noreply.github.com'
+        service='noreply@github.com'
+        owner='Kiaro.Sama.Dev@gmail.com'
+        for author,committer in ((bot,owner),(owner,bot),(bot,bot),(owner,service),(bot,service)):
+            self.commit(author=author,committer=committer)
+        self.assertEqual(IDENTITY.inspect_identities(self.root),(5,[]))
+
+    def test_github_service_identity_is_committer_only(self):
+        first=self.commit(author='noreply@github.com')
+        second=self.commit(author='noreply@github.com',committer='noreply@github.com')
+        self.assertEqual(IDENTITY.inspect_identities(self.root),
+                         (2,[(second,('author',)),(first,('author',))]))
+
+    def test_service_names_lookalikes_and_mailmap_cannot_hide_other_role(self):
+        bot='49699333+dependabot[bot]@users.noreply.github.com'
+        self.environment.update(GIT_AUTHOR_NAME='dependabot[bot]',GIT_COMMITTER_NAME='GitHub')
+        (self.root/'.mailmap').write_text(
+            '<'+bot+'> <fixture-only@example.invalid>\n',encoding='utf-8')
+        expected={}
+        for address in ('fixture-only@example.invalid',
+                        '12345+other-bot[bot]@users.noreply.github.com',
+                        'dependabot[bot]@users.noreply.github.com',
+                        '49699333+dependabot[bot]@users.noreply.github.com.invalid',
+                        '49699333+DEPENDABOT[bot]@users.noreply.github.com',
+                        'noreply@github.com.invalid','NOREPLY@github.com'):
+            expected[self.commit(author=address,committer='noreply@github.com')]=('author',)
+            expected[self.commit(author=bot,committer=address)]=('committer',)
+        count,failures=IDENTITY.inspect_identities(self.root)
+        self.assertEqual(count,14)
+        self.assertEqual(dict(failures),expected)
+
     def test_author_and_committer_are_checked_independently(self):
         bad='fixture-only@example.invalid'
         first=self.commit(author=bad)

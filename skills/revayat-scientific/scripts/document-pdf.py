@@ -59,15 +59,22 @@ def extract_text(source, destination):
 
 
 def extract_tables(source, destination):
+    import pymupdf
     pages = []
-    with open_pdf(source) as document:
-        for page in document:
-            found = page.find_tables()
-            tables = [{'index': index, 'bbox': list(table.bbox),
-                       'row_count': table.row_count, 'column_count': table.col_count,
-                       'cells': table.extract()}
-                      for index, table in enumerate(found.tables)]
-            pages.append({'page': page.number + 1, 'tables': tables})
+    saved = pymupdf.TOOLS.unset_quad_corrections()
+    try:
+        # PyMuPDF 2 layout defaults disable corrections needed to group decimal glyphs.
+        pymupdf.TOOLS.unset_quad_corrections(False)
+        with open_pdf(source) as document:
+            for page in document:
+                found = page.find_tables(use_layout=False)
+                tables = [{'index': index, 'bbox': list(table.bbox),
+                           'row_count': table.row_count, 'column_count': table.col_count,
+                           'cells': table.extract()}
+                          for index, table in enumerate(found.tables)]
+                pages.append({'page': page.number + 1, 'tables': tables})
+    finally:
+        pymupdf.TOOLS.unset_quad_corrections(saved)
     write_report({'format': 'pdf-tables', 'detection': 'heuristic-review-required',
                   'pages': pages}, destination, (source,))
 
