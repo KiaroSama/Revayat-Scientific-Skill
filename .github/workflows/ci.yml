@@ -12,6 +12,24 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  status-pending:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.13'
+      - name: Publish pending job statuses
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/run-check.py --timeout 180 --idle-timeout 30 -- python -B tools/publish-ci-status.py pending
   security:
     uses: $/.github/workflows/security-ci.yml
   codeql:
@@ -233,3 +251,23 @@ jobs:
           python tools/run-check.py --timeout 120 --idle-timeout 60 -- zizmor --offline .github/workflows
       - name: Runtime and development dependency audit
         run: python tools/run-check.py --timeout 300 --idle-timeout 90 -- python -m pip_audit --strict --progress-spinner off -r skills/revayat-scientific/requirements.txt -r requirements-dev.txt
+  status-final:
+    if: ${{ always() }}
+    needs: [status-pending, security, codeql, dependency-review, portable, scientific, quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.13'
+      - name: Publish every validation job outcome
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/run-check.py --timeout 180 --idle-timeout 30 -- python -B tools/publish-ci-status.py final

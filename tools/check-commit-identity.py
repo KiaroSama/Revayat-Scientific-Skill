@@ -11,6 +11,11 @@ sys.path.insert(0, str(ROOT / 'skills/revayat-scientific/scripts'))
 from runtime import operation_log
 
 APPROVED_EMAIL = 'Kiaro.Sama.Dev@gmail.com'
+DEPENDABOT_EMAIL = '49699333+dependabot[bot]@users.noreply.github.com'
+APPROVED_ROLES = {
+    'author': frozenset((APPROVED_EMAIL, DEPENDABOT_EMAIL)),
+    'committer': frozenset((APPROVED_EMAIL, DEPENDABOT_EMAIL, 'noreply@github.com')),
+}
 
 
 def _git(repository, arguments):
@@ -46,7 +51,7 @@ def inspect_identities(repository, head='HEAD', base=None):
         if len(fields) != 3 or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', fields[0]):
             raise ValueError('malformed raw commit identity record')
         roles = [role for role, value in zip(('author', 'committer'), fields[1:])
-                 if value != APPROVED_EMAIL]
+                 if value not in APPROVED_ROLES[role]]
         if roles:
             failures.append((fields[0], tuple(roles)))
     return len(rows), failures
@@ -67,7 +72,7 @@ def main(argv=None):
                 logger.error('unapproved_identity commit=%s roles=%s', sha, ','.join(roles))
                 print(f'Unapproved commit identity: {sha} ({", ".join(roles)})', file=sys.stderr)
             logger.info('checked_commits=%d failing_commits=%d', count, len(failures))
-            print(f'Identity check: {count} commits, {len(failures)} mismatches; required email={APPROVED_EMAIL}')
+            print(f'Identity check: {count} commits, {len(failures)} mismatches; required owner email={APPROVED_EMAIL}; exact service roles permitted')
             return int(bool(failures))
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         print('Identity check unavailable: ' + type(error).__name__, file=sys.stderr)
