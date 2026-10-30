@@ -21,7 +21,6 @@
 <br>
 [![Codex, Claude Code and Cursor support](https://img.shields.io/badge/Agents-Codex%20%7C%20Claude%20Code%20%7C%20Cursor-287c91?style=flat-square)](docs/installation.md)
 [![GitHub stars](https://img.shields.io/github/stars/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/stargazers)
-[![Last main commit](https://img.shields.io/github/last-commit/KiaroSama/Revayat-Scientific-Skill/main?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/commits/main/)
 [![Support donations](https://img.shields.io/badge/Support-donations-d04a9a)](README.md#donate)
 
 </div>
