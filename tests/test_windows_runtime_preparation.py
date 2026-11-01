@@ -54,20 +54,43 @@ class DiagnosticOrderTest(unittest.TestCase):
             '[ScientificSecurity.CsrDispatchComparison]::Run(',
             '[ScientificSecurity.CsrDispatchComparison]::RunModule(',
             '[ScientificSecurity.CsrDispatchComparison]::RunPython(',
-            '[ScientificSecurity.AutomaticResourceComparison]::Run(',
             '$negativeBaselineExit = [ScientificSecurity.RegistryCausalComparison]::Run(',
-            '$preflightText = [ScientificSecurity.Sandbox]::Run(',
+            '[ScientificSecurity.RegistryCausalComparison]::RequireNegativeBaseline($negativeBaselineExit)',
             '[ScientificSecurity.PythonActivationPreparation]::RequireClean()',
             '[ScientificSecurity.CsrDispatchComparison]::RequireClean()',
-            '[ScientificSecurity.RegistryCausalComparison]::RequireNegativeBaseline($negativeBaselineExit)',
+            '$supportedPolicy = [ScientificSecurity.SupportedRegistryPolicy]::Begin(',
+            '[ScientificSecurity.AutomaticResourceComparison]::Run(',
+            '$preflightText = [ScientificSecurity.Sandbox]::Run(',
             "if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight')",
             '$wall = [ScientificSecurity.Sandbox]::Run(',
             '$regressionText = [ScientificSecurity.Sandbox]::Run(',
+            'try { $supportedPolicy.Dispose() }',
         )
         for anchor in anchors:
             self.assertEqual(controller.count(anchor), 1, 'Missing, duplicated or altered diagnostic/admission step')
         positions = [controller.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions), 'Python diagnostic cleanup must precede debugger controls without bypassing later gates')
+
+    def test_supported_policy_owns_admission_and_refuses_nested_trial(self):
+        windows = ROOT / 'tests/security/windows'
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        self.assertIn("(Join-Path $PSScriptRoot 'SupportedRegistryPolicy.cs')", controller)
+        self.assertIn('[ScientificSecurity.SupportedRegistryPolicy]::CheckValidation()', controller)
+        policy = (windows / 'SupportedRegistryPolicy.cs').read_text(encoding='utf-8')
+        self.assertLess(policy.index('Sandbox.ObserveRegistryAuthority('), policy.index('policy.qualified = true'))
+        self.assertIn('RegistryAuthorityComparison.RequireRootOnly(observation.wire)', policy)
+        self.assertIn('Finish(runs == 0 && !uncertain, lease.Dispose, lease.DeferRecovery', policy)
+        lease = (windows / 'RegistryPolicyLease.cs').read_text(encoding='utf-8')
+        self.assertIn('Need(!supportedActive);', lease)
+        sandbox = (windows / 'Sandbox.cs').read_text(encoding='utf-8')
+        self.assertIn('SupportedRegistryPolicy.EnterRun(moniker)', sandbox)
+        self.assertIn('supportedPolicy.EndRun(cleanupQualified)', sandbox)
+        companion = (windows / 'ExplicitEntryComparison.cs').read_text(encoding='utf-8')
+        self.assertNotIn('ManualActivationComparison.RunExplicitId2(', companion)
+        self.assertIn('SupportedRegistryPolicy.RequireReadable()', companion)
+        rust = (windows / 'registry-authority/src/registry.rs').read_text(encoding='utf-8')
+        self.assertIn('for access in [1, 8, 0x10, 0x20000]', rust)
+        self.assertNotIn('accessible +=', rust)
 
     def test_standard_trace_has_one_owned_lifecycle_and_outer_recovery(self):
         windows = ROOT / 'tests/security/windows'

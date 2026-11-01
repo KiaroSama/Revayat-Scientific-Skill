@@ -72,6 +72,12 @@ namespace ScientificSecurity
                 Need(count <= 256 && accessible <= count);
             }
         }
+        internal static void RequireRootOnly(string text)
+        {
+            ValidateSuccess(0, text, "");
+            foreach (string line in text.Replace("\r\n", "\n").Split('\n'))
+                if (line.Length != 0) Need(Wire.Match(line + "\n").Groups[1].Value == "0");
+        }
         internal static void Execute(Action observe, Func<Tuple<Action, Action>> begin, Action before, Action after, Action emit)
         {
             before(); var lease = begin(); bool clean = false; Exception primary = null;
@@ -249,6 +255,8 @@ namespace ScientificSecurity
             const string primary = "{\"accessible\":1,\"capabilities\":0,\"granted_access\":131097,\"lpac\":true,\"mutation_denied\":true,\"no_reparse\":true,\"read\":true,\"read_surface_approved\":false,\"restricted\":true,\"role\":\"primary\",\"subkeys\":2,\"version\":1,\"x64\":true}\n";
             string child = primary.Replace("\"primary\"", "\"descendant\"").Replace("\"accessible\":1", "\"accessible\":0").Replace("\"subkeys\":2", "\"subkeys\":0");
             ValidateWire(0, primary + child, "");
+            RequireRootOnly((primary + child).Replace("\"accessible\":1", "\"accessible\":0"));
+            bool overgrant = false; try { RequireRootOnly(primary + child); } catch (InvalidOperationException) { overgrant = true; } Need(overgrant);
             ValidateWire(0, (primary + child).Replace("\n", "\r\n"), "");
             ValidateWire(0, (primary + child).Replace("\"accessible\":1", "\"accessible\":256").Replace("\"subkeys\":2", "\"subkeys\":256"), "");
             foreach (string invalid in new [] { primary, child + primary, primary + primary, primary + child + "\n", (primary + child).Replace("\"mutation_denied\":true", "\"mutation_denied\":false"), (primary + child).Replace("\"accessible\":1", "\"accessible\":3"), (primary + child).Replace("\"subkeys\":2", "\"subkeys\":257"), (primary + child).Replace("\"read_surface_approved\":false", "\"read_surface_approved\":true"), (primary + child).Replace("\"read\":true", "\"read\":true,\"unknown\":0"), null, new string('x', 2049), (primary + child).Replace("\"accessible\":1", "\"accessible\":-1"), (primary + child).Replace("\"accessible\":1", "\"accessible\":01"), (primary + child).Replace("\"version\":1", "\"version\":2"), (primary + child).Replace("\"role\":\"descendant\"", "\"role\":\"descendánt\"") }) {

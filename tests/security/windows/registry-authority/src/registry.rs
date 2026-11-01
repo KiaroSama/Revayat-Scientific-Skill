@@ -1,5 +1,5 @@
 use crate::native::*;
-use crate::protocol::{DENIED, Failure, KEY, READ, Result, basic, denied, identity, need};
+use crate::protocol::{Failure, KEY, READ, Result, basic, denied, identity, need};
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
 
@@ -116,7 +116,7 @@ pub fn controls() -> Result<(u32, u32)> {
     }
     let before = counts(&root)?;
     let mut names: Vec<String> = Vec::new();
-    let mut accessible = 0;
+    let accessible = 0;
     for index in 0..=256 {
         deadline(start)?;
         let mut name = [0u16; 512];
@@ -153,14 +153,12 @@ pub fn controls() -> Result<(u32, u32)> {
         for prior in &names {
             need(!same_name(prior, &text)?, "inventory")?;
         }
-        let (status, child) = open(&text, READ, root.raw, start)?;
-        need(status == 0 || status == DENIED, "inventory")?;
-        if status == 0 {
-            qualify(&child, &format!("{KEY}\\{text}"))?;
-            accessible += 1;
-        } else {
-            need(child.raw.is_null(), "inventory")?;
+        for access in [1, 8, 0x10, 0x20000] {
+            let (status, child) = open(&format!("{KEY}\\{text}"), access, null_mut(), start)?;
+            need(denied(status, child.raw as usize), "inventory")?;
         }
+        let (status, child) = open(&text, READ, root.raw, start)?;
+        need(denied(status, child.raw as usize), "inventory")?;
         names.push(text);
     }
     need(

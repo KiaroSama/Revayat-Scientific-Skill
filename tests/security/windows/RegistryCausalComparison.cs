@@ -63,6 +63,12 @@ namespace ScientificSecurity
             int visit = 0; DateTime start = default(DateTime), end = default(DateTime);
             return AfterRestoration(() => Execute(expected => {
                 string condition = new [] { "original", "modified", "restored" }[visit++];
+                string explicitResult = Sandbox.ObserveManualActivation(python, root, scratch, powershell, chromium,
+                    moniker, profileFolder, tcpPort, udpPort, expected, SelfActivationRole.ExplicitId2);
+                if (expected == Denied) Need(explicitResult == "completed_wire=False exit=0xC0000022");
+                else SelfActivationFixture.Condition(condition, explicitResult, SelfActivationRole.ExplicitId2);
+                Console.Out.WriteLine("WINDOWS_EXPLICIT_ID2_POLICY condition=" + condition + " " + explicitResult + " process_job_handle_cleanup=True");
+                Console.Out.Flush();
                 string activation = ChildActivationFixture.RequireResult(Sandbox.ObserveActivation(python, root, scratch,
                     powershell, chromium, moniker, profileFolder, tcpPort, udpPort, expected));
                 uint exit = ObserveStartup(condition,
@@ -82,6 +88,8 @@ namespace ScientificSecurity
                             profileFolder, tcpPort, udpPort, expectedExit), RetainCallbackFailure),
                         line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
                     line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
+                if (expected == 0) Need(exit == 0 && activation ==
+                    "WINDOWS_CHILD_ACTIVATION created=True win32_error=0x00000000 cause_claimed=False child_equivalence_claimed=False");
                 Console.Out.WriteLine(Condition(condition, activation, exit));
                 Console.Out.Flush();
                 return new Observation { activation = activation, exit = exit };
@@ -94,7 +102,14 @@ namespace ScientificSecurity
         static uint ObserveSelf(string condition, Func<string> control, Func<uint> later, Action<string> emit)
         {
             string result = control(); // Result and cleanup must both finish before later module or Python observations.
-            emit(SelfActivationFixture.Condition(condition, result));
+            if (condition == "modified") {
+                Need(result == "WINDOWS_SELF_ACTIVATION entry_reached=True created=True win32_error=0x00000000");
+                emit(SelfActivationFixture.Condition(condition, result));
+            }
+            else {
+                Need(result == "completed_wire=False exit=0xC0000022");
+                emit("WINDOWS_SELF_ACTIVATION_NEGATIVE condition=" + condition + " " + result + " process_job_handle_cleanup=True");
+            }
             return later();
         }
         static void CheckSelfOrdering()
@@ -104,7 +119,7 @@ namespace ScientificSecurity
             uint exit = AfterRestoration(() => Execute(expected => {
                 string condition = new [] { "original", "modified", "restored" }[visits++];
                 uint code = ObserveStartup(condition, () => { order.Add(condition + ":default"); return "entry_observed=True exit=0x00000000"; },
-                    () => ObserveSelf(condition, () => { order.Add(condition + ":self-clean"); return success; },
+                    () => ObserveSelf(condition, () => { order.Add(condition + ":self-clean"); return condition == "modified" ? success : "completed_wire=False exit=0xC0000022"; },
                         () => { order.Add(condition + ":modules-ordinary"); return 0xC0000022; }, _ => order.Add(condition + ":self-emit")),
                     _ => order.Add(condition + ":default-emit"));
                 return new Observation { activation = ActivationDenied, exit = code };
@@ -122,7 +137,7 @@ namespace ScientificSecurity
                         string condition = ++observed == 1 ? "original" : "modified";
                         uint code = ObserveSelf(condition, () => {
                             if (observed == 2 && mode != 2) throw primary;
-                            return observed == 2 ? "private-sentinel" : success;
+                            return observed == 2 ? "private-sentinel" : "completed_wire=False exit=0xC0000022";
                         }, () => { later++; return 0xC0000022; }, _line => { });
                         return new Observation { activation = ActivationDenied, exit = code };
                     }, () => new Trial(() => restores++, () => deferred++), _line => { }), () => queries++);
@@ -143,10 +158,13 @@ namespace ScientificSecurity
             string id2 = null;
             foreach (bool manifest in new [] { false, true }) {
                 string result = control(manifest);
+                if (condition == "modified") Need(result.StartsWith(manifest ?
+                    "entry_observed=True association_proved=True exit=0x00000000 " :
+                    "entry_observed=True association_proved=", StringComparison.Ordinal));
                 emit(ModuleActivationFixture.Condition(condition, manifest, result));
                 if (manifest) id2 = result;
             }
-            if (trace != null && condition == "modified") {
+            if (trace != null && condition == "original") {
                 Need(latch != null);
                 uint expected;
                 try { expected = ModuleActivationFixture.RequireUnentered(id2); }
@@ -208,11 +226,11 @@ namespace ScientificSecurity
                         string condition = new [] { "original", "modified", "restored" }[visits++];
                         uint code = ObserveModules(condition, manifest => {
                             order.Add(condition + (manifest ? ":id2" : ":plain"));
-                            return manifest && !(mode == 3 && condition == "modified") ?
-                                ModuleActivationFixture.Result(true, expected == 0 ? 0xC0150002U : 0xC0000022U, "", "") : entered;
+                            return manifest && condition != "modified" && !(mode == 3 && condition == "original") ?
+                                ModuleActivationFixture.Result(true, 0xC0000022U, "", "") : entered;
                         }, () => { order.Add(condition + ":ordinary"); return 0xC0000022U; }, _ => { },
                         exit => {
-                            Need(condition == "modified" && exit == 0xC0150002);
+                            Need(condition == "original" && exit == 0xC0000022);
                             order.Add("trace");
                             if (mode == 1) throw qualified;
                             if (mode == 2) throw primary;
@@ -227,7 +245,7 @@ namespace ScientificSecurity
                 } catch (Exception failure) { caught = failure; }
                 if (mode == 2 || mode == 4) {
                     Need(callbackFailure == null && String.Join(",", order) ==
-                        "original:plain,original:id2,original:ordinary,begin,modified:plain,modified:id2,trace,defer");
+                        "original:plain,original:id2,trace");
                     if (mode == 2) Need(Object.ReferenceEquals(caught, primary));
                     else {
                         var group = caught as AggregateException;
@@ -235,8 +253,8 @@ namespace ScientificSecurity
                             Object.ReferenceEquals(group.InnerExceptions[0], primary) && Object.ReferenceEquals(group.InnerExceptions[1], unqualified));
                     }
                 } else {
-                    Need(String.Join(",", order) == "original:plain,original:id2,original:ordinary,begin,modified:plain,modified:id2," +
-                        (mode == 3 ? "" : "trace,") + "modified:ordinary,restore,restored:plain,restored:id2,restored:ordinary,comparison,query,fresh-ordinary");
+                    Need(String.Join(",", order) == "original:plain,original:id2," + (mode == 3 ? "" : "trace,") +
+                        "original:ordinary,begin,modified:plain,modified:id2,modified:ordinary,restore,restored:plain,restored:id2,restored:ordinary,comparison,query,fresh-ordinary");
                     Need(mode == 0 ? caught == null : caught is QualifiedModuleCallbackFailure);
                     if (mode == 1) Need(Object.ReferenceEquals(caught, qualified) && Object.ReferenceEquals(qualified.Original, primary));
                 }
@@ -256,7 +274,7 @@ namespace ScientificSecurity
         }
         static void CheckStartupOrdering()
         {
-            const string result = "entry_observed=False exit=0xC0000022";
+            const string result = "completed_wire=False exit=0xC0000022";
             var order = new List<string>(); int visits = 0;
             uint exit = AfterRestoration(() => Execute(expected => {
                 string condition = new [] { "original", "modified", "restored" }[visits++];

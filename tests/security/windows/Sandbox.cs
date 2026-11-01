@@ -25,7 +25,8 @@ namespace ScientificSecurity
                                  string chromium, string moniker, string profileFolder, bool preflight, int tcpPort, int udpPort, bool wallProbe = false, bool loaderProbe = false, bool nativeFixture = false, bool pythonClone = false, bool activationProbe = false, bool activationTrace = false)
         {
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, preflight, tcpPort, udpPort,
-                wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, false, null);
+                wallProbe, loaderProbe, nativeFixture, pythonClone, activationProbe, activationTrace, false,
+                SupportedRegistryPolicy.OrdinaryCondition());
         }
         internal static string ObservePythonLoader(string python, string root, string scratch, string powershell,
             string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, PythonLoaderComparison.Condition condition)
@@ -66,7 +67,7 @@ namespace ScientificSecurity
                                                      string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, uint expectedExit)
         {
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
-                false, false, false, false, false, false, false, 0, false, 3, expectedExit);
+                false, false, false, false, false, false, false, unchecked((int)0xC0000022), false, 3, expectedExit);
         }
         internal static string ObserveSelfActivation(string python, string root, string scratch, string powershell,
                                                     string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
@@ -89,14 +90,14 @@ namespace ScientificSecurity
         {
             SelfActivationFixture.RequireEntryHostPositive(python);
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
-                false, false, false, false, false, false, false, unchecked((int)0xC0000022), false, 0, null, true, SelfActivationRole.ExplicitId2, true);
+                false, false, false, false, false, false, false, SupportedRegistryPolicy.RequireReadable(), false, 0, null, true, SelfActivationRole.ExplicitId2, true);
         }
         internal static string ObserveAutomaticResource(string python, string root, string scratch, string powershell,
             string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
         {
             SelfActivationFixture.RequireResourceHostPositive(python);
             return RunFixed(python, root, scratch, powershell, chromium, moniker, profileFolder, true, tcpPort, udpPort,
-                false, false, false, false, false, false, false, unchecked((int)0xC0000022), false, 0, null, true, SelfActivationRole.ExplicitId2, false, true);
+                false, false, false, false, false, false, false, SupportedRegistryPolicy.RequireReadable(), false, 0, null, true, SelfActivationRole.ExplicitId2, false, true);
         }
         internal static void ObserveCsrDispatch(string python, string root, string scratch, string powershell,
             string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, CsrDispatchObservation observation)
@@ -141,7 +142,7 @@ namespace ScientificSecurity
         {
             bool callback = role == 3;
             if (role < 0 || role > 3 || callback != expectedExit.HasValue ||
-                callback && (expectedRegistry != 0 || (expectedExit.Value & 0x80000000) == 0))
+                callback && (expectedRegistry != unchecked((int)0xC0000022) || expectedExit != 0xC0000022U))
                 throw new ArgumentException("unsupported fixed module activation role");
             return callback;
         }
@@ -285,6 +286,7 @@ namespace ScientificSecurity
                     selfResource || moduleDispatchTrace || pythonDispatchTrace ? python : null, dispatch != null, moduleDispatchTrace, pythonDispatchTrace) : null;
             IDisposable activationLease = null;
             var activationClock = new Stopwatch();
+            var supportedPolicy = SupportedRegistryPolicy.EnterRun(moniker);
             try
             {
                 if (registryStartup is RegistryAuthorityComparison.PythonObservation) activationLease = RegistryLoaderFixture.Hold(python);
@@ -397,7 +399,7 @@ namespace ScientificSecurity
                     if (selfEntry || selfResource) {
                         string entryOutput = outputCapture.Read(), entryError = errorCapture.Read();
                         if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed entry child exceeded 10 seconds");
-                        return SelfActivationFixture.Result(tracedExit, entryOutput, entryError, SelfActivationRole.ExplicitId2);
+                        return SelfActivationFixture.PolicyResult(tracedExit, entryOutput, entryError, SelfActivationRole.ExplicitId2, true);
                     }
                     if (!callback) Native.Check(Native.WaitForSingleObject(process.process, 5000) == 0, "wait for continued loader diagnostic process exit");
                     string capturedOutput = outputCapture.Read(), capturedErrors = errorCapture.Read();
@@ -473,7 +475,9 @@ namespace ScientificSecurity
                 }
                 if (selfActivation) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed self activation exceeded 10 seconds");
-                    return SelfActivationFixture.Result(exit, text, errors, selfRole);
+                    return (selfRole == SelfActivationRole.Original || selfRole == SelfActivationRole.ExplicitId2) && expectedRegistryStatus.HasValue ?
+                        SelfActivationFixture.PolicyResult(exit, text, errors, selfRole, expectedRegistryStatus == 0) :
+                        SelfActivationFixture.Result(exit, text, errors, selfRole);
                 }
                 if (moduleRole != 0) {
                     if (activationClock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed module activation exceeded 10 seconds");
@@ -492,14 +496,20 @@ namespace ScientificSecurity
             catch (Exception failure) { primaryFailure = failure; throw; }
             finally
             {
-                Exception completionFailure = FinishRun(ref process, job, sid, attrs, env, processDescriptor, handles, values,
-                    outputCapture, errorCapture, activationLease, loader, primaryFailure, started, resumed,
-                    activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace,
-                    selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace, entryStarted, callbackStarted,
-                    dispatch != null || passComparison, dispatchSignaled,
-                    loader == null ? null : dispatch != null ? (Func<string>)loader.DispatchMetadata : selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata,
-                    registryStartup is RegistryAuthorityComparison.Observation);
-                if (completionFailure != null) throw completionFailure;
+                bool cleanupQualified = false;
+                try {
+                    Exception completionFailure = FinishRun(ref process, job, sid, attrs, env, processDescriptor, handles, values,
+                        outputCapture, errorCapture, activationLease, loader, primaryFailure, started, resumed,
+                        activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace,
+                        selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace, entryStarted, callbackStarted,
+                        dispatch != null || passComparison, dispatchSignaled,
+                        loader == null ? null : dispatch != null ? (Func<string>)loader.DispatchMetadata : selfResource ? (Func<string>)loader.ResourceMetadata : loader.EntryMetadata,
+                        registryStartup is RegistryAuthorityComparison.Observation);
+                    cleanupQualified = completionFailure == null || completionFailure is ExplicitEntryComparison.QualifiedFailure ||
+                        completionFailure is QualifiedModuleCallbackFailure;
+                    if (completionFailure != null) throw completionFailure;
+                }
+                finally { if (supportedPolicy != null) supportedPolicy.EndRun(cleanupQualified); }
             }
         }
         static void AttemptCleanup(List<Exception> failures, Action action)
@@ -559,7 +569,7 @@ namespace ScientificSecurity
             }
             if (CreationFlags(false) != 0x0008040C || CreationFlags(true) != 0x0008040E)
                 throw new InvalidOperationException("contained launch lost detached, suspended, Unicode or fixed debug flags");
-            if (!RequireModuleRole(3, 0, 0xC0150002) || RequireModuleRole(0, null, null) ||
+            if (!RequireModuleRole(3, unchecked((int)0xC0000022), 0xC0000022) || RequireModuleRole(0, null, null) ||
                 RequireModuleRole(1, 0, null) || RequireModuleRole(2, 0, null))
                 throw new InvalidOperationException("fixed module role separation failed");
             foreach (int role in new [] { -1, 0, 1, 2, 4 }) {
@@ -567,14 +577,14 @@ namespace ScientificSecurity
                 try { RequireModuleRole(role, 0, 0xC0150002); } catch (ArgumentException) { refused = true; }
                 if (!refused) throw new InvalidOperationException("callback exit was accepted by an unrelated role");
             }
-            foreach (uint? code in new uint?[] { null, 0, 121, 0x7FFFFFFF }) {
+            foreach (uint? code in new uint?[] { null, 0, 121, 0x7FFFFFFF, 0xC0150002 }) {
                 bool refused = false;
-                try { RequireModuleRole(3, 0, code); } catch (ArgumentException) { refused = true; }
+                try { RequireModuleRole(3, unchecked((int)0xC0000022), code); } catch (ArgumentException) { refused = true; }
                 if (!refused) throw new InvalidOperationException("callback role accepted an unqualified exit");
             }
-            foreach (int? registry in new int?[] { null, 1, unchecked((int)0xC0000022) }) {
+            foreach (int? registry in new int?[] { null, 0, 1 }) {
                 bool refused = false;
-                try { RequireModuleRole(3, registry, 0xC0150002); } catch (ArgumentException) { refused = true; }
+                try { RequireModuleRole(3, registry, 0xC0000022); } catch (ArgumentException) { refused = true; }
                 if (!refused) throw new InvalidOperationException("callback role escaped the modified registry condition");
             }
             var primary = new InvalidOperationException("fixed primary fixture");

@@ -4,7 +4,7 @@ import io
 import logging
 from pathlib import Path
 import unittest
-from unittest import mock
+import unittest.mock as mock
 from urllib.error import HTTPError
 
 ROOT = Path(__file__).resolve().parents[1]

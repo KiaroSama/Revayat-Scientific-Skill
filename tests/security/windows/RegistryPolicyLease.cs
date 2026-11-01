@@ -11,7 +11,7 @@ using System.Threading;
 
 namespace ScientificSecurity
 {
-    // Disposable hosted diagnostic only. Read/compare/set is not an atomic compare-and-swap.
+    // Fixed disposable-host lease. Read/compare/set is not an atomic compare-and-swap.
     public sealed class RegistryPolicyLease : IDisposable
     {
         const string KeyName = @"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide";
@@ -32,7 +32,10 @@ namespace ScientificSecurity
         string receipt;
         byte[] original, expected, receiptBytes;
         bool intent, closed;
-        static bool recoveryBlocked;
+        static bool recoveryBlocked, supportedActive;
+        bool supported;
+        internal void BindSupported()
+        { Need(!closed && intent && !supported && !supportedActive); supported = supportedActive = true; }
         private RegistryPolicyLease() { }
 
         static void Need(bool condition)
@@ -246,6 +249,7 @@ namespace ScientificSecurity
             if (closed) return; closed = true;
             IntPtr owned = key; key = IntPtr.Zero;
             Mutex held = mutex; mutex = null;
+            if (supported) supportedActive = false;
             Finish(null, () => { if (owned != IntPtr.Zero) Status(NtClose(owned)); }, () => { if (held != null) held.Dispose(); });
         }
         public static void CleanupOwned(Action recovery, Action snaps, Action profile, Action disk, Action remove)
@@ -278,6 +282,7 @@ namespace ScientificSecurity
         }
         public static RegistryPolicyLease Begin(string run, string state)
         {
+            Need(!supportedActive);
             string package = Package(run); ProfileBinding(run, state, package);
             RegistryPolicyLease lease = New(run, state);
             Establish(() => {

@@ -232,6 +232,32 @@ namespace ScientificSecurity
             Need(group != null && group.InnerExceptions.Count == 2 && group.InnerExceptions[0] is InvalidOperationException &&
                 group.InnerExceptions[0].Message == "fixed self activation contract failed" && Object.ReferenceEquals(group.InnerExceptions[1], reporting));
         }
+        internal static string PolicyResult(uint exit, string text, string errors, SelfActivationRole role, bool readable)
+        {
+            Need(role == SelfActivationRole.Original || role == SelfActivationRole.ExplicitId2);
+            if (!readable) {
+                Need(exit == 0xC0000022 && text == "" && errors == "");
+                return "completed_wire=False exit=0xC0000022";
+            }
+            string result = Result(exit, text, errors, role);
+            RequireHost(result, role);
+            return result;
+        }
+        public static void CheckPolicyResultValidation()
+        {
+            foreach (var role in new [] { SelfActivationRole.Original, SelfActivationRole.ExplicitId2 }) {
+                string success = Success.Replace("WINDOWS_SELF_ACTIVATION", Label(role));
+                string wire = role == SelfActivationRole.ExplicitId2 ? PreCallReceipt + success : success;
+                Need(PolicyResult(0xC0000022, "", "", role, false) == "completed_wire=False exit=0xC0000022");
+                Need(PolicyResult(0, wire, "", role, true) == success.TrimEnd('\n'));
+                foreach (uint code in new uint[] { 0, 1, 0xC0150002, UInt32.MaxValue })
+                    Refused(() => PolicyResult(code, "", "", role, false));
+                Refused(() => PolicyResult(0xC0000022, PreCallReceipt, "", role, false));
+                Refused(() => PolicyResult(0xC0000022, "", "private-sentinel", role, false));
+                Refused(() => PolicyResult(0xC0000022, "", "", role, true));
+                Refused(() => PolicyResult(0, wire.Replace("created=True", "created=False").Replace("00000000", "00000005"), "", role, true));
+            }
+        }
         static void RequireHost(string result, SelfActivationRole role = SelfActivationRole.Original)
         { Need(result == Success.Replace("WINDOWS_SELF_ACTIVATION", Label(role)).TrimEnd('\n')); }
         static void CompleteHost(Func<string> run, Action close, Action accept, SelfActivationRole role = SelfActivationRole.Original)

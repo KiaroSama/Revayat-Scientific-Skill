@@ -87,7 +87,8 @@ namespace ScientificSecurity
             string chromium, string moniker, string profileFolder, int tcpPort, int udpPort)
         {
             Execute(() => Sandbox.ObserveExplicitEntry(python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort),
-                () => ManualActivationComparison.RunExplicitId2(run, state, python, root, scratch, powershell, chromium, moniker, profileFolder, tcpPort, udpPort));
+                () => Sandbox.ObserveManualActivation(python, root, scratch, powershell, chromium, moniker, profileFolder,
+                    tcpPort, udpPort, SupportedRegistryPolicy.RequireReadable(), SelfActivationRole.ExplicitId2));
         }
         static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed explicit entry comparison contract failed"); }
