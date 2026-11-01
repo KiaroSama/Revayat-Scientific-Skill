@@ -274,7 +274,7 @@ namespace ScientificSecurity
         }
         static void CheckStartupOrdering()
         {
-            const string result = "completed_wire=False exit=0xC0000022";
+            const string result = "entry_observed=False exit=0xC0000022";
             var order = new List<string>(); int visits = 0;
             uint exit = AfterRestoration(() => Execute(expected => {
                 string condition = new [] { "original", "modified", "restored" }[visits++];

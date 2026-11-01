@@ -331,18 +331,22 @@ class DiagnosticOrderTest(unittest.TestCase):
 
     def test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline(self):
         controller = (ROOT / 'tests/security/windows/Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
-        block = '''    Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
-    $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
-    [ScientificSecurity.PythonActivationPreparation]::RequireClean()
-    [ScientificSecurity.CsrDispatchComparison]::RequireClean()
-    [ScientificSecurity.RegistryCausalComparison]::RequireNegativeBaseline($negativeBaselineExit)
-    $preflight = $preflightText | ConvertFrom-Json
-    if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }
-    $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $true)
-    if ($wall -ne 'WALL_TREE_TERMINATED') { throw 'Native wall/process-tree negative control was not proved' }
-    Write-RunLog INFO 'all required native controls observed including wall-tree cleanup; reviewed regressions admitted'
-    $regressionText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $false, 0, 0)
+        block = '''        Write-RunLog INFO 'trusted undebugged kernel preflight starts before reviewed-code import'
+        $preflightText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort)
+        $preflight = $preflightText | ConvertFrom-Json
+        if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }
+        $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $true)
+        if ($wall -ne 'WALL_TREE_TERMINATED') { throw 'Native wall/process-tree negative control was not proved' }
+        Write-RunLog INFO 'all required native controls observed including wall-tree cleanup; reviewed regressions admitted'
+        $regressionText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $false, 0, 0)
 '''
+        begin = controller.index('$supportedPolicy = [ScientificSecurity.SupportedRegistryPolicy]::Begin(')
+        for gate in ('[ScientificSecurity.PythonActivationPreparation]::RequireClean()',
+                     '[ScientificSecurity.CsrDispatchComparison]::RequireClean()',
+                     '[ScientificSecurity.RegistryCausalComparison]::RequireNegativeBaseline($negativeBaselineExit)'):
+            self.assertEqual(controller.count(gate), 1)
+            self.assertLess(controller.index(gate), begin)
+        self.assertLess(begin, controller.index(block))
         self.assertEqual(controller.count(block), 1, 'Actual ordinary output and every fatal gate must precede reviewed code')
         self.assertEqual(controller.count('$preflightText = '), 1, 'Diagnostic output cannot substitute for fresh admission')
         self.assertEqual(controller.count('$preflight = '), 1, 'Admission must validate that same ordinary output')
