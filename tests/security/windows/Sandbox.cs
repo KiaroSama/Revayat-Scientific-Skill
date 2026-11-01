@@ -49,7 +49,10 @@ namespace ScientificSecurity
                     false, false, false, false, false, false, true, expectedRegistryStatus);
                 return 0;
             }
-            catch (PreflightExit failure) { return failure.Code; }
+            catch (PreflightExit failure) {
+                Console.Out.WriteLine("WINDOWS_PREFLIGHT_EXIT exit=0x" + failure.Code.ToString("X8") + " " + failure.Evidence);
+                Console.Out.Flush(); return failure.Code;
+            }
         }
         internal static string ObserveDefaultActivation(string python, string root, string scratch, string powershell,
                                                        string chromium, string moniker, string profileFolder, int tcpPort, int udpPort, int expectedRegistryStatus)
@@ -136,7 +139,17 @@ namespace ScientificSecurity
         sealed class PreflightExit : InvalidOperationException
         {
             internal readonly uint Code;
-            internal PreflightExit(uint code) : base("fixed ordinary preflight returned a nonzero exit") { Code = code; }
+            internal readonly string Evidence;
+            internal PreflightExit(uint code, string errors) : base("fixed ordinary preflight returned a nonzero exit")
+            { Code = code; Evidence = PreflightEvidence(errors); }
+        }
+        static string PreflightEvidence(string errors)
+        {
+            if (errors != null && errors.Length <= 128 && System.Text.RegularExpressions.Regex.IsMatch(errors,
+                "\\AWINDOWS_PREFLIGHT_FAILURE line=(0|[1-9][0-9]{0,3}) kind=(assertion|os|timeout|import|other) errno=(none|[0-9A-F]{8}) winerror=(none|[0-9A-F]{8})\\r?\\n\\z",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
+                return errors.TrimEnd('\r', '\n');
+            return "WINDOWS_PREFLIGHT_FAILURE evidence=unknown";
         }
         static bool RequireModuleRole(int role, int? expectedRegistry, uint? expectedExit)
         {
@@ -154,7 +167,11 @@ namespace ScientificSecurity
         static void RequireExit(uint exit, string phase, bool observe, string errors, string text)
         {
             if (exit == 0) return;
-            if (observe) { if (phase != "preflight") throw new InvalidOperationException("exit observation is not ordinary preflight"); throw new PreflightExit(exit); }
+            if (phase == "preflight") {
+                if (observe) throw new PreflightExit(exit, errors);
+                throw new InvalidOperationException("Windows preflight failed exit=0x" + exit.ToString("X8") + " " + PreflightEvidence(errors));
+            }
+            if (observe) throw new InvalidOperationException("exit observation is not ordinary preflight");
             throw new InvalidOperationException("Windows " + phase + " failed exit=" + exit + " " + errors + " " + text);
         }
         static string RunFixed(string python, string root, string scratch, string powershell,
@@ -484,7 +501,8 @@ namespace ScientificSecurity
                     return ModuleActivationFixture.Result(moduleRole == 2, exit, text, errors);
                 }
                 RequireExit(exit, phase, observeExit, errors, text);
-                if (!String.IsNullOrWhiteSpace(errors)) throw new InvalidOperationException("unexpected worker error output: " + errors);
+                if (!String.IsNullOrWhiteSpace(errors)) throw new InvalidOperationException(phase == "preflight" ?
+                    "unexpected preflight error output: " + PreflightEvidence(errors) : "unexpected worker error output: " + errors);
                 if (wallProbe) throw new InvalidOperationException("wall negative control exited before owned deadline");
                 return text;
             }
@@ -553,12 +571,26 @@ namespace ScientificSecurity
                 catch (ArgumentException) { refused = true; }
                 if (!refused) throw new InvalidOperationException("undefined activation role reached contained launch effects");
             }
+            const string evidence = "WINDOWS_PREFLIGHT_FAILURE line=123 kind=assertion errno=none winerror=none";
+            if (PreflightEvidence(evidence + "\n") != evidence || PreflightEvidence(evidence + "\r\n") != evidence)
+                throw new InvalidOperationException("fixed ordinary failure evidence changed");
+            foreach (string invalid in new [] { "", "private-capture", evidence, evidence + "\n" + evidence + "\n",
+                evidence.Replace("line=123", "line=10000") + "\n", evidence.Replace("kind=assertion", "kind=private") + "\n",
+                evidence.Replace("errno=none", "errno=100000000") + "\n", new string('x', 129) }) {
+                if (PreflightEvidence(invalid) != "WINDOWS_PREFLIGHT_FAILURE evidence=unknown")
+                    throw new InvalidOperationException("unqualified ordinary failure evidence escaped");
+            }
             RequireExit(0, "preflight", false, "", ""); RequireExit(0, "preflight", true, "", "");
             foreach (uint code in new uint[] { 1, 0xC0000022, UInt32.MaxValue }) {
                 bool ordinary = false, typed = false;
                 try { RequireExit(code, "preflight", false, "", ""); } catch (PreflightExit) { throw; } catch (InvalidOperationException) { ordinary = true; }
                 try { RequireExit(code, "preflight", true, "", ""); } catch (PreflightExit failure) { typed = failure.Code == code; }
                 if (!ordinary || !typed) throw new InvalidOperationException("ordinary exit observation weakened failure semantics");
+                try { RequireExit(code, "preflight", false, "private-errors", "private-output"); }
+                catch (InvalidOperationException failure) {
+                    if (failure.Message != "Windows preflight failed exit=0x" + code.ToString("X8") + " WINDOWS_PREFLIGHT_FAILURE evidence=unknown")
+                        throw new InvalidOperationException("ordinary failure leaked capture");
+                }
             }
             foreach (int status in new [] { 0, 1, 0x40000003 }) RequireRegistryCondition(status, 0);
             RequireRegistryCondition(unchecked((int)0xC0000022), unchecked((int)0xC0000022));

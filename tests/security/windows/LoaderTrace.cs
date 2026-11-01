@@ -425,7 +425,7 @@ namespace ScientificSecurity
                     case 8:
                         Emit("phase=activation-debug-string content_read=False"); break;
                     case 2: case 4:
-                        activation.OtherThread(); break;
+                        activation.OtherThread(current.tid, current.code); break;
                     default:
                         throw new InvalidOperationException("fixed activation diagnostic received an unsupported event");
                 }

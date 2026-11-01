@@ -223,7 +223,9 @@ namespace ScientificSecurity
                 RequireCheck(eventPid == pid, "callback-process", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup)));
                 if (kind == 5 || (kind == 4 && eventThread == tid)) alive = false;
                 if (eventThread != tid) {
-                    if (!cleanup) { Invalidate(); RequireCheck(false, "callback-thread", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup))); }
+                    if (!cleanup && !CallbackPeerTransport(eventThread, kind)) {
+                        Invalidate(); RequireCheck(false, "callback-thread", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup)));
+                    }
                     return;
                 }
                 stopped = alive;
@@ -388,7 +390,17 @@ namespace ScientificSecurity
             }
             finally { Array.Clear(before, 0, before.Length); }
         }
-        internal void OtherThread() { Invalidate(); throw new InvalidOperationException("fixed activation diagnostic encountered another thread transition"); }
+        bool CallbackPeerTransport(uint eventThread, uint kind)
+        { return moduleCallback && alive && !invalidated && stage >= 1 && stage <= 3 && eventThread != tid && (kind == 2 || kind == 4); }
+        internal void OtherThread(uint eventThread, uint kind)
+        {
+            if (CallbackPeerTransport(eventThread, kind)) {
+                Need(!stopped);
+                emit("phase=module-callback-peer-transport kind=" + kind + " context_read=False observation_advanced=False");
+                return;
+            }
+            Invalidate(); throw new InvalidOperationException("fixed activation diagnostic encountered another thread transition");
+        }
         internal void Unload(IntPtr imageBase)
         {
             ulong address = unchecked((ulong)imageBase.ToInt64());

@@ -27,6 +27,30 @@ def require(condition, message):
         raise AssertionError(message)
 
 
+def failure_wire(error):
+    line = 0
+    trace = error.__traceback__
+    for _ in range(64):
+        if trace is None:
+            break
+        frame = trace.tb_frame
+        if (frame.f_globals is globals() and frame.f_code.co_filename == __file__
+                and frame.f_code is not require.__code__ and 0 < trace.tb_lineno <= 9999):
+            line = trace.tb_lineno
+        trace = trace.tb_next
+    if trace is not None:
+        line = 0
+    kind = ('assertion' if isinstance(error, AssertionError) else
+            'timeout' if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)) else
+            'os' if isinstance(error, OSError) else 'import' if isinstance(error, ImportError) else 'other')
+    codes = []
+    for name in ('errno', 'winerror'):
+        value = getattr(error, name, None) if isinstance(error, OSError) else None
+        codes.append(format(value, '08X') if type(value) is int and 0 <= value <= 0xFFFFFFFF else 'none')
+    return ('WINDOWS_PREFLIGHT_FAILURE line=' + str(line) + ' kind=' + kind +
+            ' errno=' + codes[0] + ' winerror=' + codes[1] + '\n')
+
+
 class Basic(ctypes.Structure):
     _fields_ = [('process_time', ctypes.c_longlong), ('job_time', ctypes.c_longlong),
                 ('flags', w.DWORD), ('min_ws', ctypes.c_size_t), ('max_ws', ctypes.c_size_t),
@@ -585,6 +609,8 @@ if __name__ == '__main__':
     try:
         run()
     except Exception as error:
-        print(json.dumps({'phase': 'preflight', 'status': 'failed', 'error': str(error)}, sort_keys=True),
-              file=sys.stderr, flush=True)
-        raise SystemExit(1)
+        try:
+            sys.stderr.write(failure_wire(error))
+            sys.stderr.flush()
+        finally:
+            raise SystemExit(1) from None

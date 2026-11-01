@@ -88,10 +88,10 @@ namespace ScientificSecurity
                             profileFolder, tcpPort, udpPort, expectedExit), RetainCallbackFailure),
                         line => { Console.Out.WriteLine(line); Console.Out.Flush(); }),
                     line => { Console.Out.WriteLine(line); Console.Out.Flush(); });
-                if (expected == 0) Need(exit == 0 && activation ==
-                    "WINDOWS_CHILD_ACTIVATION created=True win32_error=0x00000000 cause_claimed=False child_equivalence_claimed=False");
                 Console.Out.WriteLine(Condition(condition, activation, exit));
                 Console.Out.Flush();
+                if (expected == 0) Need(exit == 0 && activation ==
+                    "WINDOWS_CHILD_ACTIVATION created=True win32_error=0x00000000 cause_claimed=False child_equivalence_claimed=False");
                 return new Observation { activation = activation, exit = exit };
             }, () => {
                 var lease = RegistryPolicyLease.Begin(run, state);

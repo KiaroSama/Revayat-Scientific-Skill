@@ -140,8 +140,46 @@ namespace ScientificSecurity
                     !observer.CallbackLoadStage() && !CallbackComplete(state, true, false));
             }
             KernelImage.CheckModuleCallbackProfileValidation();
+            CheckCallbackPeerTransport();
             CheckCallbackDrainValidation();
             CheckCallbackHeaderValidation();
+        }
+        static void CheckCallbackPeerTransport()
+        {
+            foreach (int state in new [] { 1, 2, 3 }) foreach (uint kind in new uint[] { 2, 4 }) {
+                string report = null;
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", line => report = line, true);
+                observer.stage = state; observer.changed = observer.stopped = true;
+                observer.Stop(7, 12, kind); observer.OtherThread(12, kind);
+                Need(observer.stage == state && observer.alive && !observer.stopped && !observer.invalidated &&
+                    !observer.RestorationAllowed && !observer.restored && !observer.initial && observer.original == null &&
+                    observer.addresses[0] == 0 && !observer.enabled[0] && report ==
+                    "phase=module-callback-peer-transport kind=" + kind + " context_read=False observation_advanced=False");
+                bool incomplete = false;
+                try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
+                Need(incomplete);
+                observer.Stop(7, 11, 6); Need(observer.stopped && observer.RestorationAllowed);
+                observer.Continued(); Need(!observer.RestorationAllowed);
+            }
+            foreach (int state in new [] { 0, 1, 2, 3, 4 }) foreach (uint kind in new uint[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, UInt32.MaxValue }) {
+                var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, true);
+                observer.stage = state; observer.changed = observer.stopped = true;
+                bool allowed = state >= 1 && state <= 3 && (kind == 2 || kind == 4), refused = false;
+                try { observer.Stop(7, 12, kind); } catch (InvalidOperationException) { refused = true; }
+                Need(refused != allowed && observer.invalidated == !allowed && !observer.RestorationAllowed);
+                if (allowed) {
+                    foreach (bool callback in new [] { false, true }) {
+                        var foreign = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, callback);
+                        foreign.stage = state; refused = false;
+                        try { foreign.Stop(callback ? 8U : 7U, 12, kind); foreign.OtherThread(12, kind); }
+                        catch (InvalidOperationException) { refused = true; }
+                        Need(refused && !foreign.RestorationAllowed);
+                    }
+                    observer.Invalidate(); refused = false;
+                    try { observer.Stop(7, 12, kind); } catch (InvalidOperationException) { refused = true; }
+                    Need(refused && !observer.RestorationAllowed);
+                }
+            }
         }
         string CallbackStopHeader(uint eventPid, uint eventThread, uint kind, bool cleanup)
         {
@@ -155,9 +193,9 @@ namespace ScientificSecurity
             var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "private-path", "private-digest", line => reported = line, true);
             observer.stage = 2; observer.stopped = observer.changed = true;
             bool refused = false;
-            try { observer.Stop(7, 12, 2); } catch (InvalidOperationException) { refused = true; }
+            try { observer.Stop(7, 12, 1); } catch (InvalidOperationException) { refused = true; }
             Need(refused && observer.invalidated && !observer.RestorationAllowed && reported ==
-                "phase=module-callback-stop-refusal kind=2 process_match=True creator=False cleanup=False stage=2 context_read=False");
+                "phase=module-callback-stop-refusal kind=1 process_match=True creator=False cleanup=False stage=2 context_read=False");
             reported = null; observer.Stop(7, 12, 4, true); Need(reported == null && !observer.RestorationAllowed);
             observer.Stop(7, 11, 6, true); Need(reported == null && observer.RestorationAllowed);
             refused = false;
@@ -179,7 +217,7 @@ namespace ScientificSecurity
                 var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, true);
                 observer.changed = true; observer.stopped = true; observer.stage = 2;
                 Exception primary = null; uint eventProcess = mode == 6 ? 8U : 7U;
-                try { observer.Stop(eventProcess, 12, 2); } catch (InvalidOperationException failure) { primary = failure; }
+                try { observer.Stop(eventProcess, 12, 1); } catch (InvalidOperationException failure) { primary = failure; }
                 Need(primary != null && observer.invalidated && !observer.RestorationAllowed);
                 bool pending = true, exited = false; int received = 0, continued = 0, releases = 0, contextAccesses = 0;
                 uint kind = 2;

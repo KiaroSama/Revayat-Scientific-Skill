@@ -67,6 +67,77 @@ class RegistryLoaderTest(unittest.TestCase):
             exec(compile(seam, 'fixed-network-import', 'exec'), namespace)
         self.assertEqual(attempts, ['socket'])
 
+    def test_preflight_failure_frame_is_fixed_source_and_private(self):
+        import ast
+        import subprocess
+        path = ROOT / 'tests/security/windows/KernelProbe.py'
+        source = path.read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name in ('require', 'failure_wire')]
+        namespace = {'__file__': str(path), 'subprocess': subprocess}
+        exec(compile(ast.Module(body=helpers, type_ignores=[]), str(path), 'exec'), namespace)
+        wire = namespace['failure_wire']
+        for error, category in ((AssertionError('private-message'), 'assertion'),
+                                (PermissionError(13, 'private-message', 'private-path'), 'os'),
+                                (subprocess.TimeoutExpired(['private-command'], 5), 'timeout'),
+                                (ImportError('private-module'), 'import'),
+                                (ValueError('private-value'), 'other')):
+            with self.subTest(category=category):
+                value = wire(error)
+                self.assertRegex(value, r'\AWINDOWS_PREFLIGHT_FAILURE line=0 kind=' + category +
+                                 r' errno=(none|[0-9A-F]{8}) winerror=none\n\Z')
+                self.assertNotIn('private', value)
+                self.assertLess(len(value), 128)
+        operation = ast.parse('def fail():\n    require(False, "private-condition")\n')
+        exec(compile(operation, str(path), 'exec'), namespace)
+        try:
+            namespace['fail']()
+        except AssertionError as error:
+            self.assertEqual(wire(error),
+                             'WINDOWS_PREFLIGHT_FAILURE line=2 kind=assertion errno=none winerror=none\n')
+        else:
+            self.fail('Fixed-source refusal did not execute')
+        recursion = ast.parse('def recurse(depth):\n    if depth:\n        return recurse(depth - 1)\n    require(False, "private-condition")\n')
+        exec(compile(recursion, str(path), 'exec'), namespace)
+        try:
+            namespace['recurse'](65)
+        except AssertionError as error:
+            trace, depth = error.__traceback__, 0
+            while trace is not None:
+                depth += 1
+                trace = trace.tb_next
+            self.assertGreater(depth, 64)
+            self.assertIn('line=0 kind=assertion', wire(error))
+        else:
+            self.fail('Deep fixed-source refusal did not execute')
+        foreign = {}
+        exec(compile('def fail():\n    raise ValueError("private-condition")\n',
+                     'private-foreign-file', 'exec'), foreign)
+        try:
+            foreign['fail']()
+        except ValueError as error:
+            self.assertIn('line=0 kind=other', wire(error))
+        else:
+            self.fail('Foreign-source refusal did not execute')
+        for code in (None, -1, True, 0, 5, 0xFFFFFFFF, 0x100000000):
+            error = OSError('private-native')
+            error.errno = error.winerror = code
+            expected = format(code, '08X') if type(code) is int and 0 <= code <= 0xFFFFFFFF else 'none'
+            self.assertEqual(wire(error), 'WINDOWS_PREFLIGHT_FAILURE line=0 kind=os errno=' + expected +
+                             ' winerror=' + expected + '\n')
+        main = next(node for node in tree.body if isinstance(node, ast.If) and
+                    ast.get_source_segment(source, node.test) == "__name__ == '__main__'")
+        output = io.StringIO()
+        def fail():
+            raise AssertionError('private-final-condition')
+        with self.assertRaises(SystemExit) as caught:
+            exec(compile(ast.Module(body=[main], type_ignores=[]), str(path), 'exec'),
+                 dict(namespace, __name__='__main__', run=fail, sys=SimpleNamespace(stderr=output)))
+        self.assertEqual(caught.exception.code, 1)
+        self.assertEqual(output.getvalue(),
+                         'WINDOWS_PREFLIGHT_FAILURE line=0 kind=assertion errno=none winerror=none\n')
+
     def test_original_receipt_precedes_fixed_loader_effects(self):
         source = (ROOT / 'tests/security/windows/RegistryAuthorityProbe.py').read_text(encoding='utf-8')
         code = compile(source, 'fixed-registry-authority', 'exec')
