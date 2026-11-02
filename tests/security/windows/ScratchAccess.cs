@@ -124,11 +124,15 @@ namespace ScientificSecurity
                     uint length = QueryDosDeviceW(drive, output, (uint)output.Length);
                     Native.Check(length != 0, "resolve fixed scratch device"); return length;
                 });
-                foreach (string role in new [] { "host", "lpac" }) for (int i = 0; i < names.Length; i++)
-                    requests.Add(new NativeRequest { role = role, name = i == 0 ? "dos" : "device", path = names[i] });
+                foreach (string role in new [] { "host", "lpac" }) {
+                    for (int i = 0; i < names.Length; i++)
+                        requests.Add(new NativeRequest { role = role, name = i == 0 ? "dos" : "device", path = names[i] });
+                    requests.Add(new NativeRequest { role = role, name = "temp-absolute", target = "temp", path = names[1] + "temp" });
+                    requests.Add(new NativeRequest { role = role, name = "temp-relative", target = "temp", path = "temp", root = items[0].handle });
+                }
                 foreach (var request in requests) if (request.role == "host") {
                     Deadline(clock); request.Open(NtOpenFile, PendingFatal); Need(request.opened);
-                    Same(items[0].identity, Identity(Marshal.ReadIntPtr(request.memory)));
+                    Same(items[request.target == "temp" ? 1 : 0].identity, Identity(Marshal.ReadIntPtr(request.memory)));
                 }
                 Native.Check(Native.OpenProcessToken(process.process, 0xA, out token), "open fixed scratch source token");
                 Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate fixed scratch context");
@@ -158,7 +162,7 @@ namespace ScientificSecurity
                 }
                 Attempt(failures, () => { if (effective != IntPtr.Zero) Native.Check(Native.CloseHandle(effective), "close fixed scratch effective token"); });
                 foreach (var request in requests) Attempt(failures, () => request.Release(
-                    handle => Same(items[0].identity, Identity(handle)),
+                    handle => Same(items[request.target == "temp" ? 1 : 0].identity, Identity(handle)),
                     handle => Native.Check(Native.CloseHandle(handle), "close fixed scratch native handle")));
                 Attempt(failures, () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close fixed scratch context token"); });
                 Attempt(failures, () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close fixed scratch source token"); });
@@ -326,8 +330,8 @@ namespace ScientificSecurity
         }
         sealed class NativeRequest
         {
-            internal string path, role, name;
-            internal IntPtr memory;
+            internal string path, role, name, target = "root";
+            internal IntPtr memory, root;
             internal int returned;
             internal bool opened, pending;
             internal void Open(OpenCall call, Action fatal)
@@ -340,7 +344,8 @@ namespace ScientificSecurity
                 Marshal.StructureToPtr(new UnicodeString { length = checked((ushort)text.Length),
                     maximum = checked((ushort)(text.Length + 2)), buffer = IntPtr.Add(memory, 40) }, IntPtr.Add(memory, 24), false);
                 Marshal.Copy(text, 0, IntPtr.Add(memory, 40), text.Length);
-                var attributes = new ObjectAttributes { length = 48, name = IntPtr.Add(memory, 24), attributes = 0x40 };
+                Need(root == IntPtr.Zero || (Valid(root) && path == "temp"));
+                var attributes = new ObjectAttributes { length = 48, root = root, name = IntPtr.Add(memory, 24), attributes = 0x40 };
                 try { returned = call(memory, Desired, ref attributes, IntPtr.Add(memory, 8), 7, 0x200021); }
                 catch {
                     pending = Marshal.ReadInt32(memory, 8) == 0x103;
@@ -364,7 +369,9 @@ namespace ScientificSecurity
             }
             internal string Frame()
             {
-                Need((role == "host" || role == "lpac") && (name == "dos" || name == "device") && !pending);
+                Need((role == "host" || role == "lpac") &&
+                    (name == "dos" || name == "device" || name == "temp-absolute" || name == "temp-relative") &&
+                    (target == "root" || target == "temp") && !pending);
                 return "WINDOWS_SCRATCH_NATIVE role=" + role + " name=" + name + " desired=0x00100020 share=7 options=0x00200021" +
                     " ntstatus=0x" + unchecked((uint)returned).ToString("X8") + " opened=" + opened +
                     " identity_qualified=True context_verified=True cleanup_qualified=True cause_claimed=False child_equivalence_claimed=False";
@@ -401,12 +408,14 @@ namespace ScientificSecurity
                 try { NativeNames(@"E:\", (_, output) => length); } catch (InvalidOperationException) { refused = true; }
                 Need(refused);
             }
-            foreach (string path in names) {
-                var request = new NativeRequest { path = path, role = "host", name = "dos" };
+            foreach (string path in new [] { names[0], names[1], names[1] + "temp", "temp" }) {
+                bool relative = path == "temp";
+                var request = new NativeRequest { path = path, role = "host", name = relative ? "temp-relative" : "dos",
+                    root = relative ? new IntPtr(23) : IntPtr.Zero, target = relative ? "temp" : "root" };
                 int calls = 0, closes = 0, binds = 0;
                 OpenCall open = (IntPtr slot, uint access, ref ObjectAttributes attributes, IntPtr io, uint share, uint options) => {
                     calls++; Need(access == Desired && share == 7 && options == 0x200021 && attributes.length == 48 &&
-                        attributes.root == IntPtr.Zero && attributes.attributes == 0x40 && attributes.descriptor == IntPtr.Zero &&
+                        attributes.root == request.root && attributes.attributes == 0x40 && attributes.descriptor == IntPtr.Zero &&
                         attributes.qos == IntPtr.Zero && Marshal.ReadIntPtr(slot) == IntPtr.Zero && Marshal.ReadInt32(io) == -1);
                     var text = (UnicodeString)Marshal.PtrToStructure(attributes.name, typeof(UnicodeString));
                     Need(text.length == path.Length * 2 && text.maximum == text.length + 2 &&
@@ -417,7 +426,8 @@ namespace ScientificSecurity
                 finally { request.Release(_ => binds++, handle => { Need(handle == new IntPtr(17)); closes++; }); }
                 Need(calls == 1 && binds == 1 && closes == 1 && request.memory == IntPtr.Zero);
                 string frame = request.Frame();
-                Need(frame.Length < 512 && !frame.Contains(path) && frame.Contains("role=host name=dos") && frame.Contains("opened=True"));
+                Need(frame.Length < 512 && (relative || !frame.Contains(path)) &&
+                    frame.Contains("role=host name=" + request.name) && frame.Contains("opened=True"));
             }
             foreach (int status in new [] { 0, unchecked((int)0xC0000022) }) {
                 var request = new NativeRequest { role = "lpac", name = "device", returned = status, opened = status == 0 };
