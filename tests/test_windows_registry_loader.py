@@ -67,6 +67,75 @@ class RegistryLoaderTest(unittest.TestCase):
             exec(compile(seam, 'fixed-network-import', 'exec'), namespace)
         self.assertEqual(attempts, ['socket'])
 
+    def test_scratch_entry_failure_preserves_original_and_bounds_diagnostics(self):
+        import ast
+        import ctypes
+        import ctypes.wintypes
+        import subprocess
+        source = (ROOT / 'tests/security/windows/KernelProbe.py').read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name in ('enter_scratch', 'failure_wire', 'require')]
+        for mode in ('success', 'denied', 'open', 'close', 'query', 'probe', 'close-raise'):
+            with self.subTest(mode=mode):
+                calls = []
+                original = PermissionError(13, 'private-message', 'private-path')
+
+                class Call:
+                    def __init__(self, name):
+                        self.name = name
+                    def __call__(self, *args):
+                        calls.append((self.name, args))
+                        if self.name == 'open':
+                            if mode == 'probe':
+                                raise ValueError('private-native-failure')
+                            return None if mode in ('denied', 'query') else 17
+                        if mode == 'close-raise':
+                            raise ValueError('private-close-failure')
+                        return mode != 'close'
+
+                def chdir(path):
+                    calls.append(('chdir', (path,)))
+                    if mode != 'success':
+                        raise original
+
+                def cwd():
+                    if mode == 'query':
+                        raise OSError('private-cwd-failure')
+                    return 'fixed-scratch' if mode in ('open', 'close') else 'other'
+
+                namespace = {'__file__': 'fixed-kernel', 'P': ctypes.c_void_p,
+                             'w': ctypes.wintypes, 'ctypes': SimpleNamespace(get_last_error=lambda: 5), 'subprocess': subprocess,
+                             'K': SimpleNamespace(CreateFileW=Call('open'), CloseHandle=Call('close')),
+                             'os': SimpleNamespace(chdir=chdir), 'Path': SimpleNamespace(cwd=cwd)}
+                exec(compile(ast.Module(body=helpers, type_ignores=[]), 'fixed-kernel', 'exec'), namespace)
+                caught = None
+                try:
+                    namespace['enter_scratch']('fixed-scratch')
+                except OSError as error:
+                    caught = error
+                self.assertEqual(sum(name == 'chdir' for name, _ in calls), 1)
+                if mode == 'success':
+                    self.assertIsNone(caught)
+                    self.assertEqual(len(calls), 1)
+                    continue
+                self.assertIs(caught, original)
+                expected = {'denied': ('other', '00000005', 'none'), 'open': ('same', 'ok', 'ok'),
+                            'close': ('same', 'ok', '00000005'), 'query': ('unknown', '00000005', 'none'),
+                            'probe': ('other', 'unknown', 'none'), 'close-raise': ('other', 'ok', 'unknown')}
+                self.assertEqual(caught.scratch_evidence, expected[mode])
+                opens = [args for name, args in calls if name == 'open']
+                self.assertEqual(opens, [('fixed-scratch', 0x100020, 7, None, 3, 0x02000000, None)])
+                self.assertEqual(sum(name == 'close' for name, _ in calls), int(mode in ('open', 'close', 'close-raise')))
+                wire = namespace['failure_wire'](caught)
+                self.assertTrue(wire.endswith(' cwd=%s open=%s close=%s\n' % expected[mode]))
+                self.assertLessEqual(len(wire), 128)
+                self.assertNotIn('private', wire)
+                for invalid in (None, 'private', ('private', 'ok', 'ok'), ('same', '100000000', 'ok'),
+                                ('same', 'ok', 'private'), ('same', 'ok'), ['same', 'ok', 'ok']):
+                    caught.scratch_evidence = invalid
+                    self.assertNotIn(' cwd=', namespace['failure_wire'](caught))
+
     def test_preflight_failure_frame_is_fixed_source_and_private(self):
         import ast
         import subprocess

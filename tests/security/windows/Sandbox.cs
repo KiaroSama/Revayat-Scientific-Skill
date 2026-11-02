@@ -146,7 +146,7 @@ namespace ScientificSecurity
         static string PreflightEvidence(string errors)
         {
             if (errors != null && errors.Length <= 128 && System.Text.RegularExpressions.Regex.IsMatch(errors,
-                "\\AWINDOWS_PREFLIGHT_FAILURE line=(0|[1-9][0-9]{0,3}) kind=(assertion|os|timeout|import|other) errno=(none|[0-9A-F]{8}) winerror=(none|[0-9A-F]{8})\\r?\\n\\z",
+                "\\AWINDOWS_PREFLIGHT_FAILURE line=(0|[1-9][0-9]{0,3}) kind=(assertion|os|timeout|import|other) errno=(none|[0-9A-F]{8}) winerror=(none|[0-9A-F]{8})( cwd=(same|other|unknown) open=(ok|none|unknown|[0-9A-F]{8}) close=(ok|none|unknown|[0-9A-F]{8}))?\\r?\\n\\z",
                 System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
                 return errors.TrimEnd('\r', '\n');
             return "WINDOWS_PREFLIGHT_FAILURE evidence=unknown";
@@ -580,6 +580,14 @@ namespace ScientificSecurity
                 if (PreflightEvidence(invalid) != "WINDOWS_PREFLIGHT_FAILURE evidence=unknown")
                     throw new InvalidOperationException("unqualified ordinary failure evidence escaped");
             }
+            foreach (string suffix in new [] { " cwd=same open=ok close=ok", " cwd=other open=00000005 close=none",
+                " cwd=unknown open=unknown close=unknown" })
+                if (PreflightEvidence(evidence + suffix + "\n") != evidence + suffix)
+                    throw new InvalidOperationException("fixed scratch failure evidence changed");
+            foreach (string suffix in new [] { " cwd=private open=ok close=ok", " cwd=same open=100000000 close=none",
+                " cwd=same open=ok close=private", " cwd=same", " cwd=same open=ok close=ok extra=True" })
+                if (PreflightEvidence(evidence + suffix + "\n") != "WINDOWS_PREFLIGHT_FAILURE evidence=unknown")
+                    throw new InvalidOperationException("unqualified scratch failure evidence escaped");
             RequireExit(0, "preflight", false, "", ""); RequireExit(0, "preflight", true, "", "");
             foreach (uint code in new uint[] { 1, 0xC0000022, UInt32.MaxValue }) {
                 bool ordinary = false, typed = false;

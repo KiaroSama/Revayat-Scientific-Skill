@@ -47,8 +47,43 @@ def failure_wire(error):
     for name in ('errno', 'winerror'):
         value = getattr(error, name, None) if isinstance(error, OSError) else None
         codes.append(format(value, '08X') if type(value) is int and 0 <= value <= 0xFFFFFFFF else 'none')
+    extra = getattr(error, 'scratch_evidence', None)
+    suffix = ''
+    def status(value):
+        return isinstance(value, str) and (value in ('ok', 'none', 'unknown') or
+               len(value) == 8 and all(c in '0123456789ABCDEF' for c in value))
+    if (type(extra) is tuple and len(extra) == 3 and extra[0] in ('same', 'other', 'unknown')
+            and status(extra[1]) and status(extra[2])):
+        suffix = ' cwd=%s open=%s close=%s' % extra
     return ('WINDOWS_PREFLIGHT_FAILURE line=' + str(line) + ' kind=' + kind +
-            ' errno=' + codes[0] + ' winerror=' + codes[1] + '\n')
+            ' errno=' + codes[0] + ' winerror=' + codes[1] + suffix + '\n')
+
+
+def enter_scratch(scratch):
+    try:
+        os.chdir(scratch)
+    except OSError as error:
+        cwd, opened, closed = 'unknown', 'unknown', 'none'
+        try:
+            cwd = 'same' if Path.cwd() == scratch else 'other'
+        except Exception:
+            pass
+        try:
+            K.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, P, w.DWORD, w.DWORD, P]
+            K.CreateFileW.restype = P
+            handle = K.CreateFileW(str(scratch), 0x100020, 7, None, 3, 0x02000000, None)
+            if handle in (None, P(-1).value):
+                opened = format(ctypes.get_last_error(), '08X')
+            else:
+                opened, closed = 'ok', 'unknown'
+                try:
+                    closed = 'ok' if K.CloseHandle(handle) else format(ctypes.get_last_error(), '08X')
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        error.scratch_evidence = (cwd, opened, closed)
+        raise
 
 
 class Basic(ctypes.Structure):
@@ -353,7 +388,7 @@ def run():
     profile = Path(sys.argv[6])
     # Trusted launch starts on the prepared runtime volume; entering the bounded
     # scratch volume is a required observed control, never an unrestricted fallback.
-    os.chdir(scratch)
+    enter_scratch(scratch)
     require(Path.cwd() == scratch, 'trusted LPAC cannot enter assigned scratch volume')
     owners = token_controls()
     if sys.argv[-1] == 'token-child':
