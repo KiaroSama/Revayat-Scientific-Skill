@@ -407,7 +407,8 @@ namespace ScientificSecurity
             internal string path, role, name, target = "root";
             internal IntPtr memory, root;
             internal uint requested = Desired, options = 0x200021;
-            internal int returned;
+            internal int returned, ioStatus;
+            internal ulong information;
             internal bool opened, pending;
             internal void Open() { Open(NtOpenFile, PendingFatal); }
             internal void Open(OpenCall call, Action fatal)
@@ -431,8 +432,13 @@ namespace ScientificSecurity
                 var io = (IoStatus)Marshal.PtrToStructure(IntPtr.Add(memory, 8), typeof(IoStatus));
                 pending = returned == 0x103 || io.status == 0x103;
                 RequireSynchronous(returned, io, fatal);
+                ioStatus = io.status; information = io.information.ToUInt64();
                 opened = returned == 0;
-                if (opened) Need(io.status == 0 && io.information.ToUInt64() == 1 && Valid(Marshal.ReadIntPtr(memory)));
+                if (opened) {
+                    bool device = target == "volume" && root == IntPtr.Zero && options == 0x200000 &&
+                        path.StartsWith(@"\Device\HarddiskVolume", StringComparison.Ordinal) && !path.EndsWith("\\", StringComparison.Ordinal);
+                    Need(Valid(Marshal.ReadIntPtr(memory)) && (device || ioStatus == 0 && information == 1));
+                }
             }
             internal void Release(Action<IntPtr> bind, Action<IntPtr> close)
             {

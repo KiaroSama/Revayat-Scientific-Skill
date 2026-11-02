@@ -128,6 +128,9 @@ class ScratchVolumeAccessTest(unittest.TestCase):
         self.assertIn('NtQueryObject(', source)
         self.assertIn('kind, memory, 1024, out returned', source)
         self.assertIn('authority_qualified=False admission=False', source)
+        self.assertIn('device || ioStatus == 0 && information == 1', observer)
+        self.assertIn('information.ToString("X16")', source)
+        self.assertIn('Masks.Length * 5', source)
         for forbidden in ('DeviceIoControl(', 'ReadFile(', 'WriteFile(', 'NtSetSecurityObject',
                           'AdjustTokenPrivileges', 'CreateProcess', 'ResumeThread'):
             self.assertNotIn(forbidden, source)

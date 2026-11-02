@@ -72,13 +72,16 @@ namespace ScientificSecurity
             Func<IntPtr, uint, uint> inspect, Action<IntPtr> close)
         {
             Need(requests.Length == Masks.Length); string path = Bare(root);
-            var result = new int[Masks.Length * 2]; Exception primary = null; var failures = new List<Exception>();
+            var result = new int[Masks.Length * 5]; Exception primary = null; var failures = new List<Exception>();
             try {
                 for (int i = 0; i < requests.Length; i++) {
                     var request = requests[i]; Need(request.path == path && request.requested == Masks[i] && !request.pending &&
                         request.memory != IntPtr.Zero && request.opened == (request.returned == 0));
                     Need(request.returned == 0 || !host && request.returned == unchecked((int)0xC0000022));
                     result[i] = request.returned;
+                    result[Masks.Length * 2 + i] = request.ioStatus;
+                    result[Masks.Length * 3 + i] = unchecked((int)request.information);
+                    result[Masks.Length * 4 + i] = unchecked((int)(request.information >> 32));
                     if (request.opened) {
                         uint granted = inspect(Marshal.ReadIntPtr(request.memory), request.requested);
                         Need(granted == request.requested); result[Masks.Length + i] = unchecked((int)granted);
@@ -105,14 +108,20 @@ namespace ScientificSecurity
         }
         internal static int[] Combine(int root, int temp, int[] volume)
         {
-            Need(volume != null && volume.Length == Masks.Length * 2);
+            Need(volume != null && volume.Length == Masks.Length * 5);
             var result = new int[2 + volume.Length]; result[0] = root; result[1] = temp;
             Array.Copy(volume, 0, result, 2, volume.Length); return result;
         }
         internal static List<string> Frames(string phase, int[] result)
         {
-            Need(result.Length == 2 + Masks.Length * 2); var frames = new List<string>();
-            for (int i = 0; i < Masks.Length; i++) frames.Add(Frame(phase, i, result[2 + i], result[2 + Masks.Length + i]));
+            Need(result.Length == 2 + Masks.Length * 5); var frames = new List<string>();
+            for (int i = 0; i < Masks.Length; i++) {
+                ulong information = unchecked((uint)result[2 + Masks.Length * 3 + i]) |
+                    ((ulong)unchecked((uint)result[2 + Masks.Length * 4 + i]) << 32);
+                frames.Add(Frame(phase, i, result[2 + i], result[2 + Masks.Length + i]) +
+                    " io_status=0x" + unchecked((uint)result[2 + Masks.Length * 2 + i]).ToString("X8") +
+                    " information=0x" + information.ToString("X16"));
+            }
             return frames;
         }
         internal static string Frame(string phase, int index, int status, int granted)
@@ -141,13 +150,54 @@ namespace ScientificSecurity
                 string frame = Frame("modified", i, unchecked((int)0xC0000022), 0);
                 Need(frame.Length < 384 && !frame.Contains("Harddisk") && frame.Contains("authority_qualified=False"));
             }
+            foreach (bool device in new [] { false, true })
+                foreach (ulong information in new ulong[] { 0, 1, 2, UInt64.MaxValue }) {
+                    var probe = new ScratchAccess.NativeRequest { path = device ? root.TrimEnd('\\') : root,
+                        target = device ? "volume" : "root", options = device ? 0x200000U : 0x200021U };
+                    bool refused = false; int closes = 0;
+                    try {
+                        probe.Open((IntPtr slot, uint access, ref ScratchAccess.ObjectAttributes attributes, IntPtr io, uint share, uint options) => {
+                            Marshal.WriteIntPtr(slot, new IntPtr(17)); Marshal.WriteInt32(io, 0);
+                            Marshal.WriteInt64(io, 8, unchecked((long)information)); return 0;
+                        }, () => { throw new InvalidOperationException("unexpected pending fixture"); });
+                    }
+                    catch (InvalidOperationException) { refused = true; }
+                    finally { probe.Release(_ => { }, _ => closes++); }
+                    Need(refused == (!device && information != 1) && closes == 1);
+                }
+            foreach (IntPtr invalid in new [] { IntPtr.Zero, Native.InvalidHandle }) {
+                var probe = Requests(root)[0]; bool refused = false; int closes = 0;
+                try {
+                    probe.Open((IntPtr slot, uint access, ref ScratchAccess.ObjectAttributes attributes, IntPtr io, uint share, uint options) => {
+                        Marshal.WriteIntPtr(slot, invalid); Marshal.WriteInt32(io, 0); return 0;
+                    }, () => { throw new InvalidOperationException("unexpected pending fixture"); });
+                }
+                catch (InvalidOperationException) { refused = true; }
+                finally { probe.Release(_ => { }, _ => closes++); }
+                Need(refused && closes == 0 && probe.memory == IntPtr.Zero);
+            }
+            foreach (bool pendingReturn in new [] { false, true }) {
+                var probe = Requests(root)[0]; bool refused = false; int fatalCalls = 0;
+                try {
+                    probe.Open((IntPtr slot, uint access, ref ScratchAccess.ObjectAttributes attributes, IntPtr io, uint share, uint options) => {
+                        Marshal.WriteInt32(io, pendingReturn ? 0 : 0x103); return pendingReturn ? 0x103 : 0;
+                    }, () => fatalCalls++);
+                }
+                catch (InvalidOperationException) { refused = true; }
+                finally {
+                    Need(refused && fatalCalls == 1 && probe.pending && probe.memory != IntPtr.Zero);
+                    // The injected call has no live I/O; production pending buffers remain retained.
+                    probe.pending = false; probe.Release(_ => { }, _ => { throw new InvalidOperationException("unexpected handle fixture"); });
+                }
+                Need(probe.memory == IntPtr.Zero);
+            }
             for (int mode = 0; mode < 4; mode++) {
                 var probes = Requests(root); int closes = 0; Exception caught = null;
                 var operation = new InvalidOperationException("fixed metadata fixture");
                 var cleanup = new InvalidOperationException("fixed close fixture");
                 foreach (var probe in probes) {
                     probe.memory = Marshal.AllocHGlobal(8); Marshal.WriteIntPtr(probe.memory, new IntPtr(17));
-                    probe.returned = 0; probe.opened = true;
+                    probe.returned = 0; probe.opened = true; probe.ioStatus = -1; probe.information = UInt64.MaxValue;
                 }
                 try {
                     int[] result = Qualify(probes, root, true, (handle, desired) => {
@@ -155,7 +205,9 @@ namespace ScientificSecurity
                         if (mode == 1 || mode == 3) throw operation;
                         return desired;
                     }, _ => { closes++; if (mode == 2 || mode == 3) throw cleanup; });
-                    Need(mode == 0 && Frames("modified", Combine(0, 0, result)).Count == 9);
+                    var frames = Frames("modified", Combine(0, 0, result));
+                    Need(mode == 0 && frames.Count == 9 && frames[0].Contains("information=0xFFFFFFFFFFFFFFFF") &&
+                        frames[0].Contains("io_status=0xFFFFFFFF"));
                 }
                 catch (Exception error) { caught = error; }
                 Need(closes == 9 && (mode == 0 ? caught == null : caught != null));
