@@ -131,6 +131,13 @@ class ScratchVolumeAccessTest(unittest.TestCase):
         self.assertIn('device || ioStatus == 0 && information == 1', observer)
         self.assertIn('information.ToString("X16")', source)
         self.assertIn('Masks.Length * 5', source)
+        self.assertIn('Inspect(handle, desired, root, deadline, evidence, NtQueryObject)', source)
+        self.assertIn('Need(attributes == 0, evidence)', source)
+        self.assertIn('Need(granted == desired, evidence)', source)
+        self.assertIn('Need(evidence.nameEqual == 1, evidence)', source)
+        self.assertIn('query_status=0x', source)
+        self.assertIn('name_equal=', source)
+        self.assertIn('for (int mode = 0; mode < 11; mode++)', source)
         for forbidden in ('DeviceIoControl(', 'ReadFile(', 'WriteFile(', 'NtSetSecurityObject',
                           'AdjustTokenPrivileges', 'CreateProcess', 'ResumeThread'):
             self.assertNotIn(forbidden, source)
