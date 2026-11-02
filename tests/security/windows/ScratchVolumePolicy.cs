@@ -119,7 +119,7 @@ namespace ScientificSecurity
                 var ace = (CommonAce)trial.DiscretionaryAcl[i]; Need(ace.SecurityIdentifier != sid);
                 if (position == trial.DiscretionaryAcl.Count && (ace.AceFlags & AceFlags.Inherited) != 0) position = i;
             }
-            trial.DiscretionaryAcl.InsertAce(position, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x100020, sid, false, null));
+            trial.DiscretionaryAcl.InsertAce(position, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20, sid, false, null));
             byte[] result = Binary(trial); Descriptor(result);
             Need(trial.Owner == original.Owner && trial.Group == original.Group && trial.ControlFlags == original.ControlFlags &&
                 trial.ResourceManagerControl == original.ResourceManagerControl && Equal(Binary(trial.SystemAcl), Binary(original.SystemAcl)));
@@ -177,7 +177,7 @@ namespace ScientificSecurity
         { using (var hash = SHA256.Create()) return String.Concat(hash.ComputeHash(Utf8.GetBytes(text)).Select(b => b.ToString("x2"))); }
         string Encode()
         {
-            string body = "scratch-volume-v1\n" + run + "\n" + package + "\n" + root + "\n" + disk + "\n" + partition + "\n" +
+            string body = "scratch-volume-v2\n" + run + "\n" + package + "\n" + root + "\n" + disk + "\n" + partition + "\n" +
                 imageIdentity.volume.ToString("X16") + ":" + imageIdentity.high.ToString("X16") + ":" + imageIdentity.low.ToString("X16") + "\n" +
                 Convert.ToBase64String(before) + "\n" + Convert.ToBase64String(after) + "\n";
             return body + Hash(body) + "\n";
@@ -185,7 +185,7 @@ namespace ScientificSecurity
         void Decode(byte[] bytes, string expectedPackage)
         {
             Need(bytes != null && bytes.Length > 0 && bytes.Length <= 196608); string text = Utf8.GetString(bytes); string[] values = text.Split('\n');
-            Need(values.Length == 11 && values[0] == "scratch-volume-v1" && values[1] == run && values[2] == expectedPackage &&
+            Need(values.Length == 11 && values[0] == "scratch-volume-v2" && values[1] == run && values[2] == expectedPackage &&
                 values[10] == "" && values[9] == Hash(String.Join("\n", values.Take(9)) + "\n"));
             package = values[2]; root = values[3];
             Need(values[4].Length > 0 && values[4].Length <= 10 && values[4].All(c => c >= '0' && c <= '9') &&
@@ -332,7 +332,8 @@ namespace ScientificSecurity
             const string sid = "S-1-15-2-1-2-3-4-5-6-7";
             byte[] original = Binary(new RawSecurityDescriptor("O:SYG:SYD:P(A;;GA;;;SY)(A;;GR;;;BU)S:(ML;;NW;;;ME)"));
             byte[] trial = Trial(original, sid); var expected = Descriptor(trial); var added = (CommonAce)expected.DiscretionaryAcl[2];
-            Need(added.AccessMask == 0x100020 && added.AceFlags == AceFlags.None && added.SecurityIdentifier.Value == sid && !Same(original, trial));
+            Need(added.AccessMask == 0x20 && (added.AccessMask & 0x100000) == 0 &&
+                added.AceFlags == AceFlags.None && added.SecurityIdentifier.Value == sid && !Same(original, trial));
             bool refused = false; try { Trial(trial, sid); } catch (InvalidOperationException) { refused = true; } Need(refused);
             byte[] actual = trial; int writes = 0;
             Restore(original, trial, () => actual, bytes => { writes++; actual = bytes; }); Need(writes == 1 && Same(actual, original));
@@ -376,7 +377,23 @@ namespace ScientificSecurity
             var decoded = new ScratchVolumePolicy { run = encoded.run };
             decoded.Decode(Utf8.GetBytes(receipt), sid);
             Need(Same(decoded.before, original) && Same(decoded.after, trial) && decoded.disk == 2 && decoded.partition == 1);
-            foreach (string invalid in new [] { receipt + "extra", receipt.Replace("scratch-volume-v1", "foreign"),
+            foreach (bool legacy in new [] { false, true }) {
+                var invalidFields = (string[])fields.Clone();
+                if (legacy) invalidFields[0] = "scratch-volume-v1";
+                else {
+                    var wider = Descriptor(trial); var widerAce = (CommonAce)wider.DiscretionaryAcl[2];
+                    wider.DiscretionaryAcl.RemoveAce(2);
+                    wider.DiscretionaryAcl.InsertAce(2, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x100020,
+                        widerAce.SecurityIdentifier, false, null));
+                    invalidFields[8] = Convert.ToBase64String(Binary(wider));
+                }
+                invalidFields[9] = Hash(String.Join("\n", invalidFields.Take(9)) + "\n");
+                refused = false;
+                try { new ScratchVolumePolicy { run = encoded.run }.Decode(Utf8.GetBytes(String.Join("\n", invalidFields)), sid); }
+                catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            foreach (string invalid in new [] { receipt + "extra", receipt.Replace("scratch-volume-v2", "foreign"),
                 receipt.Substring(0, receipt.Length - 2), receipt.Replace(fields[9], new string('0', 64)) }) {
                 refused = false;
                 try { decoded.Decode(Utf8.GetBytes(invalid), sid); } catch (InvalidOperationException) { refused = true; }

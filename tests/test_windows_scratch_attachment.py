@@ -69,7 +69,10 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         positions = [install.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('NtSetSecurityObject(handle, 4, bytes)', self.policy)
-        self.assertIn('new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x100020, sid, false, null)', self.policy)
+        self.assertIn('new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20, sid, false, null)', self.policy)
+        self.assertIn('values[0] == "scratch-volume-v2"', self.policy)
+        self.assertIn('invalidFields[0] = "scratch-volume-v1"', self.policy)
+        self.assertIn('invalidFields[8] = Convert.ToBase64String(Binary(wider))', self.policy)
         self.assertIn('Need(Same(actual, after)); write(before); Need(Same(read(), before))', self.policy)
         self.assertIn('D:P(D;;0x000C0000;;;OW)(D;;FA;;;', self.policy)
         self.assertIn('cleanupQualified = clean;', self.policy)
