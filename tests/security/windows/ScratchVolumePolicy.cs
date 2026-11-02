@@ -252,9 +252,9 @@ namespace ScientificSecurity
             var results = new List<int[]>(); Exception primary = null; var failures = new List<Exception>();
             try {
                 qualify(); results.Add(probe());
-                Need(results[0].Length == 2 && results[0].All(value => value == unchecked((int)0xC0000022)));
+                Need(results[0].Length >= 2 && results[0].Take(2).All(value => value == unchecked((int)0xC0000022)));
                 qualify(); install(); results.Add(probe()); qualify();
-                Need(results[1].Length == 2 && results[1].All(value => value == 0 || value == unchecked((int)0xC0000022)));
+                Need(results[1].Length == results[0].Length && results[1].Take(2).All(value => value == 0 || value == unchecked((int)0xC0000022)));
             }
             catch (Exception error) { primary = error; }
             finally { Attempt(failures, restore); }
@@ -264,7 +264,7 @@ namespace ScientificSecurity
             }
             Finish(primary, failures.ToArray()); return results;
         }
-        internal List<string> Compare(Func<int[]> probe, Action deadline)
+        internal List<string> Compare(Func<int[]> probe, Action deadline, Func<string, int[], List<string>> extra = null)
         {
             List<int[]> results = null; Exception primary = null;
             try { results = Differential(probe, () => { deadline(); RequireSuspended(); }, Install, Restore); }
@@ -275,6 +275,7 @@ namespace ScientificSecurity
                 frames.Add("WINDOWS_SCRATCH_POLICY phase=" + phases[i] + " object=" + (j == 0 ? "root" : "temp") +
                     " ntstatus=0x" + unchecked((uint)results[i][j]).ToString("X8") +
                     " descriptor_restored=True handles_closed=True cause_claimed=False admission=False");
+            if (extra != null) for (int i = 0; i < results.Count; i++) frames.AddRange(extra(phases[i], results[i]));
             return frames;
         }
         void Close()

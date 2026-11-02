@@ -184,9 +184,10 @@ namespace ScientificSecurity
                     Attempt(closes, () => Native.Check(Native.CloseHandle(handle), "close scratch pre-policy access handle"));
                     Finish(null, closes);
                 }
+                ScratchVolumeAccess.Host(names[1], () => Deadline(clock));
                 using (var policy = ScratchAttachment.Policy(scratch, package))
                     observations.AddRange(policy.Compare(() => PolicyProbe(items, names[1], duplicate,
-                        context, primaryPrivileges, clock), () => Deadline(clock)));
+                        context, primaryPrivileges, clock), () => Deadline(clock), ScratchVolumeAccess.Frames));
             }
             catch (Exception error) { primary = error; }
             finally {
@@ -227,6 +228,8 @@ namespace ScientificSecurity
                 new NativeRequest { path = nativeRoot, role = "lpac", name = "device" },
                 new NativeRequest { path = nativeRoot + "temp", role = "lpac", name = "temp-absolute", target = "temp" }
             };
+            var volumeRequests = ScratchVolumeAccess.Requests(nativeRoot);
+            int[] volumeResults = null;
             IntPtr effective = IntPtr.Zero; bool entered = false; Exception primary = null;
             var failures = new List<Exception>();
             try {
@@ -237,18 +240,21 @@ namespace ScientificSecurity
                 foreach (var request in requests) {
                     Deadline(clock); context.RequireThread(); request.Open(NtOpenFile, PendingFatal);
                 }
+                ScratchVolumeAccess.Open(volumeRequests, () => { Deadline(clock); context.RequireThread(); });
                 context.RequireThread(); expected.Same(Privileges(effective)); Deadline(clock);
             }
             catch (Exception error) { primary = error; }
             finally {
                 if (entered) Revert();
+                Attempt(failures, () => { Deadline(clock); volumeResults = ScratchVolumeAccess.Qualify(volumeRequests, nativeRoot, false, () => Deadline(clock)); });
+                ScratchVolumeAccess.Release(volumeRequests, failures);
                 Attempt(failures, () => { if (effective != IntPtr.Zero) Native.Check(Native.CloseHandle(effective), "close scratch policy effective token"); });
                 foreach (var request in requests) Attempt(failures, () => request.Release(
                     handle => Same(items[request.target == "temp" ? 1 : 0].identity, Identity(handle)),
                     handle => Native.Check(Native.CloseHandle(handle), "close scratch policy probe handle")));
             }
             Finish(primary, failures);
-            return new [] { requests[0].returned, requests[1].returned };
+            return ScratchVolumeAccess.Combine(requests[0].returned, requests[1].returned, volumeResults);
         }
         static void Deadline(Stopwatch clock)
         { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed scratch observation exceeded 10 seconds"); }
@@ -320,16 +326,16 @@ namespace ScientificSecurity
         }
         internal static void Attempt(List<Exception> failures, Action action)
         { try { action(); } catch (Exception error) { failures.Add(error); } }
-        [StructLayout(LayoutKind.Sequential)] struct UnicodeString
+        [StructLayout(LayoutKind.Sequential)] internal struct UnicodeString
         { internal ushort length, maximum; internal IntPtr buffer; }
-        [StructLayout(LayoutKind.Sequential)] struct ObjectAttributes
+        [StructLayout(LayoutKind.Sequential)] internal struct ObjectAttributes
         { internal uint length; internal IntPtr root, name; internal uint attributes; internal IntPtr descriptor, qos; }
         [StructLayout(LayoutKind.Explicit, Size = 16)] struct IoStatus
         {
             [FieldOffset(0)] internal int status;
             [FieldOffset(8)] internal UIntPtr information;
         }
-        delegate int OpenCall(IntPtr handle, uint access, ref ObjectAttributes attributes, IntPtr io, uint share, uint options);
+        internal delegate int OpenCall(IntPtr handle, uint access, ref ObjectAttributes attributes, IntPtr io, uint share, uint options);
         [DllImport("ntdll.dll")] static extern int NtOpenFile(IntPtr handle, uint access,
             ref ObjectAttributes attributes, IntPtr io, uint share, uint options);
         [DllImport("ntdll.dll")] static extern int NtQueryVolumeInformationFile(IntPtr handle,
@@ -396,12 +402,14 @@ namespace ScientificSecurity
             }
             finally { if (!pending) Marshal.FreeHGlobal(memory); }
         }
-        sealed class NativeRequest
+        internal sealed class NativeRequest
         {
             internal string path, role, name, target = "root";
             internal IntPtr memory, root;
+            internal uint requested = Desired, options = 0x200021;
             internal int returned;
             internal bool opened, pending;
+            internal void Open() { Open(NtOpenFile, PendingFatal); }
             internal void Open(OpenCall call, Action fatal)
             {
                 Need(memory == IntPtr.Zero && path != null && path.Length <= 128);
@@ -414,7 +422,7 @@ namespace ScientificSecurity
                 Marshal.Copy(text, 0, IntPtr.Add(memory, 40), text.Length);
                 Need(root == IntPtr.Zero || (Valid(root) && path == "temp"));
                 var attributes = new ObjectAttributes { length = 48, root = root, name = IntPtr.Add(memory, 24), attributes = 0x40 };
-                try { returned = call(memory, Desired, ref attributes, IntPtr.Add(memory, 8), 7, 0x200021); }
+                try { returned = call(memory, requested, ref attributes, IntPtr.Add(memory, 8), 7, options); }
                 catch {
                     pending = Marshal.ReadInt32(memory, 8) == 0x103;
                     if (pending) fatal();

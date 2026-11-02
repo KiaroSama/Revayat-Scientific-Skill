@@ -97,7 +97,7 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         self.assertIn('path = nativeRoot + "temp"', probe)
         self.assertEqual(probe.count('expected.Same(Privileges(effective))'), 2)
         self.assertLess(probe.index('Revert();'), probe.index('request.Release('))
-        self.assertLess(probe.index('request.Release('), probe.index('return new []'))
+        self.assertLess(probe.index('request.Release('), probe.index('return ScratchVolumeAccess.Combine('))
         compare = self.policy.split('internal List<string> Compare(', 1)[1].split('void Close()', 1)[0]
         self.assertLess(compare.index('Finish(primary, Dispose)'), compare.index('WINDOWS_SCRATCH_POLICY'))
         self.assertIn('descriptor_restored=True handles_closed=True cause_claimed=False admission=False', compare)
@@ -108,6 +108,29 @@ class ScratchVolumePolicyTest(unittest.TestCase):
                      'Differential(() =>', 'decoded.Decode(', 'receipt + "extra"',
                      'Object.ReferenceEquals(error.InnerExceptions[0], operation)'):
             self.assertIn(seam, fixtures)
+
+
+class ScratchVolumeAccessTest(unittest.TestCase):
+    def test_fixed_handle_only_differential_and_discovery(self):
+        source = (WINDOWS / 'ScratchVolumeAccess.cs').read_text(encoding='utf-8')
+        observer = (WINDOWS / 'ScratchAccess.cs').read_text(encoding='utf-8')
+        policy = (WINDOWS / 'ScratchVolumePolicy.cs').read_text(encoding='utf-8')
+        controller = (WINDOWS / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        self.assertEqual(controller.count("(Join-Path $PSScriptRoot 'ScratchVolumeAccess.cs')"), 1)
+        self.assertEqual(controller.count('[ScientificSecurity.ScratchVolumeAccess]::CheckValidation()'), 1)
+        self.assertIn('0, 0x20, 0x100000, 0x100020, 1, 2, 0x20000, 0x40000, 0x80000', source)
+        self.assertIn('requested = mask, options = 0x200000', source)
+        self.assertIn('ScratchVolumeAccess.Host(', observer)
+        self.assertIn('ScratchVolumeAccess.Open(', observer)
+        self.assertIn('ScratchVolumeAccess.Qualify(', observer)
+        self.assertIn('ScratchVolumeAccess.Frames', observer)
+        self.assertIn('frames.AddRange(extra(phases[i], results[i]))', policy)
+        self.assertIn('NtQueryObject(', source)
+        self.assertIn('kind, memory, 1024, out returned', source)
+        self.assertIn('authority_qualified=False admission=False', source)
+        for forbidden in ('DeviceIoControl(', 'ReadFile(', 'WriteFile(', 'NtSetSecurityObject',
+                          'AdjustTokenPrivileges', 'CreateProcess', 'ResumeThread'):
+            self.assertNotIn(forbidden, source)
 
 
 if __name__ == '__main__':
