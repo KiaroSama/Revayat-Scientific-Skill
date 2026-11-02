@@ -109,7 +109,8 @@ namespace ScientificSecurity
                 new DirectoryObservation { path = Path.Combine(scratch, "temp"), label = "temp" }
             };
             var observations = new List<string>(); var failures = new List<Exception>(); Exception primary = null;
-            IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero; bool impersonating = false;
+            IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero, effective = IntPtr.Zero; bool impersonating = false;
+            PrivilegeObservation primaryPrivileges = null, duplicatePrivileges = null, effectivePrivileges = null;
             var requests = new List<NativeRequest>(); VolumeObservation volume = null;
             var clock = Stopwatch.StartNew();
             try {
@@ -132,10 +133,15 @@ namespace ScientificSecurity
                 Native.Check(Native.OpenProcessToken(process.process, 0xA, out token), "open fixed scratch source token");
                 Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate fixed scratch context");
                 var context = new RegistryContext(token, duplicate, package);
+                primaryPrivileges = Privileges(token); duplicatePrivileges = Privileges(duplicate);
+                primaryPrivileges.Same(duplicatePrivileges);
                 using (var identity = new WindowsIdentity(token))
                     foreach (var item in items) { Deadline(clock); Model(item, duplicate, identity.User, new SecurityIdentifier(package)); }
                 Deadline(clock);
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter fixed scratch context"); impersonating = true;
+                context.RequireThread();
+                Native.Check(OpenThreadToken(GetCurrentThread(), 8, true, out effective), "open fixed scratch effective token");
+                effectivePrivileges = Privileges(effective); primaryPrivileges.Same(effectivePrivileges);
                 foreach (var item in items) { Deadline(clock); context.RequireThread(); Open(item); }
                 foreach (var request in requests) if (request.role == "lpac") {
                     Deadline(clock); context.RequireThread(); request.Open(NtOpenFile, PendingFatal);
@@ -150,6 +156,7 @@ namespace ScientificSecurity
                     catch { Environment.FailFast("Scratch observation identity restoration threw; outer owner must recover."); }
                     if (!reverted) Environment.FailFast("Scratch observation identity restoration failed; outer owner must recover.");
                 }
+                Attempt(failures, () => { if (effective != IntPtr.Zero) Native.Check(Native.CloseHandle(effective), "close fixed scratch effective token"); });
                 foreach (var request in requests) Attempt(failures, () => request.Release(
                     handle => Same(items[0].identity, Identity(handle)),
                     handle => Native.Check(Native.CloseHandle(handle), "close fixed scratch native handle")));
@@ -165,6 +172,8 @@ namespace ScientificSecurity
             Finish(primary, failures);
             foreach (var item in items) observations.Add(Frame(item.label, item.result));
             observations.Add(volume.Frame());
+            observations.Add(primaryPrivileges.Frame("primary")); observations.Add(duplicatePrivileges.Frame("duplicate"));
+            observations.Add(effectivePrivileges.Frame("effective"));
             foreach (var request in requests) observations.Add(request.Frame());
             foreach (string line in observations) Console.Out.WriteLine(line);
             Console.Out.Flush();
@@ -433,9 +442,88 @@ namespace ScientificSecurity
             catch (AggregateException error) { failures.AddRange(error.InnerExceptions); }
             Need(attempts == 2 && failed.memory == IntPtr.Zero && failures.Count == 1 && Object.ReferenceEquals(failures[0], original));
         }
+        [DllImport("advapi32.dll", SetLastError = true)]
+        static extern bool OpenThreadToken(IntPtr thread, uint access, bool asSelf, out IntPtr token);
+        [DllImport("kernel32.dll")] static extern IntPtr GetCurrentThread();
+        sealed class PrivilegeObservation
+        {
+            internal bool present;
+            internal uint attributes;
+            internal string[] inventory;
+            internal void Same(PrivilegeObservation actual)
+            {
+                Need(inventory.Length == actual.inventory.Length);
+                for (int i = 0; i < inventory.Length; i++) Need(inventory[i] == actual.inventory[i]);
+            }
+            internal string Frame(string role)
+            {
+                Need(role == "primary" || role == "duplicate" || role == "effective");
+                return "WINDOWS_SCRATCH_PRIVILEGE role=" + role + " count=" + inventory.Length +
+                    " traversal_present=" + present + " traversal_enabled=" + (present && (attributes & 2) != 0) +
+                    " attributes=0x" + attributes.ToString("X8") + " cause_claimed=False";
+            }
+        }
+        static PrivilegeObservation Privileges(byte[] bytes)
+        {
+            Need(bytes != null && bytes.Length >= 4 && bytes.Length <= 65536);
+            uint count = BitConverter.ToUInt32(bytes, 0);
+            Need(count <= 128 && bytes.Length >= 4 + count * 12);
+            var result = new PrivilegeObservation { inventory = new string[count] };
+            var identities = new HashSet<ulong>();
+            for (int i = 0; i < count; i++) {
+                int offset = 4 + i * 12;
+                ulong luid = BitConverter.ToUInt64(bytes, offset);
+                uint attributes = BitConverter.ToUInt32(bytes, offset + 8);
+                Need(identities.Add(luid));
+                result.inventory[i] = luid.ToString("X16") + ":" + attributes.ToString("X8");
+                if (luid == 23) { result.present = true; result.attributes = attributes; }
+            }
+            Array.Sort(result.inventory, StringComparer.Ordinal); return result;
+        }
+        static PrivilegeObservation Privileges(IntPtr token)
+        {
+            uint bytes;
+            bool initial = Native.GetTokenInformation(token, 3, IntPtr.Zero, 0, out bytes);
+            int error = Marshal.GetLastWin32Error();
+            Need(!initial && error == 122 && bytes >= 4 && bytes <= 65536);
+            IntPtr memory = Marshal.AllocHGlobal((int)bytes);
+            try {
+                uint capacity = bytes;
+                Native.Check(Native.GetTokenInformation(token, 3, memory, capacity, out bytes), "read fixed scratch token privileges");
+                Need(bytes >= 4 && bytes <= capacity);
+                var binary = new byte[bytes]; Marshal.Copy(memory, binary, 0, binary.Length);
+                return Privileges(binary);
+            }
+            finally { Marshal.FreeHGlobal(memory); }
+        }
+        static void PrivilegeFixtures()
+        {
+            Need(Privileges(new byte[4]).Frame("primary").Contains("count=0 traversal_present=False traversal_enabled=False"));
+            foreach (uint attributes in new uint[] { 0, 1, 2, 3, 0x80000002 }) {
+                var bytes = new byte[16]; BitConverter.GetBytes(1U).CopyTo(bytes, 0);
+                BitConverter.GetBytes(23U).CopyTo(bytes, 4); BitConverter.GetBytes(attributes).CopyTo(bytes, 12);
+                var value = Privileges(bytes); value.Same(Privileges(bytes));
+                string frame = value.Frame("duplicate");
+                Need(frame.Contains("count=1 traversal_present=True traversal_enabled=" + ((attributes & 2) != 0)) &&
+                    frame.Contains("attributes=0x" + attributes.ToString("X8")) && frame.Length < 256);
+                var changed = (byte[])bytes.Clone(); changed[12] ^= 2; bool mismatch = false;
+                try { value.Same(Privileges(changed)); } catch (InvalidOperationException) { mismatch = true; } Need(mismatch);
+                bytes[8] = 1; var other = Privileges(bytes);
+                Need(!other.present); bool refused = false;
+                try { value.Same(other); } catch (InvalidOperationException) { refused = true; } Need(refused);
+            }
+            foreach (byte[] bytes in new [] { new byte[3], new byte[65537],
+                new byte[] { 1, 0, 0, 0 }, new byte[] { 129, 0, 0, 0 } }) {
+                bool refused = false; try { Privileges(bytes); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            var duplicate = new byte[28]; BitConverter.GetBytes(2U).CopyTo(duplicate, 0);
+            BitConverter.GetBytes(23U).CopyTo(duplicate, 4); BitConverter.GetBytes(23U).CopyTo(duplicate, 16);
+            bool invalid = false; try { Privileges(duplicate); } catch (InvalidOperationException) { invalid = true; } Need(invalid);
+        }
         public static void CheckValidation()
         {
-            NativeObservationFixtures();
+            NativeObservationFixtures(); PrivilegeFixtures();
             Need(Marshal.SizeOf(typeof(FileInformation)) == 24 && Marshal.SizeOf(typeof(AttributeInformation)) == 8);
             var expected = new FileInformation { volume = 1, indexHigh = 2, indexLow = 3 };
             Same(expected, expected);

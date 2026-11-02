@@ -95,6 +95,9 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn('7, 0x200021)', observer)
         self.assertIn('NativeNames(scratch,', observer)
         self.assertIn('NativeObservationFixtures();', observer)
+        self.assertIn('PrivilegeFixtures();', observer)
+        self.assertIn('primaryPrivileges.Same(effectivePrivileges);', observer)
+        self.assertIn('OpenThreadToken(GetCurrentThread(), 8, true, out effective)', observer)
         self.assertLess(observer.index('RevertToSelf();'), observer.index('request.Release('))
         self.assertNotIn('NtQuerySecurityObject(', observer)
         for mutation in ('SetSecurityInfo', 'SetNamedSecurityInfo', 'AdjustTokenPrivileges',
