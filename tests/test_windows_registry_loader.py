@@ -136,6 +136,88 @@ class RegistryLoaderTest(unittest.TestCase):
                     caught.scratch_evidence = invalid
                     self.assertNotIn(' cwd=', namespace['failure_wire'](caught))
 
+    def test_positive_write_preserves_io_and_localizes_failure(self):
+        import ast
+        import subprocess
+        path = ROOT / 'tests/security/windows/KernelProbe.py'
+        source = path.read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name in ('write_positive', 'failure_wire', 'require')]
+        operation = next(node for node in helpers if node.name == 'write_positive')
+        opened = next(node for node in operation.body if isinstance(node, ast.Assign)
+                      and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute))
+        context = next(node for node in operation.body if isinstance(node, ast.With))
+        write = context.body[0]
+        run = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run')
+        calls = [node for node in ast.walk(run) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == 'write_positive']
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(ast.get_source_segment(source, calls[0]), 'write_positive(writable)')
+        self.assertLess(calls[0].lineno, next(node.lineno for node in ast.walk(run)
+                                            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                                            and node.func.attr == 'read_bytes'))
+        for mode in ('success', 'short', 'open', 'enter', 'write', 'exit', 'write-exit'):
+            with self.subTest(mode=mode):
+                seen = []
+                primary = PermissionError(13, 'private-write', 'private-path')
+                cleanup = OSError(5, 'private-close')
+
+                class Stream:
+                    def __enter__(self):
+                        seen.append('enter')
+                        if mode == 'enter':
+                            raise primary
+                        return self
+
+                    def write(self, data):
+                        seen.append('write')
+                        self_data = bytes(data)
+                        if not isinstance(data, memoryview) or self_data != b'bounded control':
+                            raise AssertionError('Unexpected positive data')
+                        if mode in ('write', 'write-exit'):
+                            raise primary
+                        return 1 if mode == 'short' else len(self_data)
+
+                    def __exit__(self, kind, error, trace):
+                        seen.append(('exit', error))
+                        if mode in ('exit', 'write-exit'):
+                            raise cleanup
+                        return False
+
+                def open_file(*, mode):
+                    self.assertEqual(mode, 'wb')
+                    seen.append('open')
+                    if current == 'open':
+                        raise primary
+                    return Stream()
+
+                current = mode
+                scope = {'__file__': str(path), 'subprocess': subprocess}
+                exec(compile(ast.Module(body=helpers, type_ignores=[]), str(path), 'exec'), scope)
+                if mode in ('success', 'short'):
+                    result = scope['write_positive'](SimpleNamespace(open=open_file))
+                    self.assertEqual(result, 1 if mode == 'short' else len(b'bounded control'))
+                    self.assertEqual(seen, ['open', 'enter', 'write', ('exit', None)])
+                else:
+                    expected = cleanup if mode in ('exit', 'write-exit') else primary
+                    try:
+                        scope['write_positive'](SimpleNamespace(open=open_file))
+                    except OSError as error:
+                        self.assertIs(error, expected)
+                        line = opened.lineno if mode == 'open' else write.lineno if mode == 'write' else context.lineno
+                        frame = scope['failure_wire'](error)
+                        self.assertIn('line=' + str(line) + ' kind=os ', frame)
+                        self.assertLessEqual(len(frame), 128)
+                        self.assertNotIn('private', frame)
+                    else:
+                        self.fail('Positive write failure was suppressed')
+                    if mode == 'write-exit':
+                        self.assertIs(cleanup.__context__, primary)
+                    expected_seen = ['open'] if mode == 'open' else ['open', 'enter'] if mode == 'enter' else [
+                        'open', 'enter', 'write', ('exit', primary if mode.startswith('write') else None)]
+                    self.assertEqual(seen, expected_seen)
+
     def test_preflight_failure_frame_is_fixed_source_and_private(self):
         import ast
         import subprocess

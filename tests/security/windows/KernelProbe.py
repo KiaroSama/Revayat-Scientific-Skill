@@ -68,6 +68,7 @@ def enter_scratch(scratch):
         try:
             cwd = 'same' if Path.cwd() == scratch else 'other'
         except Exception:
+            # Failed diagnostic reads leave CWD unknown; the original chdir error remains fatal.
             pass
         try:
             K.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, P, w.DWORD, w.DWORD, P]
@@ -80,11 +81,20 @@ def enter_scratch(scratch):
                 try:
                     closed = 'ok' if K.CloseHandle(handle) else format(ctypes.get_last_error(), '08X')
                 except Exception:
+                    # Close uncertainty stays explicit; it never converts the original failure to success.
                     pass
         except Exception:
+            # Diagnostic failure leaves unknown evidence and preserves the original fatal exception.
             pass
         error.scratch_evidence = (cwd, opened, closed)
         raise
+
+
+def write_positive(path):
+    view = memoryview(b'bounded control')
+    stream = path.open(mode='wb')
+    with stream as output:
+        return output.write(view)
 
 
 class Basic(ctypes.Structure):
@@ -412,7 +422,7 @@ def run():
         require(Path(os.environ[name]).is_relative_to(scratch), name + ' is not scratch-local')
     require(Path.cwd() == scratch, 'worker CWD is not scratch')
     writable = scratch / 'positive-write'
-    writable.write_bytes(b'bounded control')
+    write_positive(writable)
     require(writable.read_bytes() == b'bounded control', 'scratch write failed')
     A.GetNamedSecurityInfoW.argtypes = [w.LPCWSTR, ctypes.c_int, w.DWORD, ctypes.POINTER(P), P, P, P, ctypes.POINTER(P)]
     A.EqualSid.argtypes = [P, P]

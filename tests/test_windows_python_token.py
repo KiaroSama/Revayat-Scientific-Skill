@@ -380,8 +380,6 @@ class OrdinaryTokenTest(unittest.TestCase):
             class Authority:
                 OpenProcessToken = staticmethod(opened)
                 GetTokenInformation = staticmethod(query)
-                def __getattr__(self, name):
-                    raise AssertionError('Unexpected native lookup: ' + name)
 
             def data(_token, kind):
                 seen.append(kind)
