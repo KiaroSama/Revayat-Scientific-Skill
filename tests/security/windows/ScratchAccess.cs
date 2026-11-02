@@ -131,6 +131,7 @@ namespace ScientificSecurity
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero, effective = IntPtr.Zero; bool impersonating = false;
             PrivilegeObservation primaryPrivileges = null, duplicatePrivileges = null, effectivePrivileges = null;
             var requests = new List<NativeRequest>(); VolumeObservation volume = null;
+            bool candidateRejected = false;
             var clock = Stopwatch.StartNew();
             try {
                 Deadline(clock);
@@ -186,8 +187,10 @@ namespace ScientificSecurity
                 }
                 ScratchVolumeAccess.Host(names[1], () => Deadline(clock));
                 using (var policy = ScratchAttachment.Policy(scratch, package))
-                    observations.AddRange(policy.Compare(() => PolicyProbe(items, names[1], duplicate,
-                        context, primaryPrivileges, clock), () => Deadline(clock), ScratchVolumeAccess.Frames));
+                    observations.AddRange(policy.Compare(() => FilePolicyResult(
+                        PolicyProbe(items, names[1], duplicate, context, primaryPrivileges, clock),
+                        ObserveFileCreation(scratch, items[0].identity, duplicate, context, clock)),
+                        () => Deadline(clock), FilePolicyFrames, RejectFilePolicy, out candidateRejected));
             }
             catch (Exception error) { primary = error; }
             finally {
@@ -213,6 +216,7 @@ namespace ScientificSecurity
             foreach (var request in requests) observations.Add(request.Frame());
             foreach (string line in observations) Console.Out.WriteLine(line);
             Console.Out.Flush();
+            Need(!candidateRejected);
         }
         static void Revert()
         {

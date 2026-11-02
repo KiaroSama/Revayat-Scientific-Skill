@@ -69,9 +69,10 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         positions = [install.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('NtSetSecurityObject(handle, 4, bytes)', self.policy)
-        self.assertIn('supported ? 0x100020 : 0x20', self.policy)
-        self.assertIn('values[0] == "scratch-volume-v3"', self.policy)
-        self.assertIn('invalidFields[0] = "scratch-volume-v2"', self.policy)
+        self.assertIn('supported ? 0x100020 : 0x1301BF', self.policy)
+        self.assertIn('values[0] == "scratch-volume-v4"', self.policy)
+        for version in ('v1', 'v2', 'v3'):
+            self.assertIn('invalidFields[0] = "scratch-volume-' + version + '"', self.policy)
         self.assertIn('invalidFields[9] = Convert.ToBase64String(Trial(original, sid, !supported))', self.policy)
         self.assertIn('Need(Same(actual, after)); write(before); Need(Same(read(), before))', self.policy)
         self.assertIn('D:P(D;;0x000C0000;;;OW)(D;;FA;;;', self.policy)
@@ -125,7 +126,7 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         self.assertIn('if (!clean) { Finish(new InvalidOperationException(', self.policy)
         self.assertIn('Need(CanRestore(supported, running, deferred, cleanupProved))', self.policy)
         self.assertIn('return !deferred && (!supported || !running && clean)', self.policy)
-        self.assertIn('supported = values[0] == "scratch-volume-v3" && values[3] == "supported"', self.policy)
+        self.assertIn('supported = values[0] == "scratch-volume-v4" && values[3] == "supported"', self.policy)
         self.assertIn('Same(Trial(before, package, supported), after)', self.policy)
         anchors = ('CompletePolicies(completion ?? primary, clean, ScratchVolumePolicy.FinishSupported',
                    'ScratchVolumePolicy.EndRun,', 'registry.EndRun(value)', 'ScratchAccess.Finish(original, failures)')
@@ -155,6 +156,13 @@ class ScratchFileAccessTest(unittest.TestCase):
         self.assertIn('contents_written=False cause_claimed=False admission=False', source)
         self.assertLess(source.index('if (entered) leave()'), source.index('bind(value)'))
         self.assertLess(source.index('release(value)'), source.index('Attempt(failures, absent)'))
+        observer = (WINDOWS / 'ScratchAccess.cs').read_text(encoding='utf-8')
+        self.assertIn('FilePolicyResult(', observer)
+        self.assertIn('ObserveFileCreation(scratch, items[0].identity, duplicate, context, clock)', observer)
+        self.assertLess(observer.index('Finish(primary, failures);\n            foreach (var item in items) observations.Add'),
+                        observer.index('Need(!candidateRejected)'))
+        self.assertLess(observer.index('Console.Out.Flush();'), observer.index('Need(!candidateRejected)'))
+        self.assertIn('FileCreationFrames("supported", ObserveFileCreation(', supported)
         for forbidden in ('WriteFile(', 'ReadFile(', 'DeviceIoControl(', 'SetNamedSecurityInfo',
                           'NtSetSecurityObject', 'AdjustTokenPrivileges', 'File.Delete(', 'ResumeThread'):
             self.assertNotIn(forbidden, source)
@@ -173,7 +181,11 @@ class ScratchVolumeAccessTest(unittest.TestCase):
         self.assertIn('ScratchVolumeAccess.Host(', observer)
         self.assertIn('ScratchVolumeAccess.Open(', observer)
         self.assertIn('ScratchVolumeAccess.Qualify(', observer)
-        self.assertIn('ScratchVolumeAccess.Frames', observer)
+        file_access = (WINDOWS / 'ScratchFileAccess.cs').read_text(encoding='utf-8')
+        self.assertIn('ScratchVolumeAccess.Frames(phase, policy)', file_access)
+        self.assertIn('FilePolicyFrames, RejectFilePolicy, out candidateRejected', observer)
+        self.assertIn('rejected |= reject(results[i])', policy)
+        self.assertIn('ScratchVolumeAccess.Masks[i] & 0xC0003', file_access)
         self.assertIn('frames.AddRange(extra(phases[i], results[i]))', policy)
         self.assertIn('NtQueryObject(', source)
         self.assertIn('kind, memory, kind == 0 ? 56U : 1024U, out returned', source)

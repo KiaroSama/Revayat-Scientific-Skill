@@ -1,5 +1,8 @@
 """Keep current workflow syntax visible to both pinned CI linters."""
 import importlib.util
+import io
+import textwrap
+from types import ModuleType, SimpleNamespace
 from pathlib import Path
 import subprocess
 import unittest
@@ -42,6 +45,64 @@ class WorkflowLintTest(unittest.TestCase):
             LINT.actionlint_source('.github/workflows/codeql.yml', original)
         ordinary = 'name: plain\non: workflow_dispatch\njobs: {}\n'
         self.assertEqual(LINT.actionlint_source('.github/workflows/codeql.yml', ordinary), ordinary)
+
+    def test_windows_browser_selection_reuses_existing_candidate(self):
+        source = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
+        step = source.split('      - name: Select available Windows browser\n', 1)[1].split('      - name:', 1)[0]
+        self.assertIn("if: runner.os == 'Windows'", step)
+        body = textwrap.dedent(step.split('        run: |\n', 1)[1])
+        self.assertIn("runner.os != 'Windows' || steps.windows-browser.outputs.install == 'true'", source)
+        self.assertLess(source.index('name: Select available Windows browser'), source.index('name: Install controlled browser'))
+        self.assertIn('run: python -m playwright install --with-deps chromium', source)
+        self.assertIn('timeout-minutes: 10', source)
+        for paths, expected in (
+            ({'google-chrome': '/chrome', 'msedge': '/edge', 'chrome': '/other'}, '/chrome'),
+            ({'msedge': '/edge', 'chrome': '/other'}, '/edge'),
+            ({'chrome': '/other'}, '/other'),
+            ({'PF/Microsoft/Edge/Application/msedge.exe': True}, 'PF/Microsoft/Edge/Application/msedge.exe'),
+            ({'PF/Google/Chrome/Application/chrome.exe': True}, 'PF/Google/Chrome/Application/chrome.exe'),
+            ({'PF86/Microsoft/Edge/Application/msedge.exe': True}, 'PF86/Microsoft/Edge/Application/msedge.exe'),
+            ({'LOCAL/Google/Chrome/Application/chrome.exe': True}, 'LOCAL/Google/Chrome/Application/chrome.exe'),
+            ({}, ''),
+        ):
+            with self.subTest(paths=paths):
+                streams = {'env': io.StringIO(), 'output': io.StringIO()}
+                opened = []
+
+                class Candidate:
+                    def __init__(self, path):
+                        self.path = path
+
+                    def __truediv__(self, name):
+                        return Candidate(self.path + '/' + name)
+
+                    def is_file(self):
+                        return paths.get(self.path) is True
+
+                    def __str__(self):
+                        return self.path
+
+                def open_output(name, mode, *, encoding):
+                    self.assertEqual((mode, encoding), ('a', 'utf-8'))
+                    opened.append(name)
+                    return mock.MagicMock(__enter__=mock.Mock(return_value=streams[name]),
+                                          __exit__=mock.Mock(return_value=False))
+
+                environment = {'ProgramFiles': 'PF', 'ProgramFiles(x86)': 'PF86', 'LOCALAPPDATA': 'LOCAL',
+                               'GITHUB_ENV': 'env', 'GITHUB_OUTPUT': 'output'}
+                fake_os = ModuleType('os')
+                fake_os.environ = environment
+                modules = {'os': fake_os, 'shutil': SimpleNamespace(which=lambda name: paths.get(name)),
+                           'pathlib': SimpleNamespace(Path=Candidate)}
+                with mock.patch.dict('sys.modules', modules):
+                    exec(compile(body, '<windows-browser-selection>', 'exec'), {'open': open_output})
+                self.assertEqual(streams['output'].getvalue(), 'install=' + ('false' if expected else 'true') + '\n')
+                self.assertEqual(streams['env'].getvalue(), 'REVAYAT_CHROMIUM=' + expected + '\n' if expected else '')
+                self.assertEqual(opened, ['output', 'env'] if expected else ['output'])
+        with mock.patch.dict('sys.modules', {'os': SimpleNamespace(environ={}),
+                                             'shutil': SimpleNamespace(which=mock.Mock(side_effect=OSError('fixed refusal')))}):
+            with self.assertRaisesRegex(OSError, 'fixed refusal'):
+                exec(compile(body, '<windows-browser-selection>', 'exec'), {})
 
     @unittest.skipUnless(__import__('shutil').which('actionlint'), 'actual actionlint is required in the quality CI job')
     def test_actual_callee_contract_still_rejects_missing_input(self):

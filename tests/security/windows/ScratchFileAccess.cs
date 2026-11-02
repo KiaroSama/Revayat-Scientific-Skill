@@ -82,7 +82,7 @@ namespace ScientificSecurity
             finally { Attempt(failures, () => Native.Check(Native.CloseHandle(handle), "close scratch comparison deletion handle")); }
             Finish(primary, failures);
         }
-        static string[] ObserveFileCreation(string scratch, FileInformation root, IntPtr duplicate, RegistryContext context, Stopwatch clock)
+        static uint[] ObserveFileCreation(string scratch, FileInformation root, IntPtr duplicate, RegistryContext context, Stopwatch clock)
         {
             string path = Path.Combine(scratch, "scratch-file-control");
             var errors = new uint[2];
@@ -102,16 +102,70 @@ namespace ScientificSecurity
                     value => { if (Valid(value.pin)) Native.Check(Native.CloseHandle(value.pin), "close scratch file metadata pin"); });
             }
             Deadline(clock);
+            return errors;
+        }
+        static string[] FileCreationFrames(string phase, uint[] errors)
+        {
+            Need(phase == "supported" || phase == "baseline" || phase == "modified" || phase == "restored");
+            Need(errors != null && errors.Length == 2 && errors[0] == 0 && (errors[1] == 0 || errors[1] == 5));
             var frames = new string[2];
-            for (int role = 0; role < 2; role++) frames[role] = "WINDOWS_SCRATCH_FILE role=" + (role == 0 ? "host" : "lpac") +
+            for (int role = 0; role < 2; role++) frames[role] = "WINDOWS_SCRATCH_FILE phase=" + phase + " role=" + (role == 0 ? "host" : "lpac") +
                 " opened=" + (errors[role] == 0) + " win32_error=0x" + errors[role].ToString("X8") +
                 " cleanup_qualified=True contents_written=False cause_claimed=False admission=False";
             return frames;
+        }
+        static int[] FilePolicyResult(int[] policy, uint[] errors)
+        {
+            FileCreationFrames("baseline", errors);
+            Need(policy != null && policy.Length == 2 + ScratchVolumeAccess.Masks.Length * 5);
+            var result = new int[policy.Length + 2];
+            Array.Copy(policy, result, policy.Length);
+            result[policy.Length] = unchecked((int)errors[0]);
+            result[policy.Length + 1] = unchecked((int)errors[1]);
+            return result;
+        }
+        static List<string> FilePolicyFrames(string phase, int[] result)
+        {
+            int count = 2 + ScratchVolumeAccess.Masks.Length * 5;
+            Need(result != null && result.Length == count + 2);
+            var policy = new int[count]; Array.Copy(result, policy, count);
+            var frames = ScratchVolumeAccess.Frames(phase, policy);
+            frames.AddRange(FileCreationFrames(phase, new uint[] { unchecked((uint)result[count]), unchecked((uint)result[count + 1]) }));
+            return frames;
+        }
+        static bool RejectFilePolicy(int[] result)
+        {
+            Need(result != null && result.Length == 4 + ScratchVolumeAccess.Masks.Length * 5);
+            for (int i = 0; i < ScratchVolumeAccess.Masks.Length; i++)
+                if ((ScratchVolumeAccess.Masks[i] & 0xC0003) != 0 && result[2 + i] == 0) return true;
+            return false;
         }
         static void RequireHostFileCreation()
         { using (WindowsIdentity current = WindowsIdentity.GetCurrent(true)) Need(current == null); }
         public static void CheckFileCreationValidation()
         {
+            int count = ScratchVolumeAccess.Masks.Length;
+            var policy = new int[2 + count * 5];
+            for (int i = 0; i < count; i++) policy[2 + i] = unchecked((int)0xC0000022);
+            foreach (uint fileError in new uint[] { 0, 5 }) {
+                int[] result = FilePolicyResult(policy, new uint[] { 0, fileError });
+                Need(result.Length == policy.Length + 2 && !RejectFilePolicy(result));
+                foreach (string phase in new [] { "baseline", "modified", "restored" }) {
+                    List<string> frames = FilePolicyFrames(phase, result);
+                    Need(frames.Count == count + 2 && frames[count].Contains("phase=" + phase + " role=host opened=True") &&
+                        frames[count + 1].Contains("phase=" + phase + " role=lpac opened=" + (fileError == 0)));
+                }
+                for (int i = 1; i < count; i++) {
+                    int[] changed = (int[])result.Clone(); changed[2 + i] = 0;
+                    changed[2 + count + i] = unchecked((int)ScratchVolumeAccess.Masks[i]);
+                    Need(RejectFilePolicy(changed) == ((ScratchVolumeAccess.Masks[i] & 0xC0003) != 0));
+                }
+            }
+            foreach (uint[] errors in new [] { new uint[0], new uint[] { 0 }, new uint[] { 5, 5 }, new uint[] { 0, 2 } }) {
+                bool refused = false;
+                try { FilePolicyResult(policy, errors); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
             for (int mode = 0; mode < 9; mode++) {
                 int selected = mode, enters = 0, leaves = 0, closes = 0, deletes = 0, absences = 0;
                 var original = new InvalidOperationException("fixed create failure");

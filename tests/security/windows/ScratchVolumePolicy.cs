@@ -146,7 +146,7 @@ namespace ScientificSecurity
                 var ace = (CommonAce)trial.DiscretionaryAcl[i]; Need(ace.SecurityIdentifier != sid);
                 if (position == trial.DiscretionaryAcl.Count && (ace.AceFlags & AceFlags.Inherited) != 0) position = i;
             }
-            trial.DiscretionaryAcl.InsertAce(position, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, supported ? 0x100020 : 0x20, sid, false, null));
+            trial.DiscretionaryAcl.InsertAce(position, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, supported ? 0x100020 : 0x1301BF, sid, false, null));
             byte[] result = Binary(trial); Descriptor(result);
             Need(trial.Owner == original.Owner && trial.Group == original.Group && trial.ControlFlags == original.ControlFlags &&
                 trial.ResourceManagerControl == original.ResourceManagerControl && Equal(Binary(trial.SystemAcl), Binary(original.SystemAcl)));
@@ -204,7 +204,7 @@ namespace ScientificSecurity
         { using (var hash = SHA256.Create()) return String.Concat(hash.ComputeHash(Utf8.GetBytes(text)).Select(b => b.ToString("x2"))); }
         string Encode()
         {
-            string body = "scratch-volume-v3\n" + run + "\n" + package + "\n" + (supported ? "supported" : "diagnostic") + "\n" + root + "\n" + disk + "\n" + partition + "\n" +
+            string body = "scratch-volume-v4\n" + run + "\n" + package + "\n" + (supported ? "supported" : "diagnostic") + "\n" + root + "\n" + disk + "\n" + partition + "\n" +
                 imageIdentity.volume.ToString("X16") + ":" + imageIdentity.high.ToString("X16") + ":" + imageIdentity.low.ToString("X16") + "\n" +
                 Convert.ToBase64String(before) + "\n" + Convert.ToBase64String(after) + "\n";
             return body + Hash(body) + "\n";
@@ -212,10 +212,10 @@ namespace ScientificSecurity
         void Decode(byte[] bytes, string expectedPackage)
         {
             Need(bytes != null && bytes.Length > 0 && bytes.Length <= 196608); string text = Utf8.GetString(bytes); string[] values = text.Split('\n');
-            Need(values.Length == 12 && values[0] == "scratch-volume-v3" && values[1] == run && values[2] == expectedPackage &&
+            Need(values.Length == 12 && values[0] == "scratch-volume-v4" && values[1] == run && values[2] == expectedPackage &&
                 (values[3] == "diagnostic" || values[3] == "supported") &&
                 values[11] == "" && values[10] == Hash(String.Join("\n", values.Take(10)) + "\n"));
-            supported = values[0] == "scratch-volume-v3" && values[3] == "supported";
+            supported = values[0] == "scratch-volume-v4" && values[3] == "supported";
             package = values[2]; root = values[4];
             Need(values[5].Length > 0 && values[5].Length <= 10 && values[5].All(c => c >= '0' && c <= '9') &&
                 values[6].Length > 0 && values[6].Length <= 10 && values[6].All(c => c >= '0' && c <= '9'));
@@ -295,8 +295,10 @@ namespace ScientificSecurity
             }
             Finish(primary, failures.ToArray()); return results;
         }
-        internal List<string> Compare(Func<int[]> probe, Action deadline, Func<string, int[], List<string>> extra = null)
+        internal List<string> Compare(Func<int[]> probe, Action deadline, Func<string, int[], List<string>> extra,
+            Func<int[], bool> reject, out bool rejected)
         {
+            rejected = false;
             Need(!supported); List<int[]> results = null; Exception primary = null;
             try { results = Differential(probe, () => { deadline(); RequireSuspended(); }, Install, Restore); }
             catch (Exception error) { primary = error; }
@@ -306,7 +308,10 @@ namespace ScientificSecurity
                 frames.Add("WINDOWS_SCRATCH_POLICY phase=" + phases[i] + " object=" + (j == 0 ? "root" : "temp") +
                     " ntstatus=0x" + unchecked((uint)results[i][j]).ToString("X8") +
                     " descriptor_restored=True handles_closed=True cause_claimed=False admission=False");
-            if (extra != null) for (int i = 0; i < results.Count; i++) frames.AddRange(extra(phases[i], results[i]));
+            for (int i = 0; i < results.Count; i++) {
+                frames.AddRange(extra(phases[i], results[i]));
+                rejected |= reject(results[i]);
+            }
             return frames;
         }
         void Close()
@@ -387,7 +392,7 @@ namespace ScientificSecurity
             const string sid = "S-1-15-2-1-2-3-4-5-6-7";
             byte[] original = Binary(new RawSecurityDescriptor("O:SYG:SYD:P(A;;GA;;;SY)(A;;GR;;;BU)S:(ML;;NW;;;ME)"));
             byte[] trial = Trial(original, sid); var expected = Descriptor(trial); var added = (CommonAce)expected.DiscretionaryAcl[2];
-            Need(added.AccessMask == 0x20 && (added.AccessMask & 0x100000) == 0 &&
+            Need(added.AccessMask == 0x1301BF && added.AccessMask == ((int)FileSystemRights.Modify | (int)FileSystemRights.Synchronize) &&
                 added.AceFlags == AceFlags.None && added.SecurityIdentifier.Value == sid && !Same(original, trial));
             bool refused = false; try { Trial(trial, sid); } catch (InvalidOperationException) { refused = true; } Need(refused);
             byte[] actual = trial; int writes = 0;
@@ -415,6 +420,31 @@ namespace ScientificSecurity
                 catch (Exception) { caught = true; }
                 Need(caught == (mode != 0) && restores == 1 && installs == (mode == 3 ? 0 : 1));
             }
+            for (int mode = 0; mode < 5; mode++) {
+                int phase = 0; var order = new List<string>(); Exception caught = null;
+                try {
+                    var values = Differential(() => {
+                        int step = phase++; order.Add("probe" + step);
+                        if (mode == 1 && step == 1 || mode == 4 && step == 1) throw operation;
+                        return new [] { step == 1 ? 0 : unchecked((int)0xC0000022),
+                            step == 1 ? 0 : unchecked((int)0xC0000022), mode == 3 && step == 2 ? 0 : 5 };
+                    }, () => { }, () => order.Add("install"), () => {
+                        order.Add("restore"); if (mode == 2 || mode == 4) throw cleanup;
+                    });
+                    Need(mode == 0 && values.Count == 3 && values[0][2] == 5 && values[2][2] == 5);
+                }
+                catch (Exception error) { caught = error; }
+                Need((caught != null) == (mode != 0));
+                Need(String.Join(",", order) == (mode == 0 || mode == 3 ?
+                    "probe0,install,probe1,restore,probe2" : "probe0,install,probe1,restore"));
+                if (mode == 1) Need(Object.ReferenceEquals(caught, operation));
+                if (mode == 4) {
+                    var group = caught as AggregateException;
+                    Need(group != null && group.InnerExceptions.Count == 2 &&
+                        Object.ReferenceEquals(group.InnerExceptions[0], operation) &&
+                        Object.ReferenceEquals(group.InnerExceptions[1], cleanup));
+                }
+            }
             foreach (bool outer in new [] { false, true })
                 foreach (bool clean in new [] { false, true })
                     foreach (int count in new [] { 0, 1 })
@@ -429,7 +459,7 @@ namespace ScientificSecurity
             foreach (bool supported in new [] { false, true }) {
                 encoded.supported = supported; encoded.after = Trial(original, sid, supported);
                 var modeAce = (CommonAce)Descriptor(encoded.after).DiscretionaryAcl[2];
-                Need(modeAce.AccessMask == (supported ? 0x100020 : 0x20) && modeAce.AceFlags == AceFlags.None &&
+                Need(modeAce.AccessMask == (supported ? 0x100020 : 0x1301BF) && modeAce.AceFlags == AceFlags.None &&
                     modeAce.SecurityIdentifier.Value == sid);
                 string receipt = encoded.Encode(); string[] fields = receipt.Split('\n');
                 Need(fields.Length == 12 && fields[10] == Hash(String.Join("\n", fields.Take(10)) + "\n") &&
@@ -438,19 +468,25 @@ namespace ScientificSecurity
                 decoded.Decode(Utf8.GetBytes(receipt), sid);
                 Need(Same(decoded.before, original) && Same(decoded.after, encoded.after) &&
                     decoded.supported == supported && decoded.disk == 2 && decoded.partition == 1);
-                for (int mode = 0; mode < 4; mode++) {
+                for (int mode = 0; mode < 6; mode++) {
                     var invalidFields = (string[])fields.Clone();
                     if (mode == 0) invalidFields[0] = "scratch-volume-v2";
                     if (mode == 1) invalidFields[0] = "scratch-volume-v1";
                     if (mode == 2) invalidFields[3] = supported ? "diagnostic" : "supported";
                     if (mode == 3) invalidFields[9] = Convert.ToBase64String(Trial(original, sid, !supported));
+                    if (mode == 4) invalidFields[0] = "scratch-volume-v3";
+                    if (mode == 5) {
+                        var oldTrial = Descriptor(encoded.after);
+                        ((CommonAce)oldTrial.DiscretionaryAcl[2]).AccessMask = supported ? 0x1301BF : 0x20;
+                        invalidFields[9] = Convert.ToBase64String(Binary(oldTrial));
+                    }
                     invalidFields[10] = Hash(String.Join("\n", invalidFields.Take(10)) + "\n");
                     refused = false;
                     try { new ScratchVolumePolicy { run = encoded.run }.Decode(Utf8.GetBytes(String.Join("\n", invalidFields)), sid); }
                     catch (InvalidOperationException) { refused = true; }
                     Need(refused);
                 }
-                foreach (string invalid in new [] { receipt + "extra", receipt.Replace("scratch-volume-v3", "foreign"),
+                foreach (string invalid in new [] { receipt + "extra", receipt.Replace("scratch-volume-v4", "foreign"),
                     receipt.Substring(0, receipt.Length - 2), receipt.Replace(fields[10], new string('0', 64)) }) {
                     refused = false;
                     try { decoded.Decode(Utf8.GetBytes(invalid), sid); } catch (InvalidOperationException) { refused = true; }

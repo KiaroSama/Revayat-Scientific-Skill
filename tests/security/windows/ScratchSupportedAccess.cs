@@ -49,7 +49,7 @@ namespace ScientificSecurity
                 ScratchVolumeAccess.Host(nativeRoot, () => Deadline(clock));
                 lease = ScratchAttachment.Policy(scratch, package, true); lease.Install();
                 RequireSupportedResults(PolicyProbe(items, nativeRoot, duplicate, context, expected, clock));
-                fileFrames = ObserveFileCreation(scratch, items[0].identity, duplicate, context, clock);
+                fileFrames = FileCreationFrames("supported", ObserveFileCreation(scratch, items[0].identity, duplicate, context, clock));
                 expected.Same(Privileges(token)); expected.Same(Privileges(duplicate)); Deadline(clock);
             }
             catch (Exception failure) { primary = failure; }
