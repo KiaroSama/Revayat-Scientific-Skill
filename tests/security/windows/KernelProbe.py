@@ -12,6 +12,7 @@ import time
 K = ctypes.WinDLL('kernel32', use_last_error=True)
 A = ctypes.WinDLL('advapi32', use_last_error=True)
 P = ctypes.c_void_p
+SE_CHANGE_NOTIFY_PRIVILEGE = (23, 0)
 K.GetCurrentProcess.restype = P
 K.VirtualAlloc.argtypes = [P, ctypes.c_size_t, w.DWORD, w.DWORD]
 K.VirtualAlloc.restype = P
@@ -208,15 +209,12 @@ def token_controls():
             require(returned.value == 4 and value.value == 1, 'worker is not ' + name)
         data = token_data(token, 30)
         require(w.DWORD.from_buffer(data).value == 0, 'worker has unexpected capabilities')
-        A.LookupPrivilegeValueW.argtypes = [w.LPCWSTR, w.LPCWSTR, ctypes.POINTER(Luid)]
-        traverse = Luid()
-        require(A.LookupPrivilegeValueW(None, 'SeChangeNotifyPrivilege', ctypes.byref(traverse)), 'cannot identify traversal privilege')
         privileges = token_data(token, 3)
         count = w.DWORD.from_buffer(privileges).value
         require(count <= 128 and 4 + count * ctypes.sizeof(Privilege) <= len(privileges), 'invalid token privilege buffer')
         for index in range(count):
             item = Privilege.from_buffer(privileges, 4 + index * ctypes.sizeof(Privilege))
-            require((item.luid.low, item.luid.high) == (traverse.low, traverse.high),
+            require((item.luid.low, item.luid.high) == SE_CHANGE_NOTIFY_PRIVILEGE,
                     'dangerous privilege remains present in worker token')
         user_data = token_data(token, 1)
         package_data = token_data(token, 31)

@@ -334,5 +334,87 @@ class PythonTokenTest(unittest.TestCase):
             self.assertIn(phase, assigned)
 
 
+class OrdinaryTokenTest(unittest.TestCase):
+    def test_actual_ordinary_privilege_inventory_without_name_lookup(self):
+        source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name in ('token_controls', 'require')]
+        constants = [node for node in tree.body if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == 'SE_CHANGE_NOTIFY_PRIVILEGE'
+                             for target in node.targets)]
+
+        class Luid(ctypes.Structure):
+            _fields_ = [('low', ctypes.c_uint32), ('high', ctypes.c_int32)]
+
+        class Privilege(ctypes.Structure):
+            _fields_ = [('luid', Luid), ('attributes', ctypes.c_uint32)]
+
+        class SidAttributes(ctypes.Structure):
+            _fields_ = [('sid', ctypes.c_void_p), ('attributes', ctypes.c_uint32)]
+
+        class Groups(ctypes.Structure):
+            _fields_ = [('count', ctypes.c_uint32), ('first', SidAttributes)]
+
+        cases = [([], None, True)] + [([(23, 0, flags)], None, True) for flags in (0, 2, 0xFFFFFFFF)]
+        cases += [([(low, high, 0)], None, False)
+                  for low, high in ((0, 0), (22, 0), (24, 0), (23, 1), (23, -1))]
+        cases += [([(23, 0, 0), (24, 0, 0)], None, False), ([(24, 0, 0), (23, 0, 0)], None, False),
+                  ([(23, 0, 0)], 4, False), ([(23, 0, 0)], 15, False),
+                  ([(23, 0, 0)] * 129, None, False)]
+        for entries, length, accepted in cases:
+            seen = []
+
+            def opened(_process, access, token):
+                self.assertEqual(access, 8)
+                token._obj.value = 1
+                seen.append('open')
+                return 1
+
+            def query(_token, kind, value, capacity, returned):
+                self.assertEqual((kind, capacity), (29, 4))
+                value._obj.value = 1
+                returned._obj.value = 4
+                return 1
+
+            class Authority:
+                OpenProcessToken = staticmethod(opened)
+                GetTokenInformation = staticmethod(query)
+                def __getattr__(self, name):
+                    raise AssertionError('Unexpected native lookup: ' + name)
+
+            def data(_token, kind):
+                seen.append(kind)
+                if kind == 30:
+                    return bytearray(4)
+                if kind == 3:
+                    result = bytearray(4 + len(entries) * ctypes.sizeof(Privilege))
+                    result[:4] = len(entries).to_bytes(4, 'little')
+                    for index, (low, high, attributes) in enumerate(entries):
+                        item = Privilege.from_buffer(result, 4 + index * ctypes.sizeof(Privilege))
+                        item.luid.low, item.luid.high, item.attributes = low, high, attributes
+                    return result if length is None else result[:length]
+                if kind == 2:
+                    return bytearray(Groups.first.offset)
+                self.assertIn(kind, (1, 31))
+                return bytearray(ctypes.sizeof(ctypes.c_void_p))
+
+            scope = {'ctypes': ctypes, 'w': SimpleNamespace(DWORD=ctypes.c_uint32), 'P': ctypes.c_void_p,
+                     'Privilege': Privilege, 'Groups': Groups, 'SidAttributes': SidAttributes,
+                     'A': Authority(), 'K': SimpleNamespace(GetCurrentProcess=lambda: 1,
+                                                          CloseHandle=lambda _token: seen.append('close')),
+                     'lpac_enabled': lambda _token: True, 'token_data': data, 'sid_text': lambda _sid: 'fixed-owner'}
+            exec(compile(ast.Module(body=constants + helpers, type_ignores=[]), 'fixed-ordinary-token', 'exec'), scope)
+            with self.subTest(entries=entries, length=length):
+                if accepted:
+                    self.assertEqual(scope['token_controls'](), ['fixed-owner'])
+                    self.assertEqual(seen, ['open', 30, 3, 1, 31, 2, 'close'])
+                else:
+                    with self.assertRaises(AssertionError):
+                        scope['token_controls']()
+                    self.assertEqual(seen, ['open', 30, 3, 'close'])
+                self.assertEqual(seen.count('close'), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
