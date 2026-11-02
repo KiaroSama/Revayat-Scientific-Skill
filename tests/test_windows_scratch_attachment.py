@@ -69,11 +69,16 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         positions = [install.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('NtSetSecurityObject(handle, 4, bytes)', self.policy)
-        self.assertIn('supported ? 0x100020 : 0x1301BF', self.policy)
-        self.assertIn('values[0] == "scratch-volume-v4"', self.policy)
-        for version in ('v1', 'v2', 'v3'):
+        self.assertIn('AceQualifier.AccessAllowed, 0x1301BF, sid, false, null', self.policy)
+        self.assertIn('values[0] == "scratch-volume-v5"', self.policy)
+        for version in ('v1', 'v2', 'v3', 'v4'):
             self.assertIn('invalidFields[0] = "scratch-volume-' + version + '"', self.policy)
-        self.assertIn('invalidFields[9] = Convert.ToBase64String(Trial(original, sid, !supported))', self.policy)
+        self.assertIn('values[3] == (expectedSupported ? "supported" : "diagnostic")', self.policy)
+        self.assertIn('ReceiptName(mode == 1)', self.policy)
+        self.assertIn('lease.Decode(ReadReceipt(file), Package(run), mode == 1)', self.policy)
+        self.assertIn('Need(!legacy && !(diagnostic && supported))', self.policy)
+        self.assertIn('Need(FindReceipt(state) == -1)', self.policy)
+        self.assertIn('AccessMask = supported ? 0x100020 : 0x20', self.policy)
         self.assertIn('Need(Same(actual, after)); write(before); Need(Same(read(), before))', self.policy)
         self.assertIn('D:P(D;;0x000C0000;;;OW)(D;;FA;;;', self.policy)
         self.assertIn('cleanupQualified = clean;', self.policy)
@@ -126,8 +131,11 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         self.assertIn('if (!clean) { Finish(new InvalidOperationException(', self.policy)
         self.assertIn('Need(CanRestore(supported, running, deferred, cleanupProved))', self.policy)
         self.assertIn('return !deferred && (!supported || !running && clean)', self.policy)
-        self.assertIn('supported = values[0] == "scratch-volume-v4" && values[3] == "supported"', self.policy)
-        self.assertIn('Same(Trial(before, package, supported), after)', self.policy)
+        self.assertIn('supported = expectedSupported;', self.policy)
+        self.assertIn('Same(Trial(before, package), after)', self.policy)
+        self.assertIn('mask == 0x100000 || mask == 0x20000', access)
+        self.assertIn('RequireSupportedCreation(creation);', access)
+        self.assertLess(access.index('RequireSupportedCreation(creation);'), access.index('lease.QualifySupported()'))
         anchors = ('CompletePolicies(completion ?? primary, clean, ScratchVolumePolicy.FinishSupported',
                    'ScratchVolumePolicy.EndRun,', 'registry.EndRun(value)', 'ScratchAccess.Finish(original, failures)')
         positions = [completion.index(anchor) for anchor in anchors]
@@ -162,7 +170,8 @@ class ScratchFileAccessTest(unittest.TestCase):
         self.assertLess(observer.index('Finish(primary, failures);\n            foreach (var item in items) observations.Add'),
                         observer.index('Need(!candidateRejected)'))
         self.assertLess(observer.index('Console.Out.Flush();'), observer.index('Need(!candidateRejected)'))
-        self.assertIn('FileCreationFrames("supported", ObserveFileCreation(', supported)
+        self.assertIn('FileCreationFrames("supported", creation)', supported)
+        self.assertIn('errors[0] == 0 && errors[1] == 0', supported)
         for forbidden in ('WriteFile(', 'ReadFile(', 'DeviceIoControl(', 'SetNamedSecurityInfo',
                           'NtSetSecurityObject', 'AdjustTokenPrivileges', 'File.Delete(', 'ResumeThread'):
             self.assertNotIn(forbidden, source)

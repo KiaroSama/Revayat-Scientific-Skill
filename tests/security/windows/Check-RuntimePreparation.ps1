@@ -62,9 +62,9 @@ try {
                 }
             }
             catch { $caught = $_.Exception }
-            $expected = if ($operationFailure -eq 1) { @('recovery-compile/before') }
-                elseif ($operationFailure -eq 2) { @('recovery-compile/before','recovery-compile/after','recovery/before') }
-                else { @('recovery-compile/before','recovery-compile/after','recovery/before','recovery/after') }
+            $expected = @(if ($operationFailure -eq 1) { 'recovery-compile/before' }
+                elseif ($operationFailure -eq 2) { 'recovery-compile/before'; 'recovery-compile/after'; 'recovery/before' }
+                else { 'recovery-compile/before'; 'recovery-compile/after'; 'recovery/before'; 'recovery/after' })
             Require (($script:markerCalls -join ',') -eq ($expected -join ',')) 'Recovery marker order changed'
             Require ($calls.compile -eq 1 -and $calls.recover -eq [int]($operationFailure -ne 1)) 'Reporting failure skipped recovery'
             $reportFailed = $script:failedMarker -ge 0 -and $script:failedMarker -lt $expected.Count

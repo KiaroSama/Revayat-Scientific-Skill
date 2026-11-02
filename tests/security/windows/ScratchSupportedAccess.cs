@@ -18,9 +18,10 @@ namespace ScientificSecurity
             int count = ScratchVolumeAccess.Masks.Length;
             Need(result != null && result.Length == 2 + count * 5 && result[0] == 0 && result[1] == 0);
             for (int i = 0; i < count; i++) {
-                bool synchronize = ScratchVolumeAccess.Masks[i] == 0x100000;
-                Need(result[2 + i] == (synchronize ? 0 : unchecked((int)0xC0000022)) &&
-                    result[2 + count + i] == (synchronize ? 0x100000 : 0));
+                uint mask = ScratchVolumeAccess.Masks[i];
+                bool readableMetadata = mask == 0x100000 || mask == 0x20000;
+                Need(result[2 + i] == (readableMetadata ? 0 : unchecked((int)0xC0000022)) &&
+                    result[2 + count + i] == (readableMetadata ? unchecked((int)mask) : 0));
             }
         }
         internal static void PrepareSupported(Native.ProcessInfo process, string scratch, string package)
@@ -49,7 +50,9 @@ namespace ScientificSecurity
                 ScratchVolumeAccess.Host(nativeRoot, () => Deadline(clock));
                 lease = ScratchAttachment.Policy(scratch, package, true); lease.Install();
                 RequireSupportedResults(PolicyProbe(items, nativeRoot, duplicate, context, expected, clock));
-                fileFrames = FileCreationFrames("supported", ObserveFileCreation(scratch, items[0].identity, duplicate, context, clock));
+                uint[] creation = ObserveFileCreation(scratch, items[0].identity, duplicate, context, clock);
+                RequireSupportedCreation(creation);
+                fileFrames = FileCreationFrames("supported", creation);
                 expected.Same(Privileges(token)); expected.Same(Privileges(duplicate)); Deadline(clock);
             }
             catch (Exception failure) { primary = failure; }
@@ -67,12 +70,22 @@ namespace ScientificSecurity
             Console.Out.Flush();
             lease.QualifySupported();
         }
+        static void RequireSupportedCreation(uint[] errors)
+        { Need(errors != null && errors.Length == 2 && errors[0] == 0 && errors[1] == 0); }
         public static void CheckSupportedValidation()
         {
+            foreach (uint[] errors in new [] { new uint[] { 0, 0 }, new uint[] { 0, 5 }, new uint[] { 5, 0 },
+                new uint[] { 0, 2 }, new uint[0], new uint[] { 0 }, new uint[] { 0, 0, 0 } }) {
+                bool refused = false;
+                try { RequireSupportedCreation(errors); } catch (InvalidOperationException) { refused = true; }
+                Need(refused == (errors.Length != 2 || errors[0] != 0 || errors[1] != 0));
+            }
             var result = new int[2 + ScratchVolumeAccess.Masks.Length * 5];
-            for (int i = 0; i < ScratchVolumeAccess.Masks.Length; i++)
-                result[2 + i] = i == 2 ? 0 : unchecked((int)0xC0000022);
-            result[2 + ScratchVolumeAccess.Masks.Length + 2] = 0x100000;
+            for (int i = 0; i < ScratchVolumeAccess.Masks.Length; i++) {
+                bool readableMetadata = i == 2 || i == 6;
+                result[2 + i] = readableMetadata ? 0 : unchecked((int)0xC0000022);
+                result[2 + ScratchVolumeAccess.Masks.Length + i] = readableMetadata ? unchecked((int)ScratchVolumeAccess.Masks[i]) : 0;
+            }
             RequireSupportedResults(result);
             for (int i = 0; i < 2 + ScratchVolumeAccess.Masks.Length * 2; i++) {
                 var changed = (int[])result.Clone(); changed[i] ^= 1; bool refused = false;
