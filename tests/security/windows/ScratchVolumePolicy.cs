@@ -11,7 +11,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace ScientificSecurity
 {
-    // Disposable-host differential only. Compare/set/readback is not atomic or a production grant.
+    // Exact disposable-volume diagnostic/supported leases. Compare/set/readback is not atomic.
     public sealed class ScratchVolumePolicy : IDisposable
     {
         const string ReceiptName = "scratch-volume-policy.receipt";
@@ -32,7 +32,7 @@ namespace ScientificSecurity
         FileIdentity imageIdentity;
         IntPtr volume;
         byte[] before, after, receiptBytes;
-        bool possible, closed;
+        bool possible, closed, supported, ready, running, deferred, cleanupProved;
         ScratchVolumePolicy() { }
         static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed scratch volume policy is unqualified"); }
@@ -71,7 +71,34 @@ namespace ScientificSecurity
             Need(runs == 1 && !uncertain && active == null && !selected);
             selectedJob = job; selectedProcess = process.process; selected = true; RequireSuspended();
         }
-        internal static void RequireNoLease() { Need(active == null); selected = false; }
+        internal static bool Supports(string phase, bool observe, int? registry, bool qualified)
+        {
+            return (phase == "preflight" || phase == "wall" || phase == "regressions") && registry == 0 &&
+                (qualified || observe && phase == "preflight");
+        }
+        internal static void RequireResume(bool required)
+        {
+            RequireHost(); Need(!required || active != null);
+            if (active != null) {
+                RequireSuspended(); Need(active.supported && active.ready && active.possible && !active.deferred);
+                active.Bind(); Need(Same(Read(active.volume), active.after)); active.running = true;
+            }
+            selected = false;
+        }
+        internal void QualifySupported()
+        { RequireHost(); RequireSuspended(); Need(active == this && supported && possible && !ready && !running && !deferred); ready = true; }
+        internal static void CompleteSupported(bool clean, Action restore, Action defer)
+        {
+            if (!clean) { Finish(new InvalidOperationException("supported scratch process cleanup remains uncertain"), defer); return; }
+            restore();
+        }
+        internal static void FinishSupported(bool clean)
+        {
+            var lease = active; if (lease == null) return;
+            CompleteSupported(clean, () => { lease.running = false; lease.cleanupProved = true; lease.Dispose(); }, lease.DeferRecovery);
+        }
+        internal void DeferRecovery()
+        { RequireHost(); Need(active == this); deferred = true; uncertain = true; Close(); active = null; }
         static void RequireSuspended()
         {
             Need(selected && runs == 1 && !uncertain && Valid(selectedJob) && Valid(selectedProcess));
@@ -111,7 +138,7 @@ namespace ScientificSecurity
                 first.ResourceManagerControl == second.ResourceManagerControl &&
                 Equal(Binary(first.DiscretionaryAcl), Binary(second.DiscretionaryAcl)) && Equal(Binary(first.SystemAcl), Binary(second.SystemAcl));
         }
-        static byte[] Trial(byte[] bytes, string package)
+        static byte[] Trial(byte[] bytes, string package, bool supported = false)
         {
             var original = Descriptor(bytes); var trial = Descriptor(bytes); var sid = new SecurityIdentifier(package);
             Need(package.StartsWith("S-1-15-2-", StringComparison.Ordinal)); int position = trial.DiscretionaryAcl.Count;
@@ -119,7 +146,7 @@ namespace ScientificSecurity
                 var ace = (CommonAce)trial.DiscretionaryAcl[i]; Need(ace.SecurityIdentifier != sid);
                 if (position == trial.DiscretionaryAcl.Count && (ace.AceFlags & AceFlags.Inherited) != 0) position = i;
             }
-            trial.DiscretionaryAcl.InsertAce(position, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20, sid, false, null));
+            trial.DiscretionaryAcl.InsertAce(position, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, supported ? 0x100020 : 0x20, sid, false, null));
             byte[] result = Binary(trial); Descriptor(result);
             Need(trial.Owner == original.Owner && trial.Group == original.Group && trial.ControlFlags == original.ControlFlags &&
                 trial.ResourceManagerControl == original.ResourceManagerControl && Equal(Binary(trial.SystemAcl), Binary(original.SystemAcl)));
@@ -177,7 +204,7 @@ namespace ScientificSecurity
         { using (var hash = SHA256.Create()) return String.Concat(hash.ComputeHash(Utf8.GetBytes(text)).Select(b => b.ToString("x2"))); }
         string Encode()
         {
-            string body = "scratch-volume-v2\n" + run + "\n" + package + "\n" + root + "\n" + disk + "\n" + partition + "\n" +
+            string body = "scratch-volume-v3\n" + run + "\n" + package + "\n" + (supported ? "supported" : "diagnostic") + "\n" + root + "\n" + disk + "\n" + partition + "\n" +
                 imageIdentity.volume.ToString("X16") + ":" + imageIdentity.high.ToString("X16") + ":" + imageIdentity.low.ToString("X16") + "\n" +
                 Convert.ToBase64String(before) + "\n" + Convert.ToBase64String(after) + "\n";
             return body + Hash(body) + "\n";
@@ -185,18 +212,20 @@ namespace ScientificSecurity
         void Decode(byte[] bytes, string expectedPackage)
         {
             Need(bytes != null && bytes.Length > 0 && bytes.Length <= 196608); string text = Utf8.GetString(bytes); string[] values = text.Split('\n');
-            Need(values.Length == 11 && values[0] == "scratch-volume-v2" && values[1] == run && values[2] == expectedPackage &&
-                values[10] == "" && values[9] == Hash(String.Join("\n", values.Take(9)) + "\n"));
-            package = values[2]; root = values[3];
-            Need(values[4].Length > 0 && values[4].Length <= 10 && values[4].All(c => c >= '0' && c <= '9') &&
-                values[5].Length > 0 && values[5].Length <= 10 && values[5].All(c => c >= '0' && c <= '9'));
-            disk = UInt32.Parse(values[4], System.Globalization.CultureInfo.InvariantCulture);
-            partition = UInt32.Parse(values[5], System.Globalization.CultureInfo.InvariantCulture);
-            string[] identity = values[6].Split(':');
+            Need(values.Length == 12 && values[0] == "scratch-volume-v3" && values[1] == run && values[2] == expectedPackage &&
+                (values[3] == "diagnostic" || values[3] == "supported") &&
+                values[11] == "" && values[10] == Hash(String.Join("\n", values.Take(10)) + "\n"));
+            supported = values[0] == "scratch-volume-v3" && values[3] == "supported";
+            package = values[2]; root = values[4];
+            Need(values[5].Length > 0 && values[5].Length <= 10 && values[5].All(c => c >= '0' && c <= '9') &&
+                values[6].Length > 0 && values[6].Length <= 10 && values[6].All(c => c >= '0' && c <= '9'));
+            disk = UInt32.Parse(values[5], System.Globalization.CultureInfo.InvariantCulture);
+            partition = UInt32.Parse(values[6], System.Globalization.CultureInfo.InvariantCulture);
+            string[] identity = values[7].Split(':');
             Need(identity.Length == 3 && identity.All(v => v.Length == 16 && v.All(c => c >= '0' && c <= '9' || c >= 'A' && c <= 'F')));
             imageIdentity = new FileIdentity { volume = Convert.ToUInt64(identity[0], 16), high = Convert.ToUInt64(identity[1], 16), low = Convert.ToUInt64(identity[2], 16) };
-            before = Convert.FromBase64String(values[7]); after = Convert.FromBase64String(values[8]);
-            Need(Same(Trial(before, package), after)); receiptBytes = bytes;
+            before = Convert.FromBase64String(values[8]); after = Convert.FromBase64String(values[9]);
+            Need(Same(Trial(before, package, supported), after)); receiptBytes = bytes;
         }
         static byte[] ReadReceipt(FileStream file)
         {
@@ -223,12 +252,12 @@ namespace ScientificSecurity
                 finally { if (descriptor != IntPtr.Zero) Need(Native.LocalFree(descriptor) == IntPtr.Zero); }
             }
         }
-        internal static ScratchVolumePolicy Begin(string run, string state, string root, uint disk, uint partition, string package)
+        internal static ScratchVolumePolicy Begin(string run, string state, string root, uint disk, uint partition, string package, bool supported = false)
         {
             RequireSuspended(); Need(active == null && package == Package(run));
-            var lease = new ScratchVolumePolicy { run = run, state = State(run, state), root = root, disk = disk, partition = partition, package = package };
+            var lease = new ScratchVolumePolicy { run = run, state = State(run, state), root = root, disk = disk, partition = partition, package = package, supported = supported };
             try {
-                lease.imageIdentity = Image(lease.state); lease.Open(); lease.before = Read(lease.volume); lease.after = Trial(lease.before, package);
+                lease.imageIdentity = Image(lease.state); lease.Open(); lease.before = Read(lease.volume); lease.after = Trial(lease.before, package, supported);
                 active = lease; return lease;
             }
             catch (Exception error) { Finish(error, lease.Close); throw; }
@@ -245,8 +274,10 @@ namespace ScientificSecurity
             byte[] actual = read(); if (Same(actual, before)) return;
             Need(Same(actual, after)); write(before); Need(Same(read(), before));
         }
+        static bool CanRestore(bool supported, bool running, bool deferred, bool clean)
+        { return !deferred && (!supported || !running && clean); }
         internal void Restore()
-        { RequireHost(); if (possible) { Bind(); Restore(before, after, () => Read(volume), bytes => Write(volume, bytes)); } }
+        { RequireHost(); Need(CanRestore(supported, running, deferred, cleanupProved)); if (possible) { Bind(); Restore(before, after, () => Read(volume), bytes => Write(volume, bytes)); } }
         static List<int[]> Differential(Func<int[]> probe, Action qualify, Action install, Action restore)
         {
             var results = new List<int[]>(); Exception primary = null; var failures = new List<Exception>();
@@ -266,7 +297,7 @@ namespace ScientificSecurity
         }
         internal List<string> Compare(Func<int[]> probe, Action deadline, Func<string, int[], List<string>> extra = null)
         {
-            List<int[]> results = null; Exception primary = null;
+            Need(!supported); List<int[]> results = null; Exception primary = null;
             try { results = Differential(probe, () => { deadline(); RequireSuspended(); }, Install, Restore); }
             catch (Exception error) { primary = error; }
             Finish(primary, Dispose);
@@ -307,7 +338,7 @@ namespace ScientificSecurity
         {
             RequireHost(); Need(RecoveryAvailable(outerOwnerReaped, cleanupQualified, runs, selected)); state = State(run, state);
             string path = Path.Combine(state, ReceiptName); Plain(path);
-            var lease = new ScratchVolumePolicy { run = run, state = state, possible = true };
+            var lease = new ScratchVolumePolicy { run = run, state = state, possible = true, cleanupProved = true };
             try {
                 using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) lease.Decode(ReadReceipt(file), Package(run));
                 Need(lease.disk == actualDisk); lease.Open(); lease.Dispose();
@@ -329,6 +360,30 @@ namespace ScientificSecurity
         }
         public static void CheckValidation()
         {
+            foreach (string phase in new [] { "preflight", "wall", "regressions", "registry-authority", "module-id2", "python-loader-trace" })
+                foreach (bool observe in new [] { false, true }) foreach (bool qualified in new [] { false, true })
+                    foreach (int? registry in new int?[] { null, 0, unchecked((int)0xC0000022) })
+                        Need(Supports(phase, observe, registry, qualified) ==
+                            ((phase == "preflight" || phase == "wall" || phase == "regressions") && registry == 0 &&
+                            (qualified || observe && phase == "preflight")));
+            foreach (bool supported in new [] { false, true }) foreach (bool running in new [] { false, true })
+                foreach (bool deferred in new [] { false, true }) foreach (bool clean in new [] { false, true })
+                    Need(CanRestore(supported, running, deferred, clean) == (!deferred && (!supported || !running && clean)));
+            for (int mode = 0; mode < 4; mode++) {
+                var order = new List<string>(); var failure = new IOException("fixed restoration"); bool caught = false;
+                try { CompleteSupported(mode != 1 && mode != 3, () => { order.Add("restore"); if (mode == 2) throw failure; },
+                    () => { order.Add("defer"); if (mode == 3) throw failure; }); }
+                catch (Exception error) { caught = true; Need(mode == 1 || mode == 3 || Object.ReferenceEquals(error, failure)); }
+                Need(caught == (mode != 0) && String.Join(",", order) == (mode == 1 || mode == 3 ? "defer" : "restore"));
+                if (mode == 3) {
+                    bool retained = false;
+                    try { CompleteSupported(false, () => { }, () => { throw failure; }); }
+                    catch (AggregateException error) { retained = error.InnerExceptions.Count == 2 &&
+                        error.InnerExceptions[0].Message == "supported scratch process cleanup remains uncertain" &&
+                        Object.ReferenceEquals(error.InnerExceptions[1], failure); }
+                    Need(retained);
+                }
+            }
             const string sid = "S-1-15-2-1-2-3-4-5-6-7";
             byte[] original = Binary(new RawSecurityDescriptor("O:SYG:SYD:P(A;;GA;;;SY)(A;;GR;;;BU)S:(ML;;NW;;;ME)"));
             byte[] trial = Trial(original, sid); var expected = Descriptor(trial); var added = (CommonAce)expected.DiscretionaryAcl[2];
@@ -371,33 +426,36 @@ namespace ScientificSecurity
                 run = new string('a', 32), package = sid, root = @"E:\", disk = 2, partition = 1,
                 imageIdentity = new FileIdentity { volume = 1, high = 2, low = 3 }, before = original, after = trial
             };
-            string receipt = encoded.Encode(); string[] fields = receipt.Split('\n');
-            Need(fields.Length == 11 && fields[9] == Hash(String.Join("\n", fields.Take(9)) + "\n") &&
-                !receipt.Contains("private"));
-            var decoded = new ScratchVolumePolicy { run = encoded.run };
-            decoded.Decode(Utf8.GetBytes(receipt), sid);
-            Need(Same(decoded.before, original) && Same(decoded.after, trial) && decoded.disk == 2 && decoded.partition == 1);
-            foreach (bool legacy in new [] { false, true }) {
-                var invalidFields = (string[])fields.Clone();
-                if (legacy) invalidFields[0] = "scratch-volume-v1";
-                else {
-                    var wider = Descriptor(trial); var widerAce = (CommonAce)wider.DiscretionaryAcl[2];
-                    wider.DiscretionaryAcl.RemoveAce(2);
-                    wider.DiscretionaryAcl.InsertAce(2, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x100020,
-                        widerAce.SecurityIdentifier, false, null));
-                    invalidFields[8] = Convert.ToBase64String(Binary(wider));
+            foreach (bool supported in new [] { false, true }) {
+                encoded.supported = supported; encoded.after = Trial(original, sid, supported);
+                var modeAce = (CommonAce)Descriptor(encoded.after).DiscretionaryAcl[2];
+                Need(modeAce.AccessMask == (supported ? 0x100020 : 0x20) && modeAce.AceFlags == AceFlags.None &&
+                    modeAce.SecurityIdentifier.Value == sid);
+                string receipt = encoded.Encode(); string[] fields = receipt.Split('\n');
+                Need(fields.Length == 12 && fields[10] == Hash(String.Join("\n", fields.Take(10)) + "\n") &&
+                    !receipt.Contains("private"));
+                var decoded = new ScratchVolumePolicy { run = encoded.run };
+                decoded.Decode(Utf8.GetBytes(receipt), sid);
+                Need(Same(decoded.before, original) && Same(decoded.after, encoded.after) &&
+                    decoded.supported == supported && decoded.disk == 2 && decoded.partition == 1);
+                for (int mode = 0; mode < 4; mode++) {
+                    var invalidFields = (string[])fields.Clone();
+                    if (mode == 0) invalidFields[0] = "scratch-volume-v2";
+                    if (mode == 1) invalidFields[0] = "scratch-volume-v1";
+                    if (mode == 2) invalidFields[3] = supported ? "diagnostic" : "supported";
+                    if (mode == 3) invalidFields[9] = Convert.ToBase64String(Trial(original, sid, !supported));
+                    invalidFields[10] = Hash(String.Join("\n", invalidFields.Take(10)) + "\n");
+                    refused = false;
+                    try { new ScratchVolumePolicy { run = encoded.run }.Decode(Utf8.GetBytes(String.Join("\n", invalidFields)), sid); }
+                    catch (InvalidOperationException) { refused = true; }
+                    Need(refused);
                 }
-                invalidFields[9] = Hash(String.Join("\n", invalidFields.Take(9)) + "\n");
-                refused = false;
-                try { new ScratchVolumePolicy { run = encoded.run }.Decode(Utf8.GetBytes(String.Join("\n", invalidFields)), sid); }
-                catch (InvalidOperationException) { refused = true; }
-                Need(refused);
-            }
-            foreach (string invalid in new [] { receipt + "extra", receipt.Replace("scratch-volume-v2", "foreign"),
-                receipt.Substring(0, receipt.Length - 2), receipt.Replace(fields[9], new string('0', 64)) }) {
-                refused = false;
-                try { decoded.Decode(Utf8.GetBytes(invalid), sid); } catch (InvalidOperationException) { refused = true; }
-                Need(refused);
+                foreach (string invalid in new [] { receipt + "extra", receipt.Replace("scratch-volume-v3", "foreign"),
+                    receipt.Substring(0, receipt.Length - 2), receipt.Replace(fields[10], new string('0', 64)) }) {
+                    refused = false;
+                    try { decoded.Decode(Utf8.GetBytes(invalid), sid); } catch (InvalidOperationException) { refused = true; }
+                    Need(refused);
+                }
             }
         }
     }

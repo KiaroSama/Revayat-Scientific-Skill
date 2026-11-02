@@ -51,9 +51,9 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         self.assertEqual(self.controller.count("(Join-Path $PSScriptRoot 'ScratchVolumePolicy.cs')"), 2)
         self.assertEqual(self.controller.count('[ScientificSecurity.ScratchVolumePolicy]::CheckValidation()'), 1)
         anchors = ('ScratchVolumePolicy.EnterRun();', 'ScratchVolumePolicy.SelectSuspended(job, process)',
-                   'PrepareContained(process', 'ScratchVolumePolicy.RequireNoLease();',
+                   'PrepareContained(process', 'ScratchVolumePolicy.RequireResume(supportedScratch);',
                    'Native.ResumeThread(process.thread)', 'FinishRun(ref process',
-                   'ScratchVolumePolicy.EndRun(cleanupQualified)')
+                   'EndPolicies(primaryFailure, completionFailure, cleanupQualified, supportedPolicy)')
         positions = [self.sandbox.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('accounting.activeProcesses == 1 && accounting.totalProcesses == 1', self.policy)
@@ -69,10 +69,10 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         positions = [install.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('NtSetSecurityObject(handle, 4, bytes)', self.policy)
-        self.assertIn('new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x20, sid, false, null)', self.policy)
-        self.assertIn('values[0] == "scratch-volume-v2"', self.policy)
-        self.assertIn('invalidFields[0] = "scratch-volume-v1"', self.policy)
-        self.assertIn('invalidFields[8] = Convert.ToBase64String(Binary(wider))', self.policy)
+        self.assertIn('supported ? 0x100020 : 0x20', self.policy)
+        self.assertIn('values[0] == "scratch-volume-v3"', self.policy)
+        self.assertIn('invalidFields[0] = "scratch-volume-v2"', self.policy)
+        self.assertIn('invalidFields[9] = Convert.ToBase64String(Trial(original, sid, !supported))', self.policy)
         self.assertIn('Need(Same(actual, after)); write(before); Need(Same(read(), before))', self.policy)
         self.assertIn('D:P(D;;0x000C0000;;;OW)(D;;FA;;;', self.policy)
         self.assertIn('cleanupQualified = clean;', self.policy)
@@ -111,6 +111,32 @@ class ScratchVolumePolicyTest(unittest.TestCase):
                      'Differential(() =>', 'decoded.Decode(', 'receipt + "extra"',
                      'Object.ReferenceEquals(error.InnerExceptions[0], operation)'):
             self.assertIn(seam, fixtures)
+
+    def test_supported_role_qualification_and_cleanup_order(self):
+        preparation = (WINDOWS / 'SandboxPreparation.cs').read_text(encoding='utf-8')
+        completion = (WINDOWS / 'SandboxCompletion.cs').read_text(encoding='utf-8')
+        access = (WINDOWS / 'ScratchSupportedAccess.cs').read_text(encoding='utf-8')
+        self.assertIn('SupportedRegistryPolicy.ScratchQualified(moniker)', self.sandbox)
+        self.assertIn('ScratchVolumePolicy.Supports(phase, observeExit, expectedRegistryStatus,', self.sandbox)
+        self.assertIn('if (supportedScratch) ScratchAccess.PrepareSupported(process, scratch, package)', preparation)
+        self.assertIn('static bool Supports(string phase, bool observe, int? registry, bool qualified)', self.policy)
+        self.assertIn('active.supported && active.ready && active.possible', self.policy)
+        self.assertIn('CompleteSupported(clean, () => { lease.running = false; lease.cleanupProved = true; lease.Dispose(); }, lease.DeferRecovery)', self.policy)
+        self.assertIn('if (!clean) { Finish(new InvalidOperationException(', self.policy)
+        self.assertIn('Need(CanRestore(supported, running, deferred, cleanupProved))', self.policy)
+        self.assertIn('return !deferred && (!supported || !running && clean)', self.policy)
+        self.assertIn('supported = values[0] == "scratch-volume-v3" && values[3] == "supported"', self.policy)
+        self.assertIn('Same(Trial(before, package, supported), after)', self.policy)
+        anchors = ('CompletePolicies(completion ?? primary, clean, ScratchVolumePolicy.FinishSupported',
+                   'ScratchVolumePolicy.EndRun,', 'registry.EndRun(value)', 'ScratchAccess.Finish(original, failures)')
+        positions = [completion.index(anchor) for anchor in anchors]
+        self.assertEqual(positions, sorted(positions))
+        self.assertLess(access.index('lease.Install()'), access.index('RequireSupportedResults(PolicyProbe('))
+        self.assertLess(access.index('Finish(primary, failures)'), access.index('lease.QualifySupported()'))
+        self.assertIn('expected.inventory.Length == 1 && expected.present', access)
+        self.assertIn('expected.Same(Privileges(token))', access)
+        self.assertNotIn('DeviceIoControl(', access)
+        self.assertNotIn('NtSetQuota', access)
 
 
 class ScratchVolumeAccessTest(unittest.TestCase):

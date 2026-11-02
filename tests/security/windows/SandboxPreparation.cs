@@ -10,7 +10,7 @@ namespace ScientificSecurity
         static void PrepareContained(Native.ProcessInfo process, string python, string scratch, string moniker, string package,
             bool preflight, bool wallProbe, bool loaderProbe, bool activationProbe, bool activationTrace, bool nativeFixture,
             bool pythonCondition, bool pythonDispatch, int? expectedRegistryStatus, DefaultDaclComparison.Observation defaultDacl,
-            PythonActivationPreparation.Observation preparation, RegistryDiagnostic registryStartup, bool observeScratch)
+            PythonActivationPreparation.Observation preparation, RegistryDiagnostic registryStartup, bool observeScratch, bool supportedScratch)
         {
             bool passComparison = preparation != null || registryStartup != null;
             Profile.SealRegistry(process.process, moniker, package);
@@ -43,6 +43,7 @@ namespace ScientificSecurity
                 string metadata = TokenDefaultMetadata.Observe(process.process);
                 Console.Out.WriteLine(metadata); Console.Out.Flush();
             }
+            if (supportedScratch) ScratchAccess.PrepareSupported(process, scratch, package);
         }
         static List<string> RegistryArguments(string python, string root, RegistryDiagnostic observation)
         {

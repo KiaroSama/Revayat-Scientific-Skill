@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace ScientificSecurity
@@ -48,6 +49,7 @@ namespace ScientificSecurity
         }
         internal static void CheckCompletionValidation()
         {
+            CheckPolicyCompletion();
             const string frame = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=import-ctypes:import-ctypes-native\n";
             byte[] prefix = System.Text.Encoding.ASCII.GetBytes(frame);
             int queries = 0;
@@ -118,6 +120,43 @@ namespace ScientificSecurity
                     else if (role == "callback") RegistryAuthorityComparison.Need(result is QualifiedModuleCallbackFailure);
                     else RegistryAuthorityComparison.Need(result is ExplicitEntryComparison.QualifiedFailure &&
                         Object.ReferenceEquals(((ExplicitEntryComparison.QualifiedFailure)result).Original, operation));
+                }
+            }
+        }
+        static void EndPolicies(Exception primary, Exception completion, bool clean, SupportedRegistryPolicy registry)
+        {
+            CompletePolicies(completion ?? primary, clean, ScratchVolumePolicy.FinishSupported,
+                ScratchVolumePolicy.EndRun, value => { if (registry != null) registry.EndRun(value); });
+        }
+        static void CompletePolicies(Exception original, bool clean, params Action<bool>[] actions)
+        {
+            var failures = new List<Exception>();
+            foreach (var action in actions) {
+                try { action(clean); }
+                catch (Exception failure) { clean = false; failures.Add(failure); }
+            }
+            ScratchAccess.Finish(original, failures);
+        }
+        static void CheckPolicyCompletion()
+        {
+            for (int mode = 0; mode < 5; mode++) {
+                var original = new IOException("fixed operation"); var cleanup = new IOException("fixed restoration");
+                var order = new List<string>(); Exception caught = null;
+                try { CompletePolicies(mode == 0 ? null : original, mode != 1,
+                    clean => { order.Add("restore:" + clean); if (mode == 2) throw cleanup; },
+                    clean => { order.Add("volume:" + clean); if (mode == 3) throw cleanup; },
+                    clean => { order.Add("registry:" + clean); if (mode == 4) throw cleanup; }); }
+                catch (Exception failure) { caught = failure; }
+                string expected = mode == 1 ? "restore:False,volume:False,registry:False" :
+                    mode == 2 ? "restore:True,volume:False,registry:False" :
+                    mode == 3 ? "restore:True,volume:True,registry:False" : "restore:True,volume:True,registry:True";
+                RegistryAuthorityComparison.Need(String.Join(",", order) == expected);
+                if (mode == 0) RegistryAuthorityComparison.Need(caught == null);
+                else if (mode == 1) RegistryAuthorityComparison.Need(Object.ReferenceEquals(caught, original));
+                else {
+                    var group = caught as AggregateException;
+                    RegistryAuthorityComparison.Need(group != null && group.InnerExceptions.Count == 2 &&
+                        Object.ReferenceEquals(group.InnerExceptions[0], original) && Object.ReferenceEquals(group.InnerExceptions[1], cleanup));
                 }
             }
         }

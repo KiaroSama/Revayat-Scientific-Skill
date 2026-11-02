@@ -19,6 +19,8 @@ namespace ScientificSecurity
         internal static void RequireTrialAvailable() { Need(active == null); }
         internal static int RequireReadable() { Need(active != null && active.qualified && !active.closed && !active.uncertain); return 0; }
         internal static int? OrdinaryCondition() { return active == null ? (int?)null : RequireReadable(); }
+        internal static bool ScratchQualified(string packageMoniker)
+        { return active != null && active.moniker == packageMoniker && active.qualified && !active.closed && !active.uncertain; }
         internal static SupportedRegistryPolicy EnterRun(string packageMoniker)
         {
             var current = active;

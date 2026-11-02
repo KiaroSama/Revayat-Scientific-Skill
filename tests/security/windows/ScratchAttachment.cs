@@ -50,11 +50,11 @@ namespace ScientificSecurity
             Release(primary, () => { if (Valid(volume)) RequireNumber(volume); },
                 () => { if (Valid(volume)) Native.Check(Native.CloseHandle(volume), "close owned scratch binding handle"); });
         }
-        internal static ScratchVolumePolicy Policy(string scratch, string package)
+        internal static ScratchVolumePolicy Policy(string scratch, string package, bool supported = false)
         {
             var owner = current; Need(owner != null && owner.root == scratch && Valid(owner.image));
             owner.RecheckImage();
-            return ScratchVolumePolicy.Begin(owner.run, owner.state, scratch, owner.disk, owner.partition, package);
+            return ScratchVolumePolicy.Begin(owner.run, owner.state, scratch, owner.disk, owner.partition, package, supported);
         }
         static bool Valid(IntPtr handle) { return handle != IntPtr.Zero && handle != Native.InvalidHandle; }
         void RecheckImage()

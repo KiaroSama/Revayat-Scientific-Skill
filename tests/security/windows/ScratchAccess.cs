@@ -9,7 +9,7 @@ using System.Security.Principal;
 namespace ScientificSecurity
 {
     // Descriptor modeling and actual opens are separate observations, never admission or cause proof.
-    public static class ScratchAccess
+    public static partial class ScratchAccess
     {
         const uint Desired = 0x100020;
         internal sealed class Result

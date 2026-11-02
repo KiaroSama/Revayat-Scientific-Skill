@@ -385,12 +385,14 @@ namespace ScientificSecurity
                     Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
                 }
                 if (loader != null) loader.PrepareHandles(ref process);
-                if (preflight && observeExit) ScratchVolumePolicy.SelectSuspended(job, process);
+                bool supportedScratch = ScratchVolumePolicy.Supports(phase, observeExit, expectedRegistryStatus,
+                    SupportedRegistryPolicy.ScratchQualified(moniker));
+                if (preflight && observeExit || supportedScratch) ScratchVolumePolicy.SelectSuspended(job, process);
                 PrepareContained(process, python, scratch, moniker, package, preflight, wallProbe, loaderProbe,
                     activationProbe, activationTrace, nativeFixture, pythonCondition, pythonDispatch, expectedRegistryStatus,
-                    defaultDacl, preparation, registryStartup, preflight && observeExit);
+                    defaultDacl, preparation, registryStartup, preflight && observeExit, supportedScratch);
                 if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null || pythonDispatch || passComparison) activationClock.Start();
-                ScratchVolumePolicy.RequireNoLease();
+                ScratchVolumePolicy.RequireResume(supportedScratch);
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
@@ -517,9 +519,9 @@ namespace ScientificSecurity
             catch (Exception failure) { primaryFailure = failure; throw; }
             finally
             {
-                bool cleanupQualified = false;
+                bool cleanupQualified = false; Exception completionFailure = null;
                 try {
-                    Exception completionFailure = FinishRun(ref process, job, sid, attrs, env, processDescriptor, handles, values,
+                    completionFailure = FinishRun(ref process, job, sid, attrs, env, processDescriptor, handles, values,
                         outputCapture, errorCapture, activationLease, loader, primaryFailure, started, resumed,
                         activationTrace || callback || selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace,
                         selfEntry || selfResource || moduleDispatchTrace || pythonDispatchTrace, entryStarted, callbackStarted,
@@ -528,12 +530,9 @@ namespace ScientificSecurity
                         registryStartup is RegistryAuthorityComparison.Observation);
                     cleanupQualified = completionFailure == null || completionFailure is ExplicitEntryComparison.QualifiedFailure ||
                         completionFailure is QualifiedModuleCallbackFailure;
-                    if (completionFailure != null) throw completionFailure;
                 }
-                finally {
-                    try { ScratchVolumePolicy.EndRun(cleanupQualified); }
-                    finally { if (supportedPolicy != null) supportedPolicy.EndRun(cleanupQualified); }
-                }
+                catch (Exception failure) { completionFailure = primaryFailure == null ? failure : new AggregateException("owned completion failed", primaryFailure, failure); }
+                finally { EndPolicies(primaryFailure, completionFailure, cleanupQualified, supportedPolicy); }
             }
         }
         static void AttemptCleanup(List<Exception> failures, Action action)
