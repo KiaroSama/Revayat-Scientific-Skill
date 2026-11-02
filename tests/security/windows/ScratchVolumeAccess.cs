@@ -17,6 +17,7 @@ namespace ScientificSecurity
             internal int stage = 1, queryKind = -1, queryStatus, nameEqual = -1;
             internal uint returned, attributes, granted;
             internal bool queried, basicKnown;
+            internal string census;
             internal Evidence(ScratchAccess.NativeRequest request, bool host) { this.request = request; this.host = host; }
             internal string Message()
             {
@@ -28,7 +29,8 @@ namespace ScientificSecurity
                     " query_kind=" + queryKind + " queried=" + queried +
                     " query_status=0x" + unchecked((uint)queryStatus).ToString("X8") + " returned=" + returned +
                     " basic_known=" + basicKnown + " attributes=0x" + attributes.ToString("X8") +
-                    " granted=0x" + granted.ToString("X8") + " name_equal=" + nameEqual;
+                    " granted=0x" + granted.ToString("X8") + " name_equal=" + nameEqual +
+                    (census == null ? "" : " open_statuses=" + census);
             }
         }
         static void Need(bool value, Evidence evidence = null)
@@ -86,6 +88,24 @@ namespace ScientificSecurity
             }
             finally { if (!pending) Marshal.FreeHGlobal(memory); }
         }
+        static bool StatusAllowed(uint mask, bool host, int status)
+        {
+            // Native zero access is unsupported; its measured denial earns no authority credit.
+            return mask == 0 ? status == unchecked((int)0xC0000022) :
+                status == 0 || !host && status == unchecked((int)0xC0000022);
+        }
+        static string Census(ScratchAccess.NativeRequest[] requests)
+        {
+            var values = new string[requests.Length];
+            for (int i = 0; i < requests.Length; i++) {
+                var request = requests[i];
+                values[i] = request.memory != IntPtr.Zero && !request.pending &&
+                    request.opened == (request.returned == 0) &&
+                    (request.returned == 0 || request.returned == unchecked((int)0xC0000022)) ?
+                    unchecked((uint)request.returned).ToString("X8") : "unknown";
+            }
+            return String.Join(",", values);
+        }
         internal static void Open(ScratchAccess.NativeRequest[] requests, Action qualify)
         { foreach (var request in requests) { qualify(); request.Open(); } }
         static void Close(IntPtr handle)
@@ -110,11 +130,11 @@ namespace ScientificSecurity
             var result = new int[Masks.Length * 5]; Exception primary = null; var failures = new List<Exception>();
             try {
                 for (int i = 0; i < requests.Length; i++) {
-                    var request = requests[i]; var evidence = new Evidence(request, host);
+                    var request = requests[i]; var evidence = new Evidence(request, host) { census = Census(requests) };
                     Need(request.path == path && request.requested == Masks[i] && !request.pending &&
                         request.memory != IntPtr.Zero && request.opened == (request.returned == 0), evidence);
                     evidence.stage = 2;
-                    Need(request.returned == 0 || !host && request.returned == unchecked((int)0xC0000022), evidence);
+                    Need(StatusAllowed(request.requested, host, request.returned), evidence);
                     result[i] = request.returned;
                     result[Masks.Length * 2 + i] = request.ioStatus;
                     result[Masks.Length * 3 + i] = unchecked((int)request.information);
@@ -165,14 +185,35 @@ namespace ScientificSecurity
         internal static string Frame(string phase, int index, int status, int granted)
         {
             Need((phase == "baseline" || phase == "modified" || phase == "restored") && index >= 0 && index < Masks.Length &&
-                (status == 0 || status == unchecked((int)0xC0000022)) && (status == 0 ? unchecked((uint)granted) == Masks[index] : granted == 0));
+                StatusAllowed(Masks[index], false, status) && (status == 0 ? unchecked((uint)granted) == Masks[index] : granted == 0));
             return "WINDOWS_SCRATCH_VOLUME phase=" + phase + " desired=0x" + Masks[index].ToString("X8") +
                 " ntstatus=0x" + unchecked((uint)status).ToString("X8") + " granted=0x" + unchecked((uint)granted).ToString("X8") +
-                " metadata_qualified=True descriptor_restored=True handles_closed=True authority_qualified=False admission=False";
+                " native_request_supported=" + (Masks[index] != 0) + " metadata_qualified=" + (Masks[index] != 0) +
+                " descriptor_restored=True handles_closed=True authority_qualified=False admission=False";
         }
         public static void CheckValidation()
         {
             const string root = "\\Device\\HarddiskVolume12\\";
+            foreach (uint mask in Masks) foreach (bool host in new [] { false, true })
+                foreach (int status in new [] { 0, unchecked((int)0xC0000022), unchecked((int)0xC000000D), 0x103 }) {
+                    bool expected = mask == 0 ? status == unchecked((int)0xC0000022) :
+                        status == 0 || !host && status == unchecked((int)0xC0000022);
+                    Need(StatusAllowed(mask, host, status) == expected);
+                }
+            Need(Frame("baseline", 0, unchecked((int)0xC0000022), 0).Contains(
+                "native_request_supported=False metadata_qualified=False"));
+            foreach (bool host in new [] { false, true }) {
+                var probes = Requests(root); int closes = 0, inspections = 0; Exception caught = null;
+                foreach (var probe in probes) {
+                    probe.memory = Marshal.AllocHGlobal(8); Marshal.WriteIntPtr(probe.memory, new IntPtr(17)); probe.opened = true;
+                }
+                try { Qualify(probes, root, host, (handle, desired, context) => { inspections++; return desired; }, _ => closes++); }
+                catch (InvalidOperationException error) { caught = error; }
+                Need(caught != null && caught.Message.Contains("stage=2") && inspections == 0 && closes == 9);
+                foreach (var probe in probes) Need(probe.memory == IntPtr.Zero);
+                Need(Census(probes) == String.Join(",", new string[] {
+                    "unknown", "unknown", "unknown", "unknown", "unknown", "unknown", "unknown", "unknown", "unknown" }));
+            }
             var requests = Requests(root); Need(requests.Length == 9);
             for (int i = 0; i < requests.Length; i++) {
                 var request = requests[i]; Need(request.path == root.TrimEnd('\\') && request.requested == Masks[i] && request.options == 0x200000);
@@ -237,6 +278,8 @@ namespace ScientificSecurity
                     probe.memory = Marshal.AllocHGlobal(8); Marshal.WriteIntPtr(probe.memory, new IntPtr(17));
                     probe.returned = 0; probe.opened = true; probe.ioStatus = -1; probe.information = UInt64.MaxValue;
                 }
+                probes[0].returned = unchecked((int)0xC0000022); probes[0].opened = false;
+                Marshal.WriteIntPtr(probes[0].memory, IntPtr.Zero);
                 try {
                     int[] result = Qualify(probes, root, true, (handle, desired, context) => {
                         Need(handle == new IntPtr(17));
@@ -248,7 +291,7 @@ namespace ScientificSecurity
                         frames[0].Contains("io_status=0xFFFFFFFF"));
                 }
                 catch (Exception error) { caught = error; }
-                Need(closes == 9 && (mode == 0 ? caught == null : caught != null));
+                Need(closes == 8 && (mode == 0 ? caught == null : caught != null));
                 foreach (var probe in probes) Need(probe.memory == IntPtr.Zero);
                 if (mode == 1) Need(Object.ReferenceEquals(caught, operation));
                 if (mode == 3) Need(caught is AggregateException &&
@@ -261,8 +304,19 @@ namespace ScientificSecurity
                     probe.memory = Marshal.AllocHGlobal(8); Marshal.WriteIntPtr(probe.memory, new IntPtr(17));
                     probe.opened = true; probe.information = UInt64.MaxValue;
                 }
-                if (mode == 8) { probes[0].returned = unchecked((int)0xC0000022); probes[0].opened = false; }
-                if (mode == 9) probes[0].requested = UInt32.MaxValue;
+                probes[0].returned = unchecked((int)0xC0000022); probes[0].opened = false;
+                Marshal.WriteIntPtr(probes[0].memory, IntPtr.Zero);
+                if (mode == 8) { probes[1].returned = unchecked((int)0xC0000022); probes[1].opened = false;
+                    Marshal.WriteIntPtr(probes[1].memory, IntPtr.Zero); }
+                if (mode == 9) probes[1].requested = UInt32.MaxValue;
+                Need(Census(probes).StartsWith("C0000022,"));
+                if (mode == 0) {
+                    probes[1].opened = false;
+                    Need(Census(probes).StartsWith("C0000022,unknown,"));
+                    probes[1].opened = true; probes[1].pending = true;
+                    Need(Census(probes).StartsWith("C0000022,unknown,"));
+                    probes[1].pending = false;
+                }
                 QueryCall query = (IntPtr handle, int kind, IntPtr buffer, uint capacity, out uint length) => {
                     queries++; Need(handle == new IntPtr(17) && capacity == 1024);
                     Marshal.Copy(new byte[1024], 0, buffer, 1024); length = kind == 0 ? 56U : 16U;
@@ -270,7 +324,7 @@ namespace ScientificSecurity
                         if (mode == 1 || mode == 10) return unchecked((int)0xC0000022);
                         if (mode == 2) length = 55;
                         Marshal.WriteInt32(buffer, mode == 3 ? 2 : 0);
-                        Marshal.WriteInt32(buffer, 4, unchecked((int)(mode == 4 ? UInt32.MaxValue : probes[queries / 2].requested)));
+                        Marshal.WriteInt32(buffer, 4, unchecked((int)(mode == 4 ? UInt32.MaxValue : probes[1 + queries / 2].requested)));
                     }
                     else {
                         if (mode == 5) return unchecked((int)0xC0000022);
@@ -287,15 +341,15 @@ namespace ScientificSecurity
                         Inspect(handle, desired, root, () => { }, context, query), _ => { closes++; if (mode == 10) throw cleanup; });
                 }
                 catch (Exception error) { caught = error; }
-                Need(closes == 9);
+                Need(closes == (mode == 8 ? 7 : 8));
                 foreach (var probe in probes) Need(probe.memory == IntPtr.Zero);
-                if (mode == 0) Need(caught == null && queries == 18);
+                if (mode == 0) Need(caught == null && queries == 16);
                 else {
                     int stage = new [] { 0, 3, 4, 4, 5, 6, 7, 8, 2, 1, 3 }[mode];
                     Exception operation = caught;
                     if (mode == 10) {
                         var aggregate = caught as AggregateException;
-                        Need(aggregate != null && aggregate.InnerExceptions.Count == 10);
+                        Need(aggregate != null && aggregate.InnerExceptions.Count == 9);
                         operation = aggregate.InnerExceptions[0];
                         for (int i = 1; i < aggregate.InnerExceptions.Count; i++) {
                             var released = aggregate.InnerExceptions[i] as AggregateException;
@@ -305,7 +359,8 @@ namespace ScientificSecurity
                     }
                     Need(operation is InvalidOperationException && operation.Message.Contains("stage=" + stage) &&
                         operation.Message.Contains("information=0xFFFFFFFFFFFFFFFF") && operation.Message.Length < 640 &&
-                        !operation.Message.Contains(root) && !operation.Message.Contains("private fixture name"));
+                        !operation.Message.Contains(root) && !operation.Message.Contains("private fixture name") &&
+                        operation.Message.Contains("open_statuses=C0000022,"));
                     Need(queries == (mode == 8 || mode == 9 ? 0 : mode < 5 || mode == 10 ? 1 : 2));
                 }
             }

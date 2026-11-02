@@ -137,6 +137,9 @@ class ScratchVolumeAccessTest(unittest.TestCase):
         self.assertIn('Need(evidence.nameEqual == 1, evidence)', source)
         self.assertIn('query_status=0x', source)
         self.assertIn('name_equal=', source)
+        self.assertIn('Need(StatusAllowed(request.requested, host, request.returned), evidence)', source)
+        self.assertIn('native_request_supported=False metadata_qualified=False', source)
+        self.assertIn('open_statuses=', source)
         self.assertIn('for (int mode = 0; mode < 11; mode++)', source)
         for forbidden in ('DeviceIoControl(', 'ReadFile(', 'WriteFile(', 'NtSetSecurityObject',
                           'AdjustTokenPrivileges', 'CreateProcess', 'ResumeThread'):
