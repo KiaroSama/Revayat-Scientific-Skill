@@ -79,7 +79,7 @@ namespace ScientificSecurity
             IntPtr memory = Marshal.AllocHGlobal(1024); bool pending = false;
             try {
                 evidence.stage = kind == 0 ? 3 : 6; evidence.queryKind = kind; evidence.queried = false;
-                uint returned; int status = call(handle, kind, memory, 1024, out returned);
+                uint returned; int status = call(handle, kind, memory, kind == 0 ? 56U : 1024U, out returned);
                 pending = status == 0x103;
                 if (pending) Environment.FailFast("Scratch volume metadata remained pending; outer owner must recover.");
                 evidence.queried = true; evidence.queryStatus = status; evidence.returned = returned;
@@ -318,7 +318,7 @@ namespace ScientificSecurity
                     probes[1].pending = false;
                 }
                 QueryCall query = (IntPtr handle, int kind, IntPtr buffer, uint capacity, out uint length) => {
-                    queries++; Need(handle == new IntPtr(17) && capacity == 1024);
+                    queries++; Need(handle == new IntPtr(17) && capacity == (kind == 0 ? 56U : 1024U));
                     Marshal.Copy(new byte[1024], 0, buffer, 1024); length = kind == 0 ? 56U : 16U;
                     if (kind == 0) {
                         if (mode == 1 || mode == 10) return unchecked((int)0xC0000022);
