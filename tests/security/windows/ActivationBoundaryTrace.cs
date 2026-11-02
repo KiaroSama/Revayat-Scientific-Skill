@@ -221,7 +221,13 @@ namespace ScientificSecurity
                 stopped = false; // A rejected foreign stop must never authorize creator-context access.
                 if (cleanup || eventPid != pid) Invalidate();
                 RequireCheck(eventPid == pid, "callback-process", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup)));
-                if (kind == 5 || (kind == 4 && eventThread == tid)) alive = false;
+                if (!cleanup && (callbackProcessExited || !alive && eventThread == tid && kind != 5 ||
+                    (kind == 5 || kind == 4 && eventThread == tid) &&
+                    (invalidated || stage < 1 || stage > 3))) {
+                    Invalidate(); RequireCheck(false, "callback-lifecycle", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup)));
+                }
+                if (kind == 5) { callbackProcessExited = true; alive = false; return; }
+                if (kind == 4 && eventThread == tid) { alive = false; return; }
                 if (eventThread != tid) {
                     if (!cleanup && !CallbackPeerTransport(eventThread, kind)) {
                         Invalidate(); RequireCheck(false, "callback-thread", () => emit(CallbackStopHeader(eventPid, eventThread, kind, cleanup)));
@@ -391,12 +397,17 @@ namespace ScientificSecurity
             finally { Array.Clear(before, 0, before.Length); }
         }
         bool CallbackPeerTransport(uint eventThread, uint kind)
-        { return moduleCallback && alive && !invalidated && stage >= 1 && stage <= 3 && eventThread != tid && (kind == 2 || kind == 4); }
+        { return moduleCallback && !callbackProcessExited && !invalidated && stage >= 1 && stage <= 3 && eventThread != tid && (kind == 2 || kind == 4); }
         internal void OtherThread(uint eventThread, uint kind)
         {
             if (CallbackPeerTransport(eventThread, kind)) {
                 Need(!stopped);
                 emit("phase=module-callback-peer-transport kind=" + kind + " context_read=False observation_advanced=False");
+                return;
+            }
+            if (moduleCallback && !callbackProcessExited && !alive && !stopped && !invalidated &&
+                stage >= 1 && stage <= 3 && eventThread == tid && kind == 4) {
+                emit("phase=module-callback-creator-retirement kind=4 context_read=False observation_advanced=False");
                 return;
             }
             Invalidate(); throw new InvalidOperationException("fixed activation diagnostic encountered another thread transition");

@@ -12,6 +12,7 @@ namespace ScientificSecurity
     public sealed partial class ActivationBoundaryTrace
     {
         readonly bool moduleCallback;
+        bool callbackProcessExited;
         static bool CallbackComplete(int state, bool restoration, bool invalid)
         { return state == 3 && restoration && !invalid; }
         static string CallbackResult(byte[] context)
@@ -141,6 +142,7 @@ namespace ScientificSecurity
             }
             KernelImage.CheckModuleCallbackProfileValidation();
             CheckCallbackPeerTransport();
+            CheckCallbackLifecycleTransport();
             CheckCallbackDrainValidation();
             CheckCallbackHeaderValidation();
         }
@@ -164,7 +166,7 @@ namespace ScientificSecurity
             foreach (int state in new [] { 0, 1, 2, 3, 4 }) foreach (uint kind in new uint[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, UInt32.MaxValue }) {
                 var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, true);
                 observer.stage = state; observer.changed = observer.stopped = true;
-                bool allowed = state >= 1 && state <= 3 && (kind == 2 || kind == 4), refused = false;
+                bool allowed = state >= 1 && state <= 3 && (kind == 2 || kind == 4 || kind == 5), refused = false;
                 try { observer.Stop(7, 12, kind); } catch (InvalidOperationException) { refused = true; }
                 Need(refused != allowed && observer.invalidated == !allowed && !observer.RestorationAllowed);
                 if (allowed) {
@@ -180,6 +182,71 @@ namespace ScientificSecurity
                     Need(refused && !observer.RestorationAllowed);
                 }
             }
+        }
+        static void CheckCallbackLifecycleTransport()
+        {
+            foreach (int state in new [] { 1, 2, 3 }) foreach (bool retired in new [] { false, true })
+                foreach (uint exitThread in new uint[] { 11, 12 }) {
+                    string report = null;
+                    var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", line => report = line, true);
+                    observer.stage = state; observer.restored = state == 3; observer.changed = state == 2;
+                    observer.original = new byte[DebugContext.Size]; observer.addresses[0] = state == 2 ? 0x8000UL : 0;
+                    observer.enabled[0] = state == 2; observer.initial = true;
+                    byte[] baseline = (byte[])observer.original.Clone();
+                    if (retired) {
+                        observer.Stop(7, 11, 4); observer.OtherThread(11, 4);
+                        Need(!observer.alive && !observer.stopped && !observer.RestorationAllowed && !observer.callbackProcessExited && report ==
+                            "phase=module-callback-creator-retirement kind=4 context_read=False observation_advanced=False");
+                        observer.Continued();
+                    }
+                    foreach (uint kind in new uint[] { 2, 4 }) {
+                        observer.Stop(7, 12, kind); observer.OtherThread(12, kind);
+                        Need(observer.alive == !retired && !observer.stopped && !observer.RestorationAllowed && !observer.callbackProcessExited);
+                        observer.Continued();
+                    }
+                    observer.Stop(7, exitThread, 5);
+                    Need(observer.callbackProcessExited && !observer.alive && !observer.stopped && !observer.invalidated && !observer.RestorationAllowed &&
+                        observer.stage == state && observer.restored == (state == 3) && observer.changed == (state == 2) && observer.initial &&
+                        observer.addresses[0] == (state == 2 ? 0x8000UL : 0) && observer.enabled[0] == (state == 2) &&
+                        DebugContext.RawDebugEqual(observer.original, baseline));
+                    observer.Continued(); bool incomplete = false;
+                    try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
+                    Need(incomplete == (state != 3));
+                    bool refused = false;
+                    try { observer.Stop(7, 12, 2); } catch (InvalidOperationException) { refused = true; }
+                    Need(refused && observer.invalidated && !observer.RestorationAllowed);
+                }
+            foreach (int state in new [] { 0, 1, 2, 3, 4 }) foreach (uint kind in new uint[] { 4, 5 })
+                foreach (bool invalid in new [] { false, true }) {
+                    var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, true);
+                    observer.stage = state; observer.invalidated = invalid;
+                    bool refused = false, allowed = state >= 1 && state <= 3 && !invalid;
+                    try { observer.Stop(7, 11, kind); if (kind == 4) observer.OtherThread(11, kind); }
+                    catch (InvalidOperationException) { refused = true; }
+                    Need(refused != allowed && !observer.RestorationAllowed);
+                }
+            foreach (uint kind in new uint[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, UInt32.MaxValue })
+                foreach (uint eventThread in new uint[] { 11, 12 }) {
+                    var observer = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, true);
+                    observer.stage = 3; observer.restored = true;
+                    observer.Stop(7, 11, 4); observer.OtherThread(11, 4); observer.Continued();
+                    bool refused = false, allowed = kind == 5 || eventThread != 11 && (kind == 2 || kind == 4);
+                    try { observer.Stop(7, eventThread, kind); if (kind == 2 || kind == 4) observer.OtherThread(eventThread, kind); }
+                    catch (InvalidOperationException) { refused = true; }
+                    Need(refused != allowed && !observer.RestorationAllowed && !observer.alive);
+                    if (!allowed) {
+                        bool incomplete = false;
+                        try { observer.RequireComplete(); } catch (InvalidOperationException) { incomplete = true; }
+                        Need(incomplete && observer.invalidated);
+                    }
+                    foreach (bool callback in new [] { false, true }) {
+                        var foreign = new ActivationBoundaryTrace(new IntPtr(1), new IntPtr(2), 7, 11, "fixed", "digest", _ => { }, callback);
+                        foreign.stage = 3; refused = false;
+                        try { foreign.Stop(callback ? 8U : 7U, eventThread, kind); foreign.OtherThread(eventThread, kind); }
+                        catch (InvalidOperationException) { refused = true; }
+                        Need(refused);
+                    }
+                }
         }
         string CallbackStopHeader(uint eventPid, uint eventThread, uint kind, bool cleanup)
         {
