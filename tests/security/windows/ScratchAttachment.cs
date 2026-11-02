@@ -19,7 +19,7 @@ namespace ScientificSecurity
         ScratchAccess.FileInformation identity;
         byte[] before;
         uint beforeStatus, disk, partition;
-        string imagePath, root;
+        string imagePath, root, run, state;
         ScratchAttachment() { }
         public static ScratchAttachment Capture(string run, string state)
         {
@@ -28,7 +28,7 @@ namespace ScientificSecurity
             state = Path.GetFullPath(state);
             Need(Path.GetFileName(Path.TrimEndingDirectorySeparator(state)) == "security-windows-" + run);
             string path = Path.Combine(state, "scratch.vhdx"); NativeFixture.Plain(path);
-            var result = new ScratchAttachment { imagePath = path };
+            var result = new ScratchAttachment { imagePath = path, run = run, state = state };
             try {
                 result.image = CreateFileW(path, 0x20080, 3, IntPtr.Zero, 3, 0x200000, IntPtr.Zero);
                 Native.Check(Valid(result.image), "pin owned scratch image metadata");
@@ -49,6 +49,12 @@ namespace ScientificSecurity
             catch (Exception error) { primary = error; }
             Release(primary, () => { if (Valid(volume)) RequireNumber(volume); },
                 () => { if (Valid(volume)) Native.Check(Native.CloseHandle(volume), "close owned scratch binding handle"); });
+        }
+        internal static ScratchVolumePolicy Policy(string scratch, string package)
+        {
+            var owner = current; Need(owner != null && owner.root == scratch && Valid(owner.image));
+            owner.RecheckImage();
+            return ScratchVolumePolicy.Begin(owner.run, owner.state, scratch, owner.disk, owner.partition, package);
         }
         static bool Valid(IntPtr handle) { return handle != IntPtr.Zero && handle != Native.InvalidHandle; }
         void RecheckImage()

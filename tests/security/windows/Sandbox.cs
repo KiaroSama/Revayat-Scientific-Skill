@@ -304,6 +304,7 @@ namespace ScientificSecurity
             IDisposable activationLease = null;
             var activationClock = new Stopwatch();
             var supportedPolicy = SupportedRegistryPolicy.EnterRun(moniker);
+            ScratchVolumePolicy.EnterRun();
             try
             {
                 if (registryStartup is RegistryAuthorityComparison.PythonObservation) activationLease = RegistryLoaderFixture.Hold(python);
@@ -384,10 +385,12 @@ namespace ScientificSecurity
                     Native.Check(Native.AssignProcessToJobObject(job, process.process), "assign owned resource job before token preparation");
                 }
                 if (loader != null) loader.PrepareHandles(ref process);
+                if (preflight && observeExit) ScratchVolumePolicy.SelectSuspended(job, process);
                 PrepareContained(process, python, scratch, moniker, package, preflight, wallProbe, loaderProbe,
                     activationProbe, activationTrace, nativeFixture, pythonCondition, pythonDispatch, expectedRegistryStatus,
                     defaultDacl, preparation, registryStartup, preflight && observeExit);
                 if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null || pythonDispatch || passComparison) activationClock.Start();
+                ScratchVolumePolicy.RequireNoLease();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");
                 resumed = true;
@@ -527,7 +530,10 @@ namespace ScientificSecurity
                         completionFailure is QualifiedModuleCallbackFailure;
                     if (completionFailure != null) throw completionFailure;
                 }
-                finally { if (supportedPolicy != null) supportedPolicy.EndRun(cleanupQualified); }
+                finally {
+                    try { ScratchVolumePolicy.EndRun(cleanupQualified); }
+                    finally { if (supportedPolicy != null) supportedPolicy.EndRun(cleanupQualified); }
+                }
             }
         }
         static void AttemptCleanup(List<Exception> failures, Action action)

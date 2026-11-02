@@ -173,15 +173,24 @@ namespace ScientificSecurity
                     Deadline(clock); context.RequireThread(); request.Open(NtOpenFile, PendingFatal);
                 }
                 context.RequireThread(); Deadline(clock);
+                Revert(); impersonating = false;
+                foreach (var request in requests) request.Release(
+                    handle => Same(items[request.target == "temp" ? 1 : 0].identity, Identity(handle)),
+                    handle => Native.Check(Native.CloseHandle(handle), "close scratch pre-policy native handle"));
+                foreach (var item in items) if (item.openedHandle != IntPtr.Zero) {
+                    IntPtr handle = item.openedHandle; item.openedHandle = IntPtr.Zero;
+                    var closes = new List<Exception>();
+                    Attempt(closes, () => Same(item.identity, Identity(handle)));
+                    Attempt(closes, () => Native.Check(Native.CloseHandle(handle), "close scratch pre-policy access handle"));
+                    Finish(null, closes);
+                }
+                using (var policy = ScratchAttachment.Policy(scratch, package))
+                    observations.AddRange(policy.Compare(() => PolicyProbe(items, names[1], duplicate,
+                        context, primaryPrivileges, clock), () => Deadline(clock)));
             }
             catch (Exception error) { primary = error; }
             finally {
-                if (impersonating) {
-                    bool reverted = false;
-                    try { reverted = RevertToSelf(); }
-                    catch { Environment.FailFast("Scratch observation identity restoration threw; outer owner must recover."); }
-                    if (!reverted) Environment.FailFast("Scratch observation identity restoration failed; outer owner must recover.");
-                }
+                if (impersonating) Revert();
                 Attempt(failures, () => { if (effective != IntPtr.Zero) Native.Check(Native.CloseHandle(effective), "close fixed scratch effective token"); });
                 foreach (var request in requests) Attempt(failures, () => request.Release(
                     handle => Same(items[request.target == "temp" ? 1 : 0].identity, Identity(handle)),
@@ -203,6 +212,43 @@ namespace ScientificSecurity
             foreach (var request in requests) observations.Add(request.Frame());
             foreach (string line in observations) Console.Out.WriteLine(line);
             Console.Out.Flush();
+        }
+        static void Revert()
+        {
+            bool restored = false;
+            try { restored = RevertToSelf(); }
+            catch { Environment.FailFast("Scratch observation identity restoration threw; outer owner must recover."); }
+            if (!restored) Environment.FailFast("Scratch observation identity restoration failed; outer owner must recover.");
+        }
+        static int[] PolicyProbe(DirectoryObservation[] items, string nativeRoot, IntPtr duplicate,
+            RegistryContext context, PrivilegeObservation expected, Stopwatch clock)
+        {
+            var requests = new [] {
+                new NativeRequest { path = nativeRoot, role = "lpac", name = "device" },
+                new NativeRequest { path = nativeRoot + "temp", role = "lpac", name = "temp-absolute", target = "temp" }
+            };
+            IntPtr effective = IntPtr.Zero; bool entered = false; Exception primary = null;
+            var failures = new List<Exception>();
+            try {
+                Deadline(clock); Native.Check(ImpersonateLoggedOnUser(duplicate), "enter scratch policy probe context"); entered = true;
+                context.RequireThread();
+                Native.Check(OpenThreadToken(GetCurrentThread(), 8, true, out effective), "open scratch policy effective token");
+                expected.Same(Privileges(effective));
+                foreach (var request in requests) {
+                    Deadline(clock); context.RequireThread(); request.Open(NtOpenFile, PendingFatal);
+                }
+                context.RequireThread(); expected.Same(Privileges(effective)); Deadline(clock);
+            }
+            catch (Exception error) { primary = error; }
+            finally {
+                if (entered) Revert();
+                Attempt(failures, () => { if (effective != IntPtr.Zero) Native.Check(Native.CloseHandle(effective), "close scratch policy effective token"); });
+                foreach (var request in requests) Attempt(failures, () => request.Release(
+                    handle => Same(items[request.target == "temp" ? 1 : 0].identity, Identity(handle)),
+                    handle => Native.Check(Native.CloseHandle(handle), "close scratch policy probe handle")));
+            }
+            Finish(primary, failures);
+            return new [] { requests[0].returned, requests[1].returned };
         }
         static void Deadline(Stopwatch clock)
         { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed scratch observation exceeded 10 seconds"); }

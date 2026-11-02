@@ -25,7 +25,7 @@ class ScratchAttachmentTest(unittest.TestCase):
         positions = [controller.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions))
         self.assertLess(observer.index('ScratchAttachment.Observe('), observer.index('ImpersonateLoggedOnUser(duplicate)'))
-        self.assertLess(observer.index('RevertToSelf();'), observer.index('foreach (string line in observations)'))
+        self.assertLess(observer.index('Revert();'), observer.index('foreach (string line in observations)'))
         self.assertIn('new SecurityIdentifier(package), () => Deadline(clock)', observer)
         self.assertIn('Native.DeviceIoControl(handle, 0x2D1080, IntPtr.Zero, 0, memory, 12', attachment)
         self.assertIn('Need(returned == 12)', attachment)
@@ -37,6 +37,77 @@ class ScratchAttachmentTest(unittest.TestCase):
             self.assertNotIn(forbidden, attachment)
         self.assertIn('attachment_input_verified=False checked_device_verified=False cause_claimed=False', attachment)
         self.assertIn('known=False equal=False', attachment)
+
+
+class ScratchVolumePolicyTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.policy = (WINDOWS / 'ScratchVolumePolicy.cs').read_text(encoding='utf-8')
+        cls.controller = (WINDOWS / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        cls.sandbox = (WINDOWS / 'Sandbox.cs').read_text(encoding='utf-8')
+        cls.observer = (WINDOWS / 'ScratchAccess.cs').read_text(encoding='utf-8')
+
+    def test_suspended_lifetime_and_managed_discovery(self):
+        self.assertEqual(self.controller.count("(Join-Path $PSScriptRoot 'ScratchVolumePolicy.cs')"), 2)
+        self.assertEqual(self.controller.count('[ScientificSecurity.ScratchVolumePolicy]::CheckValidation()'), 1)
+        anchors = ('ScratchVolumePolicy.EnterRun();', 'ScratchVolumePolicy.SelectSuspended(job, process)',
+                   'PrepareContained(process', 'ScratchVolumePolicy.RequireNoLease();',
+                   'Native.ResumeThread(process.thread)', 'FinishRun(ref process',
+                   'ScratchVolumePolicy.EndRun(cleanupQualified)')
+        positions = [self.sandbox.index(anchor) for anchor in anchors]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('accounting.activeProcesses == 1 && accounting.totalProcesses == 1', self.policy)
+        self.assertIn('Native.WaitForSingleObject(selectedProcess, 0) == 0x102', self.policy)
+        self.assertIn('uncertain |= !clean || active != null', self.policy)
+        self.assertNotIn('ResumeThread', self.policy)
+
+    def test_receipt_precedes_possible_mutation_and_recovery_precedes_detach(self):
+        install = self.policy.split('internal void Install()', 1)[1].split('static void Restore(', 1)[0]
+        anchors = ('RequireHost();', 'RequireSuspended();', 'Bind();', 'Persist();',
+                   'Need(Same(Read(volume), before))', 'possible = true;',
+                   'Write(volume, after)', 'Need(Same(Read(volume), after))')
+        positions = [install.index(anchor) for anchor in anchors]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('NtSetSecurityObject(handle, 4, bytes)', self.policy)
+        self.assertIn('new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x100020, sid, false, null)', self.policy)
+        self.assertIn('Need(Same(actual, after)); write(before); Need(Same(read(), before))', self.policy)
+        self.assertIn('D:P(D;;0x000C0000;;;OW)(D;;FA;;;', self.policy)
+        self.assertIn('cleanupQualified = clean;', self.policy)
+        self.assertIn('return outerReaped || clean && activeRuns == 0 && !chosen;', self.policy)
+        self.assertIn('RecoveryAvailable(outerOwnerReaped, cleanupQualified, runs, selected)', self.policy)
+        self.assertIn('Need(!RecoveryAvailable(false, false, 0, false))', self.policy)
+        self.assertIn('file.Flush(true)', self.policy)
+        self.assertIn('Need(Equal(ReadReceipt(file), receiptBytes))', self.policy)
+        outer = self.controller.split('if ($CleanupOnly) {', 1)[1].split('$null = New-Item', 1)[0]
+        self.assertLess(outer.index('[ScientificSecurity.ScratchVolumePolicy]::Recover('),
+                        outer.index('Dismount-VHD -Path $ownedVhd'))
+        final = self.controller.split('$attachmentClosed = $true', 1)[1]
+        self.assertLess(final.index('[ScientificSecurity.ScratchVolumePolicy]::Recover('),
+                        final.index('$scratchAttachment.Dispose()'))
+        self.assertLess(final.index('$scratchAttachment.Dispose()'), final.index('Dismount-VHD -Path $vhd'))
+        self.assertIn('$traceStopped -and $attachmentClosed', final)
+        for forbidden in ('AttachVirtualDisk(', 'AdjustTokenPrivileges', 'SetTokenInformation',
+                          'ReadFile(', 'WriteFile(', 'Process.Start', 'CreateProcess'):
+            self.assertNotIn(forbidden, self.policy)
+
+    def test_phase_handles_close_and_frames_follow_restore(self):
+        probe = self.observer.split('static int[] PolicyProbe(', 1)[1].split('static void Deadline(', 1)[0]
+        self.assertEqual(probe.count('new NativeRequest'), 2)
+        self.assertIn('path = nativeRoot, role = "lpac", name = "device"', probe)
+        self.assertIn('path = nativeRoot + "temp"', probe)
+        self.assertEqual(probe.count('expected.Same(Privileges(effective))'), 2)
+        self.assertLess(probe.index('Revert();'), probe.index('request.Release('))
+        self.assertLess(probe.index('request.Release('), probe.index('return new []'))
+        compare = self.policy.split('internal List<string> Compare(', 1)[1].split('void Close()', 1)[0]
+        self.assertLess(compare.index('Finish(primary, Dispose)'), compare.index('WINDOWS_SCRATCH_POLICY'))
+        self.assertIn('descriptor_restored=True handles_closed=True cause_claimed=False admission=False', compare)
+        self.assertIn('finally { Attempt(failures, restore); }', self.policy)
+        self.assertIn('results[2].SequenceEqual(results[0])', self.policy)
+        fixtures = self.policy.split('public static void CheckValidation()', 1)[1]
+        for seam in ('Trial(original, sid)', 'Trial(trial, sid)', 'Restore(original, trial',
+                     'Differential(() =>', 'decoded.Decode(', 'receipt + "extra"',
+                     'Object.ReferenceEquals(error.InnerExceptions[0], operation)'):
+            self.assertIn(seam, fixtures)
 
 
 if __name__ == '__main__':

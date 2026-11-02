@@ -98,13 +98,13 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn('PrivilegeFixtures();', observer)
         self.assertIn('primaryPrivileges.Same(effectivePrivileges);', observer)
         self.assertIn('OpenThreadToken(GetCurrentThread(), 8, true, out effective)', observer)
-        self.assertLess(observer.index('RevertToSelf();'), observer.index('request.Release('))
+        self.assertLess(observer.index('Revert();'), observer.index('request.Release('))
         self.assertNotIn('NtQuerySecurityObject(', observer)
         for mutation in ('SetSecurityInfo', 'SetNamedSecurityInfo', 'AdjustTokenPrivileges',
                          'SetTokenInformation', 'SetCurrentDirectory', 'CreateProcess'):
             self.assertNotIn(mutation, observer)
         lifecycle = observer[observer.index('internal static void Observe('):observer.index('static void Deadline(')]
-        self.assertLess(lifecycle.index('RevertToSelf();'), lifecycle.index('close fixed scratch access handle'))
+        self.assertLess(lifecycle.index('Revert();'), lifecycle.index('close fixed scratch access handle'))
         self.assertLess(lifecycle.index('Finish(primary, failures);'),
                         lifecycle.index('foreach (string line in observations)'))
         self.assertIn('CreateFileW(item.path, Desired, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)', observer)
