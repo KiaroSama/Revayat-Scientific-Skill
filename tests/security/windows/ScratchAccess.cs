@@ -110,6 +110,7 @@ namespace ScientificSecurity
             };
             var observations = new List<string>(); var failures = new List<Exception>(); Exception primary = null;
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero; bool impersonating = false;
+            var requests = new List<NativeRequest>(); VolumeObservation volume = null;
             var clock = Stopwatch.StartNew();
             try {
                 Deadline(clock);
@@ -117,6 +118,17 @@ namespace ScientificSecurity
                 foreach (var item in items) { Deadline(clock); Pin(item); }
                 Deadline(clock);
                 Need(items[0].identity.volume == items[1].identity.volume);
+                volume = Volume(items[0].handle);
+                string[] names = NativeNames(scratch, (drive, output) => {
+                    uint length = QueryDosDeviceW(drive, output, (uint)output.Length);
+                    Native.Check(length != 0, "resolve fixed scratch device"); return length;
+                });
+                foreach (string role in new [] { "host", "lpac" }) for (int i = 0; i < names.Length; i++)
+                    requests.Add(new NativeRequest { role = role, name = i == 0 ? "dos" : "device", path = names[i] });
+                foreach (var request in requests) if (request.role == "host") {
+                    Deadline(clock); request.Open(NtOpenFile, PendingFatal); Need(request.opened);
+                    Same(items[0].identity, Identity(Marshal.ReadIntPtr(request.memory)));
+                }
                 Native.Check(Native.OpenProcessToken(process.process, 0xA, out token), "open fixed scratch source token");
                 Native.Check(DuplicateTokenEx(token, 0xC, IntPtr.Zero, 2, 2, out duplicate), "duplicate fixed scratch context");
                 var context = new RegistryContext(token, duplicate, package);
@@ -125,6 +137,9 @@ namespace ScientificSecurity
                 Deadline(clock);
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter fixed scratch context"); impersonating = true;
                 foreach (var item in items) { Deadline(clock); context.RequireThread(); Open(item); }
+                foreach (var request in requests) if (request.role == "lpac") {
+                    Deadline(clock); context.RequireThread(); request.Open(NtOpenFile, PendingFatal);
+                }
                 context.RequireThread(); Deadline(clock);
             }
             catch (Exception error) { primary = error; }
@@ -135,6 +150,9 @@ namespace ScientificSecurity
                     catch { Environment.FailFast("Scratch observation identity restoration threw; outer owner must recover."); }
                     if (!reverted) Environment.FailFast("Scratch observation identity restoration failed; outer owner must recover.");
                 }
+                foreach (var request in requests) Attempt(failures, () => request.Release(
+                    handle => Same(items[0].identity, Identity(handle)),
+                    handle => Native.Check(Native.CloseHandle(handle), "close fixed scratch native handle")));
                 Attempt(failures, () => { if (duplicate != IntPtr.Zero) Native.Check(Native.CloseHandle(duplicate), "close fixed scratch context token"); });
                 Attempt(failures, () => { if (token != IntPtr.Zero) Native.Check(Native.CloseHandle(token), "close fixed scratch source token"); });
                 foreach (var item in items) {
@@ -146,6 +164,8 @@ namespace ScientificSecurity
             }
             Finish(primary, failures);
             foreach (var item in items) observations.Add(Frame(item.label, item.result));
+            observations.Add(volume.Frame());
+            foreach (var request in requests) observations.Add(request.Frame());
             foreach (string line in observations) Console.Out.WriteLine(line);
             Console.Out.Flush();
         }
@@ -219,8 +239,203 @@ namespace ScientificSecurity
         }
         static void Attempt(List<Exception> failures, Action action)
         { try { action(); } catch (Exception error) { failures.Add(error); } }
+        [StructLayout(LayoutKind.Sequential)] struct UnicodeString
+        { internal ushort length, maximum; internal IntPtr buffer; }
+        [StructLayout(LayoutKind.Sequential)] struct ObjectAttributes
+        { internal uint length; internal IntPtr root, name; internal uint attributes; internal IntPtr descriptor, qos; }
+        [StructLayout(LayoutKind.Explicit, Size = 16)] struct IoStatus
+        {
+            [FieldOffset(0)] internal int status;
+            [FieldOffset(8)] internal UIntPtr information;
+        }
+        delegate int OpenCall(IntPtr handle, uint access, ref ObjectAttributes attributes, IntPtr io, uint share, uint options);
+        [DllImport("ntdll.dll")] static extern int NtOpenFile(IntPtr handle, uint access,
+            ref ObjectAttributes attributes, IntPtr io, uint share, uint options);
+        [DllImport("ntdll.dll")] static extern int NtQueryVolumeInformationFile(IntPtr handle,
+            IntPtr io, IntPtr information, uint length, int kind);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern uint QueryDosDeviceW(string device, [Out] char[] output, uint capacity);
+        static bool Valid(IntPtr handle) { return handle != IntPtr.Zero && handle != Native.InvalidHandle; }
+        static string[] NativeNames(string scratch, Func<string, char[], uint> query)
+        {
+            Need(scratch != null && scratch.Length == 3 && scratch[0] >= 'D' && scratch[0] <= 'Z' &&
+                scratch[1] == ':' && scratch[2] == '\\');
+            var output = new char[512]; uint length = query(scratch.Substring(0, 2), output);
+            Need(length >= 3 && length <= output.Length && output[length - 1] == '\0' && output[length - 2] == '\0');
+            int end = Array.IndexOf(output, '\0', 0, (int)length); Need(end == length - 2);
+            string device = new string(output, 0, end), prefix = @"\Device\HarddiskVolume";
+            Need(device.StartsWith(prefix, StringComparison.Ordinal) && device.Length > prefix.Length && device.Length <= prefix.Length + 20);
+            for (int i = prefix.Length; i < device.Length; i++) Need(device[i] >= '0' && device[i] <= '9');
+            return new [] { @"\??\" + scratch, device + "\\" };
+        }
+        static void RequireSynchronous(int returned, IoStatus io, Action fatal)
+        {
+            if (returned == 0x103 || io.status == 0x103) {
+                fatal(); throw new InvalidOperationException("fixed scratch pending termination unexpectedly returned");
+            }
+        }
+        static void PendingFatal()
+        { Environment.FailFast("Scratch synchronous observation remained pending; outer owner must recover."); }
+        static void RequireVolume(int returned, IoStatus io)
+        { Need(returned == 0 && io.status == 0 && io.information.ToUInt64() == 8); }
+        sealed class VolumeObservation
+        {
+            internal int status;
+            internal bool known;
+            internal uint type, characteristics;
+            internal string Frame()
+            {
+                return "WINDOWS_SCRATCH_DEVICE ntstatus=0x" + unchecked((uint)status).ToString("X8") +
+                    " known=" + known + " device_type=0x" + type.ToString("X8") +
+                    " characteristics=0x" + characteristics.ToString("X8") + " cause_claimed=False";
+            }
+        }
+        static VolumeObservation Volume(IntPtr root)
+        {
+            IntPtr memory = Marshal.AllocHGlobal(24); bool pending = false;
+            try {
+                Marshal.Copy(new byte[24], 0, memory, 24); Marshal.WriteInt32(memory, -1);
+                int status;
+                try { status = NtQueryVolumeInformationFile(root, memory, IntPtr.Add(memory, 16), 8, 4); }
+                catch {
+                    pending = Marshal.ReadInt32(memory) == 0x103;
+                    if (pending) PendingFatal();
+                    throw;
+                }
+                var io = (IoStatus)Marshal.PtrToStructure(memory, typeof(IoStatus));
+                pending = status == 0x103 || io.status == 0x103;
+                RequireSynchronous(status, io, PendingFatal);
+                var result = new VolumeObservation { status = status };
+                if (status == 0) {
+                    RequireVolume(status, io); result.known = true;
+                    result.type = unchecked((uint)Marshal.ReadInt32(memory, 16));
+                    result.characteristics = unchecked((uint)Marshal.ReadInt32(memory, 20));
+                }
+                return result;
+            }
+            finally { if (!pending) Marshal.FreeHGlobal(memory); }
+        }
+        sealed class NativeRequest
+        {
+            internal string path, role, name;
+            internal IntPtr memory;
+            internal int returned;
+            internal bool opened, pending;
+            internal void Open(OpenCall call, Action fatal)
+            {
+                Need(memory == IntPtr.Zero && path != null && path.Length <= 128);
+                byte[] text = new System.Text.UnicodeEncoding(false, false, true).GetBytes(path);
+                int size = 40 + text.Length + 2;
+                memory = Marshal.AllocHGlobal(size); Marshal.Copy(new byte[size], 0, memory, size);
+                Marshal.WriteInt32(memory, 8, -1);
+                Marshal.StructureToPtr(new UnicodeString { length = checked((ushort)text.Length),
+                    maximum = checked((ushort)(text.Length + 2)), buffer = IntPtr.Add(memory, 40) }, IntPtr.Add(memory, 24), false);
+                Marshal.Copy(text, 0, IntPtr.Add(memory, 40), text.Length);
+                var attributes = new ObjectAttributes { length = 48, name = IntPtr.Add(memory, 24), attributes = 0x40 };
+                try { returned = call(memory, Desired, ref attributes, IntPtr.Add(memory, 8), 7, 0x200021); }
+                catch {
+                    pending = Marshal.ReadInt32(memory, 8) == 0x103;
+                    if (pending) fatal();
+                    throw;
+                }
+                var io = (IoStatus)Marshal.PtrToStructure(IntPtr.Add(memory, 8), typeof(IoStatus));
+                pending = returned == 0x103 || io.status == 0x103;
+                RequireSynchronous(returned, io, fatal);
+                opened = returned == 0;
+                if (opened) Need(io.status == 0 && io.information.ToUInt64() == 1 && Valid(Marshal.ReadIntPtr(memory)));
+            }
+            internal void Release(Action<IntPtr> bind, Action<IntPtr> close)
+            {
+                if (memory == IntPtr.Zero || pending) return;
+                var failures = new List<Exception>(); IntPtr handle = Marshal.ReadIntPtr(memory);
+                Attempt(failures, () => { if (Valid(handle)) bind(handle); });
+                Attempt(failures, () => { if (Valid(handle)) close(handle); });
+                Attempt(failures, () => { Marshal.FreeHGlobal(memory); memory = IntPtr.Zero; });
+                Finish(null, failures);
+            }
+            internal string Frame()
+            {
+                Need((role == "host" || role == "lpac") && (name == "dos" || name == "device") && !pending);
+                return "WINDOWS_SCRATCH_NATIVE role=" + role + " name=" + name + " desired=0x00100020 share=7 options=0x00200021" +
+                    " ntstatus=0x" + unchecked((uint)returned).ToString("X8") + " opened=" + opened +
+                    " identity_qualified=True context_verified=True cleanup_qualified=True cause_claimed=False child_equivalence_claimed=False";
+            }
+        }
+        static void NativeObservationFixtures()
+        {
+            Need(IntPtr.Size == 8 && Marshal.SizeOf(typeof(UnicodeString)) == 16 &&
+                Marshal.SizeOf(typeof(ObjectAttributes)) == 48 && Marshal.SizeOf(typeof(IoStatus)) == 16);
+            Need(Marshal.OffsetOf(typeof(ObjectAttributes), "name").ToInt32() == 16 &&
+                Marshal.OffsetOf(typeof(IoStatus), "information").ToInt32() == 8);
+            Func<string, char[], uint> query = (drive, output) => {
+                Need(drive == "E:" && output.Length == 512);
+                const string mapping = "\\Device\\HarddiskVolume12\0\0";
+                mapping.CopyTo(0, output, 0, mapping.Length); return (uint)mapping.Length;
+            };
+            string[] names = NativeNames(@"E:\", query);
+            Need(names.Length == 2 && names[0] == @"\??\E:\" && names[1] == @"\Device\HarddiskVolume12\");
+            foreach (string bad in new [] { @"E:", @"E:\temp", @"e:\", @"C:\", @"\\server\share\" }) {
+                int calls = 0; bool refused = false;
+                try { NativeNames(bad, (_, output) => { calls++; return 0; }); }
+                catch (InvalidOperationException) { refused = true; }
+                Need(refused && calls == 0);
+            }
+            foreach (string bad in new [] { "", "\\Device\\HarddiskVolume12\0", "\\Device\\HarddiskVolume12\0old\0\0",
+                "\\Device\\HarddiskVolume\0\0", "\\Device\\HarddiskVolume1\\extra\0\0", "\\??\\E:\0\0" }) {
+                bool refused = false;
+                try { NativeNames(@"E:\", (_, output) => { bad.CopyTo(0, output, 0, bad.Length); return (uint)bad.Length; }); }
+                catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            foreach (uint length in new uint[] { 0, 1, 513, UInt32.MaxValue }) {
+                bool refused = false;
+                try { NativeNames(@"E:\", (_, output) => length); } catch (InvalidOperationException) { refused = true; }
+                Need(refused);
+            }
+            foreach (string path in names) {
+                var request = new NativeRequest { path = path, role = "host", name = "dos" };
+                int calls = 0, closes = 0, binds = 0;
+                OpenCall open = (IntPtr slot, uint access, ref ObjectAttributes attributes, IntPtr io, uint share, uint options) => {
+                    calls++; Need(access == Desired && share == 7 && options == 0x200021 && attributes.length == 48 &&
+                        attributes.root == IntPtr.Zero && attributes.attributes == 0x40 && attributes.descriptor == IntPtr.Zero &&
+                        attributes.qos == IntPtr.Zero && Marshal.ReadIntPtr(slot) == IntPtr.Zero && Marshal.ReadInt32(io) == -1);
+                    var text = (UnicodeString)Marshal.PtrToStructure(attributes.name, typeof(UnicodeString));
+                    Need(text.length == path.Length * 2 && text.maximum == text.length + 2 &&
+                        Marshal.PtrToStringUni(text.buffer, text.length / 2) == path && Marshal.ReadInt16(text.buffer, text.length) == 0);
+                    Marshal.WriteIntPtr(slot, new IntPtr(17)); Marshal.WriteInt32(io, 0); Marshal.WriteInt64(io, 8, 1); return 0;
+                };
+                try { request.Open(open, () => { throw new Exception("unexpected pending"); }); Need(request.opened); }
+                finally { request.Release(_ => binds++, handle => { Need(handle == new IntPtr(17)); closes++; }); }
+                Need(calls == 1 && binds == 1 && closes == 1 && request.memory == IntPtr.Zero);
+                string frame = request.Frame();
+                Need(frame.Length < 512 && !frame.Contains(path) && frame.Contains("role=host name=dos") && frame.Contains("opened=True"));
+            }
+            foreach (int status in new [] { 0, unchecked((int)0xC0000022) }) {
+                var request = new NativeRequest { role = "lpac", name = "device", returned = status, opened = status == 0 };
+                Need(request.Frame().Contains("ntstatus=0x" + unchecked((uint)status).ToString("X8")));
+            }
+            foreach (int returned in new [] { 0x103, 0, unchecked((int)0xC0000022) }) {
+                bool fatal = false, refused = false;
+                try { RequireSynchronous(returned, new IoStatus { status = returned == 0 ? 0x103 : 0 }, () => fatal = true); }
+                catch (InvalidOperationException) { refused = true; }
+                Need(fatal == (returned == 0x103 || returned == 0) && refused == fatal);
+            }
+            foreach (ulong bytes in new ulong[] { 0, 7, 8, 9, UInt64.MaxValue }) {
+                bool refused = false;
+                try { RequireVolume(0, new IoStatus { information = new UIntPtr(bytes) }); }
+                catch (InvalidOperationException) { refused = true; }
+                Need(refused == (bytes != 8));
+            }
+            var original = new IOException("private-close"); var failures = new List<Exception>(); int attempts = 0;
+            var failed = new NativeRequest { memory = Marshal.AllocHGlobal(64) };
+            Marshal.WriteIntPtr(failed.memory, new IntPtr(17));
+            try { failed.Release(_ => { attempts++; throw original; }, _ => attempts++); }
+            catch (AggregateException error) { failures.AddRange(error.InnerExceptions); }
+            Need(attempts == 2 && failed.memory == IntPtr.Zero && failures.Count == 1 && Object.ReferenceEquals(failures[0], original));
+        }
         public static void CheckValidation()
         {
+            NativeObservationFixtures();
             Need(Marshal.SizeOf(typeof(FileInformation)) == 24 && Marshal.SizeOf(typeof(AttributeInformation)) == 8);
             var expected = new FileInformation { volume = 1, indexHigh = 2, indexLow = 3 };
             Same(expected, expected);

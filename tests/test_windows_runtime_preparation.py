@@ -90,6 +90,13 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn('new RegistryContext(token, duplicate, package)', observer)
         self.assertIn('Path.Combine(scratch, "temp")', observer)
         self.assertIn('GetFileInformationByHandleEx(', observer)
+        self.assertIn('NtQueryVolumeInformationFile(', observer)
+        self.assertIn('NtOpenFile(', observer)
+        self.assertIn('7, 0x200021)', observer)
+        self.assertIn('NativeNames(scratch,', observer)
+        self.assertIn('NativeObservationFixtures();', observer)
+        self.assertLess(observer.index('RevertToSelf();'), observer.index('request.Release('))
+        self.assertNotIn('NtQuerySecurityObject(', observer)
         for mutation in ('SetSecurityInfo', 'SetNamedSecurityInfo', 'AdjustTokenPrivileges',
                          'SetTokenInformation', 'SetCurrentDirectory', 'CreateProcess'):
             self.assertNotIn(mutation, observer)
