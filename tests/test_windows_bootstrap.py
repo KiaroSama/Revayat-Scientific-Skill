@@ -103,6 +103,48 @@ class KernelFixture:
 
 
 class BootstrapCaptureTest(unittest.TestCase):
+    def test_controller_bootstrap_markers_preserve_fixed_validation_order(self):
+        source = PATH.with_name('Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        recovery = source.split('if ($CleanupOnly) {', 1)[1].split('$null = New-Item', 1)[0]
+        anchors = ('Invoke-BootstrapRecovery {', 'Add-Type -Path',
+                   '[ScientificSecurity.RegistryPolicyLease]::CleanupOwned(', 'WINDOWS_OWNED_STATE_CLEANED')
+        self.assertEqual([recovery.index(value) for value in anchors],
+                         sorted(recovery.index(value) for value in anchors))
+        recovery_helper = source.split('function Invoke-BootstrapRecovery(', 1)[1].split('if ($CleanupOnly)', 1)[0]
+        anchors = ("& $mark 'recovery-compile' 'before'", '& $Compile',
+                   "& $mark 'recovery-compile' 'after'", "& $mark 'recovery' 'before'",
+                   '& $Recover', "& $mark 'recovery' 'after'")
+        self.assertEqual([recovery_helper.index(value) for value in anchors],
+                         sorted(recovery_helper.index(value) for value in anchors))
+        self.assertIn('catch { $reporting.Add($_.Exception) }', recovery_helper)
+        self.assertIn('$reporting.Insert(0, $primary)', recovery_helper)
+        main = source.split('try {\n    Write-RunLog INFO "start run=', 1)[1]
+        anchors = ("Write-BootstrapProgress 'prerequisite' 'before'", 'Get-Command $name',
+                   "Write-BootstrapProgress 'prerequisite' 'after'",
+                   "Write-BootstrapProgress 'compile' 'before'", 'Add-Type -Path',
+                   "Write-BootstrapProgress 'compile' 'after'", "Invoke-BootstrapStage 'managed' 1 ")
+        self.assertEqual([main.index(value) for value in anchors], sorted(main.index(value) for value in anchors))
+        import re
+        rows = re.findall(r"^    Invoke-BootstrapStage 'managed' (\d+) \{ (\[ScientificSecurity\.[^\n]+) \}$", main, re.M)
+        self.assertEqual([int(index) for index, _ in rows], list(range(1, 53)))
+        self.assertEqual(rows[0][1], '[ScientificSecurity.Profile]::CheckSealComparison()')
+        self.assertEqual(rows[-1][1], '[ScientificSecurity.DebugControl]::CheckValidation()')
+        import hashlib
+        calls = '\n'.join(call for _, call in rows).encode('utf-8')
+        self.assertEqual(hashlib.sha256(calls).hexdigest(),
+                         '2c1ff6a3ade4fcfd33aa6ca45d400ad8b0dccdb98d6a04a4410c2a2432ac48eb')
+        block = main.split("    Write-BootstrapProgress 'compile' 'after'\n", 1)[1].split(
+            "    Write-RunLog INFO 'managed strict", 1)[0]
+        self.assertEqual(len(block.splitlines()), 52)
+        self.assertTrue(all(line.startswith("    Invoke-BootstrapStage 'managed' ") for line in block.splitlines()))
+        helper = source.split('function Write-BootstrapProgress(', 1)[1].split('function Invoke-BootstrapRecovery(', 1)[0]
+        self.assertIn('[ValidateRange(0,64)]', helper)
+        self.assertIn('[Console]::Out.Flush()', helper)
+        self.assertNotIn('finally', helper)
+        self.assertNotIn('catch', helper)
+        self.assertLess(helper.index("Write-BootstrapProgress $Phase 'before'"), helper.index('& $Operation'))
+        self.assertLess(helper.index('& $Operation'), helper.index("Write-BootstrapProgress $Phase 'after'"))
+
     def invoke(self, kernel):
         output, error = io.StringIO(), io.StringIO()
         threads = []

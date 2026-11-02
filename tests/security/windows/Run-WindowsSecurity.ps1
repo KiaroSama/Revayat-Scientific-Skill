@@ -13,8 +13,41 @@ if (-not $IsWindows) { throw 'Native Windows security tier requires Windows' }
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Required prepared Python executable is unavailable' }
 $runId = $RunId
 $state = [IO.Path]::GetFullPath((Join-Path (Join-Path $Root '.scratch') "security-windows-$runId"))
+function Write-BootstrapProgress(
+    [ValidateSet('prerequisite','compile','managed','recovery-compile','recovery')][string]$Phase,
+    [ValidateSet('before','after')][string]$State,
+    [ValidateRange(0,64)][int]$Index = 0) {
+    [Console]::Out.WriteLine("WINDOWS_BOOTSTRAP phase=$Phase state=$State index=$Index")
+    [Console]::Out.Flush()
+}
+function Invoke-BootstrapStage([string]$Phase, [int]$Index, [scriptblock]$Operation) {
+    Write-BootstrapProgress $Phase 'before' $Index
+    & $Operation
+    Write-BootstrapProgress $Phase 'after' $Index
+}
+function Invoke-BootstrapRecovery([scriptblock]$Compile, [scriptblock]$Recover) {
+    $reporting = [Collections.Generic.List[Exception]]::new()
+    $primary = $null
+    $mark = { param($phase, $state)
+        try { Write-BootstrapProgress $phase $state }
+        catch { $reporting.Add($_.Exception) }
+    }
+    try {
+        & $mark 'recovery-compile' 'before'
+        & $Compile
+        & $mark 'recovery-compile' 'after'
+        & $mark 'recovery' 'before'
+        & $Recover
+        & $mark 'recovery' 'after'
+    }
+    catch { $primary = $_.Exception }
+    if ($primary) { $reporting.Insert(0, $primary) }
+    if ($reporting.Count) { throw [AggregateException]::new('Bootstrap recovery operation/reporting failed', $reporting) }
+}
 if ($CleanupOnly) {
+    Invoke-BootstrapRecovery {
     Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'), (Join-Path $PSScriptRoot 'ScratchVolumePolicy.cs'), (Join-Path $PSScriptRoot 'SxsTraceSession.cs'))
+    } {
     $recovery = @{ trace = $false }
     [ScientificSecurity.RegistryPolicyLease]::CleanupOwned(
         [Action]{
@@ -41,6 +74,7 @@ if ($CleanupOnly) {
             }
         },
         [Action]{ if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force -ErrorAction Stop } })
+    }
     [Console]::Out.WriteLine('WINDOWS_OWNED_STATE_CLEANED')
     exit 0
 }
@@ -172,64 +206,68 @@ $tcp4 = $null; $tcp6 = $null; $udp4 = $null; $udp6 = $null
 $result = $null; $failure = $null; $profileOwned = $false; $moniker = 'Scientific.Security.' + $runId
 try {
     Write-RunLog INFO "start run=$runId native_runtime=3.11 root=$Root"
+    Write-BootstrapProgress 'prerequisite' 'before'
     foreach ($name in @('New-VHD','Mount-VHD','Dismount-VHD','Initialize-Disk','New-Partition','Format-Volume')) {
         if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { throw "Required native control unavailable: $name" }
     }
+    Write-BootstrapProgress 'prerequisite' 'after'
+    Write-BootstrapProgress 'compile' 'before'
     # The workflow's outer owned command bounds this compiler bootstrap. Subsequent
     # native setup commands use the suspended Job-owned runner loaded here.
     Add-Type -Path @((Join-Path $PSScriptRoot 'Native.cs'), (Join-Path $PSScriptRoot 'Capture.cs'), (Join-Path $PSScriptRoot 'TrustedSetup.cs'), (Join-Path $PSScriptRoot 'Sandbox.cs'), (Join-Path $PSScriptRoot 'QuotaSid.cs'), (Join-Path $PSScriptRoot 'TokenPolicy.cs'), (Join-Path $PSScriptRoot 'TokenDefaultMetadata.cs'), (Join-Path $PSScriptRoot 'ChildDefaultDacl.cs'), (Join-Path $PSScriptRoot 'DefaultDaclControl.cs'), (Join-Path $PSScriptRoot 'DefaultDaclComparison.cs'), (Join-Path $PSScriptRoot 'Profile.cs'), (Join-Path $PSScriptRoot 'RegistryContext.cs'), (Join-Path $PSScriptRoot 'LpacQuery.cs'), (Join-Path $PSScriptRoot 'RegistrySeal.cs'), (Join-Path $PSScriptRoot 'LoaderSnaps.cs'), (Join-Path $PSScriptRoot 'OwnedToken.cs'), (Join-Path $PSScriptRoot 'ScratchAccess.cs'), (Join-Path $PSScriptRoot 'ScratchSupportedAccess.cs'), (Join-Path $PSScriptRoot 'ScratchFileAccess.cs'), (Join-Path $PSScriptRoot 'ScratchVolumeAccess.cs'), (Join-Path $PSScriptRoot 'ScratchAttachment.cs'), (Join-Path $PSScriptRoot 'ScratchVolumePolicy.cs'), (Join-Path $PSScriptRoot 'StartupAccess.cs'), (Join-Path $PSScriptRoot 'StartupImageAccess.cs'), (Join-Path $PSScriptRoot 'KernelImageImports.cs'), (Join-Path $PSScriptRoot 'OwnProcessAccess.cs'), (Join-Path $PSScriptRoot 'LoaderTrace.cs'), (Join-Path $PSScriptRoot 'KernelImage.cs'), (Join-Path $PSScriptRoot 'KernelImageIdentity.cs'), (Join-Path $PSScriptRoot 'KernelImageStatic.cs'), (Join-Path $PSScriptRoot 'KernelImageObservation.cs'), (Join-Path $PSScriptRoot 'KernelImageCheckpoint.cs'), (Join-Path $PSScriptRoot 'StaticKernelInspection.cs'), (Join-Path $PSScriptRoot 'HardwareTrace.cs'), (Join-Path $PSScriptRoot 'DebugContext.cs'), (Join-Path $PSScriptRoot 'DebugControl.cs'), (Join-Path $PSScriptRoot 'NativeFixture.cs'), (Join-Path $PSScriptRoot 'PythonStartupFixture.cs'), (Join-Path $PSScriptRoot 'PythonLoaderComparison.cs'), (Join-Path $PSScriptRoot 'KernelImageManifest.cs'), (Join-Path $PSScriptRoot 'StartupActivationAccess.cs'), (Join-Path $PSScriptRoot 'DllActivationPreparation.cs'), (Join-Path $PSScriptRoot 'StartupRegistryAccess.cs'), (Join-Path $PSScriptRoot 'RegistryPolicyLease.cs'), (Join-Path $PSScriptRoot 'RegistryCausalComparison.cs'), (Join-Path $PSScriptRoot 'ManualActivationComparison.cs'), (Join-Path $PSScriptRoot 'StartupActivationEvents.cs'), (Join-Path $PSScriptRoot 'ActivationAssemblyAccess.cs'), (Join-Path $PSScriptRoot 'StartupTokenAccess.cs'), (Join-Path $PSScriptRoot 'ChildActivationFixture.cs'), (Join-Path $PSScriptRoot 'ChildActivationDllRequest.cs'), (Join-Path $PSScriptRoot 'KernelImageChildActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageDefaultActivation.cs'), (Join-Path $PSScriptRoot 'DefaultActivationFixture.cs'), (Join-Path $PSScriptRoot 'SelfActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageSelfActivation.cs'), (Join-Path $PSScriptRoot 'ModuleActivationFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageModuleActivation.cs'), (Join-Path $PSScriptRoot 'KernelImageModuleCallback.cs'), (Join-Path $PSScriptRoot 'ModuleCallbackTrace.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationWorker.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationBoundary.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationProfiles.cs'), (Join-Path $PSScriptRoot 'KernelImageActivationProfileValidation.cs'), (Join-Path $PSScriptRoot 'ActivationBoundaryTrace.cs'), (Join-Path $PSScriptRoot 'ExplicitEntryTrace.cs'), (Join-Path $PSScriptRoot 'LoaderEntryTrace.cs'), (Join-Path $PSScriptRoot 'ExplicitEntryComparison.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceTrace.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceValidation.cs'), (Join-Path $PSScriptRoot 'LoaderResourceTrace.cs'), (Join-Path $PSScriptRoot 'AutomaticResourceComparison.cs'), (Join-Path $PSScriptRoot 'CsrDispatchPair.cs'), (Join-Path $PSScriptRoot 'KernelImageCsrDispatch.cs'), (Join-Path $PSScriptRoot 'CsrDispatchTrace.cs'), (Join-Path $PSScriptRoot 'CsrDispatchObservation.cs'), (Join-Path $PSScriptRoot 'CsrDispatchComparison.cs'), (Join-Path $PSScriptRoot 'CsrDispatchValidation.cs'), (Join-Path $PSScriptRoot 'ModuleCsrDispatch.cs'), (Join-Path $PSScriptRoot 'PythonCsrDispatch.cs'), (Join-Path $PSScriptRoot 'PythonActivationPreparation.cs'), (Join-Path $PSScriptRoot 'HostActivationPreparation.cs'), (Join-Path $PSScriptRoot 'RegistryStartupComparison.cs'), (Join-Path $PSScriptRoot 'RegistryDiagnostic.cs'), (Join-Path $PSScriptRoot 'RegistryAuthorityComparison.cs'), (Join-Path $PSScriptRoot 'RegistryAuthoritySurface.cs'), (Join-Path $PSScriptRoot 'SupportedRegistryPolicy.cs'), (Join-Path $PSScriptRoot 'RegistryAuthorityFixture.cs'), (Join-Path $PSScriptRoot 'SandboxPreparation.cs'), (Join-Path $PSScriptRoot 'SandboxCompletion.cs'), (Join-Path $PSScriptRoot 'RegistryLoaderEvidence.cs'), (Join-Path $PSScriptRoot 'RegistryLoaderFixture.cs'), (Join-Path $PSScriptRoot 'KernelImageRegistryLoader.cs'), (Join-Path $PSScriptRoot 'SxsTraceSession.cs'), (Join-Path $PSScriptRoot 'SxsTraceCapture.cs'), (Join-Path $PSScriptRoot 'SxsTraceStorage.cs'), (Join-Path $PSScriptRoot 'SxsCanaryOwner.cs'), (Join-Path $PSScriptRoot 'SxsTraceSeed.cs'), (Join-Path $PSScriptRoot 'SxsTraceEvidence.cs'), (Join-Path $PSScriptRoot 'SxsTraceControl.cs'), (Join-Path $PSScriptRoot 'SxsTraceControlValidation.cs'), (Join-Path $PSScriptRoot 'SxsTraceSuccess.cs'))
-    [ScientificSecurity.Profile]::CheckSealComparison()
-    [ScientificSecurity.Profile]::CheckRegistryMasks()
-    [ScientificSecurity.LoaderSnaps]::CheckValidation()
-    [ScientificSecurity.TokenDefaultMetadata]::CheckValidation()
-    [ScientificSecurity.ChildDefaultDacl]::CheckValidation()
-    [ScientificSecurity.DefaultDaclControl]::CheckValidation()
-    [ScientificSecurity.DefaultDaclComparison]::CheckValidation()
-    [ScientificSecurity.KernelImage]::CheckValidation()
-    [ScientificSecurity.KernelImage]::CheckCheckpointValidation()
-    [ScientificSecurity.KernelImage]::CheckImportValidation()
-    [ScientificSecurity.KernelImage]::CheckManifestValidation()
-    [ScientificSecurity.KernelImage]::CheckActivationWorkerValidation()
-    [ScientificSecurity.StartupActivationAccess]::CheckValidation()
-    [ScientificSecurity.StartupActivationAccess]::CheckFixedDllValidation()
-    [ScientificSecurity.StartupRegistryAccess]::CheckValidation()
-    [ScientificSecurity.PythonLoaderComparison]::CheckValidation()
-    [ScientificSecurity.RegistryPolicyLease]::CheckValidation()
-    [ScientificSecurity.RegistryCausalComparison]::CheckValidation()
-    [ScientificSecurity.ManualActivationComparison]::CheckValidation()
-    [ScientificSecurity.AutomaticResourceComparison]::CheckValidation()
-    [ScientificSecurity.CsrDispatchComparison]::CheckValidation()
-    [ScientificSecurity.CsrDispatchComparison]::CheckModuleValidation()
-    [ScientificSecurity.PythonCsrDispatch]::CheckPythonValidation($state)
-    [ScientificSecurity.PythonActivationPreparation]::CheckValidation()
-    [ScientificSecurity.RegistryStartupComparison]::CheckValidation()
-    [ScientificSecurity.RegistryAuthorityComparison]::CheckValidation()
-    [ScientificSecurity.SupportedRegistryPolicy]::CheckValidation()
-    [ScientificSecurity.SelfActivationFixture]::CheckPolicyResultValidation()
-    [ScientificSecurity.StartupActivationEvents]::CheckValidation()
-    [ScientificSecurity.ActivationAssemblyAccess]::CheckValidation($state)
-    [ScientificSecurity.StartupTokenAccess]::CheckValidation()
-    [ScientificSecurity.ChildActivationFixture]::CheckValidation($state)
-    [ScientificSecurity.ChildActivationFixture]::CheckDllValidation($PSScriptRoot)
-    [ScientificSecurity.KernelImage]::CheckDefaultActivationValidation()
-    [ScientificSecurity.DefaultActivationFixture]::CheckValidation($state)
-    [ScientificSecurity.SelfActivationFixture]::CheckValidation($state)
-    [ScientificSecurity.SelfActivationFixture]::CheckSourceValidation($PSScriptRoot)
-    [ScientificSecurity.KernelImage]::CheckModuleActivationValidation()
-    [ScientificSecurity.ModuleActivationFixture]::CheckValidation($state)
-    [ScientificSecurity.ActivationBoundaryTrace]::CheckValidation()
-    [ScientificSecurity.ActivationBoundaryTrace]::CheckModuleCallbackValidation()
-    [ScientificSecurity.ScratchAccess]::CheckValidation()
-    [ScientificSecurity.ScratchAccess]::CheckSupportedValidation()
-    [ScientificSecurity.ScratchAccess]::CheckFileCreationValidation()
-    [ScientificSecurity.ScratchVolumeAccess]::CheckValidation()
-    [ScientificSecurity.ScratchAttachment]::CheckValidation()
-    [ScientificSecurity.ScratchVolumePolicy]::CheckValidation()
-    [ScientificSecurity.StartupImageAccess]::CheckValidation()
-    [ScientificSecurity.TrustedSetup]::CheckValidation()
-    [ScientificSecurity.StaticKernelInspection]::CheckValidation()
-    [ScientificSecurity.HardwareTrace]::CheckValidation()
-    [ScientificSecurity.DebugControl]::CheckValidation()
+    Write-BootstrapProgress 'compile' 'after'
+    Invoke-BootstrapStage 'managed' 1 { [ScientificSecurity.Profile]::CheckSealComparison() }
+    Invoke-BootstrapStage 'managed' 2 { [ScientificSecurity.Profile]::CheckRegistryMasks() }
+    Invoke-BootstrapStage 'managed' 3 { [ScientificSecurity.LoaderSnaps]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 4 { [ScientificSecurity.TokenDefaultMetadata]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 5 { [ScientificSecurity.ChildDefaultDacl]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 6 { [ScientificSecurity.DefaultDaclControl]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 7 { [ScientificSecurity.DefaultDaclComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 8 { [ScientificSecurity.KernelImage]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 9 { [ScientificSecurity.KernelImage]::CheckCheckpointValidation() }
+    Invoke-BootstrapStage 'managed' 10 { [ScientificSecurity.KernelImage]::CheckImportValidation() }
+    Invoke-BootstrapStage 'managed' 11 { [ScientificSecurity.KernelImage]::CheckManifestValidation() }
+    Invoke-BootstrapStage 'managed' 12 { [ScientificSecurity.KernelImage]::CheckActivationWorkerValidation() }
+    Invoke-BootstrapStage 'managed' 13 { [ScientificSecurity.StartupActivationAccess]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 14 { [ScientificSecurity.StartupActivationAccess]::CheckFixedDllValidation() }
+    Invoke-BootstrapStage 'managed' 15 { [ScientificSecurity.StartupRegistryAccess]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 16 { [ScientificSecurity.PythonLoaderComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 17 { [ScientificSecurity.RegistryPolicyLease]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 18 { [ScientificSecurity.RegistryCausalComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 19 { [ScientificSecurity.ManualActivationComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 20 { [ScientificSecurity.AutomaticResourceComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 21 { [ScientificSecurity.CsrDispatchComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 22 { [ScientificSecurity.CsrDispatchComparison]::CheckModuleValidation() }
+    Invoke-BootstrapStage 'managed' 23 { [ScientificSecurity.PythonCsrDispatch]::CheckPythonValidation($state) }
+    Invoke-BootstrapStage 'managed' 24 { [ScientificSecurity.PythonActivationPreparation]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 25 { [ScientificSecurity.RegistryStartupComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 26 { [ScientificSecurity.RegistryAuthorityComparison]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 27 { [ScientificSecurity.SupportedRegistryPolicy]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 28 { [ScientificSecurity.SelfActivationFixture]::CheckPolicyResultValidation() }
+    Invoke-BootstrapStage 'managed' 29 { [ScientificSecurity.StartupActivationEvents]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 30 { [ScientificSecurity.ActivationAssemblyAccess]::CheckValidation($state) }
+    Invoke-BootstrapStage 'managed' 31 { [ScientificSecurity.StartupTokenAccess]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 32 { [ScientificSecurity.ChildActivationFixture]::CheckValidation($state) }
+    Invoke-BootstrapStage 'managed' 33 { [ScientificSecurity.ChildActivationFixture]::CheckDllValidation($PSScriptRoot) }
+    Invoke-BootstrapStage 'managed' 34 { [ScientificSecurity.KernelImage]::CheckDefaultActivationValidation() }
+    Invoke-BootstrapStage 'managed' 35 { [ScientificSecurity.DefaultActivationFixture]::CheckValidation($state) }
+    Invoke-BootstrapStage 'managed' 36 { [ScientificSecurity.SelfActivationFixture]::CheckValidation($state) }
+    Invoke-BootstrapStage 'managed' 37 { [ScientificSecurity.SelfActivationFixture]::CheckSourceValidation($PSScriptRoot) }
+    Invoke-BootstrapStage 'managed' 38 { [ScientificSecurity.KernelImage]::CheckModuleActivationValidation() }
+    Invoke-BootstrapStage 'managed' 39 { [ScientificSecurity.ModuleActivationFixture]::CheckValidation($state) }
+    Invoke-BootstrapStage 'managed' 40 { [ScientificSecurity.ActivationBoundaryTrace]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 41 { [ScientificSecurity.ActivationBoundaryTrace]::CheckModuleCallbackValidation() }
+    Invoke-BootstrapStage 'managed' 42 { [ScientificSecurity.ScratchAccess]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 43 { [ScientificSecurity.ScratchAccess]::CheckSupportedValidation() }
+    Invoke-BootstrapStage 'managed' 44 { [ScientificSecurity.ScratchAccess]::CheckFileCreationValidation() }
+    Invoke-BootstrapStage 'managed' 45 { [ScientificSecurity.ScratchVolumeAccess]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 46 { [ScientificSecurity.ScratchAttachment]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 47 { [ScientificSecurity.ScratchVolumePolicy]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 48 { [ScientificSecurity.StartupImageAccess]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 49 { [ScientificSecurity.TrustedSetup]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 50 { [ScientificSecurity.StaticKernelInspection]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 51 { [ScientificSecurity.HardwareTrace]::CheckValidation() }
+    Invoke-BootstrapStage 'managed' 52 { [ScientificSecurity.DebugControl]::CheckValidation() }
     Write-RunLog INFO 'managed strict seal-comparison positive and negative controls passed'
     $gitCandidates = @(Get-Command git -CommandType Application -ErrorAction Stop)
     [Console]::Out.WriteLine("WINDOWS_SETUP_RESOLUTION command=git candidates=$($gitCandidates.Count) type=$($gitCandidates.GetType().FullName)")
