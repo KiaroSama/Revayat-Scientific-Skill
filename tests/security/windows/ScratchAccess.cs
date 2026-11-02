@@ -12,13 +12,13 @@ namespace ScientificSecurity
     public static class ScratchAccess
     {
         const uint Desired = 0x100020;
-        sealed class Result
+        internal sealed class Result
         {
             internal uint query, checkError, granted, openError;
             internal bool checkedAccess, allowed, opened;
             internal string policy = "unknown";
         }
-        [StructLayout(LayoutKind.Sequential)] struct FileInformation
+        [StructLayout(LayoutKind.Sequential)] internal struct FileInformation
         { internal ulong volume, indexHigh, indexLow; }
         [StructLayout(LayoutKind.Sequential)] struct AttributeInformation
         { internal uint attributes, tag; }
@@ -48,7 +48,7 @@ namespace ScientificSecurity
             internal FileInformation identity;
             internal Result result = new Result();
         }
-        static FileInformation Identity(IntPtr handle)
+        internal static FileInformation Identity(IntPtr handle)
         {
             FileInformation identity;
             Native.Check(GetFileInformationByHandleEx(handle, 18, out identity, 24), "query fixed scratch directory identity");
@@ -60,14 +60,18 @@ namespace ScientificSecurity
             IntPtr handle = CreateFileW(item.path, 0x20080, 3, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
             Native.Check(handle != Native.InvalidHandle && handle != IntPtr.Zero, "pin fixed scratch directory");
             item.handle = handle;
-            AttributeInformation attributes;
-            Native.Check(GetAttributes(handle, 9, out attributes, 8), "qualify plain scratch directory");
-            Need((attributes.attributes & 0x410) == 0x10 && attributes.tag == 0);
+            RequirePlain(handle, true);
             item.identity = Identity(handle);
+        }
+        internal static void RequirePlain(IntPtr handle, bool directory)
+        {
+            AttributeInformation attributes;
+            Native.Check(GetAttributes(handle, 9, out attributes, 8), "qualify plain scratch object");
+            Need((attributes.attributes & 0x410) == (directory ? 0x10U : 0U) && attributes.tag == 0);
         }
         static void Model(DirectoryObservation item, IntPtr token, SecurityIdentifier user, SecurityIdentifier package)
         {
-            IntPtr descriptor = IntPtr.Zero, privileges = IntPtr.Zero;
+            IntPtr descriptor = IntPtr.Zero;
             var failures = new List<Exception>(); Exception primary = null;
             try {
                 IntPtr owner, group, dacl, sacl;
@@ -77,19 +81,34 @@ namespace ScientificSecurity
                 Need(descriptor != IntPtr.Zero);
                 uint bytes = GetSecurityDescriptorLength(descriptor); Need(bytes >= 20 && bytes <= 65536);
                 byte[] binary = new byte[bytes]; Marshal.Copy(descriptor, binary, 0, binary.Length);
-                item.result.policy = Policy(binary, user, package);
+                ModelDescriptor(binary, token, user, package, item.result);
+            }
+            catch (Exception error) { primary = error; }
+            finally {
+                Attempt(failures, () => { if (descriptor != IntPtr.Zero) Need(Native.LocalFree(descriptor) == IntPtr.Zero); });
+                Finish(primary, failures);
+            }
+        }
+        internal static void ModelDescriptor(byte[] binary, IntPtr token, SecurityIdentifier user,
+            SecurityIdentifier package, Result result)
+        {
+            result.policy = Policy(binary, user, package);
+            IntPtr descriptor = IntPtr.Zero, privileges = IntPtr.Zero;
+            var failures = new List<Exception>(); Exception primary = null;
+            try {
+                descriptor = Marshal.AllocHGlobal(binary.Length); Marshal.Copy(binary, 0, descriptor, binary.Length);
                 privileges = Marshal.AllocHGlobal(2048); uint length = 2048, granted; bool allowed;
                 var mapping = new GenericMapping { read = 0x120089, write = 0x120116, execute = 0x1200A0, all = 0x1F01FF };
                 bool completed = AccessCheck(descriptor, token, Desired, ref mapping, privileges, ref length, out granted, out allowed);
                 uint error = completed && allowed ? 0U : unchecked((uint)Marshal.GetLastWin32Error());
-                item.result.checkedAccess = completed; item.result.checkError = error;
-                item.result.allowed = completed && allowed; item.result.granted = completed ? granted : 0;
+                result.checkedAccess = completed; result.checkError = error;
+                result.allowed = completed && allowed; result.granted = completed ? granted : 0;
                 if (completed) Need(length <= 2048);
             }
             catch (Exception error) { primary = error; }
             finally {
                 Attempt(failures, () => { if (privileges != IntPtr.Zero) Marshal.FreeHGlobal(privileges); });
-                Attempt(failures, () => { if (descriptor != IntPtr.Zero) Need(Native.LocalFree(descriptor) == IntPtr.Zero); });
+                Attempt(failures, () => { if (descriptor != IntPtr.Zero) Marshal.FreeHGlobal(descriptor); });
                 Finish(primary, failures);
             }
         }
@@ -139,8 +158,11 @@ namespace ScientificSecurity
                 var context = new RegistryContext(token, duplicate, package);
                 primaryPrivileges = Privileges(token); duplicatePrivileges = Privileges(duplicate);
                 primaryPrivileges.Same(duplicatePrivileges);
-                using (var identity = new WindowsIdentity(token))
+                using (var identity = new WindowsIdentity(token)) {
                     foreach (var item in items) { Deadline(clock); Model(item, duplicate, identity.User, new SecurityIdentifier(package)); }
+                    observations.AddRange(ScratchAttachment.Observe(scratch, duplicate, identity.User,
+                        new SecurityIdentifier(package), () => Deadline(clock)));
+                }
                 Deadline(clock);
                 Native.Check(ImpersonateLoggedOnUser(duplicate), "enter fixed scratch context"); impersonating = true;
                 context.RequireThread();
@@ -186,7 +208,7 @@ namespace ScientificSecurity
         { if (clock.Elapsed.TotalSeconds > 10) throw new TimeoutException("fixed scratch observation exceeded 10 seconds"); }
         static void Need(bool value)
         { if (!value) throw new InvalidOperationException("fixed scratch access observation is invalid"); }
-        static void Same(FileInformation expected, FileInformation actual)
+        internal static void Same(FileInformation expected, FileInformation actual)
         {
             Need(expected.volume == actual.volume &&
                 expected.indexHigh == actual.indexHigh && expected.indexLow == actual.indexLow);
@@ -241,7 +263,7 @@ namespace ScientificSecurity
                 " package_deny=0x" + deny.ToString("X8") + " owner_deny=0x" + ownerDeny.ToString("X8") +
                 " label_present=" + (labels == 1) + " label_rid=0x" + rid.ToString("X8") + " label_policy=0x" + mandatory.ToString("X8");
         }
-        static void Finish(Exception primary, List<Exception> failures)
+        internal static void Finish(Exception primary, List<Exception> failures)
         {
             if (failures.Count == 0) {
                 if (primary != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primary).Throw();
@@ -250,7 +272,7 @@ namespace ScientificSecurity
             var all = new List<Exception>(); if (primary != null) all.Add(primary); all.AddRange(failures);
             throw new AggregateException("fixed scratch observation/cleanup failed", all);
         }
-        static void Attempt(List<Exception> failures, Action action)
+        internal static void Attempt(List<Exception> failures, Action action)
         { try { action(); } catch (Exception error) { failures.Add(error); } }
         [StructLayout(LayoutKind.Sequential)] struct UnicodeString
         { internal ushort length, maximum; internal IntPtr buffer; }
