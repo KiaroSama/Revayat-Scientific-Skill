@@ -386,7 +386,7 @@ namespace ScientificSecurity
                 if (loader != null) loader.PrepareHandles(ref process);
                 PrepareContained(process, python, scratch, moniker, package, preflight, wallProbe, loaderProbe,
                     activationProbe, activationTrace, nativeFixture, pythonCondition, pythonDispatch, expectedRegistryStatus,
-                    defaultDacl, preparation, registryStartup);
+                    defaultDacl, preparation, registryStartup, preflight && observeExit);
                 if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null || pythonDispatch || passComparison) activationClock.Start();
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)
                     throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "resume contained child");

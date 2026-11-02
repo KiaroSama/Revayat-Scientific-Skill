@@ -10,12 +10,13 @@ namespace ScientificSecurity
         static void PrepareContained(Native.ProcessInfo process, string python, string scratch, string moniker, string package,
             bool preflight, bool wallProbe, bool loaderProbe, bool activationProbe, bool activationTrace, bool nativeFixture,
             bool pythonCondition, bool pythonDispatch, int? expectedRegistryStatus, DefaultDaclComparison.Observation defaultDacl,
-            PythonActivationPreparation.Observation preparation, RegistryDiagnostic registryStartup)
+            PythonActivationPreparation.Observation preparation, RegistryDiagnostic registryStartup, bool observeScratch)
         {
             bool passComparison = preparation != null || registryStartup != null;
             Profile.SealRegistry(process.process, moniker, package);
             TokenPolicy.Prepare(process.process, Path.GetPathRoot(scratch), package);
             Profile.RequireReadOnlyRegistry(process.process, moniker, package);
+            if (observeScratch) ScratchAccess.Observe(process, scratch, package);
             if (preflight && !wallProbe && !loaderProbe && defaultDacl == null && !passComparison) {
                 StartupAccess.Observe(process, python);
                 StartupImageAccess.Observe(process, python, package);

@@ -71,6 +71,37 @@ class DiagnosticOrderTest(unittest.TestCase):
         positions = [controller.index(anchor) for anchor in anchors]
         self.assertEqual(positions, sorted(positions), 'Python diagnostic cleanup must precede debugger controls without bypassing later gates')
 
+    def test_scratch_access_observer_is_read_only_and_not_admission(self):
+        windows = ROOT / 'tests/security/windows'
+        controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        preparation = (windows / 'SandboxPreparation.cs').read_text(encoding='utf-8')
+        observer = (windows / 'ScratchAccess.cs').read_text(encoding='utf-8')
+        self.assertEqual(controller.count("(Join-Path $PSScriptRoot 'ScratchAccess.cs')"), 1)
+        self.assertEqual(controller.count('[ScientificSecurity.ScratchAccess]::CheckValidation()'), 1)
+        self.assertEqual(preparation.count('ScratchAccess.Observe(process, scratch, package);'), 1)
+        observe = preparation.index('ScratchAccess.Observe(process, scratch, package);')
+        self.assertIn('if (observeScratch) ScratchAccess.Observe(process, scratch, package);', preparation)
+        self.assertLess(observe, preparation.index('StartupAccess.Observe(process, python);'))
+        sandbox = (windows / 'Sandbox.cs').read_text(encoding='utf-8')
+        self.assertIn('defaultDacl, preparation, registryStartup, preflight && observeExit);', sandbox)
+        self.assertIn('const uint Desired = 0x100020;', observer)
+        self.assertIn('GetSecurityInfo(', observer)
+        self.assertIn('AccessCheck(', observer)
+        self.assertIn('new RegistryContext(token, duplicate, package)', observer)
+        self.assertIn('Path.Combine(scratch, "temp")', observer)
+        self.assertIn('GetFileInformationByHandleEx(', observer)
+        for mutation in ('SetSecurityInfo', 'SetNamedSecurityInfo', 'AdjustTokenPrivileges',
+                         'SetTokenInformation', 'SetCurrentDirectory', 'CreateProcess'):
+            self.assertNotIn(mutation, observer)
+        lifecycle = observer[observer.index('internal static void Observe('):observer.index('static void Deadline(')]
+        self.assertLess(lifecycle.index('RevertToSelf();'), lifecycle.index('close fixed scratch access handle'))
+        self.assertLess(lifecycle.index('Finish(primary, failures);'),
+                        lifecycle.index('foreach (string line in observations)'))
+        self.assertIn('CreateFileW(item.path, Desired, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)', observer)
+        probe = (windows / 'KernelProbe.py').read_text(encoding='utf-8')
+        self.assertIn('os.chdir(scratch)', probe)
+        self.assertIn('require(Path.cwd() == scratch,', probe)
+
     def test_supported_policy_owns_admission_and_refuses_nested_trial(self):
         windows = ROOT / 'tests/security/windows'
         controller = (windows / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
