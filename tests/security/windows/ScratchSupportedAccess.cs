@@ -32,6 +32,7 @@ namespace ScientificSecurity
             };
             IntPtr token = IntPtr.Zero, duplicate = IntPtr.Zero;
             ScratchVolumePolicy lease = null; Exception primary = null; var failures = new List<Exception>();
+            string[] fileFrames = null;
             var clock = Stopwatch.StartNew();
             try {
                 using (WindowsIdentity current = WindowsIdentity.GetCurrent(true)) Need(current == null);
@@ -48,6 +49,7 @@ namespace ScientificSecurity
                 ScratchVolumeAccess.Host(nativeRoot, () => Deadline(clock));
                 lease = ScratchAttachment.Policy(scratch, package, true); lease.Install();
                 RequireSupportedResults(PolicyProbe(items, nativeRoot, duplicate, context, expected, clock));
+                fileFrames = ObserveFileCreation(scratch, items[0].identity, duplicate, context, clock);
                 expected.Same(Privileges(token)); expected.Same(Privileges(duplicate)); Deadline(clock);
             }
             catch (Exception failure) { primary = failure; }
@@ -61,6 +63,8 @@ namespace ScientificSecurity
             }
             // A failed qualification remains owned by run completion; never restore before Job cleanup.
             Finish(primary, failures);
+            foreach (string frame in fileFrames) Console.Out.WriteLine(frame);
+            Console.Out.Flush();
             lease.QualifySupported();
         }
         public static void CheckSupportedValidation()

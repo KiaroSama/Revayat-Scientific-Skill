@@ -139,6 +139,27 @@ class ScratchVolumePolicyTest(unittest.TestCase):
         self.assertNotIn('NtSetQuota', access)
 
 
+class ScratchFileAccessTest(unittest.TestCase):
+    def test_fixed_create_only_request_and_owned_cleanup(self):
+        source = (WINDOWS / 'ScratchFileAccess.cs').read_text(encoding='utf-8')
+        supported = (WINDOWS / 'ScratchSupportedAccess.cs').read_text(encoding='utf-8')
+        controller = (WINDOWS / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        self.assertEqual(controller.count("(Join-Path $PSScriptRoot 'ScratchFileAccess.cs')"), 1)
+        self.assertEqual(controller.count('[ScientificSecurity.ScratchAccess]::CheckFileCreationValidation()'), 1)
+        self.assertLess(supported.index('RequireSupportedResults(PolicyProbe('), supported.index('ObserveFileCreation('))
+        self.assertLess(supported.index('ObserveFileCreation('), supported.index('lease.QualifySupported()'))
+        self.assertIn('create(path, 0x40000000, 3, IntPtr.Zero, 1, 0x80, IntPtr.Zero)', source)
+        self.assertIn('attributes == UInt32.MaxValue && error == 2', source)
+        self.assertIn('Same(value.identity, Identity(handle))', source)
+        self.assertIn('SetFileInformationByHandle(handle, 4, ref remove, 1)', source)
+        self.assertIn('contents_written=False cause_claimed=False admission=False', source)
+        self.assertLess(source.index('if (entered) leave()'), source.index('bind(value)'))
+        self.assertLess(source.index('release(value)'), source.index('Attempt(failures, absent)'))
+        for forbidden in ('WriteFile(', 'ReadFile(', 'DeviceIoControl(', 'SetNamedSecurityInfo',
+                          'NtSetSecurityObject', 'AdjustTokenPrivileges', 'File.Delete(', 'ResumeThread'):
+            self.assertNotIn(forbidden, source)
+
+
 class ScratchVolumeAccessTest(unittest.TestCase):
     def test_fixed_handle_only_differential_and_discovery(self):
         source = (WINDOWS / 'ScratchVolumeAccess.cs').read_text(encoding='utf-8')
