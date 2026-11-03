@@ -102,16 +102,20 @@ class Native:
                 ctypes.memset(path, 0, ctypes.sizeof(path))
 
     def input(self, own, check):
+        return self.standard(0xFFFFFFF6, 2, own, check)
+
+    def standard(self, identifier, kind, own, check):
+        require((identifier, kind) in ((0xFFFFFFF6, 2), (0xFFFFFFF5, 3), (0xFFFFFFF4, 3)))
         check()
-        borrowed = self.k.GetStdHandle(0xFFFFFFF6)
-        require(self.valid(borrowed) and self.k.GetFileType(borrowed) == 2)
+        borrowed = self.k.GetStdHandle(identifier)
+        require(self.valid(borrowed) and self.k.GetFileType(borrowed) == kind)
         current, duplicate = self.k.GetCurrentProcess(), P()
         success = self.k.DuplicateHandle(current, borrowed, current, ctypes.byref(duplicate), 0, True, 2)
         error = ctypes.get_last_error() if not success else None
         handle = own(duplicate.value)
         if not success:
             raise ctypes.WinError(error)
-        require(self.valid(handle) and self.k.GetFileType(handle) == 2)
+        require(self.valid(handle) and self.k.GetFileType(handle) == kind)
         check()
         return handle
 
@@ -173,7 +177,8 @@ def _spawn(handles):
                             env=dict(os.environ), cwd=str(Path(sys.executable).parent))
 
 
-def _run(api, spawn, clock):
+def _run(api, spawn, clock, stdout_limit=1024):
+    require(type(stdout_limit) is int and stdout_limit in (1024, 65535))
     end = clock() + 5
     handles, output, errors = [], bytearray(), bytearray()
     child, original, code, result = None, None, None, None
@@ -233,7 +238,7 @@ def _run(api, spawn, clock):
             close(handle)
         ended = [False, False]
         while not signaled:
-            for index, (handle, buffer, limit) in enumerate(((stdout, output, 1024), (stderr, errors, 512))):
+            for index, (handle, buffer, limit) in enumerate(((stdout, output, stdout_limit), (stderr, errors, 512))):
                 if not ended[index]:
                     ended[index] = drain(handle, buffer, limit, False)
             check()
@@ -243,8 +248,8 @@ def _run(api, spawn, clock):
         child.returncode = code
         check()
         # Each fair round consumes bytes or observes EOF; empty final Peek is fatal.
-        for _ in range(1024 + 512 + 2):
-            for index, (handle, buffer, limit) in enumerate(((stdout, output, 1024), (stderr, errors, 512))):
+        for _ in range(stdout_limit + 512 + 2):
+            for index, (handle, buffer, limit) in enumerate(((stdout, output, stdout_limit), (stderr, errors, 512))):
                 if not ended[index]:
                     ended[index] = drain(handle, buffer, limit, True)
             if all(ended):

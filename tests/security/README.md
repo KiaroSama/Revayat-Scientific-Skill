@@ -179,9 +179,15 @@ Before resume, reuse the exact suspended primary/duplicate/effective token, root
 
 Microsoft's per-user and volume-control quota structures explicitly require write-data access for setters; neither admitted exact handle grant includes it. READ_CONTROL exposes descriptor metadata except the SACL, not file-data read or quota/DACL/owner mutation. Descriptor contents and identities remain private. Documented privileged management operations remain excluded by the actual token, and the fixed128-MiB backing partition still bounds physical space. No new quota setter, FSCTL sweep or universal control-denial claim. `KernelProbe.py` and every original raw-write/protected-owner/quota/network/resource/scenario assertion remain unchanged and must actually pass in hosted CI. No local compilation/test/native substitute.
 
+## Ordinary descendant transport
+
+The fixed ordinary token-child reuses `RegistryDescendant.py`'s confined LOCAL capture and duplicate of the already supplied read-only NUL input, without reopening NUL or implicit anonymous pipes. Original argv/environment/scratch CWD and token/owner/detachment checks remain. Its raw stdout cap is 65,535 bytes; registry stays 1,024, stderr 512, native reads at most 1,024, execution five seconds and cleanup two. Strict decoding/EOF/actual exit and all operation/cleanup errors remain fatal; failed private stderr clears. This is not native-subcall attribution.
+
+Wall/PID controls share only validated same-access duplicates of their three inherited standards, passed through an exact handle allowlist with no implicit stdio setup. Fixed sleep30/sleep10/exit0 roles retain their real processes, seven-sleeper/extra-PID negative, existing parent cleanup and outer whole-Job wall termination. Prepare standards outside the extra-Popen denial catch; duplicate, close or other setup errors cannot satisfy PID denial. Record each created process before fallible closure, never close borrowed originals or add breakaway/grants. Original quota/network/scenario/restoration gates still require hosted acceptance.
+
 ## Portable Windows browser setup
 
-Windows portable CI reuses its existing Chrome/Edge selection before downloading Chromium; when no candidate exists, the original Playwright installation with dependencies remains required. Linux/macOS setup and all browser, syntax, package and deadline checks are unchanged. Inert selection fixtures check actual embedded workflow code; only hosted browser tests establish runtime compatibility. No timeout increase, skipped test or measured speedup claim.
+Windows portable CI installs the Chromium revision paired with its installed Playwright using `playwright install --no-shell chromium`, without redundant Windows media prerequisites, and selects that managed full executable instead of installed Chrome/Edge. Linux/macOS dependency setup and all sandboxed browser, resource-denial/output-preservation, PDF geometry, syntax, package and deadline checks are unchanged. Inert selection fixtures check actual embedded code and missing-binary refusal; only hosted browser tests establish runtime compatibility. No retry, timeout increase, skipped test, native timeout-cause or measured speedup claim.
 
 ## Bootstrap phase evidence
 

@@ -65,30 +65,27 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Public command and package contracts
         run: python -m pip install -r skills/revayat-scientific/requirements.txt
-      - name: Select available Windows browser
-        id: windows-browser
+      - name: Install controlled Windows browser
+        if: runner.os == 'Windows'
+        run: python -m playwright install --no-shell chromium
+      - name: Select managed Windows browser
         if: runner.os == 'Windows'
         shell: python
         run: |
-          import os, shutil
+          import os
           from pathlib import Path
-          candidates = [shutil.which(name) for name in ('google-chrome', 'msedge', 'chrome')]
-          for key in ('ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA'):
-              for name in ('Microsoft/Edge/Application/msedge.exe', 'Google/Chrome/Application/chrome.exe'):
-                  candidate = Path(os.environ.get(key, '')) / name
-                  if candidate.is_file():
-                      candidates.append(str(candidate))
-          selected = next((path for path in candidates if path), '')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
-              output.write('install=' + ('false' if selected else 'true') + '\n')
-          if selected:
-              with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
-                  environment.write('REVAYAT_CHROMIUM=' + selected + '\n')
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as playwright:
+              selected = playwright.chromium.executable_path
+          if not Path(selected).is_file():
+              raise RuntimeError('Playwright-managed Chromium executable is unavailable')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
+              environment.write('REVAYAT_CHROMIUM=' + selected + '\n')
       - name: Install controlled browser
-        if: runner.os != 'Windows' || steps.windows-browser.outputs.install == 'true'
+        if: runner.os != 'Windows'
         run: python -m playwright install --with-deps chromium
       - name: Select available sandboxed browser
-        if: runner.os != 'Windows' || steps.windows-browser.outputs.install == 'true'
+        if: runner.os != 'Windows'
         shell: python
         run: |
           import os, shutil

@@ -402,10 +402,12 @@ def run():
     if sys.argv[-1] == 'token-child':
         print(json.dumps({'phase': 'token-child', 'owners': owners, 'detached_stdio': True}, sort_keys=True), flush=True)
         return
+    import runpy
+    descendants = runpy.run_path(str(Path(__file__).with_name('KernelDescendants.py')))
     if sys.argv[-1] == 'wall-tree':
-        subprocess.Popen([sys.executable, '-I', '-B', '-c', 'import time; time.sleep(30)'],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=subprocess.DETACHED_PROCESS)
+        with descendants['Standards']() as standards:
+            launch = standards.prepare('wall')
+            wall_child = subprocess.Popen(*launch[0], **launch[1])
         print('trusted wall-tree negative control started', flush=True)
         time.sleep(30)
         raise AssertionError('wall-tree was not terminated')
@@ -444,10 +446,7 @@ def run():
         if token:
             K.CloseHandle(token)
     writable.unlink()
-    child_token = subprocess.run([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__)),
-                                  str(root), str(scratch), str(powershell), sys.argv[4], sys.argv[5], str(profile), 'token-child'],
-                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8',
-                                 timeout=5, creationflags=subprocess.DETACHED_PROCESS)
+    child_token = descendants['token_child']()
     require(child_token.returncode == 0 and len(child_token.stdout) < 65536, 'descendant token verification failed')
     child_controls = json.loads(child_token.stdout)
     require(child_controls['owners'] == owners and child_controls['detached_stdio'] is True,
@@ -584,20 +583,19 @@ def run():
     require(ctypes.get_last_error() in (8, 1455, 1816), 'allocation failed for unrecognized reason')
     children = []
     try:
-        for _ in range(7):
-            child = subprocess.Popen([sys.executable, '-I', '-B', '-c', 'import time; time.sleep(10)'],
-                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                     creationflags=subprocess.DETACHED_PROCESS)
-            children.append(child)
-        try:
-            extra = subprocess.Popen([sys.executable, '-I', '-B', '-c', 'raise SystemExit(0)'],
-                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                     creationflags=subprocess.DETACHED_PROCESS)
-        except OSError as error:
-            require(error.winerror in (1816, 5, 8), 'PID limit failed for unrecognized reason')
-        else:
-            children.append(extra)
-            require(extra.wait(timeout=3) != 0, 'kernel active-PID ceiling permitted extra child')
+        with descendants['Standards']() as standards:
+            for _ in range(7):
+                launch = standards.prepare('pid-hold')
+                child = subprocess.Popen(*launch[0], **launch[1])
+                children.append(child)
+            extra_launch = standards.prepare('pid-extra')
+            try:
+                extra = subprocess.Popen(*extra_launch[0], **extra_launch[1])
+            except OSError as error:
+                require(error.winerror in (1816, 5, 8), 'PID limit failed for unrecognized reason')
+            else:
+                children.append(extra)
+                require(extra.wait(timeout=3) != 0, 'kernel active-PID ceiling permitted extra child')
     finally:
         for child in children:
             if child.poll() is None:

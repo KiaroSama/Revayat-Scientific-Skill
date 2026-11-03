@@ -411,6 +411,59 @@ class DescendantTransportTest(unittest.TestCase):
                 self.assertNotIn(99, owners)
         self.scope['ctypes'] = ctypes
 
+    def test_exact_three_standard_duplicates_preserve_type_and_borrowed_ownership(self):
+        import ctypes
+        for identifier, kind in ((0xFFFFFFF6, 2), (0xFFFFFFF5, 3), (0xFFFFFFF4, 3)):
+            for fail in (False, True):
+                owners, seen = [], []
+                native = object.__new__(self.module['Native'])
+
+                def duplicate(source_process, source, target_process, output, access, inherit, flags):
+                    self.assertEqual((source_process, source, target_process, access, inherit, flags), (99, 4, 99, 0, True, 2))
+                    output._obj.value = 8
+                    return not fail
+
+                def standard(value):
+                    seen.append(value)
+                    return 4
+
+                native.k = SimpleNamespace(GetStdHandle=standard, GetFileType=lambda _: kind,
+                    GetCurrentProcess=lambda: 99, DuplicateHandle=duplicate)
+                self.scope['ctypes'] = SimpleNamespace(**dict(vars(ctypes), get_last_error=lambda: 5,
+                    WinError=lambda code: OSError('private-native-' + str(code))))
+                def own(handle):
+                    owners.append(handle)
+                    return handle
+                with self.subTest(identifier=identifier, fail=fail):
+                    if fail:
+                        with self.assertRaises(OSError):
+                            native.standard(identifier, kind, own, lambda: None)
+                    else:
+                        self.assertEqual(native.standard(identifier, kind, own, lambda: None), 8)
+                    self.assertEqual(owners, [8])
+                    self.assertEqual(seen, [identifier])
+                self.scope['ctypes'] = ctypes
+
+    def test_fixed_ordinary_cap_does_not_change_registry_defaults(self):
+        for limit in (1024, 65535):
+            for length in (limit, limit + 1):
+                api, spawn, clock, _, closed, child, _ = self.fixture(output=b'x' * length)
+                with self.subTest(limit=limit, length=length):
+                    if length == limit:
+                        result = self.module['_run'](api, spawn, clock, limit)
+                        self.assertEqual(len(result.stdout), limit)
+                    else:
+                        with self.assertRaises(self.module['CaptureFailure']):
+                            self.module['_run'](api, spawn, clock, limit)
+                    self.assertEqual(sorted(closed), [1, 2, 3, 4, 5])
+                    self.assertFalse(child._child_created)
+        api, spawn, clock, seen, closed, _, _ = self.fixture()
+        for limit in (0, 1023, 1025, 65536, True):
+            with self.subTest(limit=limit), self.assertRaises(RuntimeError):
+                self.module['_run'](api, spawn, clock, limit)
+        self.assertEqual((seen, closed), ([], []))
+        self.assertEqual(self.module['_run'].__defaults__, (1024,))
+
     def test_actual_spawn_has_no_implicit_pipe_or_nul_route(self):
         seen = []
         sentinel = object()
