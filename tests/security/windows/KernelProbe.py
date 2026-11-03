@@ -1,4 +1,5 @@
 """Trusted finite kernel observations. Does not import reviewed project modules."""
+import contextlib
 import ctypes
 import ctypes.wintypes as w
 import errno
@@ -14,6 +15,7 @@ A = ctypes.WinDLL('advapi32', use_last_error=True)
 P = ctypes.c_void_p
 SE_CHANGE_NOTIFY_PRIVILEGE = (23, 0)
 K.GetCurrentProcess.restype = P
+K.LocalFree.restype = P
 K.VirtualAlloc.argtypes = [P, ctypes.c_size_t, w.DWORD, w.DWORD]
 K.VirtualAlloc.restype = P
 K.VirtualFree.argtypes = [P, ctypes.c_size_t, w.DWORD]
@@ -266,6 +268,32 @@ def native_eof_quota(handle, sparse):
             'native quota fixture could not be reset')
 
 
+@contextlib.contextmanager
+def private_policy(token, package):
+    user_data = token_data(token, 1)
+    require(len(user_data) >= ctypes.sizeof(P), 'private creator user SID is truncated')
+    user = P.from_buffer(user_data)
+    require(user.value, 'private creator user SID is absent')
+    text = 'D:P(A;;GA;;;' + sid_text(user) + ')(A;;GA;;;' + package + ')'
+    descriptor, size = P(), w.DWORD()
+    try:
+        require(A.ConvertStringSecurityDescriptorToSecurityDescriptorW(text, 1, ctypes.byref(descriptor),
+                ctypes.byref(size)), 'cannot prepare private creator policy')
+        present, defaulted, dacl = w.BOOL(), w.BOOL(), P()
+        require(A.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(dacl),
+                ctypes.byref(defaulted)) and present.value and dacl.value, 'private creator DACL is absent')
+        yield descriptor, dacl
+    finally:
+        primary = sys.exception()
+        try:
+            if descriptor:
+                require(not K.LocalFree(descriptor), 'private creator policy did not release')
+        except Exception as cleanup:
+            if primary:
+                raise ExceptionGroup('private creator operation and policy cleanup failed', [primary, cleanup])
+            raise
+
+
 def private_creator(path, security):
     invalid = ctypes.c_void_p(-1).value
     handle = K.CreateFileW(str(path), 0xC00C0000, 3, security, 1, 0x80, None)
@@ -326,46 +354,47 @@ def authority_controls(root, scratch, owners):
                     require(A.SetNamedSecurityInfoW(str(protected_root), 1, info, owner, None, acl, None) == 5,
                             'protected root DACL/owner authority was not denied')
             protected = scratch / 'authority-protected'
-            sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), descriptor, False)
-            handle = private_creator(protected, ctypes.byref(sa))
-            try:
-                require(A.SetSecurityInfo(handle, 1, 4 | 0x80000000, None, None, dacl, None) == 0,
-                        'private scratch DACL control failed')
-                native_eof_quota(handle, sparse=False)
-                native_eof_quota(handle, sparse=True)
-                A.ConvertStringSidToSidW.argtypes = [w.LPCWSTR, ctypes.POINTER(P)]
-                for owner_name in owners:
-                    owner_sid = P()
-                    require(A.ConvertStringSidToSidW(owner_name, ctypes.byref(owner_sid)), 'cannot prepare finite owner SID')
+            with private_policy(token, sid) as (positive_descriptor, positive_dacl):
+                sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), positive_descriptor, False)
+                handle = private_creator(protected, ctypes.byref(sa))
+                try:
+                    require(A.SetSecurityInfo(handle, 1, 4 | 0x80000000, None, None, positive_dacl, None) == 0,
+                            'private scratch DACL control failed')
+                    native_eof_quota(handle, sparse=False)
+                    native_eof_quota(handle, sparse=True)
+                    A.ConvertStringSidToSidW.argtypes = [w.LPCWSTR, ctypes.POINTER(P)]
+                    for owner_name in owners:
+                        owner_sid = P()
+                        require(A.ConvertStringSidToSidW(owner_name, ctypes.byref(owner_sid)), 'cannot prepare finite owner SID')
+                        try:
+                            assigned = A.SetSecurityInfo(handle, 1, 1, owner_sid, None, None, None)
+                            if assigned == 0:
+                                native_eof_quota(handle, sparse=True)
+                            else:
+                                require(assigned in (5, 1307), 'finite owner assignment failed unexpectedly')
+                        finally:
+                            K.LocalFree(owner_sid)
+                    # Administrators was unquotaable in the hosted observation and must not be assignable.
+                    administrator = P()
+                    require(A.ConvertStringSidToSidW('S-1-5-32-544', ctypes.byref(administrator)),
+                            'Administrators negative-control SID invalid')
                     try:
-                        assigned = A.SetSecurityInfo(handle, 1, 1, owner_sid, None, None, None)
-                        if assigned == 0:
-                            native_eof_quota(handle, sparse=True)
-                        else:
-                            require(assigned in (5, 1307), 'finite owner assignment failed unexpectedly')
+                        require(A.SetSecurityInfo(handle, 1, 1, administrator, None, None, None) in (5, 1307),
+                                'private creator regained unquotaable Administrators ownership')
                     finally:
-                        K.LocalFree(owner_sid)
-                # Administrators was unquotaable in the hosted observation and must not be assignable.
-                administrator = P()
-                require(A.ConvertStringSidToSidW('S-1-5-32-544', ctypes.byref(administrator)),
-                        'Administrators negative-control SID invalid')
-                try:
-                    require(A.SetSecurityInfo(handle, 1, 1, administrator, None, None, None) in (5, 1307),
-                            'private creator regained unquotaable Administrators ownership')
+                        K.LocalFree(administrator)
+                    # Outside identity must not be assignable even with WRITE_OWNER on an own file.
+                    outsider = P()
+                    require(A.ConvertStringSidToSidW('S-1-5-21-101-202-303-404', ctypes.byref(outsider)), 'outside-owner probe SID invalid')
+                    try:
+                        require(A.SetSecurityInfo(handle, 1, 1, outsider, None, None, None) in (5, 1307),
+                                'private creator escaped finite quota owner identities')
+                    finally:
+                        K.LocalFree(outsider)
+                    denied_write(root / 'protected-creator-escape')
                 finally:
-                    K.LocalFree(administrator)
-                # Outside identity must not be assignable even with WRITE_OWNER on an own file.
-                outsider = P()
-                require(A.ConvertStringSidToSidW('S-1-5-21-101-202-303-404', ctypes.byref(outsider)), 'outside-owner probe SID invalid')
-                try:
-                    require(A.SetSecurityInfo(handle, 1, 1, outsider, None, None, None) in (5, 1307),
-                            'private creator escaped finite quota owner identities')
-                finally:
-                    K.LocalFree(outsider)
-                denied_write(root / 'protected-creator-escape')
-            finally:
-                K.CloseHandle(handle)
-                protected.unlink(missing_ok=True)
+                    K.CloseHandle(handle)
+                    protected.unlink(missing_ok=True)
         finally:
             K.LocalFree(descriptor)
             path.unlink(missing_ok=True)

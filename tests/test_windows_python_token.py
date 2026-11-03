@@ -335,6 +335,94 @@ class PythonTokenTest(unittest.TestCase):
 
 
 class OrdinaryTokenTest(unittest.TestCase):
+    def test_private_policy_uses_exact_token_user_without_changing_negative_inputs(self):
+        import contextlib
+        source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name in ('private_policy', 'require')]
+        for invalid in ('none', 'short', 'null', 'convert', 'dacl', 'operation', 'cleanup', 'combined'):
+            seen, freed = [], []
+            operation = OSError('private operation')
+            user_data = ctypes.create_string_buffer(ctypes.sizeof(ctypes.c_void_p))
+            ctypes.c_void_p.from_buffer(user_data).value = 12 if invalid != 'null' else None
+            if invalid == 'short':
+                user_data = bytearray(4)
+
+            def data(token, kind):
+                self.assertEqual((token, kind), (7, 1))
+                seen.append('user')
+                return user_data
+
+            def sid(pointer):
+                self.assertEqual(pointer.value, 12)
+                seen.append('sid')
+                return 'S-1-5-21-90'
+
+            def convert(text, revision, descriptor, size):
+                self.assertEqual(text, 'D:P(A;;GA;;;S-1-5-21-90)(A;;GA;;;S-1-15-2-1)')
+                self.assertEqual(revision, 1)
+                descriptor._obj.value, size._obj.value = 24, 64
+                seen.append('convert')
+                return invalid != 'convert'
+
+            def dacl(descriptor, present, value, defaulted):
+                self.assertEqual(descriptor.value, 24)
+                present._obj.value, value._obj.value = 1, 32
+                seen.append('dacl')
+                return invalid != 'dacl'
+
+            scope = {'contextlib': contextlib, 'ctypes': ctypes, 'P': ctypes.c_void_p, 'sys': __import__('sys'),
+                     'w': SimpleNamespace(DWORD=ctypes.c_uint32, BOOL=ctypes.c_int32),
+                     'token_data': data, 'sid_text': sid,
+                     'A': SimpleNamespace(ConvertStringSecurityDescriptorToSecurityDescriptorW=convert,
+                                          GetSecurityDescriptorDacl=dacl),
+                     'K': SimpleNamespace(LocalFree=SimpleNamespace())}
+            class Free:
+                def __call__(self, pointer):
+                    freed.append(pointer.value)
+                    return 24 if invalid in ('cleanup', 'combined') else None
+            scope['K'].LocalFree = Free()
+            exec(compile(ast.Module(body=helpers, type_ignores=[]), 'fixed-private-policy', 'exec'), scope)
+            with self.subTest(invalid=invalid):
+                if invalid == 'none':
+                    with scope['private_policy'](7, 'S-1-15-2-1') as (descriptor, acl):
+                        self.assertEqual((descriptor.value, acl.value), (24, 32))
+                        self.assertEqual(freed, [])
+                    self.assertEqual(seen, ['user', 'sid', 'convert', 'dacl'])
+                    self.assertEqual(freed, [24])
+                elif invalid in ('operation', 'cleanup', 'combined'):
+                    from unittest.mock import Mock
+                    action = Mock(side_effect=operation) if invalid != 'cleanup' else Mock()
+                    expected = ExceptionGroup if invalid == 'combined' else OSError if invalid == 'operation' else AssertionError
+                    with self.assertRaises(expected) as caught:
+                        with scope['private_policy'](7, 'S-1-15-2-1'):
+                            action()
+                    self.assertEqual(freed, [24])
+                    if invalid == 'combined':
+                        self.assertIs(caught.exception.exceptions[0], operation)
+                        self.assertEqual(len(caught.exception.exceptions), 2)
+                    elif invalid == 'operation':
+                        self.assertIs(caught.exception, operation)
+                else:
+                    from unittest.mock import Mock
+                    reached = Mock()
+                    message = {'short': 'private creator user SID is truncated',
+                               'null': 'private creator user SID is absent',
+                               'convert': 'cannot prepare private creator policy',
+                               'dacl': 'private creator DACL is absent'}[invalid]
+                    with self.assertRaisesRegex(AssertionError, '^' + message + '$'):
+                        with scope['private_policy'](7, 'S-1-15-2-1'):
+                            reached()
+                    reached.assert_not_called()
+                    self.assertEqual(freed, [] if invalid in ('short', 'null') else [24])
+        authority = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'authority_controls')
+        text = ast.unparse(authority)
+        self.assertIn("'D:P(A;;GA;;;' + sid + ')'", text)
+        self.assertIn('with private_policy(token, sid) as (positive_descriptor, positive_dacl):', text)
+        self.assertIn('SecurityAttributes(ctypes.sizeof(SecurityAttributes), positive_descriptor, False)', text)
+        self.assertIn('A.SetSecurityInfo(handle, 1, 4 | 2147483648, None, None, positive_dacl, None)', text)
+
     def test_private_creator_keeps_exact_call_and_immediate_error(self):
         source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
         tree = ast.parse(source)
