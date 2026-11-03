@@ -381,10 +381,10 @@ namespace ScientificSecurity
         {
             foreach (bool legacy in new [] { false, true }) foreach (bool diagnostic in new [] { false, true })
                 foreach (bool supported in new [] { false, true }) {
-                    bool refused = false; int mode = -2;
-                    try { mode = ReceiptMode(legacy, diagnostic, supported); } catch (InvalidOperationException) { refused = true; }
-                    Need(refused == (legacy || diagnostic && supported));
-                    if (!refused) Need(mode == (supported ? 1 : diagnostic ? 0 : -1));
+                    bool receiptRefused = false; int mode = -2;
+                    try { mode = ReceiptMode(legacy, diagnostic, supported); } catch (InvalidOperationException) { receiptRefused = true; }
+                    Need(receiptRefused == (legacy || diagnostic && supported));
+                    if (!receiptRefused) Need(mode == (supported ? 1 : diagnostic ? 0 : -1));
                 }
             Need(ReceiptName(false) != ReceiptName(true) && ReceiptName(false) != LegacyReceiptName && ReceiptName(true) != LegacyReceiptName);
             foreach (string phase in new [] { "preflight", "wall", "regressions", "registry-authority", "module-id2", "python-loader-trace" })
