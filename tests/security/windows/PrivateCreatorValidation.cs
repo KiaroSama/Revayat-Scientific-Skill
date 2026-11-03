@@ -31,6 +31,23 @@ namespace ScientificSecurity
             Need(true); PolicyNeed(true, 1, 0);
             string text = PolicyText(user, package);
             RequirePolicy(new RawSecurityDescriptor(text), user, package);
+            foreach (ControlFlags bookkeeping in new [] { ControlFlags.None, ControlFlags.DiscretionaryAclAutoInherited,
+                ControlFlags.SystemAclAutoInherited, ControlFlags.DiscretionaryAclAutoInherited | ControlFlags.SystemAclAutoInherited }) {
+                var exact = new RawSecurityDescriptor(text);
+                exact.SetFlags(exact.ControlFlags | bookkeeping);
+                RequirePolicy(exact, user, package);
+                foreach (ControlFlags invalid in new [] { ControlFlags.DiscretionaryAclDefaulted,
+                    ControlFlags.DiscretionaryAclProtected }) {
+                    var changed = new RawSecurityDescriptor(text);
+                    changed.SetFlags(invalid == ControlFlags.DiscretionaryAclProtected ?
+                        (changed.ControlFlags | bookkeeping) & ~invalid : changed.ControlFlags | bookkeeping | invalid);
+                    Rejected(() => RequirePolicy(changed, user, package));
+                }
+                var inherited = new RawSecurityDescriptor(text);
+                inherited.SetFlags(inherited.ControlFlags | bookkeeping);
+                inherited.DiscretionaryAcl[0].AceFlags |= AceFlags.Inherited;
+                Rejected(() => RequirePolicy(inherited, user, package));
+            }
             foreach (var sample in new [] {
                 new { text = text.Replace("D:P", "D:"), field = 1 },
                 new { text = text.Replace("(A;;FA;;;" + package + ")", ""), field = 2 },

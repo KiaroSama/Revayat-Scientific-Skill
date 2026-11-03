@@ -100,7 +100,8 @@ namespace ScientificSecurity
             var flags = descriptor.ControlFlags;
             PolicyNeed((flags & (ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected)) ==
                 (ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected), 1, (uint)flags);
-            PolicyNeed((flags & (ControlFlags.DiscretionaryAclDefaulted | ControlFlags.DiscretionaryAclAutoInherited)) == 0, 1, (uint)flags);
+            // RM auto-inheritance bookkeeping is not an inherited ACE; exact ACE flags are checked below.
+            PolicyNeed((flags & ControlFlags.DiscretionaryAclDefaulted) == 0, 1, (uint)flags);
             RawAcl dacl = descriptor.DiscretionaryAcl, sacl = descriptor.SystemAcl;
             PolicyNeed(dacl != null && dacl.Count == 2 && sacl != null && sacl.Count == 1, 2,
                 dacl == null ? UInt32.MaxValue : (uint)dacl.Count, sacl == null ? UInt32.MaxValue : (uint)sacl.Count);
