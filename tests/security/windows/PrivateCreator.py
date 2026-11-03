@@ -147,6 +147,10 @@ class PrivateFile:
     def create(self):
         require(self.ready and self.original is None, 'private creator creation is not available')
         self.original = private_creator(self.path, self.security)
+
+    def bind_original(self):
+        require(self.ready and self.original is not None and self.pin is None,
+                'private creator original binding is not available')
         self.identity = self._identity(self.original)
         require(self.identity[0] == self.root_identity[0] and self._name(self.original) == self.expected_name,
                 'private creator original identity differs')

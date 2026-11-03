@@ -321,6 +321,7 @@ def authority_controls(root, scratch, owners):
                 sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), positive_descriptor, False)
                 with private['PrivateFile'](scratch, ctypes.byref(sa)) as fixture:
                     fixture.create()
+                    fixture.bind_original()
                     fixture.reopen()
                     handle = fixture.qualify()
                     require(A.SetSecurityInfo(handle, 1, 4 | 0x80000000, None, None, positive_dacl, None) == 0,

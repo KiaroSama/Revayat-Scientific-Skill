@@ -121,6 +121,9 @@ class PrivateCreatorTest(unittest.TestCase):
         scope, scratch, security, events, closed, creates = self.fixture()
         with scope['PrivateFile'](scratch, security) as fixture:
             fixture.create()
+            self.assertEqual(fixture.original, 12)
+            self.assertNotIn(('info', 12, 9), events)
+            fixture.bind_original()
             fixture.reopen()
             self.assertEqual(fixture.qualify(), 16)
             events.append('controls')
@@ -144,6 +147,7 @@ class PrivateCreatorTest(unittest.TestCase):
                 with self.assertRaises((OSError, AssertionError, ExceptionGroup)):
                     with scope['PrivateFile'](scratch, security) as fixture:
                         fixture.create()
+                        fixture.bind_original()
                         fixture.reopen()
                         fixture.qualify()
                         reached()
@@ -155,6 +159,26 @@ class PrivateCreatorTest(unittest.TestCase):
                     self.assertIn('dispose', events)
                     self.assertNotIn(16, closed)
 
+    def test_creation_and_binding_fail_at_distinct_boundaries(self):
+        for fault, expected_stage in (('create', 'create'), ('pin', 'bind')):
+            scope, scratch, security, events, closed, _ = self.fixture(fault)
+            stage = 'setup'
+            with self.subTest(fault=fault):
+                with self.assertRaises(OSError) as caught:
+                    with scope['PrivateFile'](scratch, security) as fixture:
+                        stage = 'create'
+                        fixture.create()
+                        self.assertEqual(fixture.original, 12)
+                        stage = 'bind'
+                        fixture.bind_original()
+                        stage = 'reopen'
+                        fixture.reopen()
+                self.assertEqual(stage, expected_stage)
+                self.assertEqual(caught.exception.winerror, 5)
+                self.assertNotIn('reopen', events)
+                self.assertNotIn('dispose', events)
+                self.assertEqual(closed, [8] if fault == 'create' else [12, 8])
+
     def test_original_and_independent_cleanup_failures_are_retained(self):
         for close_faults in ((12,), (16,), (12, 16), (24, 20, 8)):
             with self.subTest(close_faults=close_faults):
@@ -164,6 +188,7 @@ class PrivateCreatorTest(unittest.TestCase):
                 with self.assertRaises(ExceptionGroup) as caught:
                     with scope['PrivateFile'](scratch, security) as fixture:
                         fixture.create()
+                        fixture.bind_original()
                         fixture.reopen()
                         fixture.qualify()
                         action()
@@ -183,6 +208,7 @@ class PrivateCreatorTest(unittest.TestCase):
                 with self.assertRaises(ExceptionGroup):
                     with scope['PrivateFile'](scratch, security) as fixture:
                         fixture.create()
+                        fixture.bind_original()
                         fixture.reopen()
                         fixture.qualify()
                 self.assertTrue({12, 16, 20, 8}.issubset(closed))
@@ -195,6 +221,7 @@ class PrivateCreatorTest(unittest.TestCase):
             scope, scratch, security, events, _, _ = self.fixture(root_name=prefix + digits + '\\')
             with scope['PrivateFile'](scratch, security) as fixture:
                 fixture.create()
+                fixture.bind_original()
                 fixture.reopen()
                 self.assertEqual(fixture.qualify(), 16)
             self.assertTrue(all(event[2] == 2 for event in events
@@ -243,7 +270,7 @@ class PrivateCreatorTest(unittest.TestCase):
         authority = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
                          and node.name == 'authority_controls')
         source = ast.unparse(authority)
-        for text in ("'D:P(A;;GA;;;' + sid + ')'", 'fixture.create()', 'fixture.reopen()',
+        for text in ("'D:P(A;;GA;;;' + sid + ')'", 'fixture.create()', 'fixture.bind_original()', 'fixture.reopen()',
                      'handle = fixture.qualify()', 'native_eof_quota(handle, sparse=False)',
                      'native_eof_quota(handle, sparse=True)', 'for owner_name in owners:',
                      "'S-1-5-32-544'", "'S-1-5-21-101-202-303-404'", 'for access in (3221225472, 1073741824, 2):'):
