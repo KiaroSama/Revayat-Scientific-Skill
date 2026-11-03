@@ -16,8 +16,34 @@ namespace ScientificSecurity
         public static void CheckValidation()
         {
             string user = "S-1-5-21-101-202-303-1001", package = "S-1-15-2-101-202-303-404-505-606-707";
+            foreach (int line in new [] { -1, 0, 1, 9999, 10000, Int32.MaxValue }) {
+                string expected = "fixed private creator fixture rejected line=" + (line >= 1 && line <= 9999 ? line : 0) +
+                    " field=0 first=0x00000000 second=0x00000000 third=0x00000000";
+                Exception caught = null;
+                try { Need(false, line); } catch (InvalidOperationException failure) { caught = failure; }
+                Need(caught != null && caught.Message == expected);
+            }
+            Exception policyFailure = null;
+            try { PolicyNeed(false, 1, 0xFFFFFFFF, 0, 0x80000000, 123); }
+            catch (InvalidOperationException failure) { policyFailure = failure; }
+            Need(policyFailure != null && policyFailure.Message == "fixed private creator fixture rejected line=123 field=1 " +
+                "first=0xFFFFFFFF second=0x00000000 third=0x80000000");
+            Need(true); PolicyNeed(true, 1, 0);
             string text = PolicyText(user, package);
             RequirePolicy(new RawSecurityDescriptor(text), user, package);
+            foreach (var sample in new [] {
+                new { text = text.Replace("D:P", "D:"), field = 1 },
+                new { text = text.Replace("(A;;FA;;;" + package + ")", ""), field = 2 },
+                new { text = text.Replace("FA", "FR"), field = 3 },
+                new { text = text.Replace("OICI", "OI"), field = 4 },
+                new { text = text.Replace("NW", "NR"), field = 5 }
+            }) {
+                Exception caught = null;
+                try { RequirePolicy(new RawSecurityDescriptor(sample.text), user, package); }
+                catch (InvalidOperationException failure) { caught = failure; }
+                Need(caught != null && caught.Message.Contains(" field=" + sample.field + " first=0x") &&
+                    !caught.Message.Contains(user) && !caught.Message.Contains(package) && !caught.Message.Contains("S-1-"));
+            }
             foreach (string changed in new [] {
                 text.Replace("D:P", "D:"), text.Replace("FA", "FR"), text.Replace("(A;;", "(A;OI;"),
                 text.Replace("(A;;", "(D;;"), text.Replace("NW", "NR"), text.Replace("LW", "ME"),

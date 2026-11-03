@@ -52,8 +52,16 @@ namespace ScientificSecurity
         static extern uint GetSecurityInfo(IntPtr handle, int kind, uint fields, out IntPtr owner, out IntPtr group,
             out IntPtr dacl, out IntPtr sacl, out IntPtr descriptor);
         [DllImport("advapi32.dll")] static extern uint GetSecurityDescriptorLength(IntPtr descriptor);
-        static void Need(bool value)
-        { if (!value) throw new InvalidOperationException("fixed private creator fixture is unqualified"); }
+        static void Need(bool value, [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        { PolicyNeed(value, 0, 0, 0, 0, line); }
+        static void PolicyNeed(bool value, uint field, uint first, uint second = 0, uint third = 0,
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            if (value) return;
+            throw new InvalidOperationException(String.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "fixed private creator fixture rejected line={0} field={1} first=0x{2:X8} second=0x{3:X8} third=0x{4:X8}",
+                line >= 1 && line <= 9999 ? line : 0, field, first, second, third));
+        }
         static bool Valid(IntPtr handle) { return handle != IntPtr.Zero && handle != Native.InvalidHandle; }
         static void Host() { using (WindowsIdentity thread = WindowsIdentity.GetCurrent(true)) Need(thread == null); }
         static string Folder(string root)
@@ -90,22 +98,26 @@ namespace ScientificSecurity
         {
             Need(descriptor.Owner != null && descriptor.Owner.Value == user && descriptor.Group != null && descriptor.Group.Value == user);
             var flags = descriptor.ControlFlags;
-            Need((flags & (ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected)) ==
-                (ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected));
-            Need((flags & (ControlFlags.DiscretionaryAclDefaulted | ControlFlags.DiscretionaryAclAutoInherited)) == 0);
+            PolicyNeed((flags & (ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected)) ==
+                (ControlFlags.DiscretionaryAclPresent | ControlFlags.DiscretionaryAclProtected), 1, (uint)flags);
+            PolicyNeed((flags & (ControlFlags.DiscretionaryAclDefaulted | ControlFlags.DiscretionaryAclAutoInherited)) == 0, 1, (uint)flags);
             RawAcl dacl = descriptor.DiscretionaryAcl, sacl = descriptor.SystemAcl;
-            Need(dacl != null && dacl.Count == 2 && sacl != null && sacl.Count == 1);
+            PolicyNeed(dacl != null && dacl.Count == 2 && sacl != null && sacl.Count == 1, 2,
+                dacl == null ? UInt32.MaxValue : (uint)dacl.Count, sacl == null ? UInt32.MaxValue : (uint)sacl.Count);
             var principals = new HashSet<string>(StringComparer.Ordinal);
             foreach (GenericAce entry in dacl) {
                 var ace = entry as CommonAce;
-                Need(ace != null && !ace.IsCallback && ace.AceQualifier == AceQualifier.AccessAllowed &&
+                PolicyNeed(ace != null && !ace.IsCallback && ace.AceQualifier == AceQualifier.AccessAllowed &&
                     ace.AceFlags == AceFlags.None && ace.AccessMask == 0x1F01FF &&
-                    (ace.SecurityIdentifier.Value == user || ace.SecurityIdentifier.Value == package) && principals.Add(ace.SecurityIdentifier.Value));
+                    (ace.SecurityIdentifier.Value == user || ace.SecurityIdentifier.Value == package) && principals.Add(ace.SecurityIdentifier.Value),
+                    3, (uint)entry.AceType, (uint)entry.AceFlags, ace == null ? 0 : unchecked((uint)ace.AccessMask));
             }
-            GenericAce label = sacl[0]; Need((int)label.AceType == 17 && label.BinaryLength == 20 &&
-                label.AceFlags == (AceFlags.ObjectInherit | AceFlags.ContainerInherit));
+            GenericAce label = sacl[0]; PolicyNeed((int)label.AceType == 17 && label.BinaryLength == 20 &&
+                label.AceFlags == (AceFlags.ObjectInherit | AceFlags.ContainerInherit), 4,
+                (uint)label.AceType, (uint)label.AceFlags, (uint)label.BinaryLength);
             byte[] bytes = new byte[20]; label.GetBinaryForm(bytes, 0);
-            Need(BitConverter.ToUInt32(bytes, 4) == 1 && new SecurityIdentifier(bytes, 8).Value == "S-1-16-4096");
+            PolicyNeed(BitConverter.ToUInt32(bytes, 4) == 1 && new SecurityIdentifier(bytes, 8).Value == "S-1-16-4096",
+                5, BitConverter.ToUInt32(bytes, 4));
         }
         void Policy(IntPtr handle)
         {
