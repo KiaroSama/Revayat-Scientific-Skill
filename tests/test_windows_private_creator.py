@@ -155,23 +155,42 @@ class PrivateCreatorTest(unittest.TestCase):
                     self.assertNotIn('dispose', events)
 
     def test_creation_and_binding_fail_at_distinct_boundaries(self):
-        for fault, expected_stage in (('create', 'create'), ('pin', 'bind')):
-            scope, scratch, security, events, closed, _ = self.fixture(fault)
-            stage = 'setup'
+        for fault in ('create', 'pin'):
             with self.subTest(fault=fault):
-                with self.assertRaises(OSError) as caught:
-                    with scope['PrivateFile'](scratch, security) as fixture:
-                        stage = 'create'
+                scope, scratch, security, events, closed, _ = self.fixture(fault)
+                with scope['PrivateFile'](scratch, security) as fixture:
+                    if fault == 'pin':
                         fixture.create()
                         self.assertEqual(fixture.original, 12)
-                        stage = 'bind'
-                        fixture.bind_original()
-                        stage = 'qualify'
+                    with self.assertRaises(OSError) as caught:
+                        if fault == 'create':
+                            fixture.create()
+                        else:
+                            fixture.bind_original()
+                    self.assertEqual(caught.exception.winerror, 5)
+                    with self.assertRaisesRegex(AssertionError, '^private creator control binding is absent$'):
                         fixture.qualify()
-                self.assertEqual(stage, expected_stage)
-                self.assertEqual(caught.exception.winerror, 5)
                 self.assertNotIn('dispose', events)
                 self.assertEqual(closed, [9, 8] if fault == 'create' else [12, 9, 8])
+
+    def test_clean_cleanup_preserves_original_exception_identity(self):
+        tree = ast.parse((WINDOWS / 'PrivateCreator.py').read_text(encoding='utf-8'))
+        finalizers = [statement for node in ast.walk(tree) if isinstance(node, ast.Try)
+                      for statement in node.finalbody]
+        self.assertFalse(any(isinstance(node, ast.Lambda)
+                             for statement in finalizers for node in ast.walk(statement)))
+        scope, scratch, security, events, closed, _ = self.fixture()
+        original = ValueError('private original')
+        action = Mock(side_effect=original)
+        with self.assertRaises(ValueError) as caught:
+            with scope['PrivateFile'](scratch, security) as fixture:
+                fixture.create()
+                fixture.bind_original()
+                fixture.qualify()
+                action()
+        self.assertIs(caught.exception, original)
+        self.assertEqual(closed, [12, 24, 20, 9, 8])
+        self.assertEqual(events[-1], 'absent')
 
     def test_original_and_independent_cleanup_failures_are_retained(self):
         for close_faults in ((12,), (20,), (24, 20, 9, 8)):

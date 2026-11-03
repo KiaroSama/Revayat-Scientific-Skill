@@ -172,9 +172,9 @@ class PrivateFile:
 
     def __exit__(self, kind, original, trace):
         failures = []
-        def attempt(action):
+        def attempt(action, *arguments):
             try:
-                action()
+                action(*arguments)
                 return True
             except Exception as error:
                 failures.append(error)
@@ -186,7 +186,7 @@ class PrivateFile:
         if bound:
             bound = attempt(lambda: self._bind(self.pin))
         handle, self.original = self.original, None
-        closed = handle is None or attempt(lambda: close(handle))
+        closed = handle is None or attempt(close, handle)
         removed = False
         if bound and closed:
             deletion = None
@@ -202,12 +202,12 @@ class PrivateFile:
                 failures.append(error)
             finally:
                 if deletion is not None:
-                    attempt(lambda: close(deletion))
+                    attempt(close, deletion)
         for name in ('pin', 'directory', 'root'):
             handle = getattr(self, name)
             setattr(self, name, None)
             if handle is not None:
-                attempt(lambda: close(handle))
+                attempt(close, handle)
         if removed:
             attempt(self._absent)
         self.ready = False
