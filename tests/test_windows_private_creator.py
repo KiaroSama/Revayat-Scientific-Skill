@@ -19,7 +19,7 @@ class NativeCall:
 
 
 class PrivateCreatorTest(unittest.TestCase):
-    def fixture(self, fault=None, close_faults=()):
+    def fixture(self, fault=None, close_faults=(), root_name='\\Device\\HarddiskVolume12\\'):
         events, closed, creates = [], [], []
         scope = runpy.run_path(str(WINDOWS / 'PrivateCreator.py'))
         invalid = ctypes.c_void_p(-1).value
@@ -27,14 +27,9 @@ class PrivateCreatorTest(unittest.TestCase):
         identity = (11, bytes(range(16)))
         security = object()
         scratch = Path('E:/')
-        names = {8: '\\\\?\\E:\\', 12: '\\\\?\\E:\\authority-protected',
-                 16: '\\\\?\\E:\\authority-protected', 20: '\\\\?\\E:\\authority-protected',
-                 24: '\\\\?\\E:\\authority-protected'}
-        # Host-independent fixture paths; native names retain the Windows contract.
-        expected_root = '\\\\?\\' + str(scratch)
-        names[8] = expected_root
+        names = {8: root_name}
         for handle in (12, 16, 20, 24):
-            names[handle] = expected_root.rstrip('\\/') + '\\authority-protected'
+            names[handle] = root_name + 'authority-protected'
 
         def create(path, access, share, descriptor, disposition, flags, template):
             creates.append((path, access, share, descriptor, disposition, flags, template))
@@ -70,10 +65,16 @@ class PrivateCreatorTest(unittest.TestCase):
             return 1
 
         def name(handle, output, capacity, flags):
-            self.assertEqual((capacity, flags), (512, 0))
+            if (capacity, flags) != (512, 2):
+                raise RuntimeError('unexpected fixed name-query contract')
+            events.append(('name', handle, flags))
             value = names[handle] + ('-foreign' if fault == 'name' and handle == 16 else '')
+            if fault == 'different-device' and handle == 16:
+                value = '\\Device\\HarddiskVolume13\\authority-protected'
             output.value = value
-            return 512 if fault == 'long-name' and handle == 16 else len(value)
+            if fault in ('long-name', 'zero-name') and handle == 16 or fault in ('root-long', 'root-zero') and handle == 8:
+                return 0 if fault in ('zero-name', 'root-zero') else 512
+            return len(value)
 
         def query(handle, kind, output, capacity, returned):
             self.assertEqual((kind, capacity), (0, 56))
@@ -136,7 +137,7 @@ class PrivateCreatorTest(unittest.TestCase):
     def test_acquisition_and_qualification_failures_never_reach_controls(self):
         for fault in ('root', 'create', 'pin', 'reopen', 'query', 'volume', 'identity',
                       'reparse', 'name', 'long-name', 'inherit', 'grant', 'basic-length',
-                      'basic-status', 'collision', 'absence'):
+                      'basic-status', 'collision', 'absence', 'different-device', 'zero-name', 'root-long', 'root-zero'):
             with self.subTest(fault=fault):
                 scope, scratch, security, events, closed, _ = self.fixture(fault)
                 reached = Mock()
@@ -187,6 +188,31 @@ class PrivateCreatorTest(unittest.TestCase):
                 self.assertTrue({12, 16, 20, 8}.issubset(closed))
                 if fault != 'dispose':
                     self.assertNotIn('dispose', events)
+
+    def test_native_root_shape_is_exact_and_does_not_use_dos_translation(self):
+        prefix = '\\Device\\HarddiskVolume'
+        for digits in ('0', '1', '9' * 20):
+            scope, scratch, security, events, _, _ = self.fixture(root_name=prefix + digits + '\\')
+            with scope['PrivateFile'](scratch, security) as fixture:
+                fixture.create()
+                fixture.reopen()
+                self.assertEqual(fixture.qualify(), 16)
+            self.assertTrue(all(event[2] == 2 for event in events
+                                if type(event) is tuple and event[0] == 'name'))
+        invalid = ('\\\\?\\E:\\', '\\\\server\\share\\', '\\Device\\Other1\\', prefix + '\\',
+                   prefix + '1', prefix + '1\\\\', prefix + '1\\temp\\', prefix + 'x\\',
+                   prefix + '١\\', prefix + '9' * 21 + '\\', '\\\\?\\Volume{123}\\',
+                   prefix.lower() + '1\\')
+        for name in invalid:
+            with self.subTest(name=name):
+                scope, scratch, security, events, closed, _ = self.fixture(root_name=name)
+                reached = Mock()
+                with self.assertRaisesRegex(AssertionError, '^private creator scratch name differs$'):
+                    with scope['PrivateFile'](scratch, security):
+                        reached()
+                reached.assert_not_called()
+                self.assertEqual(closed, [8])
+                self.assertNotIn('create', events)
 
     def test_native_error_is_immediate_and_success_never_reads_stale_error(self):
         scope = runpy.run_path(str(WINDOWS / 'PrivateCreator.py'))

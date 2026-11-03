@@ -104,7 +104,7 @@ class PrivateFile:
 
     def _name(self, handle):
         output = ctypes.create_unicode_buffer(512)
-        count = K.GetFinalPathNameByHandleW(handle, output, 512, 0)
+        count = K.GetFinalPathNameByHandleW(handle, output, 512, 2)
         if count == 0:
             raise native_error()
         require(0 < count < 512 and len(output.value) == count, 'private creator name exceeds fixed bounds')
@@ -132,8 +132,12 @@ class PrivateFile:
             self.root = acquired(K.CreateFileW(str(self.scratch), 0x80, 7, None, 3, 0x02200000, None))
             self.root_identity = self._identity(self.root, directory=True)
             root_name = self._name(self.root)
-            require(root_name == '\\\\?\\' + str(self.scratch), 'private creator scratch name differs')
-            self.expected_name = root_name.rstrip('\\') + '\\authority-protected'
+            prefix = '\\Device\\HarddiskVolume'
+            digits = root_name[len(prefix):-1]
+            require(root_name.startswith(prefix) and root_name.endswith('\\') and
+                    1 <= len(digits) <= 20 and all('0' <= c <= '9' for c in digits),
+                    'private creator scratch name differs')
+            self.expected_name = root_name + 'authority-protected'
             self.ready = True
             return self
         except Exception as error:
