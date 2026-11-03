@@ -1,0 +1,229 @@
+"""Inert checks of the fixed private-file acquisition and bound cleanup."""
+import ast
+import ctypes
+from pathlib import Path
+import runpy
+from types import SimpleNamespace
+import unittest
+from unittest.mock import Mock
+
+WINDOWS = Path(__file__).resolve().parent / 'security/windows'
+
+
+class NativeCall:
+    def __init__(self, call):
+        self.call = call
+
+    def __call__(self, *arguments):
+        return self.call(*arguments)
+
+
+class PrivateCreatorTest(unittest.TestCase):
+    def fixture(self, fault=None, close_faults=()):
+        events, closed, creates = [], [], []
+        scope = runpy.run_path(str(WINDOWS / 'PrivateCreator.py'))
+        invalid = ctypes.c_void_p(-1).value
+        current_error = [5]
+        identity = (11, bytes(range(16)))
+        security = object()
+        scratch = Path('E:/')
+        names = {8: '\\\\?\\E:\\', 12: '\\\\?\\E:\\authority-protected',
+                 16: '\\\\?\\E:\\authority-protected', 20: '\\\\?\\E:\\authority-protected',
+                 24: '\\\\?\\E:\\authority-protected'}
+        # Host-independent fixture paths; native names retain the Windows contract.
+        expected_root = '\\\\?\\' + str(scratch)
+        names[8] = expected_root
+        for handle in (12, 16, 20, 24):
+            names[handle] = expected_root.rstrip('\\/') + '\\authority-protected'
+
+        def create(path, access, share, descriptor, disposition, flags, template):
+            creates.append((path, access, share, descriptor, disposition, flags, template))
+            role = {0x80: 'pin' if len(creates) > 1 else 'root',
+                    0xC0000000: 'create', 0x10080: 'delete'}[access]
+            events.append(role)
+            if fault == role:
+                return invalid
+            return {'root': 8, 'create': 12, 'pin': 20, 'delete': 24}[role]
+
+        def reopen(*arguments):
+            events.append('reopen')
+            self.assertEqual(arguments, (12, 0xC00C0000, 3, 0))
+            return invalid if fault == 'reopen' else 16
+
+        def info(handle, kind, output, size):
+            events.append(('info', handle, kind))
+            if fault == 'query' and handle == 16:
+                return 0
+            if kind == 18:
+                self.assertEqual(size, 24)
+                output._obj.volume = identity[0] + (1 if fault == 'volume' and handle == 16 else 0)
+                output._obj.identifier[:] = identity[1]
+                if fault in ('identity', 'cleanup-identity') and handle == (16 if fault == 'identity' else 24):
+                    output._obj.identifier[0] ^= 1
+            else:
+                self.assertEqual((kind, size), (9, 8))
+                output._obj.attributes = 0x10 if handle == 8 else 0x80
+                output._obj.tag = 0
+                if fault == 'reparse' and handle == 16:
+                    output._obj.attributes |= 0x400
+                    output._obj.tag = 0xA000000C
+            return 1
+
+        def name(handle, output, capacity, flags):
+            self.assertEqual((capacity, flags), (512, 0))
+            value = names[handle] + ('-foreign' if fault == 'name' and handle == 16 else '')
+            output.value = value
+            return 512 if fault == 'long-name' and handle == 16 else len(value)
+
+        def query(handle, kind, output, capacity, returned):
+            self.assertEqual((kind, capacity), (0, 56))
+            returned._obj.value = 56
+            output[0] = 2 if fault == 'inherit' and handle == 16 else 0
+            output[1] = (0x12019F if handle == 12 else 0x1E019F)
+            if fault == 'grant' and handle == 16:
+                output[1] |= 0x10000
+            if fault == 'basic-length' and handle == 16:
+                returned._obj.value = 55
+            return -1073741820 if fault == 'basic-status' and handle == 16 else 0
+
+        def close(handle):
+            events.append(('close', handle))
+            closed.append(handle)
+            return handle not in close_faults
+
+        def attributes(_path):
+            events.append('absent')
+            current_error[0] = 3 if fault == 'absence' else 2
+            return 0x80 if fault == 'collision' else 0xFFFFFFFF
+
+        def dispose(handle, kind, output, size):
+            events.append('dispose')
+            self.assertEqual((handle, kind, output._obj.value, size), (24, 4, 1, 1))
+            return fault != 'dispose'
+
+        kernel = SimpleNamespace(**{key: NativeCall(value) for key, value in {
+            'CreateFileW': create, 'ReOpenFile': reopen, 'GetFileInformationByHandleEx': info,
+            'GetFinalPathNameByHandleW': name, 'GetFileType': lambda _handle: 1,
+            'CloseHandle': close, 'GetFileAttributesW': attributes,
+            'SetFileInformationByHandle': dispose}.items()})
+        def require(condition, message):
+            if not condition:
+                raise AssertionError(message)
+        scope.update(K=kernel, require=require, prepare=lambda: SimpleNamespace(NtQueryObject=query))
+        scope['ctypes'] = SimpleNamespace(**dict(vars(ctypes), get_last_error=lambda: current_error[0]))
+        # runpy returns a copy; functions retain their own shared global dictionary.
+        actual = scope['PrivateFile'].__init__.__globals__
+        actual.update(scope)
+        return scope, scratch, security, events, closed, creates
+
+    def test_exact_control_request_and_bound_cleanup(self):
+        scope, scratch, security, events, closed, creates = self.fixture()
+        with scope['PrivateFile'](scratch, security) as fixture:
+            fixture.create()
+            fixture.reopen()
+            self.assertEqual(fixture.qualify(), 16)
+            events.append('controls')
+        self.assertEqual(closed, [12, 16, 24, 20, 8])
+        self.assertEqual([call[1:] for call in creates], [
+            (0x80, 7, None, 3, 0x02200000, None),
+            (0xC0000000, 3, security, 1, 0x80, None),
+            (0x80, 7, None, 3, 0x00200000, None),
+            (0x10080, 3, None, 3, 0x00200000, None)])
+        self.assertLess(events.index(('close', 16)), events.index('delete'))
+        self.assertLess(events.index('controls'), events.index('dispose'))
+        self.assertEqual(events[-1], 'absent')
+
+    def test_acquisition_and_qualification_failures_never_reach_controls(self):
+        for fault in ('root', 'create', 'pin', 'reopen', 'query', 'volume', 'identity',
+                      'reparse', 'name', 'long-name', 'inherit', 'grant', 'basic-length',
+                      'basic-status', 'collision', 'absence'):
+            with self.subTest(fault=fault):
+                scope, scratch, security, events, closed, _ = self.fixture(fault)
+                reached = Mock()
+                with self.assertRaises((OSError, AssertionError, ExceptionGroup)):
+                    with scope['PrivateFile'](scratch, security) as fixture:
+                        fixture.create()
+                        fixture.reopen()
+                        fixture.qualify()
+                        reached()
+                reached.assert_not_called()
+                self.assertEqual(len(closed), len(set(closed)))
+                if fault in ('collision', 'absence', 'create', 'pin'):
+                    self.assertNotIn('dispose', events)
+                if fault == 'reopen':
+                    self.assertIn('dispose', events)
+                    self.assertNotIn(16, closed)
+
+    def test_original_and_independent_cleanup_failures_are_retained(self):
+        for close_faults in ((12,), (16,), (12, 16), (24, 20, 8)):
+            with self.subTest(close_faults=close_faults):
+                scope, scratch, security, events, closed, _ = self.fixture(close_faults=close_faults)
+                original = ValueError('private original')
+                action = Mock(side_effect=original)
+                with self.assertRaises(ExceptionGroup) as caught:
+                    with scope['PrivateFile'](scratch, security) as fixture:
+                        fixture.create()
+                        fixture.reopen()
+                        fixture.qualify()
+                        action()
+                self.assertIs(caught.exception.exceptions[0], original)
+                self.assertEqual(len(caught.exception.exceptions), 1 + len(close_faults))
+                self.assertIn(12, closed)
+                self.assertIn(16, closed)
+                self.assertIn(20, closed)
+                self.assertIn(8, closed)
+                if 12 in close_faults or 16 in close_faults:
+                    self.assertNotIn('delete', events)
+
+    def test_cleanup_refuses_foreign_identity_and_keeps_all_close_attempts(self):
+        for fault in ('delete', 'cleanup-identity', 'dispose'):
+            with self.subTest(fault=fault):
+                scope, scratch, security, events, closed, _ = self.fixture(fault)
+                with self.assertRaises(ExceptionGroup):
+                    with scope['PrivateFile'](scratch, security) as fixture:
+                        fixture.create()
+                        fixture.reopen()
+                        fixture.qualify()
+                self.assertTrue({12, 16, 20, 8}.issubset(closed))
+                if fault != 'dispose':
+                    self.assertNotIn('dispose', events)
+
+    def test_native_error_is_immediate_and_success_never_reads_stale_error(self):
+        scope = runpy.run_path(str(WINDOWS / 'PrivateCreator.py'))
+        actual = scope['private_creator'].__globals__
+        for code in (None, 0, 5, 8, 0xFFFFFFFF):
+            seen = []
+            def create(*arguments):
+                seen.append('create')
+                self.assertEqual(arguments, ('fixed-leaf', 0xC0000000, 3, 7, 1, 0x80, None))
+                return 12 if code is None else ctypes.c_void_p(-1).value
+            def error():
+                seen.append('error')
+                return code
+            actual.update(K=SimpleNamespace(CreateFileW=create),
+                          ctypes=SimpleNamespace(c_void_p=ctypes.c_void_p, get_last_error=error))
+            with self.subTest(code=code):
+                if code is None:
+                    self.assertEqual(scope['private_creator']('fixed-leaf', 7), 12)
+                    self.assertEqual(seen, ['create'])
+                else:
+                    with self.assertRaises(OSError) as caught:
+                        scope['private_creator']('fixed-leaf', 7)
+                    self.assertEqual(caught.exception.winerror, code)
+                    self.assertEqual(seen, ['create', 'error'])
+
+    def test_authority_consumer_retains_original_actual_controls(self):
+        tree = ast.parse((WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8'))
+        authority = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                         and node.name == 'authority_controls')
+        source = ast.unparse(authority)
+        for text in ("'D:P(A;;GA;;;' + sid + ')'", 'fixture.create()', 'fixture.reopen()',
+                     'handle = fixture.qualify()', 'native_eof_quota(handle, sparse=False)',
+                     'native_eof_quota(handle, sparse=True)', 'for owner_name in owners:',
+                     "'S-1-5-32-544'", "'S-1-5-21-101-202-303-404'", 'for access in (3221225472, 1073741824, 2):'):
+            self.assertIn(text, source)
+        self.assertNotIn('protected.unlink', source)
+
+
+if __name__ == '__main__':
+    unittest.main()

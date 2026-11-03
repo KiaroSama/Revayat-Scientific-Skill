@@ -1,5 +1,4 @@
 """Trusted finite kernel observations. Does not import reviewed project modules."""
-import contextlib
 import ctypes
 import ctypes.wintypes as w
 import errno
@@ -268,46 +267,11 @@ def native_eof_quota(handle, sparse):
             'native quota fixture could not be reset')
 
 
-@contextlib.contextmanager
-def private_policy(token, package):
-    user_data = token_data(token, 1)
-    require(len(user_data) >= ctypes.sizeof(P), 'private creator user SID is truncated')
-    user = P.from_buffer(user_data)
-    require(user.value, 'private creator user SID is absent')
-    text = 'D:P(A;;GA;;;' + sid_text(user) + ')(A;;GA;;;' + package + ')'
-    descriptor, size = P(), w.DWORD()
-    try:
-        require(A.ConvertStringSecurityDescriptorToSecurityDescriptorW(text, 1, ctypes.byref(descriptor),
-                ctypes.byref(size)), 'cannot prepare private creator policy')
-        present, defaulted, dacl = w.BOOL(), w.BOOL(), P()
-        require(A.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(dacl),
-                ctypes.byref(defaulted)) and present.value and dacl.value, 'private creator DACL is absent')
-        yield descriptor, dacl
-    finally:
-        primary = sys.exception()
-        try:
-            if descriptor:
-                require(not K.LocalFree(descriptor), 'private creator policy did not release')
-        except Exception as cleanup:
-            if primary:
-                raise ExceptionGroup('private creator operation and policy cleanup failed', [primary, cleanup])
-            raise
-
-
-def private_creator(path, security):
-    invalid = ctypes.c_void_p(-1).value
-    handle = K.CreateFileW(str(path), 0xC00C0000, 3, security, 1, 0x80, None)
-    if handle == invalid:
-        code = ctypes.get_last_error()
-        error = OSError('private protected creator failed')
-        error.winerror = code
-        raise error
-    return handle
-
-
 def authority_controls(root, scratch, owners):
-    class SecurityAttributes(ctypes.Structure):
-        _fields_ = [('length', w.DWORD), ('descriptor', P), ('inherit', w.BOOL)]
+    import runpy
+    private = runpy.run_path(str(Path(__file__).with_name('PrivateCreator.py')),
+                            init_globals=dict(K=K, A=A, require=require, token_data=token_data, sid_text=sid_text))
+    SecurityAttributes = private['SecurityAttributes']
     K.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, ctypes.POINTER(SecurityAttributes), w.DWORD, w.DWORD, P]
     K.CreateFileW.restype = P
     A.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [w.LPCWSTR, w.DWORD, ctypes.POINTER(P), ctypes.POINTER(w.DWORD)]
@@ -353,11 +317,12 @@ def authority_controls(root, scratch, owners):
                 for info, owner, acl in ((4 | 0x80000000, None, dacl), (1, package_sid, None)):
                     require(A.SetNamedSecurityInfoW(str(protected_root), 1, info, owner, None, acl, None) == 5,
                             'protected root DACL/owner authority was not denied')
-            protected = scratch / 'authority-protected'
-            with private_policy(token, sid) as (positive_descriptor, positive_dacl):
+            with private['private_policy'](token, sid) as (positive_descriptor, positive_dacl):
                 sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), positive_descriptor, False)
-                handle = private_creator(protected, ctypes.byref(sa))
-                try:
+                with private['PrivateFile'](scratch, ctypes.byref(sa)) as fixture:
+                    fixture.create()
+                    fixture.reopen()
+                    handle = fixture.qualify()
                     require(A.SetSecurityInfo(handle, 1, 4 | 0x80000000, None, None, positive_dacl, None) == 0,
                             'private scratch DACL control failed')
                     native_eof_quota(handle, sparse=False)
@@ -392,9 +357,6 @@ def authority_controls(root, scratch, owners):
                     finally:
                         K.LocalFree(outsider)
                     denied_write(root / 'protected-creator-escape')
-                finally:
-                    K.CloseHandle(handle)
-                    protected.unlink(missing_ok=True)
         finally:
             K.LocalFree(descriptor)
             path.unlink(missing_ok=True)

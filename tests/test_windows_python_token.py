@@ -337,10 +337,12 @@ class PythonTokenTest(unittest.TestCase):
 class OrdinaryTokenTest(unittest.TestCase):
     def test_private_policy_uses_exact_token_user_without_changing_negative_inputs(self):
         import contextlib
-        source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
+        source = (WINDOWS / 'PrivateCreator.py').read_text(encoding='utf-8')
         tree = ast.parse(source)
         helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
-                   and node.name in ('private_policy', 'require')]
+                   and node.name == 'private_policy']
+        probe = ast.parse((WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8'))
+        helpers += [node for node in probe.body if isinstance(node, ast.FunctionDef) and node.name == 'require']
         for invalid in ('none', 'short', 'null', 'convert', 'dacl', 'operation', 'cleanup', 'combined'):
             seen, freed = [], []
             operation = OSError('private operation')
@@ -416,18 +418,21 @@ class OrdinaryTokenTest(unittest.TestCase):
                             reached()
                     reached.assert_not_called()
                     self.assertEqual(freed, [] if invalid in ('short', 'null') else [24])
-        authority = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'authority_controls')
+        authority = next(node for node in probe.body if isinstance(node, ast.FunctionDef) and node.name == 'authority_controls')
         text = ast.unparse(authority)
         self.assertIn("'D:P(A;;GA;;;' + sid + ')'", text)
-        self.assertIn('with private_policy(token, sid) as (positive_descriptor, positive_dacl):', text)
+        self.assertIn("with private['private_policy'](token, sid) as (positive_descriptor, positive_dacl):", text)
         self.assertIn('SecurityAttributes(ctypes.sizeof(SecurityAttributes), positive_descriptor, False)', text)
         self.assertIn('A.SetSecurityInfo(handle, 1, 4 | 2147483648, None, None, positive_dacl, None)', text)
 
     def test_private_creator_keeps_exact_call_and_immediate_error(self):
-        source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
+        source = (WINDOWS / 'PrivateCreator.py').read_text(encoding='utf-8')
         tree = ast.parse(source)
         helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
-                   and node.name in ('private_creator', 'failure_wire', 'require')]
+                   and node.name in ('private_creator', 'native_error', 'acquired')]
+        probe = ast.parse((WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8'))
+        helpers += [node for node in probe.body if isinstance(node, ast.FunctionDef)
+                    and node.name in ('failure_wire', 'require')]
         for code in (None, 0, 5, 8, 0xFFFFFFFF):
             seen = []
             security = object()
@@ -435,14 +440,14 @@ class OrdinaryTokenTest(unittest.TestCase):
 
             def create(*arguments):
                 seen.append('create')
-                self.assertEqual(arguments, (str(path), 0xC00C0000, 3, security, 1, 0x80, None))
+                self.assertEqual(arguments, (str(path), 0xC0000000, 3, security, 1, 0x80, None))
                 return 12 if code is None else ctypes.c_void_p(-1).value
 
             def last_error():
                 seen.append('error')
                 return code
 
-            scope = {'__file__': 'fixed-private-creator', 'K': SimpleNamespace(CreateFileW=create),
+            scope = {'__file__': 'fixed-private-creator', 'P': ctypes.c_void_p, 'K': SimpleNamespace(CreateFileW=create),
                      'ctypes': SimpleNamespace(c_void_p=ctypes.c_void_p, get_last_error=last_error),
                      'subprocess': SimpleNamespace(TimeoutExpired=TimeoutError)}
             exec(compile(ast.Module(body=helpers, type_ignores=[]), scope['__file__'], 'exec'), scope)
@@ -459,8 +464,8 @@ class OrdinaryTokenTest(unittest.TestCase):
                     self.assertIn('kind=os errno=none winerror=' + format(code, '08X'), frame)
                     self.assertNotIn(str(path), frame)
                     self.assertLessEqual(len(frame), 128)
-        authority = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'authority_controls')
-        self.assertIn('handle = private_creator(protected, ctypes.byref(sa))', ast.unparse(authority))
+        authority = next(node for node in probe.body if isinstance(node, ast.FunctionDef) and node.name == 'authority_controls')
+        self.assertIn('handle = fixture.qualify()', ast.unparse(authority))
 
     def test_actual_ordinary_privilege_inventory_without_name_lookup(self):
         source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
