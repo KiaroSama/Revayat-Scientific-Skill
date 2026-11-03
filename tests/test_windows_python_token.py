@@ -335,6 +335,45 @@ class PythonTokenTest(unittest.TestCase):
 
 
 class OrdinaryTokenTest(unittest.TestCase):
+    def test_private_creator_keeps_exact_call_and_immediate_error(self):
+        source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name in ('private_creator', 'failure_wire', 'require')]
+        for code in (None, 0, 5, 8, 0xFFFFFFFF):
+            seen = []
+            security = object()
+            path = Path('fixed-authority-protected')
+
+            def create(*arguments):
+                seen.append('create')
+                self.assertEqual(arguments, (str(path), 0xC00C0000, 3, security, 1, 0x80, None))
+                return 12 if code is None else ctypes.c_void_p(-1).value
+
+            def last_error():
+                seen.append('error')
+                return code
+
+            scope = {'__file__': 'fixed-private-creator', 'K': SimpleNamespace(CreateFileW=create),
+                     'ctypes': SimpleNamespace(c_void_p=ctypes.c_void_p, get_last_error=last_error),
+                     'subprocess': SimpleNamespace(TimeoutExpired=TimeoutError)}
+            exec(compile(ast.Module(body=helpers, type_ignores=[]), scope['__file__'], 'exec'), scope)
+            with self.subTest(code=code):
+                if code is None:
+                    self.assertEqual(scope['private_creator'](path, security), 12)
+                    self.assertEqual(seen, ['create'])
+                else:
+                    with self.assertRaises(OSError) as caught:
+                        scope['private_creator'](path, security)
+                    self.assertEqual(caught.exception.winerror, code)
+                    self.assertEqual(seen, ['create', 'error'])
+                    frame = scope['failure_wire'](caught.exception)
+                    self.assertIn('kind=os errno=none winerror=' + format(code, '08X'), frame)
+                    self.assertNotIn(str(path), frame)
+                    self.assertLessEqual(len(frame), 128)
+        authority = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'authority_controls')
+        self.assertIn('handle = private_creator(protected, ctypes.byref(sa))', ast.unparse(authority))
+
     def test_actual_ordinary_privilege_inventory_without_name_lookup(self):
         source = (WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8')
         tree = ast.parse(source)

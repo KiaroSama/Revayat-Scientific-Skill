@@ -266,6 +266,17 @@ def native_eof_quota(handle, sparse):
             'native quota fixture could not be reset')
 
 
+def private_creator(path, security):
+    invalid = ctypes.c_void_p(-1).value
+    handle = K.CreateFileW(str(path), 0xC00C0000, 3, security, 1, 0x80, None)
+    if handle == invalid:
+        code = ctypes.get_last_error()
+        error = OSError('private protected creator failed')
+        error.winerror = code
+        raise error
+    return handle
+
+
 def authority_controls(root, scratch, owners):
     class SecurityAttributes(ctypes.Structure):
         _fields_ = [('length', w.DWORD), ('descriptor', P), ('inherit', w.BOOL)]
@@ -316,8 +327,7 @@ def authority_controls(root, scratch, owners):
                             'protected root DACL/owner authority was not denied')
             protected = scratch / 'authority-protected'
             sa = SecurityAttributes(ctypes.sizeof(SecurityAttributes), descriptor, False)
-            handle = K.CreateFileW(str(protected), 0xC00C0000, 3, ctypes.byref(sa), 1, 0x80, None)
-            require(handle != invalid, 'private protected creator positive control failed')
+            handle = private_creator(protected, ctypes.byref(sa))
             try:
                 require(A.SetSecurityInfo(handle, 1, 4 | 0x80000000, None, None, dacl, None) == 0,
                         'private scratch DACL control failed')
@@ -408,6 +418,7 @@ def run():
         with descendants['Standards']() as standards:
             launch = standards.prepare('wall')
             wall_child = subprocess.Popen(*launch[0], **launch[1])
+            require(wall_child.pid > 0, 'wall-tree descendant has no process identity')
         print('trusted wall-tree negative control started', flush=True)
         time.sleep(30)
         raise AssertionError('wall-tree was not terminated')

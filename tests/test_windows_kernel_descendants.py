@@ -4,6 +4,7 @@ from pathlib import Path
 import runpy
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'tests/security/windows/KernelDescendants.py'
@@ -114,9 +115,10 @@ class KernelDescendantTest(unittest.TestCase):
         self.setUp()
         self.fail_close = 4
         original = OSError('original')
+        operation = Mock(side_effect=original)
         with self.assertRaises(self.scope['transport']['CaptureFailure']) as caught:
             with self.module['Standards']():
-                raise original
+                operation()
         self.assertIs(caught.exception.original, original)
         self.assertEqual(len(caught.exception.cleanup), 1)
         self.assertEqual(self.closed, [4, 8, 12])
