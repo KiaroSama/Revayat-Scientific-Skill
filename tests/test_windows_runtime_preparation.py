@@ -83,7 +83,7 @@ class DiagnosticOrderTest(unittest.TestCase):
         self.assertIn('if (observeScratch) ScratchAccess.Observe(process, scratch, package);', preparation)
         self.assertLess(observe, preparation.index('StartupAccess.Observe(process, python);'))
         sandbox = (windows / 'Sandbox.cs').read_text(encoding='utf-8')
-        self.assertIn('defaultDacl, preparation, registryStartup, preflight && observeExit, supportedScratch);', sandbox)
+        self.assertIn('defaultDacl, preparation, registryStartup, preflight && observeExit, supportedScratch, phase);', sandbox)
         self.assertIn('const uint Desired = 0x100020;', observer)
         self.assertIn('GetSecurityInfo(', observer)
         self.assertIn('AccessCheck(', observer)
@@ -384,6 +384,7 @@ class DiagnosticOrderTest(unittest.TestCase):
         if ($preflight.status -ne 'passed' -or $preflight.phase -ne 'preflight') { throw 'Trusted preflight did not return its required success observation' }
         $wall = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $true, $tcpPort, $udpPort, $true)
         if ($wall -ne 'WALL_TREE_TERMINATED') { throw 'Native wall/process-tree negative control was not proved' }
+        [ScientificSecurity.PrivateCreatorFixture]::RemoveBeforeAdmission($runId, $mountPath, $package.Value)
         Write-RunLog INFO 'all required native controls observed including wall-tree cleanup; reviewed regressions admitted'
         $regressionText = [ScientificSecurity.Sandbox]::Run($childPython, $target, $mountPath, $childPowerShell, $chromium, $moniker, $profileFolder, $false, 0, 0)
 '''

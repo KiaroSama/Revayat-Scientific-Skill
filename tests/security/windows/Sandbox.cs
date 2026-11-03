@@ -390,7 +390,7 @@ namespace ScientificSecurity
                 if (preflight && observeExit || supportedScratch) ScratchVolumePolicy.SelectSuspended(job, process);
                 PrepareContained(process, python, scratch, moniker, package, preflight, wallProbe, loaderProbe,
                     activationProbe, activationTrace, nativeFixture, pythonCondition, pythonDispatch, expectedRegistryStatus,
-                    defaultDacl, preparation, registryStartup, preflight && observeExit, supportedScratch);
+                    defaultDacl, preparation, registryStartup, preflight && observeExit, supportedScratch, phase);
                 if (activationProbe || defaultActivation || moduleRole != 0 || selfActivation || dllRequest || defaultDacl != null || pythonDispatch || passComparison) activationClock.Start();
                 ScratchVolumePolicy.RequireResume(supportedScratch);
                 if (Native.ResumeThread(process.thread) == UInt32.MaxValue)

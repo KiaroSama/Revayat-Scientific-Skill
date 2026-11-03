@@ -126,7 +126,8 @@ namespace ScientificSecurity
         static void EndPolicies(Exception primary, Exception completion, bool clean, SupportedRegistryPolicy registry)
         {
             CompletePolicies(completion ?? primary, clean, ScratchVolumePolicy.FinishSupported,
-                ScratchVolumePolicy.EndRun, value => { if (registry != null) registry.EndRun(value); });
+                ScratchVolumePolicy.EndRun, PrivateCreatorFixture.EndRun,
+                value => { if (registry != null) registry.EndRun(value); });
         }
         static void CompletePolicies(Exception original, bool clean, params Action<bool>[] actions)
         {

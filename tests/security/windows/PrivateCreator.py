@@ -85,8 +85,10 @@ def private_policy(token, package):
 
 class PrivateFile:
     def __init__(self, scratch, security):
-        self.scratch, self.path, self.security = scratch, scratch / 'authority-protected', security
-        self.root = self.original = self.control = self.pin = None
+        self.scratch = scratch
+        self.parent = scratch / 'private-creator'
+        self.path, self.security = self.parent / 'authority-protected', security
+        self.root = self.directory = self.original = self.control = self.pin = None
         self.identity = self.expected_name = None
         self.native = prepare()
         self.ready = False
@@ -137,7 +139,12 @@ class PrivateFile:
             require(root_name.startswith(prefix) and root_name.endswith('\\') and
                     1 <= len(digits) <= 20 and all('0' <= c <= '9' for c in digits),
                     'private creator scratch name differs')
-            self.expected_name = root_name + 'authority-protected'
+            self.directory = acquired(K.CreateFileW(str(self.parent), 0x80, 3, None, 3, 0x02200000, None))
+            parent_identity = self._identity(self.directory, directory=True)
+            require(parent_identity[0] == self.root_identity[0] and
+                    self._name(self.directory) == root_name + 'private-creator',
+                    'private creator parent binding differs')
+            self.expected_name = root_name + 'private-creator\\authority-protected'
             self.ready = True
             return self
         except Exception as error:
@@ -208,7 +215,7 @@ class PrivateFile:
             finally:
                 if deletion is not None:
                     attempt(lambda: close(deletion))
-        for name in ('pin', 'root'):
+        for name in ('pin', 'directory', 'root'):
             handle = getattr(self, name)
             setattr(self, name, None)
             if handle is not None:

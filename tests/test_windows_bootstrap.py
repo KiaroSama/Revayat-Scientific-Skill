@@ -126,16 +126,17 @@ class BootstrapCaptureTest(unittest.TestCase):
         self.assertEqual([main.index(value) for value in anchors], sorted(main.index(value) for value in anchors))
         import re
         rows = re.findall(r"^    Invoke-BootstrapStage 'managed' (\d+) \{ (\[ScientificSecurity\.[^\n]+) \}$", main, re.M)
-        self.assertEqual([int(index) for index, _ in rows], list(range(1, 53)))
+        self.assertEqual([int(index) for index, _ in rows], list(range(1, 54)))
         self.assertEqual(rows[0][1], '[ScientificSecurity.Profile]::CheckSealComparison()')
-        self.assertEqual(rows[-1][1], '[ScientificSecurity.DebugControl]::CheckValidation()')
+        self.assertEqual(rows[-2][1], '[ScientificSecurity.DebugControl]::CheckValidation()')
+        self.assertEqual(rows[-1][1], '[ScientificSecurity.PrivateCreatorFixture]::CheckValidation()')
         import hashlib
-        calls = '\n'.join(call for _, call in rows).encode('utf-8')
+        calls = '\n'.join(call for _, call in rows[:-1]).encode('utf-8')
         self.assertEqual(hashlib.sha256(calls).hexdigest(),
                          '2c1ff6a3ade4fcfd33aa6ca45d400ad8b0dccdb98d6a04a4410c2a2432ac48eb')
         block = main.split("    Write-BootstrapProgress 'compile' 'after'\n", 1)[1].split(
             "    Write-RunLog INFO 'managed strict", 1)[0]
-        self.assertEqual(len(block.splitlines()), 52)
+        self.assertEqual(len(block.splitlines()), 53)
         self.assertTrue(all(line.startswith("    Invoke-BootstrapStage 'managed' ") for line in block.splitlines()))
         helper = source.split('function Write-BootstrapProgress(', 1)[1].split('function Invoke-BootstrapRecovery(', 1)[0]
         self.assertIn('[ValidateRange(0,64)]', helper)

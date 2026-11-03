@@ -77,7 +77,7 @@ namespace ScientificSecurity
                 return unchecked((uint)Marshal.ReadInt32(data.pointer));
             }
         }
-        static string TokenSid(IntPtr token, int kind)
+        internal static string TokenSid(IntPtr token, int kind)
         {
             using (var data = new Buffer(token, kind)) {
                 uint minimum = kind == 1 ? (uint)Marshal.SizeOf(typeof(SidAttributes)) : (uint)IntPtr.Size;

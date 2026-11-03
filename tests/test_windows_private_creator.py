@@ -27,18 +27,19 @@ class PrivateCreatorTest(unittest.TestCase):
         identity = (11, bytes(range(16)))
         security = object()
         scratch = Path('E:/')
-        names = {8: root_name}
+        names = {8: root_name, 9: root_name + 'private-creator'}
         for handle in (12, 16, 20, 24):
-            names[handle] = root_name + 'authority-protected'
+            names[handle] = root_name + 'private-creator\\authority-protected'
 
         def create(path, access, share, descriptor, disposition, flags, template):
             creates.append((path, access, share, descriptor, disposition, flags, template))
-            role = {0x80: 'pin' if len(creates) > 1 else 'root',
-                    0xC0000000: 'create', 0x10080: 'delete'}[access]
+            role = ({str(scratch): 'root', str(scratch / 'private-creator'): 'parent'}.get(path, 'pin')
+                    if access == 0x80 else {0xC0000000: 'create', 0x10080: 'delete'}[access])
             events.append(role)
             if fault == role:
+                current_error[0] = 5
                 return invalid
-            return {'root': 8, 'create': 12, 'pin': 20, 'delete': 24}[role]
+            return {'root': 8, 'parent': 9, 'create': 12, 'pin': 20, 'delete': 24}[role]
 
         def reopen(*arguments):
             events.append('reopen')
@@ -51,15 +52,16 @@ class PrivateCreatorTest(unittest.TestCase):
                 return 0
             if kind == 18:
                 self.assertEqual(size, 24)
-                output._obj.volume = identity[0] + (1 if fault == 'volume' and handle == 16 else 0)
+                output._obj.volume = identity[0] + (1 if (fault == 'volume' and handle == 16 or
+                                                        fault == 'parent-volume' and handle == 9) else 0)
                 output._obj.identifier[:] = identity[1]
                 if fault in ('identity', 'cleanup-identity') and handle == (16 if fault == 'identity' else 24):
                     output._obj.identifier[0] ^= 1
             else:
                 self.assertEqual((kind, size), (9, 8))
-                output._obj.attributes = 0x10 if handle == 8 else 0x80
+                output._obj.attributes = 0x10 if handle in (8, 9) else 0x80
                 output._obj.tag = 0
-                if fault == 'reparse' and handle == 16:
+                if fault == 'reparse' and handle == 16 or fault == 'parent-reparse' and handle == 9:
                     output._obj.attributes |= 0x400
                     output._obj.tag = 0xA000000C
             return 1
@@ -68,7 +70,8 @@ class PrivateCreatorTest(unittest.TestCase):
             if (capacity, flags) != (512, 2):
                 raise RuntimeError('unexpected fixed name-query contract')
             events.append(('name', handle, flags))
-            value = names[handle] + ('-foreign' if fault == 'name' and handle == 16 else '')
+            value = names[handle] + ('-foreign' if (fault == 'name' and handle == 16 or
+                                                   fault == 'parent-name' and handle == 9) else '')
             if fault == 'different-device' and handle == 16:
                 value = '\\Device\\HarddiskVolume13\\authority-protected'
             output.value = value
@@ -127,9 +130,10 @@ class PrivateCreatorTest(unittest.TestCase):
             fixture.reopen()
             self.assertEqual(fixture.qualify(), 16)
             events.append('controls')
-        self.assertEqual(closed, [12, 16, 24, 20, 8])
+        self.assertEqual(closed, [12, 16, 24, 20, 9, 8])
         self.assertEqual([call[1:] for call in creates], [
             (0x80, 7, None, 3, 0x02200000, None),
+            (0x80, 3, None, 3, 0x02200000, None),
             (0xC0000000, 3, security, 1, 0x80, None),
             (0x80, 7, None, 3, 0x00200000, None),
             (0x10080, 3, None, 3, 0x00200000, None)])
@@ -138,7 +142,7 @@ class PrivateCreatorTest(unittest.TestCase):
         self.assertEqual(events[-1], 'absent')
 
     def test_acquisition_and_qualification_failures_never_reach_controls(self):
-        for fault in ('root', 'create', 'pin', 'reopen', 'query', 'volume', 'identity',
+        for fault in ('root', 'parent', 'parent-volume', 'parent-name', 'parent-reparse', 'create', 'pin', 'reopen', 'query', 'volume', 'identity',
                       'reparse', 'name', 'long-name', 'inherit', 'grant', 'basic-length',
                       'basic-status', 'collision', 'absence', 'different-device', 'zero-name', 'root-long', 'root-zero'):
             with self.subTest(fault=fault):
@@ -177,10 +181,10 @@ class PrivateCreatorTest(unittest.TestCase):
                 self.assertEqual(caught.exception.winerror, 5)
                 self.assertNotIn('reopen', events)
                 self.assertNotIn('dispose', events)
-                self.assertEqual(closed, [8] if fault == 'create' else [12, 8])
+                self.assertEqual(closed, [9, 8] if fault == 'create' else [12, 9, 8])
 
     def test_original_and_independent_cleanup_failures_are_retained(self):
-        for close_faults in ((12,), (16,), (12, 16), (24, 20, 8)):
+        for close_faults in ((12,), (16,), (12, 16), (24, 20, 9, 8)):
             with self.subTest(close_faults=close_faults):
                 scope, scratch, security, events, closed, _ = self.fixture(close_faults=close_faults)
                 original = ValueError('private original')
@@ -264,6 +268,41 @@ class PrivateCreatorTest(unittest.TestCase):
                         scope['private_creator']('fixed-leaf', 7)
                     self.assertEqual(caught.exception.winerror, code)
                     self.assertEqual(seen, ['create', 'error'])
+
+    def test_private_parent_is_bound_and_removed_before_reviewed_admission(self):
+        controller = (WINDOWS / 'Run-WindowsSecurity.ps1').read_text(encoding='utf-8')
+        anchors = ('[ScientificSecurity.PrivateCreatorFixture]::Prepare($runId, $mountPath, $package.Value)',
+                   '    Set-OwnedAccess $mountPath $true $true',
+                   '[ScientificSecurity.PrivateCreatorFixture]::RequireAfterSeal($runId, $mountPath, $package.Value)',
+                   '$negativeBaselineExit = [ScientificSecurity.RegistryCausalComparison]::Run(',
+                   '$preflightText = [ScientificSecurity.Sandbox]::Run(',
+                   '$wall = [ScientificSecurity.Sandbox]::Run(',
+                   '[ScientificSecurity.PrivateCreatorFixture]::RemoveBeforeAdmission($runId, $mountPath, $package.Value)',
+                   "Write-RunLog INFO 'all required native controls observed including wall-tree cleanup; reviewed regressions admitted'",
+                   '$regressionText = [ScientificSecurity.Sandbox]::Run(')
+        for anchor in anchors:
+            self.assertEqual(controller.count(anchor), 1)
+        positions = [controller.index(anchor) for anchor in anchors]
+        self.assertEqual(positions, sorted(positions))
+        for name in ('PrivateCreatorFixture.cs', 'PrivateCreatorValidation.cs'):
+            self.assertIn("(Join-Path $PSScriptRoot '" + name + "')", controller)
+        self.assertIn("Invoke-BootstrapStage 'managed' 53 { [ScientificSecurity.PrivateCreatorFixture]::CheckValidation() }", controller)
+        release = controller.index('[ScientificSecurity.PrivateCreatorFixture]::ReleasePins()')
+        self.assertLess(release, controller.index('if ($mounted -and $traceStopped -and $attachmentClosed)'))
+        preparation = (WINDOWS / 'SandboxPreparation.cs').read_text(encoding='utf-8')
+        self.assertIn('if (phase == "preflight") PrivateCreatorFixture.RequireUse(process, scratch, package);', preparation)
+        completion = (WINDOWS / 'SandboxCompletion.cs').read_text(encoding='utf-8')
+        self.assertIn('ScratchVolumePolicy.EndRun, PrivateCreatorFixture.EndRun,', completion)
+        scope, scratch, security, _, _, creates = self.fixture()
+        with scope['PrivateFile'](scratch, security) as fixture:
+            fixture.create()
+            fixture.bind_original()
+            fixture.reopen()
+            fixture.qualify()
+        self.assertEqual(creates[1][0], str(scratch / 'private-creator'))
+        self.assertEqual(creates[2][0], str(scratch / 'private-creator' / 'authority-protected'))
+        for call in creates[2:]:
+            self.assertEqual(call[0], creates[2][0])
 
     def test_authority_consumer_retains_original_actual_controls(self):
         tree = ast.parse((WINDOWS / 'KernelProbe.py').read_text(encoding='utf-8'))
