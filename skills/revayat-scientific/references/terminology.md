@@ -111,7 +111,7 @@ Do not globally ban a Persian form that is valid for another concept in the same
 file. Separate the relevant part's ledger/scope and review the ambiguity explicitly.
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
+"$REVAYAT" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
 ```
 
 A clean result proves only the implemented string/structure checks. Verify preferred

@@ -100,6 +100,15 @@ fn counts(handle: &Handle) -> Result<(u32, u32, u64)> {
 }
 
 pub fn controls() -> Result<(u32, u32)> {
+    let fixture = std::env::var("REVAYAT_AUTHORITY_FIXTURE").ok();
+    let foreign = std::env::var_os("REVAYAT_AUTHORITY_FOREIGN");
+    let network = std::env::var("REVAYAT_AUTHORITY_NETWORK").ok();
+    need(fixture.is_some() == foreign.is_some(), "start")?;
+    need(fixture.is_some() == network.is_some(), "start")?;
+    if let Some(name) = &fixture {
+        need(crate::protocol::fixture_name(name), "start")?;
+    }
+    let key = fixture.as_deref().unwrap_or(KEY);
     need(
         size_of::<Raw>() == 8 && size_of::<Unicode>() == 16 && size_of::<Attributes>() == 48,
         "start",
@@ -107,11 +116,11 @@ pub fn controls() -> Result<(u32, u32)> {
     detached()?;
     crate::token::controls()?;
     let start = Instant::now();
-    let (status, root) = open(KEY, READ, null_mut(), start)?;
+    let (status, root) = open(key, READ, null_mut(), start)?;
     need(status == 0, "root")?;
-    qualify(&root, KEY)?;
+    qualify(&root, key)?;
     for access in [2, 4, 0x10000, 0x40000, 0x80000] {
-        let (status, handle) = open(KEY, access, null_mut(), start)?;
+        let (status, handle) = open(key, access, null_mut(), start)?;
         need(denied(status, handle.raw as usize), "mutation")?;
     }
     let before = counts(&root)?;
@@ -154,7 +163,7 @@ pub fn controls() -> Result<(u32, u32)> {
             need(!same_name(prior, &text)?, "inventory")?;
         }
         for access in [1, 8, 0x10, 0x20000] {
-            let (status, child) = open(&format!("{KEY}\\{text}"), access, null_mut(), start)?;
+            let (status, child) = open(&format!("{key}\\{text}"), access, null_mut(), start)?;
             need(denied(status, child.raw as usize), "inventory")?;
         }
         let (status, child) = open(&text, READ, root.raw, start)?;
@@ -166,6 +175,131 @@ pub fn controls() -> Result<(u32, u32)> {
         "inventory",
     )?;
     crate::token::controls()?;
+    if let Some(path) = foreign {
+        foreign_denied(&path)?;
+        scratch_control()?;
+        network_denied(
+            network
+                .as_deref()
+                .ok_or_else(|| Failure::new("start", "control"))?,
+        )?;
+    }
     deadline(start)?;
     Ok((names.len() as u32, accessible))
+}
+
+fn network_denied(value: &str) -> Result<()> {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream, UdpSocket};
+    use std::time::Duration;
+    let ports = value
+        .split(',')
+        .map(|part| {
+            part.parse::<u16>()
+                .ok()
+                .filter(|number| *number > 0 && part == number.to_string())
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| Failure::new("mutation", "control"))?;
+    need(ports.len() == 4, "mutation")?;
+    let hosts = [
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(Ipv6Addr::LOCALHOST),
+    ];
+    for (host, port) in hosts.into_iter().zip(&ports[..2]) {
+        match TcpStream::connect_timeout(&SocketAddr::new(host, *port), Duration::from_secs(1)) {
+            Err(error) if error.raw_os_error() == Some(10013) => {}
+            _ => return Err(Failure::new("mutation", "control")),
+        }
+    }
+    for (host, port) in hosts.into_iter().zip(&ports[2..]) {
+        let bind = match host {
+            IpAddr::V4(_) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            IpAddr::V6(_) => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+        };
+        match UdpSocket::bind(SocketAddr::new(bind, 0)) {
+            Err(error) if error.raw_os_error() == Some(10013) => {}
+            Ok(socket) => {
+                match socket.send_to(b"native LPAC denial control", SocketAddr::new(host, *port)) {
+                    Err(error) if error.raw_os_error() == Some(10013) => {}
+                    _ => return Err(Failure::new("mutation", "control")),
+                }
+            }
+            _ => return Err(Failure::new("mutation", "control")),
+        }
+    }
+    Ok(())
+}
+
+fn scratch_control() -> Result<()> {
+    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::os::windows::fs::OpenOptionsExt;
+    let path = std::env::current_dir()
+        .map_err(|_| Failure::new("mutation", "native"))?
+        .join("native-create-only-control");
+    // Create-only, no sharing, no reparse following, delete the exact owned
+    // object on close. A collision is fatal and never causes pathname cleanup.
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .access_mode(0xc0010000)
+        .share_mode(0)
+        .custom_flags(0x04200000)
+        .open(&path)
+        .map_err(|_| Failure::new("mutation", "native"))?;
+    let expected = b"native owned scratch control\0\r\n";
+    file.write_all(expected)
+        .and_then(|_| file.flush())
+        .and_then(|_| file.sync_all())
+        .map_err(|_| Failure::new("mutation", "native"))?;
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| Failure::new("mutation", "native"))?;
+    let mut actual = [0u8; 32];
+    let count = file
+        .read(&mut actual)
+        .map_err(|_| Failure::new("mutation", "native"))?;
+    need(
+        count == expected.len() && actual[..count] == expected[..],
+        "mutation",
+    )?;
+    actual.fill(0);
+    use std::os::windows::io::IntoRawHandle;
+    let mut owned = Handle::new(file.into_raw_handle(), false);
+    owned.close()?;
+    need(
+        matches!(std::fs::symlink_metadata(path),Err(error) if error.kind()==std::io::ErrorKind::NotFound),
+        "mutation",
+    )
+}
+
+fn foreign_denied(path: &std::ffi::OsStr) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    let path = path.encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    need(
+        path.len() > 1 && path.len() < 32768 && !path[..path.len() - 1].contains(&0),
+        "mutation",
+    )?;
+    for access in [0x8000_0000u32, 0x4000_0000] {
+        // SAFETY: fixed host-provisioned private sentinel, no content is read or written.
+        let raw = unsafe {
+            CreateFileW(
+                path.as_ptr(),
+                access,
+                3,
+                std::ptr::null(),
+                3,
+                0x200000,
+                null_mut(),
+            )
+        };
+        let error = if raw as isize == -1 {
+            Some(unsafe { GetLastError() })
+        } else {
+            None
+        };
+        let mut owner = Handle::new(raw, false);
+        need(raw as isize == -1 && error == Some(5), "mutation")?;
+        owner.close()?;
+    }
+    Ok(())
 }

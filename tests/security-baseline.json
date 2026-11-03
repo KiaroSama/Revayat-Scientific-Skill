@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "public_test_count": 41,
+  "origin": "Thirty authored admissions.py leaf labels, six tex_output.py checks and five native windows_probe.py leaves formerly run by standalone security workers, outside the 583 unittest methods and 37 upstream.sh checks. Effective helper preflight and native Windows authority controls remain mandatory and are audited separately.",
+  "tests": [
+    {
+      "id": "tests/security/admissions.py::docx/restricted-rels-_rels",
+      "original_location": "tests/security/admissions.py:54",
+      "original_contract": "docx/restricted-rels-_rels"
+    },
+    {
+      "id": "tests/security/admissions.py::docx/restricted-RELS-_rels",
+      "original_location": "tests/security/admissions.py:54",
+      "original_contract": "docx/restricted-RELS-_rels"
+    },
+    {
+      "id": "tests/security/admissions.py::docx/restricted-rels-_RELS",
+      "original_location": "tests/security/admissions.py:54",
+      "original_contract": "docx/restricted-rels-_RELS"
+    },
+    {
+      "id": "tests/security/admissions.py::docx/restricted-ReLs-_ReLs",
+      "original_location": "tests/security/admissions.py:54",
+      "original_contract": "docx/restricted-ReLs-_ReLs"
+    },
+    {
+      "id": "tests/security/admissions.py::docx/ordinary-external-False",
+      "original_location": "tests/security/admissions.py:54",
+      "original_contract": "docx/ordinary-external-False"
+    },
+    {
+      "id": "tests/security/admissions.py::docx/ordinary-external-True",
+      "original_location": "tests/security/admissions.py:54",
+      "original_contract": "docx/ordinary-external-True"
+    },
+    {
+      "id": "tests/security/admissions.py::html/ordinary-nesting",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/ordinary-nesting"
+    },
+    {
+      "id": "tests/security/admissions.py::html/ordinary-lint",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/ordinary-lint"
+    },
+    {
+      "id": "tests/security/admissions.py::html/ordinary-guard",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/ordinary-guard"
+    },
+    {
+      "id": "tests/security/admissions.py::html/ordinary-assets",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/ordinary-assets"
+    },
+    {
+      "id": "tests/security/admissions.py::html/ordinary-render-entry-ordering",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/ordinary-render-entry-ordering"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/parser",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/parser"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/source",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/source"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/guard",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/guard"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/assets",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/assets"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/text-order",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/text-order"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/resource-policy",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/resource-policy"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/render-entry",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/render-entry"
+    },
+    {
+      "id": "tests/security/admissions.py::html/depth/lint",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/depth/lint"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/parser",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/parser"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/source",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/source"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/guard",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/guard"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/assets",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/assets"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/text-order",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/text-order"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/resource-policy",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/resource-policy"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/render-entry",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/render-entry"
+    },
+    {
+      "id": "tests/security/admissions.py::html/nodes/lint",
+      "original_location": "tests/security/admissions.py:77",
+      "original_contract": "html/nodes/lint"
+    },
+    {
+      "id": "tests/security/admissions.py::publication/portable-reparse-metadata",
+      "original_location": "tests/security/admissions.py:163",
+      "original_contract": "publication/portable-reparse-metadata"
+    },
+    {
+      "id": "tests/security/admissions.py::publication/ordinary-publication",
+      "original_location": "tests/security/admissions.py:163",
+      "original_contract": "publication/ordinary-publication"
+    },
+    {
+      "id": "tests/security/admissions.py::publication/protected-hardlink",
+      "original_location": "tests/security/admissions.py:163",
+      "original_contract": "publication/protected-hardlink"
+    },
+    {
+      "id": "tests/security/tex_output.py::tex-output/production-run-arguments-evaluated",
+      "original_location": "tests/security/tex_output.py:14",
+      "original_contract": "tex-output/production-run-arguments-evaluated"
+    },
+    {
+      "id": "tests/security/tex_output.py::tex-output/production-rw-output-bind",
+      "original_location": "tests/security/tex_output.py:14",
+      "original_contract": "tex-output/production-rw-output-bind"
+    },
+    {
+      "id": "tests/security/tex_output.py::tex-output/production-per-file-not-aggregate",
+      "original_location": "tests/security/tex_output.py:14",
+      "original_contract": "tex-output/production-per-file-not-aggregate"
+    },
+    {
+      "id": "tests/security/tex_output.py::tex-output/real-xelatex-no-shell",
+      "original_location": "tests/security/tex_output.py:57",
+      "original_contract": "tex-output/real-xelatex-no-shell"
+    },
+    {
+      "id": "tests/security/tex_output.py::tex-output/two-permitted-output-files",
+      "original_location": "tests/security/tex_output.py:57",
+      "original_contract": "tex-output/two-permitted-output-files"
+    },
+    {
+      "id": "tests/security/tex_output.py::tex-output/ordinary-pdf",
+      "original_location": "tests/security/tex_output.py:57",
+      "original_contract": "tex-output/ordinary-pdf"
+    },
+    {
+      "id": "tests/security/windows_probe.py::WIN-OPC-CASE-IDENTITY",
+      "original_location": "tests/security/windows_probe.py",
+      "original_contract": "WIN-OPC-CASE-IDENTITY"
+    },
+    {
+      "id": "tests/security/windows_probe.py::WIN-JUNCTION-ADMISSION",
+      "original_location": "tests/security/windows_probe.py",
+      "original_contract": "WIN-JUNCTION-ADMISSION"
+    },
+    {
+      "id": "tests/security/windows_probe.py::WIN-JUNCTION-PUBLICATION",
+      "original_location": "tests/security/windows_probe.py",
+      "original_contract": "WIN-JUNCTION-PUBLICATION"
+    },
+    {
+      "id": "tests/security/windows_probe.py::WIN-ORDINARY-PUBLICATION",
+      "original_location": "tests/security/windows_probe.py",
+      "original_contract": "WIN-ORDINARY-PUBLICATION"
+    },
+    {
+      "id": "tests/security/windows_probe.py::WIN-POWERSHELL-LEXICAL",
+      "original_location": "tests/security/windows_probe.py",
+      "original_contract": "WIN-POWERSHELL-LEXICAL"
+    }
+  ]
+}

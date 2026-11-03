@@ -1,30 +1,17 @@
-# Installation and host paths
+# Installation
 
-The installed payload includes native DOCX/PDF helpers and the optional parallel
-agent workflow. Install `skills/revayat-scientific/requirements.txt` into the same
-interpreter used by the dispatcher. DOCX creation uses python-docx; PDF operations
-use PyMuPDF. Chromium rendering additionally uses Playwright with an existing
-browser executable; set `REVAYAT_CHROMIUM` to an explicit executable when needed.
-WeasyPrint rendering requires its fatal URL-fetcher API (version68 or newer;
-version70 is exercised in CI), installed in that same interpreter.
-Automatic TeX requires local Docker/Podman and the prebuilt toolchain image;
-follow the [isolated TeX setup](../skills/revayat-scientific/references/pdf-output.md).
-The helper never installs a container runtime or pulls an image automatically. The Windows PDF adapter checks only the explicitly requested engine's prerequisites; automatic selection still discovers every supported engine. Selecting Chromium does not probe a container daemon or import WeasyPrint, and a selected engine's failure never falls back. An empty availability list remains an explicit value on both PowerShell 5.1 and 7, so a missing selected prerequisite reports that engine as unavailable.
-OCR requires Tesseract and the requested language data; `TESSERACT_CMD` can name
-an explicitly configured absolute executable. Helpers never install these tools.
+Build the native executable with the pinned toolchain, or obtain the artifact for your operating system from the CI run of the revision you reviewed. CI artifacts are build outputs, not automatically published releases.
 
-The [security regression CI controllers](security-testing.md) are repository development
-infrastructure, not installed skill prerequisites. Their Windows virtual disk, quotas
-and LPAC setup are owned by a disposable hosted job; ordinary installation never
-configures these controls on the user's system.
+```console
+cargo build --locked --release --workspace --bins
+cargo run --locked --release --bin revayat-scientific -- install --agent codex
+cargo run --locked --release --bin revayat-scientific -- install --scope project --path /path/to/project
+cargo run --locked --release --bin revayat-scientific -- install --dest /path/to/final/revayat-scientific
+```
 
-No separate DOCX or PDF Processing Pro skill installation is required. Parallel
-translation/editing uses available host subagents only after affirmative user
-consent; a host without subagents follows the same workflow sequentially.
+Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientific.exe` on Windows. The executable is self-contained with its Rust dependencies; Windows CI also links the C runtime statically. Optional native document/rendering tools are separate. A source plugin checkout needs a compiled executable before command checks can run.
 
-Installers make real copies. `--agent all` installs only for detected configuration directories; an explicit agent can create its skill directory. `--scope project` requires `--path`. `--dest` names an explicit final skill directory for other hosts. Existing installations are refused unless `--force` is given; the complete target set is validated and staged before replacement, with old copies retained outside normal skill discovery. Nonempty targets must identify this skill; arbitrary directories cannot be forced. A later failure rolls back earlier targets, or retains a located recovery journal if safe restoration is impossible. See [installation integrity and recovery](installation-integrity.md). Installation does not modify agent configuration or install dependencies.
-
-| Agent | User skill parent | Project skill parent |
+| Host | User skill directory | Project skill directory |
 | --- | --- | --- |
 | Claude Code | `~/.claude/skills` | `.claude/skills` |
 | Codex | `~/.agents/skills` | `.agents/skills` |
@@ -35,16 +22,25 @@ Installers make real copies. `--agent all` installs only for detected configurat
 | OpenCode | `~/.config/opencode/skills` | `.opencode/skills` |
 | Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
 
-Every target contains `revayat-scientific/SKILL.md`. Codex and Antigravity share one copy in project scope. A host using additional configured directories can use `--dest`. Native host discovery may require refreshing its skill inventory; CI verifies installed layout and execution, not every application's UI.
+`--agent all` is the default and installs only into detected host configuration roots; explicit `--agent` may create its directory. A Codex `.codex` configuration also counts as detection. Shared destinations are deduplicated. Project scope requires `--path`. `--dest` names the final skill directory, not its parent. Installation does not edit host configuration or install system dependencies.
 
-```bash
-python install/install.py --agent codex --scope project --path /path/to/project
-python install/install.py --dest /custom/skills/revayat-scientific
-python install/install.py --agent claude --force
+Existing destinations are refused without `--force`. Force replacement requires an empty directory or a simple, unambiguous `name: revayat-scientific` frontmatter identity. Duplicate keys, ambiguous continuations, foreign contents, linked trees and reserved recovery/backup locations are refused. Every target is staged and checked before activation. Old editions remain in `skill-backups` outside ordinary skill discovery. See [installation integrity](installation-integrity.md).
+
+## Plugin hosts
+
+```text
+/plugin marketplace add KiaroSama/Revayat-Scientific-Skill
+/plugin install revayat-scientific@revayat-scientific-skill
 ```
 
-The Bash and PowerShell entry points forward these same options. Paths with spaces must be quoted. They never download dependencies; Python 3.11+ is required before installation.
+The Claude Code plugin exposes `/translate-paper`, `/revayat-scientific-resume` and `/revayat-scientific-qa`. Codex and Cursor manifests use the same Rust-oriented skill instructions. In Codex invoke `$revayat-scientific`.
 
-For a standalone upload, run `python tools/package.py` and use `dist/revayat-scientific.skill` in a host that accepts ZIP skill uploads. Extract it into the host skill parent otherwise. The package includes the required license notices.
+## Complete archive
 
-Discovery references: [Agent Skills](https://agentskills.io/specification), [Claude Code](https://code.claude.com/docs/en/skills), [Codex](https://developers.openai.com/codex/skills), [Cursor](https://cursor.com/docs/context/skills), [Kiro](https://kiro.dev/docs/skills/), [Cline](https://docs.cline.bot/customization/skills), [OpenCode](https://opencode.ai/docs/skills/), [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills), [Antigravity](https://antigravity.google/docs/migration/workflows-to-skills).
+```console
+cargo run --locked --release --bin revayat-scientific -- package --output dist/revayat-scientific.skill
+```
+
+The ZIP root is `revayat-scientific/`. It includes the exact native executable, skill instructions, references, allowed assets, agent metadata, GPL license and notices. Executable ZIP permission bits are retained for Unix extraction; use an extractor that preserves them. Choose the archive built on the target operating system. Fonts, job data, logs, credentials, hidden files and build caches are excluded. Font delivery is a separate licensed/provenance-checked operation.
+
+Do not install or publish over source, implementation or Git administration. Failed publication preserves the previous approved archive; unresolved installation recovery names the complete local journal and retains evidence for deliberate recovery.

@@ -75,7 +75,7 @@ because “the PDF outline is enough”; the printed page is the deliverable.
 Lint each part as it is finished, not at the end:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint parts/03-networking.tex --level <selected-level> --terms terms.tsv --manifest manifests/03-networking.txt --strict
+"$REVAYAT" lint parts/03-networking.tex --level <selected-level> --terms terms.tsv --manifest manifests/03-networking.txt --strict
 ```
 
 Use a manifest containing only the figures expected in that part; keep paths
@@ -140,8 +140,8 @@ claim depends on them. Do not guess across a context boundary or duplicate overl
 ## Assembly and verification
 
 1. Lint every part, then the assembled document.
-2. Build with `"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" build doc.tex <slug> --level <selected-level> --output-dir <selected-output-directory> --verify`. It lints
-   first, runs `prepare-figures.py --check` when `figures/` exists, and
+2. Build with `"$REVAYAT" build doc.tex --out <selected-output-directory>/document.pdf`. It lints
+   first, runs `revayat-scientific figures --check` when `figures/` exists, and
    will not copy a PDF if lint, figure check, or `--verify` fail.
    `--verify` fails closed: missing poppler tools, no embedded font, or
    a raster that was not written. Compare page count to `inventory.md`
@@ -150,7 +150,7 @@ claim depends on them. Do not guess across a context boundary or duplicate overl
 4. Report the path, the page count, and the queued questions.
 
 If the user asked for a page range, not the whole PDF, extract it with
-`scripts/extract-pdf-pages.py in.pdf out.pdf 1-20` after the build. That
+`revayat-scientific pages in.pdf out.pdf 1-20` after the build. That
 script copies a contiguous range in **one** operation so fonts and images
 stay shared. Never loop `insert_pdf` (or equivalent) one page at a time —
 each iteration duplicates every XObject and a 2 MB file becomes 40 MB.

@@ -1,3 +1,10 @@
+FROM rust:1.99.1-slim-trixie AS entry-build
+COPY crates/revayat-scientific/src/bin/revayat-tex-entry.rs /build/entry.rs
+COPY crates/revayat-scientific/src/bin/revayat-sandbox-probe.rs /build/probe.rs
+COPY crates/revayat-scientific/src/bin/security_helper /build/security_helper
+RUN rustc --edition=2024 -O /build/entry.rs -o /build/revayat-tex-entry \
+    && rustc --edition=2024 -O /build/probe.rs -o /build/revayat-sandbox-probe
+
 FROM debian:trixie-slim
 
 LABEL org.revayat.tex.toolchain="1"
@@ -11,8 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
-COPY tex-container-entry.sh /usr/local/bin/revayat-tex-entry
-RUN chmod 0555 /usr/local/bin/revayat-tex-entry
+COPY --from=entry-build --chmod=0555 /build/revayat-tex-entry /usr/local/bin/revayat-tex-entry
+COPY --from=entry-build --chmod=0555 /build/revayat-sandbox-probe /usr/local/bin/revayat-sandbox-probe
 USER 65532:65532
 WORKDIR /input
 ENTRYPOINT ["/usr/bin/timeout", "--signal=TERM", "--kill-after=5s", "120s", "/usr/local/bin/revayat-tex-entry"]

@@ -29,6 +29,10 @@ __pycache__/
 logs/
 *.log
 fonts/
+!/crates/revayat-scientific/assets/fonts/
+!/crates/revayat-scientific/assets/fonts/Vazirmatn-Regular.ttf
+!/crates/revayat-scientific/assets/fonts/Vazirmatn-Bold.ttf
+!/crates/revayat-scientific/assets/fonts/OFL.txt
 .DS_Store
 Thumbs.db
 
@@ -45,3 +49,5 @@ Thumbs.db
 /plans/
 /.revayat-tex-owner-*/
 /tests/security/windows/registry-authority/target/
+/target/
+/var/cache/fontconfig/

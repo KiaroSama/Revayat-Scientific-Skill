@@ -6,7 +6,7 @@
   <title>TITLE</title>
   <style>
     /* Copy Vazirmatn-Regular.ttf and Vazirmatn-Bold.ttf into fonts/ next to
-       this file (scripts/fetch-vazirmatn.sh fonts). Never the UI-FD cut: it
+       this file (revayat-scientific fonts fonts). Never the UI-FD cut: it
        draws Farsi digits and breaks the Western-digit lock. */
     @font-face {
       font-family: "Vazirmatn";
@@ -43,14 +43,14 @@
       break-after: avoid;
       page-break-after: avoid;
       /* English-only headings are one LTR isolate; without an explicit
-         right align WeasyPrint packs them to the physical left. */
+         right alignment a print layout engine can place them at the physical left. */
       text-align: right;
     }
     p {
       margin: 0.85em 0;
     }
-    /* `dir="ltr"` on the element is what isolates in WeasyPrint, which
-       ignores unicode-bidi. Keep both: the property is for Chromium. */
+    /* Keep the explicit dir="ltr" attribute together with CSS isolation so
+       the intended direction survives export and native browser rendering. */
     .ltr,
     .en,
     pre,
@@ -69,7 +69,7 @@
     pre {
       /* On paper overflow-x does nothing; without pre-wrap long listing
          lines are cut off at the margin. `word-break: break-word` is not a
-         valid value — WeasyPrint rejects it — so use overflow-wrap. */
+         portable print value, so use overflow-wrap. */
       white-space: pre-wrap;
       overflow-wrap: break-word;
       padding: 0.75rem 1rem;

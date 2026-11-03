@@ -1,54 +1,21 @@
-# Troubleshooting and recovery
+# Troubleshooting native tools
 
-Use the reported failure to choose a recovery step. Keep the original source and
-previous delivered PDF intact. Correct a failed stage before continuing.
+Record the command, native prerequisite, bounded failure and what remains unverified in the translation log. Do not publish document contents or credentials to diagnose a tool failure.
 
-## Tools and installation
-
-| Symptom | Check | Action |
+| Symptom | Check | Resolution |
 | --- | --- | --- |
-| Python command not found | Interpreter chosen for this job | Resolve Python 3.11+; use the same interpreter for dependencies and helpers |
-| Skill does not appear | Host's documented discovery path | Install the payload, refresh discovery, and confirm its `name` field |
-| Existing install refused | Current destination | Use `--force` only for an intended replacement; the old copy is retained |
-| Installed files unreadable | Destination access and inheritance | Use the current installer; it stages with inherited parent permissions |
-| Log initialization failed | Writable log directory | Read the stderr fallback; do not claim a log file was written |
+| Executable missing | Installed skill `bin/` or source `target/release/` | Build the pinned Rust workspace or obtain the matching operating-system CI artifact |
+| Wrong executable format | Operating system and architecture | Use the native artifact for this machine |
+| Missing document command | Command `--help` and executable version | Use the complete 2.0 executable and its documented schema |
+| TeX unavailable | Docker/Podman image and effective limits | Build the image from the repository root; do not substitute host TeX |
+| Sandbox enforcement failure | Actual memory, process, network and filesystem evidence | Fix the native host/engine prerequisite; do not bypass a failed security check |
+| Chromium cannot start | Browser path, normal sandbox helper ownership and user namespace support | Install/configure a supported sandboxed browser; do not disable its sandbox |
+| Resource denied | Job-local path, link/traversal and URI policy | Preserve source boundaries and explicitly supply the intended admitted asset |
+| Verification tool missing | `doctor` JSON and native Poppler executables | Install the required native tools before claiming verified PDF delivery |
+| OCR unavailable | Tesseract and selected language data | Install that language data or report OCR unperformed |
+| Inconclusive text order | Actual source phrases and extracted PDF text | Inspect the extraction and rendered document; do not reverse source strings |
+| Font bundle incomplete | Regular/bold files, OFL and provenance | Run `fonts` for a complete validated bundle |
+| Existing skill refused | Exact frontmatter identity and destination | Keep foreign contents intact; select the correct destination |
+| Recovery required | Named complete local journal, stages, backups and locks | Stop competing writers and resolve every target deliberately before removing evidence |
 
-## Source, terminology and figures
-
-| Symptom | Action |
-| --- | --- |
-| Missing source page or incomplete download | Recover the actual source using [extraction.md](extraction.md); do not translate from memory |
-| Two-column text interleaves | Compare with the page image and repair reading order before drafting |
-| Missing `terms.tsv` or `manifest.txt` | Create the job records; a figure-free manifest contains a comment |
-| `terms-calque` | Complete keep-English rows using [terminology.md](terminology.md) |
-| Figure missing, mirrored or cropped incorrectly | Compare the referenced image with the source page and correct its path or crop |
-| Dark image flagged | Inspect the source before using inversion; a dark photograph may be correct |
-
-## Build and verification
-
-| Symptom | Action |
-| --- | --- |
-| Renderer unavailable | Use an available documented engine or obtain prerequisites with approval |
-| Renderer fails after starting | Read the TeX/browser error; a silent fallback would hide the failure |
-| Missing Poppler/PyMuPDF | Install the requirements needed by verification before claiming a verified PDF |
-| PDF empty or truncated | Rebuild after fixing the renderer/driver failure; retain the previous delivered edition |
-| Fonts not embedded or text extraction fails | Follow [pdf-output.md](pdf-output.md); prefer the tested Vazirmatn mapping |
-| Extraction is inconclusive | Inspect the source and rendered artifact; zero from the standalone checker is not proof of readable extraction |
-| Output collides with working PDF | Choose a distinct output directory so a failed build cannot overwrite the delivered edition |
-| Timeout or cancellation | Treat the stage as incomplete; fix its cause before retrying with a justified limit |
-| Crop exceeds 50 million pixels | Extract the original/vector asset or choose a smaller faithful crop; do not silently downsample |
-| Output page size differs from source | Set measured geometry in the editable template and verify again; see [layout-and-images.md](layout-and-images.md) |
-| Correct source quote triggers Persian lint | Verify the original and use only its documented rule-specific exception; see [source-languages.md](source-languages.md) |
-| Figure batch/backup collision | Preserve both originals; assign distinct reviewed output names instead of overwriting |
-| High-depth or multi-frame image refused | Keep original samples/frames and use a reviewed specialist conversion; do not force RGB8 |
-| Ambiguous crop boundaries | Inspect the source and supply explicit rectangle columns; the helper no longer guesses the largest region |
-| Renderer resource denied | Place authorized assets inside the document job; remove active content or unapproved network/attachment references |
-| Font pair lacks OFL/provenance | Fetch a validated complete bundle; offline mode needs a complete approved local/cache source |
-| Publication rollback needs recovery | Preserve the named recovery manifest/backups and current files; reconcile them before retrying |
-
-## Resumption
-
-Read `progress.md` and the source inventory first. Preserve approved terminology
-and unchanged reviewed parts. Changed source or terms invalidate only affected
-parts. Missing review records mean unreviewed, not approved. Re-run the final
-assembled-document gate after revisions; see [long-documents.md](long-documents.md).
+Use [PDF output](pdf-output.md), [DOCX](docx.md), [PDF processing](pdf-processing.md), [build integrity](build-integrity.md) and [input boundaries](input-boundaries.md) for the relevant contract. A mechanical check does not replace source-language, scientific or visual review.

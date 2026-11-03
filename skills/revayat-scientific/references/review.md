@@ -22,7 +22,7 @@ partial files. Check findings against their source context; the checker cannot
 resolve scientific senses or proofread every retained source language.
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
+"$REVAYAT" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
 ```
 
 A narrowly documented quote exception may be valid. Never hide a real Persian

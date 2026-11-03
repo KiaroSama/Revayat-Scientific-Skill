@@ -1,20 +1,25 @@
 name: CI
 on:
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
       base_ref:
-        description: Base commit SHA for identity and dependency review
+        description: Full base commit SHA for manual dependency and identity review
         required: true
         type: string
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
 jobs:
   status-pending:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -23,257 +28,179 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: '3.13'
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
       - name: Publish pending job statuses
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python tools/run-check.py --timeout 180 --idle-timeout 30 -- python -B tools/publish-ci-status.py pending
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: cargo run --locked --bin revayat-scientific -- ci-status pending
   security:
     uses: $/.github/workflows/security-ci.yml
   codeql:
+    uses: $/.github/workflows/codeql.yml
     permissions:
       contents: read
       security-events: write
-    uses: $/.github/workflows/codeql.yml
   dependency-review:
     uses: $/.github/workflows/dependency-review.yml
     with:
-      base_ref: ${{ inputs.base_ref }}
+      base_ref: ${{ github.event.pull_request.base.sha || inputs.base_ref || github.event.before }}
   portable:
-    env:
-      SCIENTIFIC_REQUIRE_BROWSER: '1'
+    name: portable (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            python: '3.11'
-          - os: macos-latest
-            python: '3.14'
-          - os: windows-latest
-            python: '3.13'
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 40
+    env:
+      RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-D warnings -C target-feature=+crt-static' || '-D warnings' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+      - name: Build every native target
+        run: cargo build --locked --workspace --all-targets
+      - name: Run all portable public contracts
+        run: cargo test --locked --workspace --all-targets -- --test-threads=1
+      - name: Prepare licensed fonts for native Windows renderer
+        if: runner.os == 'Windows'
+        run: cargo run --locked --bin revayat-scientific -- fonts fonts
+      - name: Execute native Windows rendering and failed-delivery preservation
+        if: runner.os == 'Windows'
+        run: cargo test --locked -p revayat-scientific --test runtime_build_integration test_windows_build_preserves_destination_on_failure -- --ignored --test-threads=1
+      - name: Audit all public, upstream and standalone security scenarios
+        run: cargo run --locked --bin revayat-scientific -- migration-check
+      - name: Validate UTF-8, metadata, local links and native skill layout
+        run: cargo run --locked --bin revayat-scientific -- validate
+      - name: Build release executable on every operating system
+        if: ${{ always() }}
+        run: cargo build --locked --release --workspace --bins
+      - name: Package the complete native installed workflow
+        run: cargo run --locked --release --bin revayat-scientific -- package
+      - name: Preserve native release and complete skill archive
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          python-version: ${{ matrix.python }}
-      - name: Public command and package contracts
-        run: python -m pip install -r skills/revayat-scientific/requirements.txt
-      - name: Install controlled Windows browser
-        if: runner.os == 'Windows'
-        run: python -m playwright install --no-shell chromium
-      - name: Select managed Windows browser
-        if: runner.os == 'Windows'
-        shell: python
-        run: |
-          import os
-          from pathlib import Path
-          from playwright.sync_api import sync_playwright
-          with sync_playwright() as playwright:
-              selected = playwright.chromium.executable_path
-          if not Path(selected).is_file():
-              raise RuntimeError('Playwright-managed Chromium executable is unavailable')
-          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
-              environment.write('REVAYAT_CHROMIUM=' + selected + '\n')
-      - name: Install controlled browser
-        if: runner.os != 'Windows'
-        run: python -m playwright install --with-deps chromium
-      - name: Select available sandboxed browser
-        if: runner.os != 'Windows'
-        shell: python
-        run: |
-          import os, shutil
-          from pathlib import Path
-          from playwright.sync_api import sync_playwright
-          candidates = [shutil.which(name) for name in ('google-chrome', 'msedge', 'chrome')]
-          if os.name == 'nt':
-              for key in ('ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA'):
-                  for name in ('Microsoft/Edge/Application/msedge.exe', 'Google/Chrome/Application/chrome.exe'):
-                      candidate = Path(os.environ.get(key, '')) / name
-                      if candidate.is_file():
-                          candidates.append(str(candidate))
-          with sync_playwright() as playwright:
-              selected = next((path for path in candidates if path), playwright.chromium.executable_path)
-          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
-              environment.write('REVAYAT_CHROMIUM=' + selected + '\n')
-      - name: Linux OCR prerequisites
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-fas
-          echo 'SCIENTIFIC_REQUIRE_OCR=1' >> "$GITHUB_ENV"
-      - name: Windows PDF verification tools
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          if (-not (Get-Command pdftoppm -ErrorAction SilentlyContinue)) {
-            choco install poppler --no-progress -y
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $tool = Get-ChildItem 'C:/ProgramData/chocolatey/lib/poppler' -Recurse -Filter pdftoppm.exe | Select-Object -First 1
-            if (-not $tool) { throw 'Poppler installation did not provide pdftoppm' }
-            $tool.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          }
-      - name: Run public contracts
-        run: python tools/run-check.py --timeout 480 --idle-timeout 120 -- python -B -m unittest discover -s tests -p 'test_*.py' -v
-      - name: Syntax and UTF-8
-        run: python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/validate.py
-      - name: PowerShell 5.1 syntax
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $failed = $false
-          Get-ChildItem skills/revayat-scientific/scripts/*.ps1, install/*.ps1 | ForEach-Object {
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors) { $errors | Write-Output; $failed = $true }
-          }
-          if ($failed) { exit 1 }
-      - name: Package the complete installed workflow
-        run: python tools/run-check.py --timeout 60 --idle-timeout 30 -- python tools/package.py
+          name: revayat-scientific-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            target/release/revayat-scientific
+            target/release/revayat-scientific.exe
+            target/release/registry-authority.exe
+            dist/revayat-scientific.skill
   scientific:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
+    env:
+      SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
+      SCIENTIFIC_REQUIRE_BUILD_GUARD: '1'
+      SCIENTIFIC_REQUIRE_BROWSER: '1'
+      SCIENTIFIC_REQUIRE_OCR: '1'
+      SCIENTIFIC_REQUIRE_SANDBOX: '1'
+      SCIENTIFIC_REQUIRE_DOCX_RENDER: '1'
+      SCIENTIFIC_REQUIRE_HTML_CONTEXT: '1'
+      SCIENTIFIC_RENDER: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: '3.13'
-      - name: Install shell checker
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+      - name: Install bounded native document toolchain
+        timeout-minutes: 20
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
-      - name: Lint shell scripts
-        run: git ls-files -z '*.sh' | xargs -0 -r shellcheck -S warning
-      - name: Install real document toolchain
+          sudo apt-get install -y --no-install-recommends poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn libreoffice-writer tesseract-ocr tesseract-ocr-eng tesseract-ocr-fas
+      - name: Build native document tools
+        run: cargo build --locked --workspace --all-targets
+      - name: Install required native workflow regression checker
         run: |
-          python -m pip install -r skills/revayat-scientific/requirements.txt
-          python -m pip install -r requirements-dev.txt
-          sudo apt-get install -y poppler-utils texlive-xetex texlive-lang-arabic texlive-latex-extra fonts-dejavu-core fonts-vazirmatn libpango-1.0-0 libcairo2 libreoffice-writer
-      - name: Literal TeX source-closure regression
-        env:
-          SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
-        run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_tex_command_boundaries.py' -v
-      - name: Shared input and publication contract regressions
-        env:
-          SCIENTIFIC_REQUIRE_TEX_BOUNDARY: '1'
-        run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_audit_contract_boundaries.py' -k test_real_compiler_and_source_closure_agree_on_numeric_input -v
-      - name: Guarded build and input-revision regressions
-        env:
-          SCIENTIFIC_REQUIRE_BUILD_GUARD: '1'
-          SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: |
-          python tools/run-check.py --timeout 240 --idle-timeout 90 -- python -B -m unittest discover -s tests -p 'test_build_delivery.py' -v
-      - name: Build isolated TeX toolchain
-        run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 skills/revayat-scientific/assets
-      - name: Observe production sandbox enforcement
-        env:
-          SCIENTIFIC_REQUIRE_SANDBOX: '1'
-        run: python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_sandbox_enforcement.py' -v
-      - name: Isolated renderer contracts
-        id: isolated
-        env:
-          SCIENTIFIC_RENDER: '1'
-          SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: python tools/run-check.py --timeout 480 --idle-timeout 150 -- python -B -m unittest discover -s tests -p 'test_scientific_render.py' -v
-      - name: Secondary DOCX story rendering
-        env:
-          SCIENTIFIC_REQUIRE_DOCX_RENDER: '1'
-          SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: python tools/run-check.py --timeout 180 --idle-timeout 90 -- python -B -m unittest discover -s tests -p 'test_docx_story_render.py' -v
-      - name: HTML context parsing and rendering
-        env:
-          SCIENTIFIC_REQUIRE_HTML_CONTEXT: '1'
-          SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: |
-          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_html_render_context.py' -v
-          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_html_scope_boundaries.py' -v
-          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B -m unittest discover -s tests -p 'test_text_order_sources.py' -v
-      - name: Upstream mechanical and rendering regressions
-        id: regressions
+          cd "$RUNNER_TEMP"
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o actionlint.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum --check --strict
+          tar -xzf actionlint.tar.gz actionlint
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Prepare licensed Persian font pair
+        run: cargo run --locked --bin revayat-scientific -- fonts skills/revayat-scientific/assets/fonts
+      - name: Build isolated Rust-supervised TeX toolchain
+        timeout-minutes: 20
+        run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 .
+      - name: Execute every required rendering, OCR, source and sandbox regression
+        timeout-minutes: 20
         env:
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: python tools/run-check.py --timeout 240 --idle-timeout 90 -- bash tests/upstream.sh
-      - name: Verified TeX delivery through portable command
-        run: |
-          work="$RUNNER_TEMP/scientific render"
-          mkdir -p "$work"
-          cp skills/revayat-scientific/assets/rtl-document.tex "$work/doc.tex"
-          python - "$work/doc.tex" <<'PY'
-          from pathlib import Path
-          import sys
-          target = Path(sys.argv[1])
-          body = Path('tests/fixtures/build-smoke-body.tex').read_text(encoding='utf-8')
-          target.write_text(target.read_text(encoding='utf-8').replace(r'\maketitle', r'\maketitle' + '\n' + body), encoding='utf-8')
-          PY
-          cp tests/fixtures/terms-empty.tsv "$work/terms.tsv"
-          cp tests/fixtures/manifest-empty.txt "$work/manifest.txt"
-          python skills/revayat-scientific/scripts/revayat-scientific.py --timeout 120 build "$work/doc.tex" article --verify --output-dir "$work/output"
-          test -s "$work/output/article.pdf"
-          test -s "$work/verify-article-first.png"
+        run: cargo test --locked -p revayat-scientific --tests -- --include-ignored --test-threads=1
+      - name: Verify complete migration inventory with scientific tests registered
+        run: cargo run --locked --bin revayat-scientific -- migration-check
       - name: Preserve rendered verification samples
-        if: ${{ always() && (steps.isolated.outcome == 'success' || steps.isolated.outcome == 'failure') }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: scientific-render
-          path: |
-            ${{ runner.temp }}/scientific render/output/article.pdf
-            ${{ runner.temp }}/scientific render/verify-article-*.png
-            ${{ runner.temp }}/scientific-evidence/*
           if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/scientific-evidence
+            .scratch/scientific-*
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: '3.13'
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
       - name: Check introduced commit identities
         env:
-          IDENTITY_BASE: ${{ inputs.base_ref }}
-          IDENTITY_HEAD: ${{ github.sha }}
-        shell: python
+          IDENTITY_BASE: ${{ github.event.pull_request.base.sha || inputs.base_ref || github.event.before }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          import os, re, subprocess, sys
-          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['IDENTITY_BASE']):
-              raise SystemExit('Identity review requires a full base commit SHA.')
-          raise SystemExit(subprocess.call([
-              sys.executable, 'tools/check-commit-identity.py',
-              '--base', os.environ['IDENTITY_BASE'], '--head', os.environ['IDENTITY_HEAD']]))
-      - name: Install quality tools
-        run: python -m pip install -r requirements-dev.txt
-      - name: Verify and install actionlint
+          review_base="$IDENTITY_BASE"
+          if [ "$review_base" = 0000000000000000000000000000000000000000 ]; then
+            review_base="$(git merge-base -- "origin/$DEFAULT_BRANCH" "$HEAD_REF")"
+          fi
+          cargo run --locked --bin revayat-scientific -- check-sha "$review_base"
+          cargo run --locked --bin revayat-scientific -- check-commit-identity --base "$review_base" --head "$HEAD_REF"
+      - name: Native syntax and lint checks
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Fetch the complete locked cross-platform dependency graph
+        run: cargo fetch --locked
+      - name: Verify complete third-party license and copyright notices
+        run: cargo run --locked --bin license-notices -- --check
+      - name: Cache pinned native quality tools
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/bin/zizmor
+          key: native-quality-${{ runner.os }}-audit0.22.2-zizmor1.32.0-actionlint1.7.12
+      - name: Install pinned dependency and workflow security scanners
+        run: |
+          test -x "$HOME/.cargo/bin/cargo-audit" || cargo install --locked cargo-audit --version 0.22.2
+          test -x "$HOME/.cargo/bin/zizmor" || cargo install --locked zizmor --version 1.32.0
+      - name: Verify and install pinned official actionlint binary
         run: |
           cd "$RUNNER_TEMP"
-          curl -fsSLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          curl -fsSLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt
-          grep ' actionlint_1.7.12_linux_amd64.tar.gz$' actionlint_1.7.12_checksums.txt | sha256sum --check
-          tar -xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o actionlint.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum --check --strict
+          tar -xzf actionlint.tar.gz actionlint
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - name: Workflow syntax and security
+      - name: Workflow syntax, local callee contracts and workflow security
         run: |
-          python tools/run-check.py --timeout 60 --idle-timeout 30 -- python -B -m unittest discover -s tests -p 'test_workflow_lint.py' -v
-          python tools/run-check.py --timeout 120 --idle-timeout 60 -- python -B tools/check-workflows.py
-          python tools/run-check.py --timeout 120 --idle-timeout 60 -- zizmor --offline .github/workflows
-      - name: Runtime and development dependency audit
-        run: python tools/run-check.py --timeout 300 --idle-timeout 90 -- python -m pip_audit --strict --progress-spinner off -r skills/revayat-scientific/requirements.txt -r requirements-dev.txt
+          cargo test --locked --test workflow_lint -- --include-ignored
+          cargo run --locked --bin revayat-scientific -- check-workflows
+          zizmor --offline .github/workflows
+      - name: Strict native runtime and development dependency audit
+        run: cargo audit --deny warnings
   status-final:
     if: ${{ always() }}
     needs: [status-pending, security, codeql, dependency-review, portable, scientific, quality]
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -282,10 +209,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: '3.13'
-      - name: Publish every validation job outcome
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+      - name: Publish every validation job outcome and enforce aggregate result
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python tools/run-check.py --timeout 180 --idle-timeout 30 -- python -B tools/publish-ci-status.py final
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: cargo run --locked --bin revayat-scientific -- ci-status final

@@ -7,8 +7,7 @@ terms ledger or figure manifest, even through a hardlink. Source extension alone
 does not decide whether a path is protected: a TSV supplied as `terms.pdf` is
 still an input. Linked output paths and case/name collisions remain refused.
 The shared publisher checks lexical ancestors with `lstat`, including Windows
-reparse attributes on Python 3.11; it does not rely on `Path.is_junction`, which
-was added in Python 3.12. Missing future paths remain usable; inspection errors
+native Windows reparse attributes through Win32 file metadata. Missing future paths remain usable; inspection errors
 fail closed. This source policy is separate from observed native CI enforcement.
 
 The record fingerprints the selected source closure, sidecars, explicit assets
@@ -71,7 +70,7 @@ can likewise be newer than the delivered edition when verification fails. The
 previous final delivery stays unchanged on failed guards/verification. Do not
 claim an atomic transaction across the working PDF, previews and a final file on
 another filesystem. A published file's own staged replacement and rollback use
-`publication.py`. It records attempted replacements before the OS call and
+`publication.rs`. It records attempted replacements before the OS call and
 reconciles observed state if a move completes before raising. Copied backup bytes
 are verified before activation and again before restoration; a changed backup is
 retained for recovery, never trusted to overwrite a current edition. Existing

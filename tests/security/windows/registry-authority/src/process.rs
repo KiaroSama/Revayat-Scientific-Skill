@@ -380,7 +380,11 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
         if code != 0 || !stderr.is_empty() {
             return Err(child_failure(code, &stderr));
         }
-        child_record(&stdout)
+        if std::env::var_os("REVAYAT_AUTHORITY_FIXTURE").is_some() {
+            crate::protocol::fixture_child_record(&stdout)
+        } else {
+            child_record(&stdout)
+        }
     })();
     stdout.fill(0);
     stderr.fill(0);

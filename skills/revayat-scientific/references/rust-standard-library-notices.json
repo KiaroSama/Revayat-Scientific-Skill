@@ -1,0 +1,7 @@
+{
+  "toolchain": "1.99.1",
+  "source": "Rustup-verified official rustc component; share/doc/rust/COPYRIGHT-library.html",
+  "artifact_url": "https://static.rust-lang.org/dist/rustc-1.99.1-x86_64-unknown-linux-gnu.tar.xz",
+  "file": "rust-standard-library-notices.html",
+  "sha256": "5647be074c8edf7339fd863055923a8fc80bc5610a8d4661ec3b767b9d392c27"
+}

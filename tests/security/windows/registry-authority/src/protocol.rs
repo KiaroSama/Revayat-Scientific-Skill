@@ -351,6 +351,48 @@ pub fn record(role: &str, subkeys: u32, accessible: u32) -> Result<String> {
     ))
 }
 
+pub fn fixture_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let Some((head, nonce)) = lower.rsplit_once("\\software\\revayatnativeauthority-") else {
+        return false;
+    };
+    let Some(sid) = head.strip_prefix("\\registry\\user\\s-1-5-") else {
+        return false;
+    };
+    !sid.is_empty()
+        && sid
+            .split('-')
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+        && nonce.len() == 32
+        && nonce.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+pub fn fixture_record(role: &str, subkeys: u32, accessible: u32) -> Result<String> {
+    need(accessible == 0, "report")?;
+    Ok(record(role, subkeys, accessible)?.replace(
+        "\"version\":1",
+        "\"foreign_file_denied\":true,\"network_denied\":true,\"scratch_write\":true,\"scope\":\"owned-fixture\",\"version\":1",
+    ))
+}
+
+pub fn fixture_child_record(bytes: &[u8]) -> Result<String> {
+    need(bytes.len() <= 1024 && bytes.is_ascii(), "descendant")?;
+    let text = std::str::from_utf8(bytes).map_err(|_| Failure::new("descendant", "decode"))?;
+    let plain = text.replace(
+        "\"foreign_file_denied\":true,\"network_denied\":true,\"scratch_write\":true,\"scope\":\"owned-fixture\",",
+        "",
+    );
+    let parsed = child_record(plain.as_bytes())?;
+    need(
+        text == parsed.replace(
+            "\"version\":1",
+            "\"foreign_file_denied\":true,\"network_denied\":true,\"scratch_write\":true,\"scope\":\"owned-fixture\",\"version\":1",
+        ) && text.starts_with("{\"accessible\":0,"),
+        "descendant",
+    )?;
+    Ok(text.to_owned())
+}
+
 pub fn child_record(bytes: &[u8]) -> Result<String> {
     need(bytes.len() <= 1024 && bytes.is_ascii(), "descendant")?;
     let text = std::str::from_utf8(bytes).map_err(|_| Failure::new("descendant", "decode"))?;
@@ -385,6 +427,58 @@ pub fn child_record(bytes: &[u8]) -> Result<String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn owned_fixture_scope_is_explicit_and_cannot_substitute_for_machine_receipt() {
+        let fixture = fixture_record("descendant", 1, 0).expect("owned fixture");
+        assert!(fixture.contains("\"scope\":\"owned-fixture\""));
+        assert!(fixture.contains("\"foreign_file_denied\":true"));
+        assert_eq!(
+            fixture_child_record(fixture.as_bytes()).expect("strict fixture"),
+            fixture
+        );
+        assert!(child_record(fixture.as_bytes()).is_err());
+        assert!(
+            fixture_child_record(
+                record("descendant", 1, 0)
+                    .expect("machine schema")
+                    .as_bytes()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn owned_fixture_transport_refuses_missing_denial_or_permissive_surface() {
+        let fixture = fixture_record("descendant", 1, 0).expect("owned fixture");
+        for malformed in [
+            fixture.replace(
+                "\"foreign_file_denied\":true",
+                "\"foreign_file_denied\":false",
+            ),
+            fixture.replace("\"accessible\":0", "\"accessible\":1"),
+            format!("{fixture}\n"),
+            fixture.replace("owned-fixture", "machine"),
+        ] {
+            assert!(fixture_child_record(malformed.as_bytes()).is_err());
+        }
+        assert!(fixture_record("descendant", 1, 1).is_err());
+    }
+
+    #[test]
+    fn owned_fixture_namespace_never_accepts_machine_or_parent_registry_keys() {
+        assert!(fixture_name(
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software\RevayatNativeAuthority-0123456789abcdef0123456789abcdef"
+        ));
+        for name in [
+            KEY,
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software",
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software\RevayatNativeAuthority-short",
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software\RevayatNativeAuthority-0123456789abcdef0123456789abcdef\private-child",
+        ] {
+            assert!(!fixture_name(name));
+        }
+    }
+
     fn hex(value: &str) -> Vec<u8> {
         value
             .as_bytes()
@@ -400,9 +494,7 @@ mod tests {
 
     #[test]
     fn source_generated_oracle() {
-        let path =
-            std::env::var("REGISTRY_AUTHORITY_ORACLE").expect("CI must generate the Python oracle");
-        let source = std::fs::read_to_string(path).expect("oracle UTF-8");
+        let source = crate::oracle::generate();
         let mut count = 0;
         for line in source.lines() {
             let row = line.split('\t').collect::<Vec<_>>();

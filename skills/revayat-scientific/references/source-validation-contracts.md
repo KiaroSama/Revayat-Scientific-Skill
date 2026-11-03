@@ -2,7 +2,7 @@
 
 ## HTML scopes and source text
 
-`html_source.py` and `html_scopes.py` share the interpretation used by lint,
+`html.rs` and `html_scopes.rs` share the interpretation used by lint,
 asset/resource admission and PDF text-order source evidence. Ordinary omitted
 paragraph, list-item, definition-item, heading, option and table boundaries close
 the prior scope before inheriting language, hidden, direction or identity state.
@@ -64,7 +64,7 @@ Arbitrary macros/category codes remain outside this literal scanner.
 
 ## One located terminology ledger
 
-`term_ledger.py` is the standard-library TSV reader used by both job lint and
+`ledger.rs` is the native Rust TSV reader used by both job lint and
 `term-brief`. It accepts a UTF-8 BOM, leading comments/blank lines, LF/CRLF and
 quoted fields (including multiline evidence notes). Headers are case-normalized,
 unique and authoritative; `source` or `english` after the header is ordinary data.

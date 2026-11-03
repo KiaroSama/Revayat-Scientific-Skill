@@ -19,16 +19,16 @@ PDF (`references/pdf-output.md`) with maximum bidi precision.
 When the print engine is XeLaTeX, isolate with `\lr{…}` / `\en{…}` and
 put listings in a `latin` environment (see `assets/rtl-document.tex`).
 The HTML rules below apply to an explicit HTML ask or the Chromium /
-WeasyPrint print fallback (`assets/rtl-document.html`).
+Chromium HTML rendering (`assets/rtl-document.html`).
 
 Most of this file is machine-checked. Run
-`scripts/check-fa.py doc.tex --level <level> --terms terms.tsv --manifest manifest.txt --strict` before reading
+`revayat-scientific lint doc.tex --level <level> --terms terms.tsv --manifest manifest.txt --strict` before reading
 further — it reports un-isolated Latin runs, un-isolated number clusters,
 split clusters, RTL listings, mirrored artwork, English `-s` plurals of
 kept terms, and leftover Persian ezafe on English tokens, so the reading
 below is for the cases that need judgement.
 
-**Engine caveat.** WeasyPrint does not implement `unicode-bidi: isolate`
+**Engine caveat.** Renderer support for `unicode-bidi: isolate` must be verified with the actual engine; historical engines did not implement it
 and warns about it on every run. The `dir="ltr"` **attribute** is what
 actually does the work there; keep the CSS property as well for Chromium
 and browsers. See the measured cases in `pdf-output.md`.
@@ -237,7 +237,7 @@ RLM only for a leftover end-of-sentence period.
   title is an English isolate. A numbered English title is **one** isolate:
   `<h2><span dir="ltr">3.1 The OpenStack service</span>ها</h2>`,
   never `3.1` in one span and the title in another. Two spans reverse on
-  the page; WeasyPrint also packs a lone LTR heading to the left unless
+  the page; an HTML renderer can also pack a lone LTR heading to the left unless
   the heading has `text-align: right` (the HTML template sets that).
 - Lists inherit RTL from `body`. Isolate LTR items or fragments per item.
 - Table captions are RTL (`جدول 2. …`). Isolate the number: `جدول <span dir="ltr">2</span>.`
@@ -252,7 +252,7 @@ RLM only for a leftover end-of-sentence period.
   (`transform: scaleX(-1)` is forbidden). Center it on the page
   (`margin-inline: auto`); a block-level LTR image otherwise sits on the
   physical left. Width/height follow the artwork aspect. Flatten PNG alpha
-  onto white before the print build (`scripts/prepare-figures.py`);
+  onto white before the print build (`revayat-scientific figures`);
   engines composite leftover alpha onto black. Never embed a full source
   page as the figure.
 
@@ -292,7 +292,7 @@ Never reverse English letter order by hand. Never rewrite `(Adam)` as
 
 ## Self-check
 
-0. Run `scripts/check-fa.py --level <level> --terms terms.tsv --manifest manifest.txt --strict` on the source file
+0. Run `revayat-scientific lint --level <level> --terms terms.tsv --manifest manifest.txt --strict` on the source file
    and clear every error. Steps 1–6 are the part it cannot see.
 1. Open the HTML file or a rasterized PDF page, not the chat transcript
    and not `pdftotext` alone.

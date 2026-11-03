@@ -3,14 +3,14 @@ name: revayat-scientific
 description: Translate scientific papers, theses, scholarly books and technical documentation from any source language into accurate Persian, with source-language review and natural scholarly register. Preserve claims, equations, citations, page dimensions and image fidelity; deliver editable sources and a verified PDF. Use for scientific Persian translation or review (فارسی).
 license: GPL-3.0-or-later
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, Agent, AskUserQuestion
-metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"Python 3.11+","dependencies":"See requirements.txt and the bundled document/renderer references"}
+metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"native Rust executable 2.0.0","dependencies":"Optional native render/verification tools; see references/pdf-output.md"}
 ---
 
 # Revayat Scientific — scientific documents into Persian
 
 Follow the nine stages below in order. Each stage states what to run or read,
 what to record and the condition for continuing. The agent reads and translates;
-the scripts handle files and mechanical checks.
+the native Rust executable handles files and mechanical checks.
 
 Resolve once:
 
@@ -18,13 +18,14 @@ Resolve once:
   `${CLAUDE_PLUGIN_ROOT}/skills/revayat-scientific`.
 - `WORK` — this document's working directory. Keep original sources and review
   records there, outside the installed skill.
-- `PY` — a working Python 3.11+ interpreter. Prefer the project's virtual
-  environment; use `python3` on Unix or `python` / the resolved interpreter on Windows.
+- `REVAYAT` — the native executable: `$SKILL_DIR/bin/revayat-scientific` on Unix,
+  or `$SKILL_DIR/bin/revayat-scientific.exe` on Windows. For a source plugin checkout,
+  build with `cargo build --locked --release --workspace --bins` and resolve `target/release`.
 - `LEVEL` — `journal` for papers and theses; `system-docs` for technical books,
   tutorials and operational references. Carry the same value through all checks.
 - `OUTPUT` — the user's requested directory, otherwise `$HOME/Documents/books`.
 
-Commands use `"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" <stage>`.
+Commands use `"$REVAYAT" <stage>`.
 In PowerShell put `&` before the quoted executable. Quote every path.
 
 ---
@@ -83,6 +84,8 @@ workflow is complete.
 
 ---
 
+Native diagnostic logs are separate from that translation record. The CLI writes content-free UTC operation records to `./logs`; `REVAYAT_LOG_DIR` selects another location and `REVAYAT_LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING` or `ERROR`. Records contain command/exit categories, exit code and duration, without arguments, tool output or private paths. Keep unresolved recovery journals local.
+
 ## Step 1 — Check the tools
 
 Initialize the translation log before the first operation and record this check.
@@ -98,22 +101,22 @@ translation, review or correction. If the host cannot spawn subagents, disclose
 that and continue sequentially.
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" doctor
+"$REVAYAT" doctor
 ```
 
-The report uses `yes` / `NO` entries, not a JSON readiness field.
+The report is JSON and records native tool discovery. Availability does not prove an actual render or effective containment.
 
 | Report | Decision |
 | --- | --- |
-| Python does not run | Resolve a Python 3.11+ interpreter before continuing |
-| Pillow or PyMuPDF missing | Install the required packages with user approval for stages that need them |
-| Local Linux Docker/Podman toolchain image and same-Python PyMuPDF ready | TeX output is available through the isolated toolchain; native XeLaTeX alone is not readiness |
-| Edge / Chrome / WeasyPrint available | HTML rendering is available when selected |
+| Native executable does not run | Obtain/build the executable for this operating system before continuing |
+| Native document helper unavailable | Verify the executable and use `--help` for supported operations |
+| Local Linux Docker/Podman toolchain image with effective resource controls ready | TeX output is available through the isolated toolchain; native XeLaTeX alone is not readiness |
+| Sandboxed Edge / Chrome / Chromium available | HTML rendering is available when selected |
 | No PDF engine | Text work can continue; PDF delivery remains unperformed |
 | No Persian font | Obtain a suitable font before rendering |
-| Poppler or PyMuPDF unavailable | PDF verification cannot be claimed complete |
+| Poppler unavailable | PDF verification cannot be claimed complete |
 
-Use `requirements.txt` for the Python dependencies. Read
+Read the native tool table and build instructions in
 [pdf-output.md](references/pdf-output.md) when selecting fonts or a renderer.
 The helpers do not install prerequisites automatically.
 
@@ -184,7 +187,7 @@ For reviewed extracted text, `term-brief` selects only matching approved ledger
 rows and records source/ledger hashes; inspect ambiguous candidates before use:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" term-brief "$WORK/source/part-01.txt" --terms "$WORK/terms.tsv" --language <source-language> > "$WORK/term-brief-01.json"
+"$REVAYAT" term-brief "$WORK/source/part-01.txt" --terms "$WORK/terms.tsv" --language <source-language> > "$WORK/term-brief-01.json"
 ```
 
 ## Step 4 — Prepare figures and document objects
@@ -195,9 +198,9 @@ improve low-quality images through its ordered, evidence-preserving procedure.
 For PDF crops, inspect the source page and create a figure map before running:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" crop "$WORK/source/paper.pdf" --out "$WORK/figures" --map "$WORK/figures-map.tsv" --dpi 300
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" figures "$WORK/figures"
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" figures "$WORK/figures" --check
+"$REVAYAT" crop "$WORK/source/paper.pdf" --out "$WORK/figures" --map "$WORK/figures-map.tsv" --dpi 300
+"$REVAYAT" figures "$WORK/figures"
+"$REVAYAT" figures "$WORK/figures" --check
 ```
 
 Compare every crop with the source. A dark figure is not automatically an inverted
@@ -279,7 +282,7 @@ punctuation and complete LTR clusters.
 Lint the assembled document:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
+"$REVAYAT" lint "$WORK/doc.tex" --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --strict
 ```
 
 For a separate part, use a manifest scoped to the figures expected in that part;
@@ -303,11 +306,11 @@ Read [pdf-output.md](references/pdf-output.md). Carry the selected level and out
 directory into the build:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" build "$WORK/doc.tex" article --level "$LEVEL" --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt" --output-dir "$OUTPUT" --verify
+"$REVAYAT" build "$WORK/doc.tex" --out "$OUTPUT/article.pdf" --engine tex --level "$LEVEL" --verify --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt"
 ```
 
 The build checks the source before replacing the delivered PDF. Verification
-checks page count, embedded fonts, sample rasters and PyMuPDF text extraction.
+checks page count, embedded fonts, sample rasters and native Poppler text extraction.
 It does not replace the agent's visual inspection.
 
 | Result | Action |
@@ -333,10 +336,10 @@ PPI and improvement evidence; `--verify` does not automate these source comparis
 The standalone extraction check is:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" text-order "$OUTPUT/article.pdf" --source "$WORK/doc.tex"
+"$REVAYAT" text-order "$OUTPUT/article.pdf" --source "$WORK/doc.tex"
 ```
 
-It compares NFKC-normalized source phrases with PyMuPDF extraction. Report its
+It compares NFKC-normalized source phrases with native Poppler extraction. Report its
 `logical`, `visual` or `inconclusive` result; it does not guarantee every
 viewer's clipboard behavior. A zero exit alone does not make an inconclusive
 standalone result conclusive.

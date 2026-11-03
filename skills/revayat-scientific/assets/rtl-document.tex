@@ -1,5 +1,5 @@
 % !TEX program = xelatex
-% Scientific Persian print template. Compile with scripts/build-pdf.sh.
+% Scientific Persian print template. Build with revayat-scientific build --engine tex --verify.
 %
 % For a book-length source switch the class to `report` (or `book`) and use
 % \chapter; everything else below is unchanged.
@@ -24,7 +24,7 @@
 
 % Automatic builds run in the isolated Linux toolchain on every host OS.
 % Prefer the verified static Regular/Bold pair in the job's fonts/ directory;
-% fetch-vazirmatn supplies both faces, their license and version provenance.
+% revayat-scientific fonts supplies both faces, their license and version provenance.
 % Otherwise use installed container fonts, then verify the actual PDF fonts.
 \IfFontExistsTF{fonts/Vazirmatn-Regular.ttf}{%
   \settextfont[Path=fonts/,BoldFont=Vazirmatn-Bold.ttf,
@@ -102,7 +102,7 @@
 
 % Figures: the source files, unmirrored, in source order. Wrap in LTR so
 % xepersian cannot invert or paint the artwork black. Flatten PNG alpha
-% first (scripts/prepare-figures.py).
+% first (revayat-scientific figures).
 % \begin{figure}[ht]
 % \centering
 % Crop to the artwork, never a full source-page raster:

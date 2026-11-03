@@ -74,7 +74,7 @@ figure**, not the whole source page around it.
    1.1`) appears — do not guess an offset from printed page numbers.
 
    ```bash
-   scripts/crop-source-figures.py source/doc.pdf --out figures/artwork \
+   revayat-scientific crop source/doc.pdf --out figures/artwork \
        --map figures-map.tsv --cover --author-page 18 --dpi 300
    ```
 
@@ -94,23 +94,23 @@ figure**, not the whole source page around it.
 5. **Flatten before the print build:**
 
    ```bash
-   scripts/prepare-figures.py figures/artwork --check
+   revayat-scientific figures figures/artwork --check
    ```
 
-   `--check` fails on leftover alpha (WeasyPrint/Cairo and xepersian paint
+   `--check` fails on leftover alpha (HTML renderers and xepersian paint
    it onto black) and on mostly-black dumps. After confirming against the
    source page that a dark dump is inverted, not a real dark photograph:
 
    ```bash
-   scripts/prepare-figures.py figures/artwork --invert-dark
+   revayat-scientific figures figures/artwork --invert-dark
    ```
 
 ```bash
 pdfimages -png -p source/doc.pdf figures/img      # last-resort rasters
 pdftoppm -png -r 150 -f 12 -l 12 source/doc.pdf /tmp/page-12  # check only
-scripts/crop-source-figures.py source/doc.pdf --out figures/artwork --map figures-map.tsv
-scripts/prepare-figures.py figures/artwork
-scripts/prepare-figures.py figures/artwork --check
+revayat-scientific crop source/doc.pdf --out figures/artwork --map figures-map.tsv
+revayat-scientific figures figures/artwork
+revayat-scientific figures figures/artwork --check
 ```
 
 The checker fails (`full-page-figure`) if the translation still references
@@ -128,7 +128,7 @@ is a missing section. It costs a minute and it is the only way to answer
 
 ```bash
 ls figures/ | sed 's/.*\///' > manifest.txt
-scripts/check-fa.py doc.tex --level <level> --terms terms.tsv --manifest manifest.txt --strict
+revayat-scientific lint doc.tex --level <level> --terms terms.tsv --manifest manifest.txt --strict
 ```
 
 The checker reports any manifest image that never made it into the

@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "public_test_count": 37,
+  "origin": "The 37 standalone scientific checks formerly invoked by tests/upstream.sh, additional to the 583 public Python test IDs.",
+  "tests": [
+    {
+      "id": "upstream-01::good_tex_lints_clean",
+      "original_location": "tests/upstream.sh:78",
+      "original_contract": "good tex lints clean"
+    },
+    {
+      "id": "upstream-02::good_html_lints_clean",
+      "original_location": "tests/upstream.sh:79",
+      "original_contract": "good html lints clean"
+    },
+    {
+      "id": "upstream-03::journal_tex_lints_clean_at_journal_level",
+      "original_location": "tests/upstream.sh:80",
+      "original_contract": "journal tex lints clean at journal level"
+    },
+    {
+      "id": "upstream-04::shipped_tex_template_has_no_errors",
+      "original_location": "tests/upstream.sh:84",
+      "original_contract": "shipped tex template has no errors"
+    },
+    {
+      "id": "upstream-05::shipped_html_template_has_no_errors",
+      "original_location": "tests/upstream.sh:85",
+      "original_contract": "shipped html template has no errors"
+    },
+    {
+      "id": "upstream-06::bad_tex_reports_all_original_rule_ids",
+      "original_location": "tests/upstream.sh:87",
+      "original_contract": "bad tex reports all original rule ids"
+    },
+    {
+      "id": "upstream-07::bad_html_reports_all_original_rule_ids",
+      "original_location": "tests/upstream.sh:93",
+      "original_contract": "bad html reports all original rule ids"
+    },
+    {
+      "id": "upstream-08::journal_terms_are_forbidden_at_default_system_docs_level",
+      "original_location": "tests/upstream.sh:100",
+      "original_contract": "journal terms are forbidden at default system docs level"
+    },
+    {
+      "id": "upstream-09::extra_pairs_merge_instead_of_replacing_house_terms",
+      "original_location": "tests/upstream.sh:110",
+      "original_contract": "extra pairs merge instead of replacing house terms"
+    },
+    {
+      "id": "upstream-10::strict_requires_terms_ledger",
+      "original_location": "tests/upstream.sh:123",
+      "original_contract": "strict requires terms ledger"
+    },
+    {
+      "id": "upstream-11::strict_requires_figure_manifest",
+      "original_location": "tests/upstream.sh:133",
+      "original_contract": "strict requires figure manifest"
+    },
+    {
+      "id": "upstream-12::incomplete_keep_english_rows_fail_closed",
+      "original_location": "tests/upstream.sh:146",
+      "original_contract": "incomplete keep english rows fail closed"
+    },
+    {
+      "id": "upstream-13::job_ledger_calques_are_reported",
+      "original_location": "tests/upstream.sh:160",
+      "original_contract": "job ledger calques are reported"
+    },
+    {
+      "id": "upstream-14::deprecated_ledger_forms_are_forbidden",
+      "original_location": "tests/upstream.sh:173",
+      "original_contract": "deprecated ledger forms are forbidden"
+    },
+    {
+      "id": "upstream-15::job_ledger_keeps_house_term_pairs",
+      "original_location": "tests/upstream.sh:183",
+      "original_contract": "job ledger keeps house term pairs"
+    },
+    {
+      "id": "upstream-16::manifest_reports_figures_missing_from_translation",
+      "original_location": "tests/upstream.sh:193",
+      "original_contract": "manifest reports figures missing from translation"
+    },
+    {
+      "id": "upstream-17::figure_check_rejects_unflattened_alpha",
+      "original_location": "tests/upstream.sh:235",
+      "original_contract": "figure check rejects unflattened alpha"
+    },
+    {
+      "id": "upstream-18::figure_preparation_flattens_alpha_to_white_rgb",
+      "original_location": "tests/upstream.sh:244",
+      "original_contract": "figure preparation flattens alpha to white rgb"
+    },
+    {
+      "id": "upstream-19::build_requires_terms_before_engine_selection",
+      "original_location": "tests/upstream.sh:256",
+      "original_contract": "build requires terms before engine selection"
+    },
+    {
+      "id": "upstream-20::crop_public_command_help_works",
+      "original_location": "tests/upstream.sh:270",
+      "original_contract": "crop public command help works"
+    },
+    {
+      "id": "upstream-21::pages_public_command_help_works",
+      "original_location": "tests/upstream.sh:279",
+      "original_contract": "pages public command help works"
+    },
+    {
+      "id": "upstream-22::build_uses_actual_isolated_controller",
+      "original_location": "tests/upstream.sh:352",
+      "original_contract": "build uses actual isolated controller"
+    },
+    {
+      "id": "upstream-23::unavailable_explicit_container_preserves_delivery",
+      "original_location": "tests/upstream.sh:353",
+      "original_contract": "unavailable explicit container preserves delivery"
+    },
+    {
+      "id": "upstream-24::failed_controller_cannot_deliver_stale_working_pdf",
+      "original_location": "tests/upstream.sh:354",
+      "original_contract": "failed controller cannot deliver stale working pdf"
+    },
+    {
+      "id": "upstream-25::failed_controller_cannot_deliver_valid_unsealed_pdf",
+      "original_location": "tests/upstream.sh:355",
+      "original_contract": "failed controller cannot deliver valid unsealed pdf"
+    },
+    {
+      "id": "upstream-26::truncated_controller_output_is_not_publishable",
+      "original_location": "tests/upstream.sh:356",
+      "original_contract": "truncated controller output is not publishable"
+    },
+    {
+      "id": "upstream-27::lint_gate_prevents_compiler_execution_and_delivery",
+      "original_location": "tests/upstream.sh:359",
+      "original_contract": "lint gate prevents compiler execution and delivery"
+    },
+    {
+      "id": "upstream-28::persian_font_chain_has_actual_static_regular_and_bold_faces",
+      "original_location": "tests/upstream.sh:407",
+      "original_contract": "persian font chain has actual static regular and bold faces"
+    },
+    {
+      "id": "upstream-29::latin_font_contract_has_western_ascii_glyphs",
+      "original_location": "tests/upstream.sh:408",
+      "original_contract": "latin font contract has western ascii glyphs"
+    },
+    {
+      "id": "upstream-30::monospace_font_contract_renders_actual_code",
+      "original_location": "tests/upstream.sh:409",
+      "original_contract": "monospace font contract renders actual code"
+    },
+    {
+      "id": "upstream-31::latin_font_selection_keeps_western_and_persian_digits_distinct",
+      "original_location": "tests/upstream.sh:429",
+      "original_contract": "latin font selection keeps western and persian digits distinct"
+    },
+    {
+      "id": "upstream-32::monospace_selection_uses_embedded_code_font",
+      "original_location": "tests/upstream.sh:430",
+      "original_contract": "monospace selection uses embedded code font"
+    },
+    {
+      "id": "upstream-33::local_static_font_files_precede_family_name_lookup",
+      "original_location": "tests/upstream.sh:440",
+      "original_contract": "local static font files precede family name lookup"
+    },
+    {
+      "id": "upstream-34::native_diagnostics_remain_utf8_under_non_utf8_locale",
+      "original_location": "tests/upstream.sh:449",
+      "original_contract": "native diagnostics remain utf8 under non utf8 locale"
+    },
+    {
+      "id": "upstream-35::text_order_reports_logical_dump",
+      "original_location": "tests/upstream.sh:466",
+      "original_contract": "text order reports logical dump"
+    },
+    {
+      "id": "upstream-36::text_order_rejects_visual_dump",
+      "original_location": "tests/upstream.sh:477",
+      "original_contract": "text order rejects visual dump"
+    },
+    {
+      "id": "upstream-37::text_order_rejects_visual_word_order",
+      "original_location": "tests/upstream.sh:487",
+      "original_contract": "text order rejects visual word order"
+    }
+  ]
+}
