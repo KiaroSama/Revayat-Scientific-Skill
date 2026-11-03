@@ -28,40 +28,35 @@ class PrivateCreatorTest(unittest.TestCase):
         security = object()
         scratch = Path('E:/')
         names = {8: root_name, 9: root_name + 'private-creator'}
-        for handle in (12, 16, 20, 24):
+        for handle in (12, 20, 24):
             names[handle] = root_name + 'private-creator\\authority-protected'
 
         def create(path, access, share, descriptor, disposition, flags, template):
             creates.append((path, access, share, descriptor, disposition, flags, template))
             role = ({str(scratch): 'root', str(scratch / 'private-creator'): 'parent'}.get(path, 'pin')
-                    if access == 0x80 else {0xC0000000: 'create', 0x10080: 'delete'}[access])
+                    if access == 0x80 else {0xC00C0000: 'create', 0x10080: 'delete'}[access])
             events.append(role)
             if fault == role:
                 current_error[0] = 5
                 return invalid
             return {'root': 8, 'parent': 9, 'create': 12, 'pin': 20, 'delete': 24}[role]
 
-        def reopen(*arguments):
-            events.append('reopen')
-            self.assertEqual(arguments, (12, 0xC00C0000, 3, 0))
-            return invalid if fault == 'reopen' else 16
-
         def info(handle, kind, output, size):
             events.append(('info', handle, kind))
-            if fault == 'query' and handle == 16:
+            if fault == 'query' and handle == 12:
                 return 0
             if kind == 18:
                 self.assertEqual(size, 24)
-                output._obj.volume = identity[0] + (1 if (fault == 'volume' and handle == 16 or
+                output._obj.volume = identity[0] + (1 if (fault == 'volume' and handle == 12 or
                                                         fault == 'parent-volume' and handle == 9) else 0)
                 output._obj.identifier[:] = identity[1]
-                if fault in ('identity', 'cleanup-identity') and handle == (16 if fault == 'identity' else 24):
+                if fault in ('identity', 'cleanup-identity') and handle == (20 if fault == 'identity' else 24):
                     output._obj.identifier[0] ^= 1
             else:
                 self.assertEqual((kind, size), (9, 8))
                 output._obj.attributes = 0x10 if handle in (8, 9) else 0x80
                 output._obj.tag = 0
-                if fault == 'reparse' and handle == 16 or fault == 'parent-reparse' and handle == 9:
+                if fault == 'reparse' and handle == 12 or fault == 'parent-reparse' and handle == 9:
                     output._obj.attributes |= 0x400
                     output._obj.tag = 0xA000000C
             return 1
@@ -70,25 +65,25 @@ class PrivateCreatorTest(unittest.TestCase):
             if (capacity, flags) != (512, 2):
                 raise RuntimeError('unexpected fixed name-query contract')
             events.append(('name', handle, flags))
-            value = names[handle] + ('-foreign' if (fault == 'name' and handle == 16 or
+            value = names[handle] + ('-foreign' if (fault == 'name' and handle == 12 or
                                                    fault == 'parent-name' and handle == 9) else '')
-            if fault == 'different-device' and handle == 16:
-                value = '\\Device\\HarddiskVolume13\\authority-protected'
+            if fault == 'different-device' and handle == 12:
+                value = '\\Device\\HarddiskVolume13\\private-creator\\authority-protected'
             output.value = value
-            if fault in ('long-name', 'zero-name') and handle == 16 or fault in ('root-long', 'root-zero') and handle == 8:
+            if fault in ('long-name', 'zero-name') and handle == 12 or fault in ('root-long', 'root-zero') and handle == 8:
                 return 0 if fault in ('zero-name', 'root-zero') else 512
             return len(value)
 
         def query(handle, kind, output, capacity, returned):
-            self.assertEqual((kind, capacity), (0, 56))
+            self.assertEqual((handle, kind, capacity), (12, 0, 56))
             returned._obj.value = 56
-            output[0] = 2 if fault == 'inherit' and handle == 16 else 0
-            output[1] = (0x12019F if handle == 12 else 0x1E019F)
-            if fault == 'grant' and handle == 16:
+            output[0] = 2 if fault == 'inherit' else 0
+            output[1] = 0x1E019F
+            if fault == 'grant':
                 output[1] |= 0x10000
-            if fault == 'basic-length' and handle == 16:
+            if fault == 'basic-length':
                 returned._obj.value = 55
-            return -1073741820 if fault == 'basic-status' and handle == 16 else 0
+            return -1073741820 if fault == 'basic-status' else 0
 
         def close(handle):
             events.append(('close', handle))
@@ -106,7 +101,7 @@ class PrivateCreatorTest(unittest.TestCase):
             return fault != 'dispose'
 
         kernel = SimpleNamespace(**{key: NativeCall(value) for key, value in {
-            'CreateFileW': create, 'ReOpenFile': reopen, 'GetFileInformationByHandleEx': info,
+            'CreateFileW': create, 'GetFileInformationByHandleEx': info,
             'GetFinalPathNameByHandleW': name, 'GetFileType': lambda _handle: 1,
             'CloseHandle': close, 'GetFileAttributesW': attributes,
             'SetFileInformationByHandle': dispose}.items()})
@@ -127,22 +122,22 @@ class PrivateCreatorTest(unittest.TestCase):
             self.assertEqual(fixture.original, 12)
             self.assertNotIn(('info', 12, 9), events)
             fixture.bind_original()
-            fixture.reopen()
-            self.assertEqual(fixture.qualify(), 16)
+            self.assertEqual(fixture.qualify(), 12)
             events.append('controls')
-        self.assertEqual(closed, [12, 16, 24, 20, 9, 8])
+        self.assertEqual(closed, [12, 24, 20, 9, 8])
         self.assertEqual([call[1:] for call in creates], [
             (0x80, 7, None, 3, 0x02200000, None),
             (0x80, 3, None, 3, 0x02200000, None),
-            (0xC0000000, 3, security, 1, 0x80, None),
+            (0xC00C0000, 3, security, 1, 0x80, None),
             (0x80, 7, None, 3, 0x00200000, None),
             (0x10080, 3, None, 3, 0x00200000, None)])
-        self.assertLess(events.index(('close', 16)), events.index('delete'))
+        self.assertLess(events.index(('close', 12)), events.index('delete'))
         self.assertLess(events.index('controls'), events.index('dispose'))
         self.assertEqual(events[-1], 'absent')
+        self.assertNotIn('ReOpenFile', (WINDOWS / 'PrivateCreator.py').read_text(encoding='utf-8'))
 
     def test_acquisition_and_qualification_failures_never_reach_controls(self):
-        for fault in ('root', 'parent', 'parent-volume', 'parent-name', 'parent-reparse', 'create', 'pin', 'reopen', 'query', 'volume', 'identity',
+        for fault in ('root', 'parent', 'parent-volume', 'parent-name', 'parent-reparse', 'create', 'pin', 'query', 'volume', 'identity',
                       'reparse', 'name', 'long-name', 'inherit', 'grant', 'basic-length',
                       'basic-status', 'collision', 'absence', 'different-device', 'zero-name', 'root-long', 'root-zero'):
             with self.subTest(fault=fault):
@@ -152,16 +147,12 @@ class PrivateCreatorTest(unittest.TestCase):
                     with scope['PrivateFile'](scratch, security) as fixture:
                         fixture.create()
                         fixture.bind_original()
-                        fixture.reopen()
                         fixture.qualify()
                         reached()
                 reached.assert_not_called()
                 self.assertEqual(len(closed), len(set(closed)))
                 if fault in ('collision', 'absence', 'create', 'pin'):
                     self.assertNotIn('dispose', events)
-                if fault == 'reopen':
-                    self.assertIn('dispose', events)
-                    self.assertNotIn(16, closed)
 
     def test_creation_and_binding_fail_at_distinct_boundaries(self):
         for fault, expected_stage in (('create', 'create'), ('pin', 'bind')):
@@ -175,16 +166,15 @@ class PrivateCreatorTest(unittest.TestCase):
                         self.assertEqual(fixture.original, 12)
                         stage = 'bind'
                         fixture.bind_original()
-                        stage = 'reopen'
-                        fixture.reopen()
+                        stage = 'qualify'
+                        fixture.qualify()
                 self.assertEqual(stage, expected_stage)
                 self.assertEqual(caught.exception.winerror, 5)
-                self.assertNotIn('reopen', events)
                 self.assertNotIn('dispose', events)
                 self.assertEqual(closed, [9, 8] if fault == 'create' else [12, 9, 8])
 
     def test_original_and_independent_cleanup_failures_are_retained(self):
-        for close_faults in ((12,), (16,), (12, 16), (24, 20, 9, 8)):
+        for close_faults in ((12,), (20,), (24, 20, 9, 8)):
             with self.subTest(close_faults=close_faults):
                 scope, scratch, security, events, closed, _ = self.fixture(close_faults=close_faults)
                 original = ValueError('private original')
@@ -193,16 +183,13 @@ class PrivateCreatorTest(unittest.TestCase):
                     with scope['PrivateFile'](scratch, security) as fixture:
                         fixture.create()
                         fixture.bind_original()
-                        fixture.reopen()
                         fixture.qualify()
                         action()
                 self.assertIs(caught.exception.exceptions[0], original)
                 self.assertEqual(len(caught.exception.exceptions), 1 + len(close_faults))
-                self.assertIn(12, closed)
-                self.assertIn(16, closed)
-                self.assertIn(20, closed)
-                self.assertIn(8, closed)
-                if 12 in close_faults or 16 in close_faults:
+                self.assertTrue({12, 20, 9, 8}.issubset(closed))
+                self.assertEqual(len(closed), len(set(closed)))
+                if 12 in close_faults:
                     self.assertNotIn('delete', events)
 
     def test_cleanup_refuses_foreign_identity_and_keeps_all_close_attempts(self):
@@ -213,9 +200,8 @@ class PrivateCreatorTest(unittest.TestCase):
                     with scope['PrivateFile'](scratch, security) as fixture:
                         fixture.create()
                         fixture.bind_original()
-                        fixture.reopen()
                         fixture.qualify()
-                self.assertTrue({12, 16, 20, 8}.issubset(closed))
+                self.assertTrue({12, 20, 9, 8}.issubset(closed))
                 if fault != 'dispose':
                     self.assertNotIn('dispose', events)
 
@@ -226,8 +212,7 @@ class PrivateCreatorTest(unittest.TestCase):
             with scope['PrivateFile'](scratch, security) as fixture:
                 fixture.create()
                 fixture.bind_original()
-                fixture.reopen()
-                self.assertEqual(fixture.qualify(), 16)
+                self.assertEqual(fixture.qualify(), 12)
             self.assertTrue(all(event[2] == 2 for event in events
                                 if type(event) is tuple and event[0] == 'name'))
         invalid = ('\\\\?\\E:\\', '\\\\server\\share\\', '\\Device\\Other1\\', prefix + '\\',
@@ -252,7 +237,7 @@ class PrivateCreatorTest(unittest.TestCase):
             seen = []
             def create(*arguments):
                 seen.append('create')
-                self.assertEqual(arguments, ('fixed-leaf', 0xC0000000, 3, 7, 1, 0x80, None))
+                self.assertEqual(arguments, ('fixed-leaf', 0xC00C0000, 3, 7, 1, 0x80, None))
                 return 12 if code is None else ctypes.c_void_p(-1).value
             def error():
                 seen.append('error')
@@ -297,7 +282,6 @@ class PrivateCreatorTest(unittest.TestCase):
         with scope['PrivateFile'](scratch, security) as fixture:
             fixture.create()
             fixture.bind_original()
-            fixture.reopen()
             fixture.qualify()
         self.assertEqual(creates[1][0], str(scratch / 'private-creator'))
         self.assertEqual(creates[2][0], str(scratch / 'private-creator' / 'authority-protected'))
@@ -309,11 +293,12 @@ class PrivateCreatorTest(unittest.TestCase):
         authority = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
                          and node.name == 'authority_controls')
         source = ast.unparse(authority)
-        for text in ("'D:P(A;;GA;;;' + sid + ')'", 'fixture.create()', 'fixture.bind_original()', 'fixture.reopen()',
+        for text in ("'D:P(A;;GA;;;' + sid + ')'", 'fixture.create()', 'fixture.bind_original()',
                      'handle = fixture.qualify()', 'native_eof_quota(handle, sparse=False)',
                      'native_eof_quota(handle, sparse=True)', 'for owner_name in owners:',
                      "'S-1-5-32-544'", "'S-1-5-21-101-202-303-404'", 'for access in (3221225472, 1073741824, 2):'):
             self.assertIn(text, source)
+        self.assertNotIn('fixture.reopen()', source)
         self.assertNotIn('protected.unlink', source)
 
 

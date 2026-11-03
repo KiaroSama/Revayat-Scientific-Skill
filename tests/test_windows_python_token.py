@@ -440,7 +440,7 @@ class OrdinaryTokenTest(unittest.TestCase):
 
             def create(*arguments):
                 seen.append('create')
-                self.assertEqual(arguments, (str(path), 0xC0000000, 3, security, 1, 0x80, None))
+                self.assertEqual(arguments, (str(path), 0xC00C0000, 3, security, 1, 0x80, None))
                 return 12 if code is None else ctypes.c_void_p(-1).value
 
             def last_error():

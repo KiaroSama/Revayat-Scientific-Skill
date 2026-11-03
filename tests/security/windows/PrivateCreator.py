@@ -24,8 +24,6 @@ def prepare():
             ctypes.sizeof(FileAttributes) == 8, 'private creator requires Windows x64 ABI')
     K.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, P, w.DWORD, w.DWORD, P]
     K.CreateFileW.restype = P
-    K.ReOpenFile.argtypes = [P, w.DWORD, w.DWORD, w.DWORD]
-    K.ReOpenFile.restype = P
     K.GetFileInformationByHandleEx.argtypes = [P, ctypes.c_int, P, w.DWORD]
     K.GetFinalPathNameByHandleW.argtypes = [P, w.LPWSTR, w.DWORD, w.DWORD]
     K.GetFinalPathNameByHandleW.restype = w.DWORD
@@ -54,7 +52,7 @@ def acquired(handle):
 
 
 def private_creator(path, security):
-    return acquired(K.CreateFileW(str(path), 0xC0000000, 3, security, 1, 0x80, None))
+    return acquired(K.CreateFileW(str(path), 0xC00C0000, 3, security, 1, 0x80, None))
 
 
 @contextlib.contextmanager
@@ -88,7 +86,7 @@ class PrivateFile:
         self.scratch = scratch
         self.parent = scratch / 'private-creator'
         self.path, self.security = self.parent / 'authority-protected', security
-        self.root = self.directory = self.original = self.control = self.pin = None
+        self.root = self.directory = self.original = self.pin = None
         self.identity = self.expected_name = None
         self.native = prepare()
         self.ready = False
@@ -161,22 +159,16 @@ class PrivateFile:
         self.identity = self._identity(self.original)
         require(self.identity[0] == self.root_identity[0] and self._name(self.original) == self.expected_name,
                 'private creator original identity differs')
-        self._grant(self.original, 0x12019F)
+        self._grant(self.original, 0x1E019F)
         self.pin = acquired(K.CreateFileW(str(self.path), 0x80, 7, None, 3, 0x00200000, None))
         self._bind(self.pin)
 
-    def reopen(self):
-        require(self.original is not None and self.pin is not None and self.control is None,
-                'private creator reopen is not available')
-        self.control = acquired(K.ReOpenFile(self.original, 0xC00C0000, 3, 0))
-
     def qualify(self):
-        require(self.control is not None, 'private creator control handle is absent')
+        require(self.original is not None and self.pin is not None, 'private creator control binding is absent')
         self._bind(self.original)
-        self._bind(self.control)
         self._bind(self.pin)
-        self._grant(self.control, 0x1E019F)
-        return self.control
+        self._grant(self.original, 0x1E019F)
+        return self.original
 
     def __exit__(self, kind, original, trace):
         failures = []
@@ -193,12 +185,8 @@ class PrivateFile:
         bound = self.pin is not None and self.identity is not None
         if bound:
             bound = attempt(lambda: self._bind(self.pin))
-        closed = True
-        for name in ('original', 'control'):
-            handle = getattr(self, name)
-            setattr(self, name, None)
-            if handle is not None:
-                closed = attempt(lambda: close(handle)) and closed
+        handle, self.original = self.original, None
+        closed = handle is None or attempt(lambda: close(handle))
         removed = False
         if bound and closed:
             deletion = None
