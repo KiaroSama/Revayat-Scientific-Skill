@@ -101,6 +101,10 @@ mod unix {
         );
         drop(scope);
         assert!(path.join("container-invalid.json").is_file());
+        // Deliberate test recovery follows the retention assertion. When this
+        // harness has a parent owner, its intentionally invalid child receipt
+        // must not poison that owner's subsequent real cleanup.
+        std::fs::remove_dir_all(path).unwrap();
     }
 
     #[test]

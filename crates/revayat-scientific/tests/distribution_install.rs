@@ -92,8 +92,9 @@ fn test_separate_git_administration_directory_remains_intact() {
             .args(["init", "--quiet", "--separate-git-dir"])
             .arg(&admin)
             .arg(&f.repo)
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
     let before = d::snapshot(&admin).unwrap();
@@ -106,8 +107,9 @@ fn test_separate_git_administration_directory_remains_intact() {
             .arg("-C")
             .arg(&f.repo)
             .args(["status", "--porcelain"])
-            .status()
+            .output()
             .unwrap()
+            .status
             .success()
     );
 }
