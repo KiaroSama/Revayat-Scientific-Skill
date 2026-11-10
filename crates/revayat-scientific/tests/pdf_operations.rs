@@ -437,7 +437,7 @@ fn test_ocr_preflight_and_overlay_preserve_visible_page() {
     }
     let mut layer = document(1);
     let page = pages(&layer)[0];
-    let mut content = Content::decode(&layer.get_page_content(page).unwrap()).unwrap();
+    let mut content = Content::decode(&layer.get_page_content(page)).unwrap();
     content
         .operations
         .insert(1, Operation::new("Tr", vec![3.into()]));

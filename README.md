@@ -84,6 +84,8 @@ revayat-scientific docx --help
 revayat-scientific pdf --help
 ```
 
+`--engine weasyprint` is accepted as a compatibility spelling for the existing Chromium renderer. It requires the same sandboxed browser and HTML source (a sibling `.html` for TeX inputs), adds no Python dependency, and returns the selected engine identity as `chromium`. CSS support and pagination follow Chromium, so output may differ from WeasyPrint and is not claimed byte-identical.
+
 Use `--help` on each command for its exact schema. Keep job sources, ledgers, figures and translation logs outside the installed skill. Obtain consent before delegating translation to additional agents. Record source language, intended readership, selected terminology level and actual checks in the job log.
 
 | Optional native tool | Required use |

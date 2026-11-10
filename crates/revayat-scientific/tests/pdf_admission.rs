@@ -314,7 +314,7 @@ fn test_shared_resource_identity_and_full_page_boxes_survive() {
         .get(b"Resources")
         .unwrap()
         .clone();
-    let image_stream = d.get_page_content(ids[0]).unwrap();
+    let image_stream = d.get_page_content(ids[0]);
     for (index, id) in ids.into_iter().enumerate() {
         d.change_page_content(id, image_stream.clone()).unwrap();
         let page = d.get_object_mut(id).unwrap().as_dict_mut().unwrap();

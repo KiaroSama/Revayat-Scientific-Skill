@@ -200,14 +200,16 @@ fn test_late_raster_failure_preserves_entire_previous_preview_batch() -> Result<
 #[test]
 fn test_explicit_engine_discovery_does_not_probe_other_backends() -> Result<()> {
     let f = Fixture::new()?;
-    let selection = build::select_source(
-        &f.source,
-        Some("chromium"),
-        Some(env!("CARGO_BIN_EXE_revayat-test-tool")),
-    )?;
-    assert_eq!(selection.engine, "chromium");
-    assert!(selection.container.is_none());
-    assert!(selection.browser.unwrap().is_absolute());
+    for engine in ["chromium", "weasyprint"] {
+        let selection = build::select_source(
+            &f.source,
+            Some(engine),
+            Some(env!("CARGO_BIN_EXE_revayat-test-tool")),
+        )?;
+        assert_eq!(selection.engine, "chromium");
+        assert!(selection.container.is_none());
+        assert!(selection.browser.unwrap().is_absolute());
+    }
     Ok(())
 }
 #[test]

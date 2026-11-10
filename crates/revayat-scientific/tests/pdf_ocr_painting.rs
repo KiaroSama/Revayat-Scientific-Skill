@@ -11,7 +11,7 @@ use std::fs;
 fn layer(paint: Option<&str>) -> lopdf::Document {
     let mut d = document(1);
     let page = pages(&d)[0];
-    let mut content = Content::decode(&d.get_page_content(page).unwrap()).unwrap();
+    let mut content = Content::decode(&d.get_page_content(page)).unwrap();
     for operation in &mut content.operations {
         if operation.operator == "Tj" {
             operation.operands = vec![Object::string_literal("OCRMarker Untouched source 1")];

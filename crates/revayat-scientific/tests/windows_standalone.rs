@@ -98,32 +98,6 @@ impl Fixture {
     }
 }
 
-struct Apartment;
-impl Apartment {
-    fn initialize() -> Result<Self> {
-        // SAFETY: this test thread owns the matching uninitialization below.
-        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.ok()?;
-        Ok(Self)
-    }
-}
-impl Drop for Apartment {
-    fn drop(&mut self) {
-        unsafe { CoUninitialize() };
-    }
-}
-struct TaskString(PWSTR);
-impl Drop for TaskString {
-    fn drop(&mut self) {
-        unsafe { CoTaskMemFree(Some(self.0.0.cast())) };
-    }
-}
-fn allocated_text(value: PWSTR) -> Result<String> {
-    let owned = TaskString(value);
-    ensure!(!owned.0.is_null(), "OPC returned a null string");
-    // SAFETY: OPC returns a terminated CoTaskMem string; ownership stays live.
-    Ok(unsafe { owned.0.to_string() }?)
-}
-
 fn authored_case_package(path: &Path) -> Result<()> {
     let mut archive = ZipWriter::new(fs::File::create(path)?);
     let members:[(&str,&[u8]);5]=[
@@ -141,86 +115,83 @@ fn authored_case_package(path: &Path) -> Result<()> {
     Ok(())
 }
 
+const OPC_CASE: &str = "native_opc_consumer_recognizes_case_variant_relationship_part";
+const OPC_CHILD: &str = "REVAYAT_TEST_OPC_CHILD_PACKAGE";
+const OPC_HANG: &str = "REVAYAT_TEST_OPC_CHILD_HANG";
+
+fn opc_command(path: &Path) -> Result<CommandSpec> {
+    let mut command = CommandSpec::new(std::env::current_exe()?);
+    command.args = ["--exact", OPC_CASE, "--nocapture", "--quiet"]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    command.env.insert(OPC_CHILD.into(), path.as_os_str().into());
+    command.env_remove.push(OPC_HANG.into());
+    command.timeout = Duration::from_secs(10);
+    command.max_output = 65536;
+    Ok(command)
+}
+
+#[test]
+fn opc_consumer_deadline_terminates_and_reaps_owned_tree() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let pid_path = temp.path().join("owned-child.pid");
+    let mut command = opc_command(&pid_path)?;
+    assert_eq!(command.timeout, Duration::from_secs(10));
+    assert_eq!(command.args[0], "--exact");
+    assert_eq!(command.args[1], OPC_CASE);
+    command.env.insert(OPC_HANG.into(), "1".into());
+    command.timeout = Duration::from_secs(1);
+    let error = runtime::run(&command).expect_err("nonreturning consumer must time out");
+    ensure!(
+        error.downcast_ref::<runtime::DeadlineExceeded>().is_some(),
+        "consumer did not reach its owned deadline: {error:#}"
+    );
+    let pid = fs::read_to_string(pid_path)?.parse::<u32>()?;
+    ensure!(
+        revayat_scientific::windows_security::native::process_exited(pid)?,
+        "timed-out consumer left its descendant running"
+    );
+    temp.close()?;
+    Ok(())
+}
+
 #[test]
 fn native_opc_consumer_recognizes_case_variant_relationship_part() -> Result<()> {
+    if let Some(path) = std::env::var_os(OPC_CHILD) {
+        if std::env::var_os(OPC_HANG).is_some() {
+            use std::os::windows::process::CommandExt;
+            use std::process::{Command, Stdio};
+            let mut child = Command::new(env!("CARGO_BIN_EXE_revayat-test-tool"))
+                .arg("silent")
+                .stdin(Stdio::null())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .creation_flags(0x08000000)
+                .spawn()?;
+            fs::write(&path, child.id().to_string())?;
+            child.wait()?;
+            anyhow::bail!("nonreturning OPC fixture unexpectedly exited");
+        }
+        consume_opc(Path::new(&path))?;
+        // Suppress libtest's result trailer only after the real COM consumer
+        // returned and dropped every apartment/interface/string owner.
+        let mut stdout = std::io::stdout().lock();
+        stdout.write_all(b"OPC_CASE_RELATIONSHIP_RECOGNIZED\n")?;
+        stdout.flush()?;
+        std::process::exit(0);
+    }
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("case-variant.docx");
     authored_case_package(&path)?;
     let before = file_identity(&path, None)?;
-    let _apartment = Apartment::initialize()?;
-    let name = path
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
-    // SAFETY: official typed, in-process Windows OPC APIs; live UTF-16 filename
-    // and an authored bounded package. No Revayat ZIP/XML reader is used here.
-    unsafe {
-        let factory: IOpcFactory = CoCreateInstance(&OpcFactory, None, CLSCTX_INPROC_SERVER)?;
-        let stream = factory.CreateStreamOnFile(
-            PCWSTR(name.as_ptr()),
-            OPC_STREAM_IO_READ,
-            std::ptr::null(),
-            FILE_ATTRIBUTE_NORMAL.0,
-        )?;
-        let package = factory.ReadPackageFromStream(&stream, OPC_READ_DEFAULT)?;
-        let parts = package.GetPartSet()?;
-        let document_uri = factory.CreatePartUri(w!("/word/document.xml"))?;
-        let document = parts.GetPart(&document_uri)?;
-        let relationships = document.GetRelationshipSet()?.GetEnumerator()?;
-        ensure!(
-            relationships.MoveNext()?.as_bool(),
-            "case-variant OPC relationship was not recognized"
-        );
-        let relationship = relationships.GetCurrent()?;
-        ensure!(
-            !relationships.MoveNext()?.as_bool(),
-            "case-variant OPC relationship was not recognized exactly once"
-        );
-        ensure!(
-            allocated_text(relationship.GetId()?)? == "rIdControlled",
-            "OPC relationship id differs"
-        );
-        ensure!(
-            allocated_text(relationship.GetRelationshipType()?)?
-                == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk",
-            "OPC relationship type differs"
-        );
-        ensure!(
-            relationship.GetTargetMode()? == OPC_URI_TARGET_MODE_INTERNAL,
-            "OPC target is external"
-        );
-        let resolved = relationship
-            .GetSourceUri()?
-            .CombinePartUri(&relationship.GetTargetUri()?)?;
-        ensure!(
-            resolved.GetPath()? == "/word/chunk.html",
-            "OPC resolved another target"
-        );
-        let chunk = parts.GetPart(&resolved)?.GetContentStream()?;
-        let mut data = [0u8; 256];
-        let mut count = 0;
-        chunk
-            .Read(
-                data.as_mut_ptr().cast(),
-                data.len() as u32,
-                Some(&mut count),
-            )
-            .ok()?;
-        ensure!(
-            (count as usize) <= data.len(),
-            "OPC content read exceeded supplied buffer"
-        );
-        ensure!(
-            data[..count as usize] == *CHUNK,
-            "independent OPC chunk bytes differ"
-        );
-        let mut eof = 1;
-        chunk
-            .Read(data.as_mut_ptr().cast(), 1, Some(&mut eof))
-            .ok()?;
-        ensure!(eof == 0, "OPC chunk had an unqualified tail");
-    }
+    let output = runtime::run(&opc_command(&path))?;
+    ensure!(
+        output.success()
+            && output.stdout == b"OPC_CASE_RELATIONSHIP_RECOGNIZED\n"
+            && output.stderr.is_empty(),
+        "independent owned OPC consumer failed"
+    );
     ensure!(
         file_identity(&path, None)? == before,
         "OPC read changed its authored package"

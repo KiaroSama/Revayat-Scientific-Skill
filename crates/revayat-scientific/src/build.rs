@@ -105,6 +105,13 @@ pub fn select_source_with_available(
     requested: Option<&str>,
     available: &BTreeSet<String>,
 ) -> Result<(PathBuf, String)> {
+    let requested = requested.map(|engine| {
+        if engine == "weasyprint" {
+            "chromium"
+        } else {
+            engine
+        }
+    });
     let mut source = source.canonicalize()?;
     let tex = source
         .extension()
@@ -152,6 +159,13 @@ pub fn select_source(
     engine: Option<&str>,
     browser: Option<&str>,
 ) -> Result<Selection> {
+    let engine = engine.map(|engine| {
+        if engine == "weasyprint" {
+            "chromium"
+        } else {
+            engine
+        }
+    });
     let source = source.canonicalize()?;
     let tex = source
         .extension()

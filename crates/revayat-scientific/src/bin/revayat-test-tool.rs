@@ -119,15 +119,23 @@ fn main() {
     match args.get(1).map(String::as_str) {
         Some("package-relocated-index") => {
             let (source, repository, output) = (
-                Path::new(&args[2]), Path::new(&args[3]), Path::new(&args[4]),
+                Path::new(&args[2]),
+                Path::new(&args[3]),
+                Path::new(&args[4]),
             );
             let mut reached = false;
             let result = revayat_scientific::distribution_package::package_observed(
-                source, repository, output, None,
+                source,
+                repository,
+                output,
+                None,
                 |boundary, _| {
-                    if boundary == revayat_scientific::distribution_package::PackageBoundary::Staged {
+                    if boundary == revayat_scientific::distribution_package::PackageBoundary::Staged
+                    {
                         // SAFETY: dedicated child, no live threads; only its own environment changes.
-                        unsafe { env::set_var("GIT_INDEX_FILE", output); }
+                        unsafe {
+                            env::set_var("GIT_INDEX_FILE", output);
+                        }
                         reached = true;
                     }
                     Ok(())
@@ -137,10 +145,18 @@ fn main() {
             std::process::exit(if result.is_err() { 2 } else { 0 });
         }
         Some("runtime-environment-parent") => {
-            let mut spec = revayat_scientific::runtime::CommandSpec::new(args.get(2).expect("fixture program missing"));
-            spec.args = vec!["runtime-environment".into(), args.get(3).expect("fixture PATH missing").into()];
+            let mut spec = revayat_scientific::runtime::CommandSpec::new(
+                args.get(2).expect("fixture program missing"),
+            );
+            spec.args = vec![
+                "runtime-environment".into(),
+                args.get(3).expect("fixture PATH missing").into(),
+            ];
             spec.env.insert("PATH".into(), args[3].clone().into());
-            spec.env.insert("REVAYAT_TEST_ENV".into(), "explicit fixture override".into());
+            spec.env.insert(
+                "REVAYAT_TEST_ENV".into(),
+                "explicit fixture override".into(),
+            );
             spec.timeout = Duration::from_secs(5);
             match revayat_scientific::runtime::run(&spec) {
                 Ok(output) => {
@@ -152,9 +168,18 @@ fn main() {
         }
         Some("runtime-environment") => {
             let expected_path = args.get(2).expect("fixture PATH expectation missing");
-            println!("path_matches={}", env::var_os("PATH").as_deref() == Some(std::ffi::OsStr::new(expected_path)));
-            println!("override_matches={}", env::var("REVAYAT_TEST_ENV").as_deref() == Ok("explicit fixture override"));
-            println!("inherited_matches={}", env::var("REVAYAT_TEST_INHERITED").as_deref() == Ok("controlled inherited fixture"));
+            println!(
+                "path_matches={}",
+                env::var_os("PATH").as_deref() == Some(std::ffi::OsStr::new(expected_path))
+            );
+            println!(
+                "override_matches={}",
+                env::var("REVAYAT_TEST_ENV").as_deref() == Ok("explicit fixture override")
+            );
+            println!(
+                "inherited_matches={}",
+                env::var("REVAYAT_TEST_INHERITED").as_deref() == Ok("controlled inherited fixture")
+            );
         }
         Some("echo-input") => {
             io::copy(&mut io::stdin().lock(), &mut io::stdout().lock()).unwrap();

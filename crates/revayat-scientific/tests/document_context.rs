@@ -27,7 +27,22 @@ fn test_selection_honors_explicit_engine_and_actual_source() {
             .is_err()
     );
     assert!(select_source_with_available(&tex, Some("tex"), &chromium).is_err());
-    // Eliminated Python backends remain explicit errors, never silent fallbacks.
+    // The approved compatibility spelling reports the actual renderer, not WeasyPrint.
+    for source in [&tex, &html] {
+        assert_eq!(
+            select_source_with_available(source, Some("weasyprint"), &both).unwrap(),
+            (html.clone(), "chromium".into())
+        );
+        assert!(
+            select_source_with_available(
+                source,
+                Some("weasyprint"),
+                &BTreeSet::from(["tex".into()])
+            )
+            .is_err()
+        );
+    }
+    fs::remove_file(&html).unwrap();
     assert!(select_source_with_available(&tex, Some("weasyprint"), &both).is_err());
 }
 #[test]
