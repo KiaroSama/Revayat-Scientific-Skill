@@ -137,12 +137,12 @@ impl Transport {
                     "explicit fixture reader inheritance removal failed winerror={code}"
                 );
             }
-            for index in 0..2 {
+            for (index, writer) in writers.iter_mut().enumerate() {
                 close(std::mem::replace(
                     &mut standard.handles[index + 1],
                     null_mut(),
                 ))?;
-                standard.handles[index + 1] = std::mem::replace(&mut writers[index], null_mut());
+                standard.handles[index + 1] = std::mem::replace(writer, null_mut());
             }
             // The later HANDLE_LIST uses this same boxed three-slot backing allocation.
             Ok(())

@@ -530,9 +530,7 @@ impl Storage {
             ));
         }
         if self.directory.is_some() {
-            if let Err(error) = self.identity() {
-                return Err(error);
-            }
+            self.identity()?;
             for (name, id) in &self.files {
                 let path = self.folder.join(name);
                 let result = (|| {

@@ -238,7 +238,7 @@ fn require_lpac(data: &Query, name: &[u16]) -> Result<()> {
     ensure!(
         length == name.len() * 2
             && maximum >= length
-            && maximum % 2 == 0
+            && maximum.is_multiple_of(2)
             && entry[16..20] == [2, 0, 0, 0]
             && u32::from_le_bytes(entry[20..24].try_into()?) & 0x10 == 0
             && entry[24..28] == [1, 0, 0, 0],
@@ -254,7 +254,9 @@ fn require_lpac(data: &Query, name: &[u16]) -> Result<()> {
     let actual = &bytes[(text - base) as usize..(text - base) as usize + length];
     ensure!(
         actual
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| u16::from_le_bytes([b[0], b[1]]))
             .eq(name.iter().copied())
             && u64::from_le_bytes(

@@ -133,7 +133,7 @@ pub(super) fn observe_child(
     let operation = (|| {
         // This original host positive control must precede all child-token acquisition.
         observe_fixed("host", &mut lines.borrow_mut(), &deadline, &|| Ok(()))?;
-        with_authority(process, package, &deadline, |require_same| {
+        with_authority(process, package, deadline, |require_same| {
             require_same()?;
             let status = observe_fixed("lpac", &mut lines.borrow_mut(), &deadline, require_same)?;
             require_same()?;

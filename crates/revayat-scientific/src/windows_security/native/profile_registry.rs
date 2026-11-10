@@ -99,12 +99,14 @@ fn decode_name(bytes: &[u8], returned: usize) -> Result<String> {
     );
     let length = u32::from_le_bytes(bytes[..4].try_into()?) as usize;
     ensure!(
-        length > 0 && length % 2 == 0 && length <= returned - 4,
+        length > 0 && length.is_multiple_of(2) && length <= returned - 4,
         "owned profile registry identity length differs"
     );
     let text = String::from_utf16(
         &bytes[4..4 + length]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|part| u16::from_le_bytes([part[0], part[1]]))
             .collect::<Vec<_>>(),
     )?;

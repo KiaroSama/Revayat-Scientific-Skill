@@ -1,6 +1,7 @@
 use super::fixture::{Fixture, repo};
 use anyhow::Result;
 use std::fs;
+#[cfg(target_os = "linux")]
 pub(super) fn probe_output_integrity() -> Result<()> {
     let temp = tempfile::tempdir()?;
     let root = temp.path();

@@ -125,7 +125,7 @@ pub(crate) fn observe_startup_token(
     let operation = authority_context(
         process,
         package,
-        &deadline,
+        deadline,
         || {
             deadline()?;
             ensure!(

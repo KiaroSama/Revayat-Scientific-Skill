@@ -260,11 +260,11 @@ impl Pin {
         self.read_bytes()
     }
     pub(super) fn close(&mut self) -> Result<()> {
-        if let Some(file) = self.file.take() {
-            if let Err(error) = close(file) {
-                self.uncertain = true;
-                return Err(error);
-            }
+        if let Some(file) = self.file.take()
+            && let Err(error) = close(file)
+        {
+            self.uncertain = true;
+            return Err(error);
         }
         ensure!(!self.uncertain, "native state pin close remains uncertain");
         Ok(())

@@ -233,10 +233,13 @@ fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> 
 }
 
 #[cfg(not(unix))]
+type RecoveryHook<'a> = (&'a str, &'a mut dyn FnMut(&ReapedProcessTree) -> Result<()>);
+
+#[cfg(not(unix))]
 fn run_input_owned(
     spec: &CommandSpec,
     input: Option<&[u8]>,
-    recovery: Option<(&str, &mut dyn FnMut(&ReapedProcessTree) -> Result<()>)>,
+    recovery: Option<RecoveryHook<'_>>,
 ) -> Result<CommandOutput> {
     validate_spec(spec)?;
     let mut command = Command::new(&spec.program);
