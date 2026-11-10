@@ -5,7 +5,7 @@ use crate::{
     publication::{publish_files, validate_destination},
     runtime::{self, CommandSpec},
 };
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

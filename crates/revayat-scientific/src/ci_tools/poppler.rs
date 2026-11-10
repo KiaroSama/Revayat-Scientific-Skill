@@ -74,7 +74,7 @@ fn extract(bytes: &[u8], directory: &Path) -> Result<()> {
     let mut total = 0u64;
     for index in 0..archive.len() {
         let mut member = archive.by_index(index)?;
-        let relative = safe_member(member.name())?;
+        let relative = safe_member(&member.name()?)?;
         ensure!(
             member.enclosed_name().as_deref() == Some(relative.as_path())
                 && seen.insert(relative.to_string_lossy().to_ascii_lowercase())

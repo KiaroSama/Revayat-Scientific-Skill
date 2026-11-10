@@ -224,8 +224,8 @@ pub(crate) fn run(folder: &Path, parse: bool, reaped: &mut bool) -> Result<()> {
             registry_authority::native::CreateProcessW(
                 image_wide.as_ptr(),
                 command.as_mut_ptr(),
-                null(),
-                null(),
+                null_mut(),
+                null_mut(),
                 1,
                 0x80000 | 0x400 | 0x08000000 | 4,
                 environment.as_mut_ptr().cast(),

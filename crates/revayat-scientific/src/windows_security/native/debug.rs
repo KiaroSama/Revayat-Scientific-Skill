@@ -157,10 +157,17 @@ impl Owner {
                 size_of::<Region>(),
             )
         };
-        ensure!(returned == size_of::<Region>() && region.state == 0x1000 && region.kind == 0x1000000
-            && region.allocation == created.image_base && site >= region.address as u64
-            && site - region.address as u64 < region.size as u64 && region.protect & 0x100 == 0
-            && matches!(region.protect & 0xff, 0x10 | 0x20 | 0x40 | 0x80), "debug entry region is not executable owned image");
+        ensure!(
+            returned == size_of::<Region>()
+                && region.state == 0x1000
+                && region.kind == 0x1000000
+                && region.allocation == created.image_base
+                && site >= region.address as u64
+                && (site - region.address as u64) < (region.size as u64)
+                && region.protect & 0x100 == 0
+                && matches!(region.protect & 0xff, 0x10 | 0x20 | 0x40 | 0x80),
+            "debug entry region is not executable owned image"
+        );
         let mut generations = ResourceThreads::new(
             self.pid,
             self.tid,

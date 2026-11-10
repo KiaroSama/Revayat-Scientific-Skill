@@ -1,7 +1,7 @@
 //! Auditable one-to-one migration inventory. Counting new tests alone cannot
 //! prove that an old scenario survived. Registration and scoped execution
 //! witnesses are separate; neither certifies assertion equivalence by itself.
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
