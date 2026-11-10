@@ -220,6 +220,8 @@ fn reviewed_expression(value: &str) -> Result<()> {
             [
                 "0BSD",
                 "Apache-2.0",
+                "CC0-1.0",
+                "MIT-0",
                 "MIT",
                 "Unlicense",
                 "BSD-2-Clause",
@@ -240,6 +242,93 @@ fn reviewed_expression(value: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod expression_tests {
+    use super::*;
+
+    #[test]
+    fn all_observed_locked_expressions_include_the_exact_constant_time_eq_terms() {
+        for expression in [
+            "0BSD OR MIT OR Apache-2.0",
+            "MIT OR Apache-2.0",
+            "Unlicense OR MIT",
+            "BSD-3-Clause",
+            "MIT/Apache-2.0",
+            "Apache-2.0 OR MIT",
+            "BSD-3-Clause/MIT",
+            "Zlib OR Apache-2.0 OR MIT",
+            "MIT",
+            "CC0-1.0 OR MIT-0 OR Apache-2.0",
+            "MPL-2.0",
+            "Unlicense/MIT",
+            "ISC",
+            "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+            "Zlib",
+            "Apache-2.0 OR ISC OR MIT",
+            "Unicode-3.0",
+            "BSD-2-Clause",
+            "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+            "MIT OR Apache-2.0 OR Zlib",
+            "MIT OR Zlib OR Apache-2.0",
+            "BSD-3-Clause OR Apache-2.0",
+            "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+            "Apache-2.0 AND ISC",
+            "Apache-2.0 OR BSL-1.0",
+            "Apache-2.0",
+            "(MIT OR Apache-2.0) AND Unicode-3.0",
+            "BSD-2-Clause OR Apache-2.0 OR MIT",
+            "CC0-1.0",
+            "MIT-0",
+        ] {
+            reviewed_expression(expression).unwrap();
+        }
+        for expression in [
+            "CC0-2.0",
+            "MIT-00",
+            "LicenseRef-Unreviewed",
+            "MIT OR Unknown",
+            "CC0-1.0\n",
+            "MIT-0;Apache-2.0",
+        ] {
+            assert!(reviewed_expression(expression).is_err(), "{expression}");
+        }
+    }
+
+    #[test]
+    fn compound_admission_keeps_every_shipped_notice_and_declared_expression() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let root = directory.path().canonicalize()?;
+        fs::write(root.join("Cargo.toml"), "[package]\nname='fixture'\n")?;
+        for (name, text) in [
+            ("LICENSE-APACHE", "Apache fixture\r\n"),
+            ("LICENSE-CC0", "CC0 fixture\n"),
+            ("LICENSE-MIT0", "MIT0 fixture without final newline"),
+        ] {
+            fs::write(root.join(name), text)?;
+        }
+        let expression = "CC0-1.0 OR MIT-0 OR Apache-2.0";
+        reviewed_expression(expression)?;
+        let paths = collect(&root)?;
+        assert_eq!(paths.len(), 3);
+        let mut budget = dedup::MaterialBudget::default();
+        let mut bodies = dedup::Bodies::default();
+        let mut output = format!("Declared license expression: `{expression}`\n");
+        for path in paths {
+            let notice = source_notice(&root, &path, &mut budget)?;
+            assert_eq!(notice.text.as_bytes(), fs::read(&path)?);
+            assert_eq!(notice.provenance, "Published Cargo source archive");
+            assert_eq!(notice.sha256, digest(&fs::read(path)?));
+            bodies.occurrence(&mut output, &notice)?;
+        }
+        bodies.append(&mut output)?;
+        assert!(output.contains(expression));
+        for name in ["LICENSE-APACHE", "LICENSE-CC0", "LICENSE-MIT0"] {
+            assert!(output.contains(name));
+        }
+        Ok(())
+    }
 }
 
 fn source_notice(root: &Path, path: &Path, budget: &mut dedup::MaterialBudget) -> Result<Notice> {
