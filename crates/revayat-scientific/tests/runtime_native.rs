@@ -30,11 +30,44 @@ fn test_environment_and_diagnostic_bytes_preserve_exit_code() -> Result<()> {
     assert!(output.stdout_text().contains("caller-path فارسی"));
     assert!(output.stdout_text().contains('\u{fffd}'));
     assert!(output.stderr_text().contains('\u{fffd}'));
-    let cli = std::process::Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args(["run-check", "--", TOOL, "diagnostics"])
-        .current_dir(tempfile::tempdir()?.path())
-        .output()?;
-    assert_eq!(cli.status.code(), Some(7));
+    let fixture = tempfile::Builder::new().prefix("revayat PATH ").tempdir()?;
+    let executable = fixture.path().join(format!(
+        "runtime-path-probe{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    fs::copy(TOOL, &executable)?;
+    let path = std::env::join_paths([fixture.path()])?;
+    let mut parent = CommandSpec::new(TOOL).args([
+        "runtime-environment-parent",
+        executable.file_name().unwrap().to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    parent.env.insert(
+        "REVAYAT_TEST_INHERITED".into(),
+        "controlled inherited fixture".into(),
+    );
+    parent.env.insert(
+        "REVAYAT_TEST_ENV".into(),
+        "parent value must be overridden".into(),
+    );
+    parent.timeout = Duration::from_secs(10);
+    let checked = runtime::run(&parent)?;
+    assert!(checked.success());
+    assert_eq!(
+        String::from_utf8(checked.stdout)?,
+        "path_matches=true\noverride_matches=true\ninherited_matches=true\n"
+    );
+    let cli_directory = tempfile::tempdir()?;
+    let mut command = CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args([
+        "run-check",
+        "--",
+        TOOL,
+        "diagnostics",
+    ]);
+    command.cwd = Some(cli_directory.path().to_owned());
+    command.timeout = Duration::from_secs(10);
+    let cli = runtime::run(&command)?;
+    assert_eq!(cli.code, 7);
     assert!(std::str::from_utf8(&cli.stdout)?.contains('\u{fffd}'));
     assert!(std::str::from_utf8(&cli.stderr)?.contains('\u{fffd}'));
     Ok(())
@@ -96,10 +129,10 @@ fn not_alive(pid: u32) -> bool {
     }
     #[cfg(all(unix, not(target_os = "linux")))]
     {
-        let output = std::process::Command::new("ps")
-            .args(["-o", "stat=", "-p", &pid.to_string()])
-            .output()
-            .unwrap();
+        let mut command = CommandSpec::new("ps").args(["-o", "stat=", "-p", &pid.to_string()]);
+        command.timeout = Duration::from_secs(5);
+        command.max_output = 4096;
+        let output = runtime::run(&command).unwrap();
         let state = String::from_utf8_lossy(&output.stdout);
         state.trim().is_empty() || state.trim().starts_with('Z')
     }
@@ -110,12 +143,19 @@ fn not_alive(pid: u32) -> bool {
 }
 #[test]
 fn test_timeout_terminates_descendant_after_launcher_exits() -> Result<()> {
-    let temp = tempfile::tempdir()?;
+    let temp = tempfile::Builder::new()
+        .prefix("revayat process ")
+        .tempdir()?;
     let path = temp.path().join("child.txt");
     let mut spec = CommandSpec::new(TOOL).args(["launch-grandchild".as_ref(), path.as_os_str()]);
-    spec.timeout = Duration::from_millis(500);
+    spec.timeout = Duration::from_secs(1);
     let start = Instant::now();
-    assert!(runtime::run(&spec).is_err());
+    let error = runtime::run(&spec).unwrap_err();
+    let deadline = error
+        .downcast_ref::<DeadlineExceeded>()
+        .expect("a pipe-holding descendant must reach the original wall deadline");
+    assert!(!deadline.idle);
+    assert_eq!(deadline.limit, Duration::from_secs(1));
     let pid = fs::read_to_string(path)?.parse()?;
     assert!(not_alive(pid), "descendant {pid} survived its owner");
     assert!(start.elapsed() < Duration::from_secs(3));
@@ -125,23 +165,23 @@ fn test_timeout_terminates_descendant_after_launcher_exits() -> Result<()> {
 fn global_cli_timeout_reaps_nested_native_runtime_and_grandchildren() -> Result<()> {
     let temp = tempfile::tempdir()?;
     let pid = temp.path().join("child.txt");
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args([
-            "--timeout",
-            "1",
-            "run-check",
-            "--timeout",
-            "60",
-            "--",
-            TOOL,
-            "run-nested",
-        ])
-        .arg(&pid)
-        .current_dir(temp.path())
-        .output()?;
+    let mut command = CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args([
+        "--timeout",
+        "1",
+        "run-check",
+        "--timeout",
+        "60",
+        "--",
+        TOOL,
+        "run-nested",
+    ]);
+    command.args.push(pid.as_os_str().into());
+    command.cwd = Some(temp.path().to_owned());
+    command.timeout = Duration::from_secs(12);
+    let output = runtime::run(&command)?;
     assert_eq!(
-        output.status.code(),
-        Some(124),
+        output.code,
+        124,
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -186,6 +226,91 @@ fn bounded_stdin_preserves_bytes_and_obeys_the_same_deadline() -> Result<()> {
             .downcast_ref::<DeadlineExceeded>()
             .is_some()
     );
+    Ok(())
+}
+
+#[test]
+fn secondary_cleanup_failure_keeps_typed_primary_deadline() {
+    let primary: anyhow::Result<u8> = Err(DeadlineExceeded {
+        idle: false,
+        limit: Duration::from_secs(1),
+    }
+    .into());
+    let error = runtime::with_cleanup(primary, Err(anyhow::anyhow!("controlled cleanup failure")))
+        .unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<DeadlineExceeded>().unwrap().limit,
+        Duration::from_secs(1)
+    );
+    assert!(format!("{error:#}").contains("controlled cleanup failure"));
+    assert!(
+        runtime::with_cleanup(Ok(7), Err(anyhow::anyhow!("controlled cleanup failure"))).is_err()
+    );
+    assert_eq!(runtime::with_cleanup(Ok(7), Ok(())).unwrap(), 7);
+}
+
+#[test]
+fn missing_optional_command_is_distinct_from_cleanup_uncertainty() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let mut command = CommandSpec::new(temp.path().join("definitely-missing-tool"));
+    command.timeout = Duration::from_secs(2);
+    let error = runtime::run(&command).unwrap_err();
+    assert!(runtime::is_missing_executable(&error), "{error:#}");
+    let error = runtime::with_cleanup::<()>(
+        Err(error),
+        Err(anyhow::anyhow!("controlled incomplete cleanup")),
+    )
+    .unwrap_err();
+    assert!(!runtime::is_missing_executable(&error));
+    assert!(error.downcast_ref::<runtime::CleanupFailure>().is_some());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn readonly_working_directory_preserves_success_and_typed_missing_tool() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    const INNER: &str = "REVAYAT_READONLY_CWD_FIXTURE";
+    if std::env::var_os(INNER).is_some() {
+        let cwd = std::env::current_dir()?;
+        let denied = fs::create_dir(cwd.join("must-not-be-created")).unwrap_err();
+        assert_eq!(denied.kind(), std::io::ErrorKind::PermissionDenied);
+        let mut command = CommandSpec::new(TOOL).args(["echo-input"]);
+        command.cwd = Some(cwd.clone());
+        assert!(runtime::run(&command)?.success());
+        command.program = cwd.join("definitely-missing-tool").into_os_string();
+        let error = runtime::run(&command).unwrap_err();
+        assert!(runtime::is_missing_executable(&error), "{error:#}");
+        assert_eq!(fs::read_dir(cwd)?.count(), 0);
+        return Ok(());
+    }
+    struct Restore(std::path::PathBuf);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o700));
+        }
+    }
+    let temp = tempfile::Builder::new()
+        .prefix("readonly working dir ")
+        .tempdir()?;
+    let cwd = temp.path().canonicalize()?;
+    let _restore = Restore(cwd.clone());
+    fs::set_permissions(&cwd, fs::Permissions::from_mode(0o500))?;
+    let mut command = CommandSpec::new(std::env::current_exe()?).args([
+        "--exact",
+        "readonly_working_directory_preserves_success_and_typed_missing_tool",
+        "--nocapture",
+    ]);
+    command.cwd = Some(cwd);
+    command.env.insert(INNER.into(), "1".into());
+    // Isolate the inner generic runtime from a collector's writable container scope.
+    command.env_remove.extend([
+        revayat_scientific::tex_supervisor::DIRECTORY_ENV.into(),
+        revayat_scientific::tex_supervisor::TOKEN_ENV.into(),
+    ]);
+    command.timeout = Duration::from_secs(15);
+    let output = runtime::run(&command)?;
+    assert!(output.success(), "{}", output.stderr_text());
     Ok(())
 }
 

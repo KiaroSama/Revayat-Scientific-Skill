@@ -1,13 +1,16 @@
 name: CI
 on:
-  push:
-  pull_request:
   workflow_dispatch:
     inputs:
       base_ref:
         description: Full base commit SHA for manual dependency and identity review
         required: true
         type: string
+      prepare_artifacts:
+        description: Generate lockfile and notices only; does not validate or accept the migration
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -17,7 +20,50 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: '0'
 jobs:
+  prepare-artifacts:
+    if: ${{ inputs.prepare_artifacts }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          toolchain: '1.99.1'
+          components: rust-docs
+          cache: false
+      - name: Resolve workspace member changes while retaining existing dependency locks
+        timeout-minutes: 5
+        run: cargo update --workspace
+      - name: Require the generated lockfile to be stable
+        timeout-minutes: 5
+        run: cargo update --workspace --locked
+      - name: Fetch the exact complete locked dependency graph
+        timeout-minutes: 10
+        run: cargo fetch --locked
+      - name: Build only the notice generator and its owned process companion
+        timeout-minutes: 20
+        run: cargo build --locked -p revayat-scientific --bin license-notices --bin revayat-process-owner
+      - name: Generate complete notices from the resolved exact graph
+        timeout-minutes: 5
+        run: cargo run --locked --bin license-notices -- --root .
+      - name: Require byte-exact deterministic notices
+        timeout-minutes: 5
+        run: cargo run --locked --bin license-notices -- --root . --check
+      - name: Require unchanged resolution after notice generation
+        timeout-minutes: 5
+        run: cargo update --workspace --locked
+      - name: Preserve only generated lockfile and complete notices
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: prepared-lock-notices-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            Cargo.lock
+            skills/revayat-scientific/references/third-party-licenses.txt
   status-pending:
+    if: ${{ !inputs.prepare_artifacts }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -35,17 +81,21 @@ jobs:
           CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: cargo run --locked --bin revayat-scientific -- ci-status pending
   security:
-    uses: $/.github/workflows/security-ci.yml
+    if: ${{ !inputs.prepare_artifacts }}
+    uses: ./.github/workflows/security-ci.yml
   codeql:
-    uses: $/.github/workflows/codeql.yml
+    if: ${{ !inputs.prepare_artifacts }}
+    uses: ./.github/workflows/codeql.yml
     permissions:
       contents: read
       security-events: write
   dependency-review:
-    uses: $/.github/workflows/dependency-review.yml
+    if: ${{ !inputs.prepare_artifacts }}
+    uses: ./.github/workflows/dependency-review.yml
     with:
       base_ref: ${{ github.event.pull_request.base.sha || inputs.base_ref || github.event.before }}
   portable:
+    if: ${{ !inputs.prepare_artifacts }}
     name: portable (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -91,6 +141,7 @@ jobs:
             target/release/registry-authority.exe
             dist/revayat-scientific.skill
   scientific:
+    if: ${{ !inputs.prepare_artifacts }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -143,6 +194,7 @@ jobs:
             ${{ runner.temp }}/scientific-evidence
             .scratch/scientific-*
   quality:
+    if: ${{ !inputs.prepare_artifacts }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -151,6 +203,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          components: rust-docs
       - name: Check introduced commit identities
         env:
           IDENTITY_BASE: ${{ github.event.pull_request.base.sha || inputs.base_ref || github.event.before }}
@@ -197,7 +251,7 @@ jobs:
       - name: Strict native runtime and development dependency audit
         run: cargo audit --deny warnings
   status-final:
-    if: ${{ always() }}
+    if: ${{ always() && !inputs.prepare_artifacts }}
     needs: [status-pending, security, codeql, dependency-review, portable, scientific, quality]
     runs-on: ubuntu-latest
     timeout-minutes: 20

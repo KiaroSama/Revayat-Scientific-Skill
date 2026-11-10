@@ -147,6 +147,93 @@ fn test_pending_resets_expected_and_old_contexts_without_claiming_results() -> R
     Ok(())
 }
 #[test]
+fn test_preparation_is_opt_in_bounded_and_publishes_only_generated_inputs() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+    let source = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap();
+    let workflow: Value = serde_saphyr::from_str(&source).unwrap();
+    let events = workflow["on"].as_object().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events["workflow_dispatch"]["inputs"]["prepare_artifacts"]["default"], false);
+    let jobs = workflow["jobs"].as_object().unwrap();
+    for (name, job) in jobs {
+        let gate = match name.as_str() {
+            "prepare-artifacts" => "${{ inputs.prepare_artifacts }}",
+            "status-final" => "${{ always() && !inputs.prepare_artifacts }}",
+            _ => "${{ !inputs.prepare_artifacts }}",
+        };
+        assert_eq!(job["if"], gate, "{name}");
+    }
+    let prepare = &jobs["prepare-artifacts"];
+    assert_eq!(prepare["runs-on"], "ubuntu-latest");
+    assert_eq!(prepare["timeout-minutes"], 40);
+    let steps = prepare["steps"].as_array().unwrap();
+    let commands: Vec<_> = steps.iter().filter_map(|step| step["run"].as_str()).collect();
+    assert_eq!(commands, [
+        "cargo update --workspace", "cargo update --workspace --locked", "cargo fetch --locked",
+        "cargo build --locked -p revayat-scientific --bin license-notices --bin revayat-process-owner",
+        "cargo run --locked --bin license-notices -- --root .",
+        "cargo run --locked --bin license-notices -- --root . --check", "cargo update --workspace --locked",
+    ]);
+    for step in steps.iter().filter(|step| step["run"].is_string()) {
+        assert!(step["timeout-minutes"].as_u64().is_some_and(|minutes| minutes <= 20));
+    }
+    assert!(steps.iter().any(|step| step["with"]["toolchain"] == "1.99.1" && step["with"]["components"] == "rust-docs" && step["with"]["cache"] == false));
+    let artifacts: Vec<_> = steps.iter().filter(|step| step["uses"].as_str().is_some_and(|name| name.starts_with("actions/upload-artifact@"))).collect();
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0]["with"]["path"], "Cargo.lock\nskills/revayat-scientific/references/third-party-licenses.txt\n");
+    assert_eq!(artifacts[0]["with"]["if-no-files-found"], "error");
+    assert!(artifacts[0].get("if").is_none());
+}
+
+#[test]
+fn test_only_completed_skipped_preparation_is_excluded_from_full_validation() -> Result<()> {
+    let mut normal = Fixture::new();
+    normal.jobs.push(job("prepare-artifacts", 80, "skipped", 1));
+    assert_eq!(ci::publish(&mut normal, &id(), "final")?, "success");
+    assert!(
+        !normal
+            .published
+            .iter()
+            .any(|value| value["context"] == "ci/prepare-artifacts")
+    );
+    for conclusion in [
+        "success",
+        "failure",
+        "cancelled",
+        "timed_out",
+        "neutral",
+        "",
+        "unknown",
+    ] {
+        let mut fixture = Fixture::new();
+        fixture
+            .jobs
+            .push(job("prepare-artifacts", 80, conclusion, 1));
+        assert!(ci::publish(&mut fixture, &id(), "final").is_err());
+        assert!(
+            !fixture
+                .published
+                .iter()
+                .any(|value| value["state"] == "success")
+        );
+    }
+    for status in ["queued", "in_progress", "waiting", "unknown"] {
+        let mut fixture = Fixture::new();
+        let mut preparation = job("prepare-artifacts", 80, "skipped", 1);
+        preparation["status"] = json!(status);
+        fixture.jobs.push(preparation);
+        assert!(ci::publish(&mut fixture, &id(), "final").is_err());
+    }
+    let mut required = Fixture::new();
+    required.jobs[0]["conclusion"] = json!("skipped");
+    required
+        .jobs
+        .push(job("prepare-artifacts", 80, "skipped", 1));
+    assert_eq!(ci::publish(&mut required, &id(), "final")?, "error");
+    Ok(())
+}
+
+#[test]
 fn test_every_non_success_conclusion_stays_non_green() -> Result<()> {
     for (conclusion, expected) in [
         ("failure", "failure"),

@@ -2,13 +2,17 @@
 //! No registry license identifier is treated as a substitute for license text.
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
+use revayat_scientific::runtime::{self, CommandSpec, OperationLog};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
+
+#[path = "license_notices/dedup.rs"]
+mod dedup;
 
 const NOTICE_LIMIT: u64 = 16 * 1024 * 1024;
 const BUNDLE_LIMIT: usize = 64 * 1024 * 1024;
@@ -100,31 +104,14 @@ fn verify_standard_library(root: &Path) -> Result<()> {
         provenance.file == "rust-standard-library-notices.html",
         "unexpected standard-library notice filename"
     );
-    let version = Command::new("rustc")
-        .arg("--version")
-        .current_dir(root)
-        .output()?;
+    let version = tool_output(root, "rustc", &["--version"], 15, 4096)?;
     ensure!(
-        version.status.success() && version.stdout.len() <= 4096,
-        "cannot verify the pinned compiler version"
-    );
-    ensure!(
-        std::str::from_utf8(&version.stdout)?
-            .split_whitespace()
-            .nth(1)
+        std::str::from_utf8(&version)?.split_whitespace().nth(1)
             == Some(provenance.toolchain.as_str()),
         "active compiler differs from the standard-library notice pin"
     );
-    let sysroot = Command::new("rustc")
-        .args(["--print", "sysroot"])
-        .current_dir(root)
-        .output()?;
-    ensure!(
-        sysroot.status.success() && sysroot.stdout.len() <= 16384,
-        "cannot identify the pinned compiler sysroot"
-    );
-    let sysroot =
-        PathBuf::from(std::str::from_utf8(&sysroot.stdout)?.trim_end_matches(['\r', '\n']));
+    let sysroot = tool_output(root, "rustc", &["--print", "sysroot"], 15, 16384)?;
+    let sysroot = PathBuf::from(std::str::from_utf8(&sysroot)?.trim_end_matches(['\r', '\n']));
     ensure!(sysroot.is_absolute(), "compiler sysroot is not absolute");
     let official = bounded(
         &sysroot.join("share/doc/rust/COPYRIGHT-library.html"),
@@ -255,7 +242,7 @@ fn reviewed_expression(value: &str) -> Result<()> {
     Ok(())
 }
 
-fn source_notice(root: &Path, path: &Path) -> Result<Notice> {
+fn source_notice(root: &Path, path: &Path, budget: &mut dedup::MaterialBudget) -> Result<Notice> {
     let canonical = path.canonicalize()?;
     ensure!(
         canonical.starts_with(root),
@@ -267,14 +254,20 @@ fn source_notice(root: &Path, path: &Path) -> Result<Notice> {
         .context("non-Unicode notice path")?
         .replace('\\', "/");
     clean_label(&relative)?;
-    let bytes = bounded(path, NOTICE_LIMIT)
-        .with_context(|| format!("cannot read source notice {relative}"))?;
-    let text = String::from_utf8(bytes.clone())
-        .with_context(|| format!("notice is not UTF-8: {relative}"))?;
+    budget.reserve(&[relative.len(), 64, 256])?;
+    let metadata = fs::symlink_metadata(path)?;
+    ensure!(
+        metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() <= NOTICE_LIMIT,
+        "invalid or oversized source notice"
+    );
+    let bytes = budget.read(fs::File::open(path)?, NOTICE_LIMIT)?;
+    let sha256 = digest(&bytes);
+    let text =
+        String::from_utf8(bytes).with_context(|| format!("notice is not UTF-8: {relative}"))?;
     ensure!(!text.trim().is_empty(), "empty source notice {relative}");
     Ok(Notice {
         name: relative,
-        sha256: digest(&bytes),
+        sha256,
         text,
         provenance: "Published Cargo source archive".to_owned(),
     })
@@ -287,19 +280,6 @@ fn fence(text: &str) -> String {
         .max()
         .unwrap_or(0);
     "`".repeat(3.max(longest + 1))
-}
-
-fn append_notice(output: &mut String, notice: &Notice) {
-    output.push_str(&format!(
-        "### {}\n\nProvenance: {}\n\nSHA-256: `{}`\n\n",
-        notice.name, notice.provenance, notice.sha256
-    ));
-    let marker = fence(&notice.text);
-    output.push_str(&format!("{marker}text\n{}", notice.text));
-    if !notice.text.ends_with('\n') {
-        output.push('\n');
-    }
-    output.push_str(&format!("{marker}\n\n"));
 }
 
 fn embedded(root: &Path, relative: &str, name: &str) -> Result<Notice> {
@@ -338,6 +318,7 @@ fn generate(
         );
     }
     let mut entries = BTreeMap::new();
+    let mut budget = dedup::MaterialBudget::default();
     let mut missing = Vec::new();
     for package in metadata.packages {
         if workspace.contains(&package.id) || !resolved.contains(&package.id) {
@@ -350,6 +331,12 @@ fn generate(
             .context("resolved third-party crate has no declared license expression")?;
         clean_label(&license)?;
         reviewed_expression(&license)?;
+        budget.reserve(&[
+            package.name.len(),
+            package.version.len(),
+            license.len(),
+            512,
+        ])?;
         let source = package
             .manifest_path
             .parent()
@@ -368,10 +355,10 @@ fn generate(
             );
             paths.insert(declared);
         }
-        let mut notices = paths
-            .iter()
-            .map(|path| source_notice(&source, path))
-            .collect::<Result<Vec<_>>>()?;
+        let mut notices = Vec::new();
+        for path in &paths {
+            notices.push(source_notice(&source, path, &mut budget)?);
+        }
         if let Some(supplement) =
             supplemental.remove(&(package.name.clone(), package.version.clone()))
         {
@@ -387,6 +374,13 @@ fn generate(
                     !notice.text.trim().is_empty(),
                     "empty supplemental license text"
                 );
+                budget.reserve(&[
+                    notice.name.len(),
+                    notice.sha256.len(),
+                    notice.text.len(),
+                    supplement.provenance.len(),
+                    256,
+                ])?;
                 notices.push(Notice {
                     name: notice.name,
                     sha256: notice.sha256,
@@ -433,18 +427,22 @@ fn generate(
         "# Complete third-party license notices\n\nGenerated by the native Rust `license-notices` tool from `cargo metadata --locked --format-version 1 --all-features` and the exact published crate sources. This inventory includes runtime, build, test/development and platform-specific dependencies across the complete resolved workspace graph; it is intentionally broader than any one platform binary. License expressions are preserved as declared, including historical slash notation. No license option is silently selected.\n\n",
     );
     output.push_str(&format!("Cargo.lock SHA-256: `{lock_hash}`\n\n"));
-    output.push_str("Project licensing and history remain governed by the repository GPL-3.0-or-later LICENSE and the skill NOTICE. This inventory does not replace either. Optional external applications and document inputs are not redistributed here and retain their own terms.\n\nRegenerate after every lockfile update:\n\n```text\ncargo run --locked --bin license-notices -- --root .\ncargo run --locked --bin license-notices -- --root . --check\n```\n\nThe generator fails on missing license text, unknown expressions, mismatched supplement hashes, source escapes, stale supplements or a lockfile changed during generation. Supplemental upstream notices are explicitly attributed; they are never represented as files included in a published crate archive. SHA-256 values cover exact source notice bytes; Markdown fence separator newlines are not part of those hashes.\n\n## Dependency inventory\n\n| Package | Exact declared license expression | Full notice files |\n| --- | --- | ---: |\n");
+    output.push_str("Project licensing and history remain governed by the repository GPL-3.0-or-later LICENSE and the skill NOTICE. This inventory does not replace either. Optional external applications and document inputs are not redistributed here and retain their own terms.\n\nRegenerate after every lockfile update:\n\n```text\ncargo build --locked --workspace --bins\ncargo run --locked --bin license-notices -- --root .\ncargo run --locked --bin license-notices -- --root . --check\n```\n\nThe generator fails on missing license text, unknown expressions, mismatched supplement hashes, source escapes, stale supplements or a lockfile changed during generation. Logical retained occurrence material is admitted incrementally before retention against a 256 MiB budget; shared body material and rendered output each have a 64 MiB budget. These are material bounds, not allocator RSS limits. Refusal leaves the previous complete bundle unchanged; no legal file is silently omitted. Supplemental upstream notices are explicitly attributed; they are never represented as files included in a published crate archive. SHA-256 values cover exact source notice bytes; Markdown fence separator newlines are not part of those hashes. Each package/filename/provenance retains its own occurrence and references one exact shared body by SHA-256. Distinct attribution, line endings and final-newline bytes are never normalized. Unix tool invocations require the adjacent revayat-process-owner built by the --bins command; bounded execution has no unowned fallback. Private UTF-8 operation logs use logs/license-notices_YYYY-MM-DD_HH-mm-ss_UTC.log with collision suffixes, INFO/ERROR phase and exit state, no child output or private paths. Retain operational logs locally and attach only reviewed redacted copies to support requests.\n\n## Dependency inventory\n\n| Package | Exact declared license expression | Full notice files |\n| --- | --- | ---: |\n");
     let mut notice_count = 0;
     for entry in entries.values() {
-        output.push_str(&format!(
-            "| {} {} | `{}` | {} |\n",
-            entry.name,
-            entry.version,
-            entry.license,
-            entry.notices.len()
-        ));
+        dedup::push(
+            &mut output,
+            &format!(
+                "| {} {} | `{}` | {} |\n",
+                entry.name,
+                entry.version,
+                entry.license,
+                entry.notices.len()
+            ),
+        )?;
         notice_count += entry.notices.len();
     }
+    let mut bodies = dedup::Bodies::default();
     output.push_str("\n## Project and embedded asset notices\n\n");
     for (relative, name) in [
         ("LICENSE", "Project GNU GPL version 3 or later license text"),
@@ -461,50 +459,84 @@ fn generate(
             "Bundled Vazirmatn Regular and Bold — SIL OFL 1.1",
         ),
     ] {
-        append_notice(&mut output, &embedded(root, relative, name)?);
+        bodies.occurrence(&mut output, &embedded(root, relative, name)?)?;
     }
     for entry in entries.values() {
-        output.push_str(&format!(
-            "## {} {}\n\nDeclared license expression: `{}`\n\n",
-            entry.name, entry.version, entry.license
-        ));
+        dedup::push(
+            &mut output,
+            &format!(
+                "## {} {}\n\nDeclared license expression: `{}`\n\n",
+                entry.name, entry.version, entry.license
+            ),
+        )?;
         for notice in &entry.notices {
-            append_notice(&mut output, notice);
+            bodies.occurrence(&mut output, notice)?;
         }
         ensure!(
             output.len() <= BUNDLE_LIMIT,
             "complete notice bundle exceeds 64 MiB"
         );
     }
+    bodies.append(&mut output)?;
     Ok((output, entries.len(), notice_count))
+}
+
+fn tool_output(
+    root: &Path,
+    program: &str,
+    args: &[&str],
+    seconds: u64,
+    limit: usize,
+) -> Result<Vec<u8>> {
+    let mut spec = CommandSpec::new(program).args(args.iter().copied());
+    spec.cwd = Some(root.to_owned());
+    spec.timeout = Duration::from_secs(seconds);
+    spec.max_output = limit;
+    let output =
+        runtime::run(&spec).with_context(|| format!("bounded {program} invocation failed"))?;
+    ensure!(
+        output.success(),
+        "{program} failed; no notice bundle written (exit {})",
+        output.code
+    );
+    Ok(output.stdout)
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
     let root = args.root.canonicalize()?;
-    verify_standard_library(&root)?;
+    let mut log = OperationLog::create("license-notices", &root.join("logs"), None)?;
+    let result = generate_bundle(&root, args.check, &mut log);
+    log.write(
+        if result.is_ok() { "INFO" } else { "ERROR" },
+        if result.is_ok() {
+            "completed exit=0"
+        } else {
+            "failed exit=1"
+        },
+    );
+    result
+}
+
+fn generate_bundle(root: &Path, check: bool, log: &mut OperationLog) -> Result<()> {
+    log.info("phase=compiler-and-standard-library");
+    verify_standard_library(root)?;
+    log.info("phase=locked-metadata");
     let lock = bounded(&root.join("Cargo.lock"), NOTICE_LIMIT)?;
     let lock_hash = digest(&lock);
-    let metadata = Command::new("cargo")
-        .args([
+    let bytes = tool_output(
+        root,
+        "cargo",
+        &[
             "metadata",
             "--locked",
             "--format-version",
             "1",
             "--all-features",
-        ])
-        .current_dir(&root)
-        .output()
-        .context("cannot run locked Cargo metadata")?;
-    ensure!(
-        metadata.status.success(),
-        "Cargo metadata failed; no notice bundle written"
-    );
-    ensure!(
-        metadata.stdout.len() as u64 <= NOTICE_LIMIT,
-        "Cargo metadata exceeds byte limit"
-    );
-    let bytes = metadata.stdout;
+        ],
+        180,
+        NOTICE_LIMIT as usize,
+    )?;
     let metadata = serde_json::from_slice(&bytes)?;
     let supplements_path =
         root.join("skills/revayat-scientific/references/license-supplements.json");
@@ -516,13 +548,23 @@ fn main() -> Result<()> {
             ..Default::default()
         }
     };
-    let (output, packages, notices) = generate(&root, metadata, supplements, &lock_hash)?;
+    log.info("phase=collect-and-deduplicate");
+    let (output, packages, notices) = generate(root, metadata, supplements, &lock_hash)?;
+    log.info(&format!(
+        "packages={packages} notice_occurrences={notices} bytes={}",
+        output.len()
+    ));
     ensure!(
         bounded(&root.join("Cargo.lock"), NOTICE_LIMIT)? == lock,
         "Cargo.lock changed during generation; rerun"
     );
     let target = root.join("skills/revayat-scientific/references/third-party-licenses.txt");
-    if args.check {
+    log.info(if check {
+        "phase=verify-bundle"
+    } else {
+        "phase=publish-bundle"
+    });
+    if check {
         ensure!(
             bounded(&target, BUNDLE_LIMIT as u64)? == output.as_bytes(),
             "committed license bundle is stale"

@@ -1,7 +1,7 @@
 //! Host-only receipts allow a surviving owner to reap a killed controller's TeX.
 use crate::{
     identity::is_link,
-    tex_container::{RuntimeConfig, cleanup, validate_endpoint},
+    tex_container::{RuntimeConfig, validate_endpoint},
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -37,15 +37,7 @@ pub fn regular_path(path: &Path) -> Result<PathBuf> {
 }
 fn read_json(path: &Path, limit: u64) -> Result<serde_json::Value> {
     let path = regular_path(path)?;
-    ensure!(
-        fs::metadata(&path)?.is_file() && fs::metadata(&path)?.len() <= limit,
-        "invalid bounded container ownership record"
-    );
-    let bytes = fs::read(path)?;
-    ensure!(
-        bytes.len() as u64 <= limit,
-        "container ownership record grew beyond limit"
-    );
+    let bytes = crate::resource::bounded_read(&path, limit.try_into()?)?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 pub fn validate_scope(directory: &Path, token: &str) -> Result<PathBuf> {
@@ -212,9 +204,42 @@ fn validate_config(config: &RuntimeConfig) -> Result<()> {
     Ok(())
 }
 pub fn sweep(directory: &Path, token: &str) -> Result<()> {
+    sweep_until(
+        directory,
+        token,
+        std::time::Instant::now() + std::time::Duration::from_secs(30),
+    )
+}
+
+pub fn sweep_until(directory: &Path, token: &str, deadline: std::time::Instant) -> Result<()> {
+    ensure!(
+        std::time::Instant::now() < deadline,
+        "container cleanup budget exhausted; receipts retained"
+    );
     let planned = records(directory, token)?;
     for (receipt, record) in planned {
-        cleanup(&record.config, &record.staging, &record.run_id, true)?;
+        crate::tex_container::cleanup_with(
+            &record.config,
+            &record.staging,
+            &record.run_id,
+            true,
+            &mut |arguments, seconds| {
+                let remaining = deadline
+                    .checked_duration_since(std::time::Instant::now())
+                    .context("container cleanup budget exhausted; receipts retained")?;
+                let mut spec = crate::runtime::CommandSpec::new(
+                    arguments.first().context("cleanup executable missing")?,
+                );
+                spec.args = arguments[1..].iter().map(Into::into).collect();
+                spec.timeout = remaining.min(std::time::Duration::from_secs(seconds));
+                let output = crate::runtime::run(&spec)?;
+                Ok((
+                    output.code,
+                    String::from_utf8(output.stdout)
+                        .context("container cleanup output is not UTF-8")?,
+                ))
+            },
+        )?;
         fs::remove_dir_all(regular_path(&record.staging)?)?;
         acknowledge(Some(&receipt))?;
     }
@@ -229,6 +254,7 @@ pub struct ContainerScope {
     pub directory: PathBuf,
     pub token: String,
     finished: bool,
+    cleanup_attempted: bool,
 }
 impl ContainerScope {
     pub fn create(base: &Path) -> Result<Self> {
@@ -244,12 +270,13 @@ impl ContainerScope {
         };
         let token = new_token();
         let directory = base.join(format!(".revayat-tex-owner-{token}"));
-        fs::create_dir(&directory)?;
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
+            use std::os::unix::fs::DirBuilderExt;
+            fs::DirBuilder::new().mode(0o700).create(&directory)?;
         }
+        #[cfg(not(unix))]
+        fs::create_dir(&directory)?;
         fs::write(
             directory.join("scope.json"),
             serde_json::to_vec(&json!({"token":token}))?,
@@ -258,6 +285,7 @@ impl ContainerScope {
             directory,
             token,
             finished: false,
+            cleanup_attempted: false,
         })
     }
     pub fn environment(&self) -> [(std::ffi::OsString, std::ffi::OsString); 2] {
@@ -267,7 +295,18 @@ impl ContainerScope {
         ]
     }
     pub fn finish(&mut self) -> Result<()> {
-        sweep(&self.directory, &self.token).with_context(|| {
+        self.finish_until(std::time::Instant::now() + std::time::Duration::from_secs(30))
+    }
+    pub fn finish_until(&mut self, deadline: std::time::Instant) -> Result<()> {
+        if self.finished {
+            return Ok(());
+        }
+        ensure!(
+            !self.cleanup_attempted,
+            "container cleanup previously failed; ownership evidence retained"
+        );
+        self.cleanup_attempted = true;
+        sweep_until(&self.directory, &self.token, deadline).with_context(|| {
             format!(
                 "container cleanup unverified; retained ownership evidence: {}",
                 self.directory.display()
@@ -280,8 +319,21 @@ impl ContainerScope {
 }
 impl Drop for ContainerScope {
     fn drop(&mut self) {
-        if !self.finished {
+        if !self.finished && !self.cleanup_attempted {
             let _ = self.finish();
         }
+    }
+}
+
+#[cfg(test)]
+mod bounded_record_tests {
+    #[test]
+    fn ownership_json_respects_the_same_bounded_reader() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().canonicalize().unwrap().join("record.json");
+        std::fs::write(&path, br#"{"token":"fixture"}"#).unwrap();
+        assert!(super::read_json(&path, 64).is_ok());
+        let error = super::read_json(&path, 8).unwrap_err();
+        assert!(error.to_string().contains("bounded regular file"));
     }
 }

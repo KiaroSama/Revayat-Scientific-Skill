@@ -225,6 +225,13 @@ pub fn job_results(jobs: &[Value], id: &ReportingIdentity<'_>) -> Result<BTreeMa
         if ["status-pending", "status-final"].contains(&name) {
             continue;
         }
+        if name == "prepare-artifacts" {
+            ensure!(
+                job["status"] == "completed" && job["conclusion"] == "skipped",
+                "preparation job unexpectedly ran during full validation"
+            );
+            continue;
+        }
         let conclusion = job["conclusion"].as_str().unwrap_or("unknown");
         let (state, label) = if job["status"] != "completed" {
             ("pending", "not completed")

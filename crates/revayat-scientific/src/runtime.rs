@@ -4,8 +4,13 @@ use std::{
     collections::BTreeMap,
     ffi::OsString,
     fs::{File, OpenOptions},
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+#[cfg(not(unix))]
+use std::{
+    io::Read,
     process::{Command, Stdio},
     sync::{
         Arc,
@@ -13,8 +18,14 @@ use std::{
         mpsc,
     },
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+#[path = "runtime_owner.rs"]
+pub mod owner;
+#[cfg(unix)]
+#[path = "runtime_unix.rs"]
+mod unix;
 
 pub const MAX_DIAGNOSTICS: usize = 32 * 1024 * 1024;
 
@@ -24,6 +35,8 @@ pub struct CommandSpec {
     pub args: Vec<OsString>,
     pub cwd: Option<PathBuf>,
     pub env: BTreeMap<OsString, OsString>,
+    /// Remove inherited variables in this child only, before explicit overrides.
+    pub env_remove: Vec<OsString>,
     pub timeout: Duration,
     pub idle_timeout: Option<Duration>,
     pub max_output: usize,
@@ -35,6 +48,7 @@ impl CommandSpec {
             args: vec![],
             cwd: None,
             env: BTreeMap::new(),
+            env_remove: Vec::new(),
             timeout: Duration::from_secs(120),
             idle_timeout: None,
             max_output: MAX_DIAGNOSTICS,
@@ -83,14 +97,14 @@ impl std::error::Error for DeadlineExceeded {}
 
 #[cfg(unix)]
 pub fn kill_owned_group(id: u32) -> Result<()> {
+    ensure!(
+        id > 1 && id <= i32::MAX as u32,
+        "invalid owned process group identity"
+    );
     // SAFETY: a negative, owned child PGID targets precisely its process group.
     let result = unsafe { libc::kill(-(id as i32), libc::SIGKILL) };
     if result != 0 {
         let error = std::io::Error::last_os_error();
-        #[cfg(target_os = "macos")]
-        if error.raw_os_error() == Some(libc::EPERM) {
-            return reap_macos_members(id);
-        }
         ensure!(
             error.raw_os_error() == Some(libc::ESRCH),
             "owned process group cleanup failed: {error}"
@@ -99,88 +113,7 @@ pub fn kill_owned_group(id: u32) -> Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn reap_macos_members(group: u32) -> Result<()> {
-    // macOS may refuse killpg after its launcher exited. Inspect only numeric
-    // ownership fields, never private command lines, before a member fallback.
-    for _ in 0..3 {
-        let mut listed = Command::new("/bin/ps")
-            .args([
-                "-A", "-o", "pid=", "-o", "pgid=", "-o", "uid=", "-o", "state=",
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
-        let pipe = listed
-            .stdout
-            .take()
-            .context("missing process ownership listing")?;
-        let reader = thread::spawn(move || {
-            let mut bytes = Vec::new();
-            pipe.take(4 * 1024 * 1024 + 1)
-                .read_to_end(&mut bytes)
-                .map(|_| bytes)
-        });
-        let started = Instant::now();
-        let status = loop {
-            if let Some(status) = listed.try_wait()? {
-                break status;
-            }
-            if started.elapsed() > Duration::from_secs(5) {
-                let _ = listed.kill();
-                let _ = listed.wait();
-                let _ = reader.join();
-                bail!("process ownership listing exceeded deadline");
-            }
-            thread::sleep(Duration::from_millis(10));
-        };
-        let bytes = reader
-            .join()
-            .map_err(|_| anyhow::anyhow!("process ownership listing reader failed"))??;
-        ensure!(
-            status.success() && bytes.len() <= 4 * 1024 * 1024,
-            "invalid bounded process ownership listing"
-        );
-        let mut members = vec![];
-        for line in std::str::from_utf8(&bytes)?.lines() {
-            let fields = line.split_whitespace().collect::<Vec<_>>();
-            ensure!(fields.len() == 4, "invalid process ownership fields");
-            let pid = fields[0].parse::<u32>()?;
-            let pgid = fields[1].parse::<u32>()?;
-            let uid = fields[2].parse::<u32>()?;
-            if pgid != group {
-                continue;
-            }
-            // SAFETY: getuid reads the current process's real identity.
-            ensure!(
-                uid == unsafe { libc::getuid() },
-                "owned process group contains a different user"
-            );
-            if !fields[3].starts_with('Z') {
-                members.push(pid);
-            }
-        }
-        if members.is_empty() {
-            return Ok(());
-        }
-        for pid in members {
-            // SAFETY: the exact PGID and real UID were checked above; recheck
-            // current membership before signaling a listed surviving process.
-            if unsafe { libc::getpgid(pid as i32) } != group as i32 {
-                continue;
-            }
-            if unsafe { libc::kill(pid as i32, libc::SIGKILL) } != 0 {
-                ensure!(
-                    std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH),
-                    "owned process member cleanup failed"
-                );
-            }
-        }
-    }
-    bail!("owned process group still has live members")
-}
-
+#[cfg(not(unix))]
 enum PipeEvent {
     Bytes(usize, Vec<u8>),
     End,
@@ -188,8 +121,42 @@ enum PipeEvent {
     OverBudget,
 }
 
+#[derive(Debug)]
+pub struct CleanupFailure(pub anyhow::Error);
+impl std::fmt::Display for CleanupFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "secondary cleanup failure: {:#}", self.0)
+    }
+}
+impl std::error::Error for CleanupFailure {}
+
+pub fn is_missing_executable(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<CleanupFailure>().is_none()
+        && error
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+}
+
+/// Preserve the typed primary cause and inspectable secondary cleanup error.
+pub fn with_cleanup<T>(result: Result<T>, cleanup: Result<()>) -> Result<T> {
+    match (result, cleanup) {
+        (Err(primary), Err(secondary)) => Err(primary.context(CleanupFailure(secondary))),
+        (Err(primary), Ok(())) => Err(primary),
+        (Ok(_), Err(cleanup)) => Err(anyhow::Error::new(CleanupFailure(cleanup))),
+        (Ok(value), Ok(())) => Ok(value),
+    }
+}
+
 pub fn run(spec: &CommandSpec) -> Result<CommandOutput> {
-    run_input(spec, None)
+    #[cfg(unix)]
+    {
+        validate_spec(spec)?;
+        owner::cleanup_command(spec, None).unwrap_or_else(|| owner::run(spec, None))
+    }
+    #[cfg(not(unix))]
+    {
+        run_input(spec, None)
+    }
 }
 
 pub fn run_with_input(spec: &CommandSpec, input: &[u8]) -> Result<CommandOutput> {
@@ -197,10 +164,18 @@ pub fn run_with_input(spec: &CommandSpec, input: &[u8]) -> Result<CommandOutput>
         input.len() <= MAX_DIAGNOSTICS,
         "tool stdin exceeds 32 MiB input limit"
     );
-    run_input(spec, Some(input))
+    #[cfg(unix)]
+    {
+        validate_spec(spec)?;
+        owner::cleanup_command(spec, Some(input)).unwrap_or_else(|| owner::run(spec, Some(input)))
+    }
+    #[cfg(not(unix))]
+    {
+        run_input(spec, Some(input))
+    }
 }
 
-fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
+fn validate_spec(spec: &CommandSpec) -> Result<()> {
     ensure!(
         !spec.timeout.is_zero() && spec.idle_timeout.is_none_or(|d| !d.is_zero()),
         "process time limits must be positive"
@@ -209,6 +184,12 @@ fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> 
         spec.max_output > 0 && spec.max_output <= MAX_DIAGNOSTICS,
         "invalid process diagnostic budget"
     );
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
+    validate_spec(spec)?;
     let mut command = Command::new(&spec.program);
     command
         .args(&spec.args)
@@ -220,6 +201,10 @@ fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> 
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .envs(&spec.env);
+    for key in &spec.env_remove {
+        command.env_remove(key);
+    }
+    command.envs(&spec.env);
     if let Some(cwd) = &spec.cwd {
         command.current_dir(cwd);
     }
@@ -300,7 +285,6 @@ fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> 
         let mut progress = started;
         let mut buffers = [Vec::new(), Vec::new()];
         let mut ended = 0;
-        let mut exited_at: Option<Instant> = None;
         loop {
             let wall_left =
                 spec.timeout
@@ -317,17 +301,9 @@ fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> 
                 wall_left
             };
             let status = child.try_wait()?;
-            if status.is_some() {
-                let exit = *exited_at.get_or_insert_with(Instant::now);
-                // Drain already queued diagnostics, then reject launchers which
-                // left another process holding their pipes. Reporting success
-                // after killing that work would conceal an incomplete command.
-                // A borrowed group returns promptly so its surviving owner can
-                // reap the entire group when the CLI worker exits.
-                if ended < 2 && exit.elapsed() > Duration::from_millis(200) {
-                    bail!("external launcher exited while descendants retained diagnostic pipes");
-                }
-            }
+            // A dead launcher may leave descendants holding its diagnostic
+            // pipes. Preserve the caller's actual wall/idle deadline and error
+            // identity instead of returning a generic early-exit error.
             if ended == 2
                 && let Some(status) = status
             {
@@ -369,35 +345,29 @@ fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> 
     } else {
         Ok(())
     };
-    if child.try_wait()?.is_none() {
-        let _ = child.kill();
-    }
-    let _ = child.wait();
-    for reader in readers {
-        #[cfg(unix)]
-        if !owns_group && result.is_err() {
-            drop(reader);
-            continue;
+    let finalization = (|| -> Result<()> {
+        #[cfg(windows)]
+        cleanup?;
+        if child.try_wait()?.is_none() {
+            child.kill()?;
         }
-        let _ = reader.join();
-    }
-    if let Some(writer) = writer {
-        #[cfg(unix)]
-        if !owns_group && result.is_err() {
-            drop(writer);
-            cleanup?;
-            return result;
+        child.wait()?;
+        for reader in readers {
+            reader
+                .join()
+                .map_err(|_| anyhow::anyhow!("tool diagnostic reader failed"))?;
         }
-        let wrote = writer
-            .join()
-            .map_err(|_| anyhow::anyhow!("tool stdin writer failed"))?;
-        if result.as_ref().is_ok_and(CommandOutput::success) {
-            wrote.context("tool did not consume its bounded input")?;
+        if let Some(writer) = writer {
+            let wrote = writer
+                .join()
+                .map_err(|_| anyhow::anyhow!("tool stdin writer failed"))?;
+            if result.as_ref().is_ok_and(CommandOutput::success) {
+                wrote.context("tool did not consume its bounded input")?;
+            }
         }
-    }
-    #[cfg(any(unix, windows))]
-    cleanup?;
-    result
+        Ok(())
+    })();
+    with_cleanup(result, finalization)
 }
 
 pub struct OperationLog {
@@ -561,13 +531,19 @@ pub fn executable(name: &str) -> Result<PathBuf> {
 /// The CLI parent remains alive to reclaim containers even when a worker is
 /// forcibly terminated. Cleanup uncertainty deliberately retains receipts.
 pub fn run_supervised(spec: &CommandSpec) -> Result<CommandOutput> {
-    let base = spec.cwd.clone().unwrap_or(std::env::current_dir()?);
-    let mut scope = crate::tex_supervisor::ContainerScope::create(&base)?;
-    let mut owned = spec.clone();
-    owned.env.extend(scope.environment());
-    let result = run(&owned);
-    scope.finish()?;
-    result
+    #[cfg(unix)]
+    {
+        run(spec)
+    } // Guardian owns the scope and waits for nested cleanup first.
+    #[cfg(not(unix))]
+    {
+        let base = spec.cwd.clone().unwrap_or(std::env::current_dir()?);
+        let mut scope = crate::tex_supervisor::ContainerScope::create(&base)?;
+        let mut owned = spec.clone();
+        owned.env.extend(scope.environment());
+        let result = run(&owned);
+        with_cleanup(result, scope.finish())
+    }
 }
 
 pub fn cli_run_check(args: &[String]) -> Result<i32> {

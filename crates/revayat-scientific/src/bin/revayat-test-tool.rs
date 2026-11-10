@@ -55,6 +55,26 @@ fn main() {
         std::process::exit(status.code().unwrap_or(2));
     }
     match args.get(1).map(String::as_str) {
+        Some("runtime-environment-parent") => {
+            let mut spec = revayat_scientific::runtime::CommandSpec::new(args.get(2).expect("fixture program missing"));
+            spec.args = vec!["runtime-environment".into(), args.get(3).expect("fixture PATH missing").into()];
+            spec.env.insert("PATH".into(), args[3].clone().into());
+            spec.env.insert("REVAYAT_TEST_ENV".into(), "explicit fixture override".into());
+            spec.timeout = Duration::from_secs(5);
+            match revayat_scientific::runtime::run(&spec) {
+                Ok(output) => {
+                    io::stdout().write_all(&output.stdout).unwrap();
+                    std::process::exit(output.code);
+                }
+                Err(_) => std::process::exit(2),
+            }
+        }
+        Some("runtime-environment") => {
+            let expected_path = args.get(2).expect("fixture PATH expectation missing");
+            println!("path_matches={}", env::var_os("PATH").as_deref() == Some(std::ffi::OsStr::new(expected_path)));
+            println!("override_matches={}", env::var("REVAYAT_TEST_ENV").as_deref() == Ok("explicit fixture override"));
+            println!("inherited_matches={}", env::var("REVAYAT_TEST_INHERITED").as_deref() == Ok("controlled inherited fixture"));
+        }
         Some("echo-input") => {
             io::copy(&mut io::stdin().lock(), &mut io::stdout().lock()).unwrap();
         }
