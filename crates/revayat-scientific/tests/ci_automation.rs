@@ -99,7 +99,7 @@ fn ci_preserves_release_after_failure_and_requires_explicit_browser() {
                 .is_some_and(|run| run.contains("--release --workspace --bins"))
         })
         .unwrap();
-    assert_eq!(release["if"], "${{ always() }}");
+    assert_eq!(release["if"], "${{ always() && !cancelled() }}");
     assert!(
         steps
             .iter()

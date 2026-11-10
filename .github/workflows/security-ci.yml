@@ -21,7 +21,7 @@ jobs:
       - name: Prove production Linux containment and publication contracts
         run: cargo run --locked --bin revayat-scientific -- security-linux
       - name: Require actual native stage execution adapter
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         run: cargo run --locked --bin revayat-test-runner -- --tier native --profile debug --ignored --output execution/native-debug.json --timeout 1200
       - name: Preserve native Linux report including adapter failure
         if: ${{ always() }}
@@ -51,10 +51,10 @@ jobs:
       - name: Prove native containment before Windows junction and OPC scenarios
         run: cargo run --locked --bin revayat-scientific -- security-windows --authority-image target/debug/registry-authority.exe
       - name: Require actual native stage execution adapter
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         run: cargo run --locked --bin revayat-test-runner -- --tier native --profile debug --ignored --output execution/native-debug.json --timeout 1200
       - name: Retain independent Rust registry and native contracts until stage adapter exists
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         run: cargo test --locked --workspace --all-targets -- --test-threads=1
       - name: Preserve native Windows report including adapter failure
         if: ${{ always() }}

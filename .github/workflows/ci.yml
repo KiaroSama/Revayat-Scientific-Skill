@@ -139,10 +139,10 @@ jobs:
         if: runner.os == 'Windows'
         run: cargo run --locked --bin revayat-scientific -- fonts fonts
       - name: Collect required macOS Poppler crop behavior
-        if: ${{ always() && runner.os == 'macOS' }}
+        if: ${{ always() && !cancelled() && runner.os == 'macOS' }}
         run: cargo run --locked --bin revayat-test-runner -- --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 900
       - name: Collect Windows crop and actual rendering preservation
-        if: ${{ always() && runner.os == 'Windows' }}
+        if: ${{ always() && !cancelled() && runner.os == 'Windows' }}
         env:
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
         run: cargo run --locked --bin revayat-test-runner -- --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 1200
@@ -151,10 +151,10 @@ jobs:
       - name: Validate UTF-8, metadata, local links and native skill layout
         run: cargo run --locked --bin revayat-scientific -- validate
       - name: Build release executable on every operating system
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         run: cargo build --locked --release --workspace --bins
       - name: Collect every portable release harness outcome
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         run: cargo run --locked --bin revayat-test-runner -- --tier portable --profile release --output execution/portable-release.json --timeout 1800
       - name: Reclaim checksum-pinned Windows Poppler
         if: ${{ always() && runner.os == 'Windows' }}
