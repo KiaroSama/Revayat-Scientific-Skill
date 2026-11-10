@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "reviewed_on": "2026-11-11",
+  "reviewed_on": "2026-11-10",
   "scope": "Latest default-branch commit metadata for repositories cited in research-sources.md. Metadata discovery alone is not a code or release review; specific inspected documents and adoption decisions are recorded in research-sources.md.",
   "repositories": [
     {

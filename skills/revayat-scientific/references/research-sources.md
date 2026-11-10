@@ -1,6 +1,6 @@
 # Research evidence and adoption boundaries
 
-## Rust migration review — 2026-11-11
+## Rust migration review — 2026-11-10 (UTC)
 
 [Upstream revisions](upstream-revisions.json) records the latest default-branch
 commit metadata observed for the 33 referenced repositories. That inventory is
