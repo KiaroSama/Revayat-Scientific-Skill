@@ -7,6 +7,7 @@
 [![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Plugin version 2.0.0](https://img.shields.io/badge/Plugin-2.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
 <br>
+[![Rust migration CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=rewrite%2Frust-complete)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions?query=branch%3Arewrite%2Frust-complete)
 [![Rust 1.99.1](https://img.shields.io/badge/Rust-1.99.1-dea584?style=flat-square&logo=rust)](rust-toolchain.toml)
 [![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
 [![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.fa.md)
@@ -29,7 +30,7 @@ Revayat is an agent skill and a native Rust executable. The host agent performs 
 
 [فارسی](README.fa.md)
 
-**Rust rewrite status:** these instructions describe `rewrite/rust-complete`, not the current `main` implementation. The rewrite is undergoing behavioral-parity and hosted CI verification; registration of a test name is not proof its original assertions or native controls passed. The badges above report `main` and do not certify this branch or its latest commit. Use a matching reviewed CI run for artifacts; do not treat an intermediate archive as a signed final release.
+**Rust rewrite status:** these instructions describe `rewrite/rust-complete`, not the current `main` implementation. The rewrite is undergoing behavioral-parity and hosted CI verification; registration of a test name is not proof its original assertions or native controls passed. Badges labeled `main` report the default branch; the Rust migration badge reports this PR branch. A badge does not establish assertion-level parity. Use a matching reviewed CI run for artifacts; do not treat an intermediate archive as a signed final release.
 
 ## What it does that a generic translator does not
 

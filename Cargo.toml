@@ -25,7 +25,9 @@ strip = "debuginfo"
 [profile.dev]
 debug = 0
 strip = "symbols"
+opt-level = 1
 
 [profile.test]
 debug = 0
 strip = "symbols"
+opt-level = 1

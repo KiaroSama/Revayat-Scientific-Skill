@@ -9,6 +9,7 @@
 [![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Plugin version 2.0.0](https://img.shields.io/badge/Plugin-2.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
 <br>
+[![Rust migration CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=rewrite%2Frust-complete)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions?query=branch%3Arewrite%2Frust-complete)
 [![Rust 1.99.1](https://img.shields.io/badge/Rust-1.99.1-dea584?style=flat-square&logo=rust)](rust-toolchain.toml)
 [![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
 [![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.md)
@@ -31,7 +32,7 @@
 
 [English](README.md)
 
-**وضعیت بازنویسی Rust:** این راهنما شاخهٔ `rewrite/rust-complete` را توصیف می‌کند، نه پیاده‌سازی فعلی `main`. برابری رفتاری تست‌ها و CI میزبانی‌شده هنوز در حال بررسی است؛ ثبت نام تست اثبات اجرای assertionهای اصلی یا موفقیت کنترل بومی نیست. نشان‌های بالا وضعیت `main` هستند و این شاخه یا آخرین commit آن را تأیید نمی‌کنند. آرشیو را از اجرای CI بازبینی‌شدهٔ همان نسخه بگیرید؛ بستهٔ میانی را release نهایی امضاشده معرفی نکنید.
+**وضعیت بازنویسی Rust:** این راهنما شاخهٔ `rewrite/rust-complete` را توصیف می‌کند، نه پیاده‌سازی فعلی `main`. برابری رفتاری تست‌ها و CI میزبانی‌شده هنوز در حال بررسی است؛ ثبت نام تست اثبات اجرای assertionهای اصلی یا موفقیت کنترل بومی نیست. نشان‌های دارای برچسب `main` وضعیت شاخهٔ اصلی را نشان می‌دهند و نشان Rust migration CI مربوط به شاخهٔ این PR است. نشان CI به‌تنهایی برابری assertionها را اثبات نمی‌کند. آرشیو را از اجرای CI بازبینی‌شدهٔ همان نسخه بگیرید؛ بستهٔ میانی را release نهایی امضاشده معرفی نکنید.
 
 ## تفاوت با ترجمهٔ عمومی
 

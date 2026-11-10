@@ -21,7 +21,8 @@ cargo run --locked --bin revayat-scientific -- validate
 Build all binaries before invoking development commands: Unix commands require
 the adjacent `revayat-process-owner`. Building only the CLI with `cargo run`
 does not build that companion. The status-publishing CI jobs explicitly build
-both binaries for this reason. Development and test profiles strip symbols
+both binaries for this reason. Development and test profiles use level-one
+optimization for bounded parsing and repeated payload hashing, and strip symbols
 so the combined native payload remains under its unchanged 64 MiB admission
 limit. To debug with symbols, use a separate Cargo profile; that executable
 may exceed the installable payload limit.
