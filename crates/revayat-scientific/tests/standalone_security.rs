@@ -17,7 +17,22 @@ fn case(id: &str) -> Result<()> {
         std::path::Path::new(env!("CARGO_BIN_EXE_revayat-scientific")),
         false,
     )?
-    .run(id)
+    .run(id)?;
+    if id.starts_with("docx/ordinary-external-") {
+        let report = revayat_scientific::docx::inspect_package(&root.path().join("previous.docx"))?;
+        let nodes = report["text_nodes"]
+            .as_array()
+            .expect("DOCX text inventory");
+        let first = nodes
+            .iter()
+            .find(|node| node["part"] == "word/document.xml" && node["index"] == 0)
+            .expect("first document text node");
+        assert_eq!(
+            first["text"], "changed",
+            "first original w:t was not edited"
+        );
+    }
+    Ok(())
 }
 #[test]
 fn docx_restricted_relationship_lowercase() -> Result<()> {

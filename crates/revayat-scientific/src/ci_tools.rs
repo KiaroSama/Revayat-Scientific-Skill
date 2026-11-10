@@ -6,6 +6,13 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+mod automation;
+mod invocations;
+mod poppler;
+mod source_audit;
+pub use invocations::docker as validate_docker_invocations;
+pub use source_audit::classify_source;
+
 pub const APPROVED_EMAIL: &str = "Kiaro.Sama.Dev@gmail.com";
 pub const DEPENDABOT_EMAIL: &str = "49699333+dependabot[bot]@users.noreply.github.com";
 fn git(repository: &Path, args: &[&str]) -> Result<String> {
@@ -110,15 +117,27 @@ pub fn cli_commit_identity(args: &[String]) -> Result<i32> {
     struct Options {
         #[arg(long, default_value = "HEAD")]
         head: String,
-        #[arg(long)]
+        #[arg(long, conflicts_with = "ci_base")]
         base: Option<String>,
+        #[arg(long)]
+        ci_base: bool,
     }
     let opts = Options::try_parse_from(
         std::iter::once("check-commit-identity".into()).chain(args.iter().cloned()),
     )?;
     let root = crate::distribution::repository_root()?;
-    let (count, failures) = inspect_identities(&root, &opts.head, opts.base.as_deref())?;
-    if opts.base.is_some() {
+    let selected = if opts.ci_base {
+        Some(automation::base_from_environment(&root)?)
+    } else {
+        opts.base
+    };
+    let head = if opts.ci_base {
+        std::env::var("HEAD_REF").context("CI head commit is required")?
+    } else {
+        opts.head
+    };
+    let (count, failures) = inspect_identities(&root, &head, selected.as_deref())?;
+    if selected.is_some() {
         eprintln!("Introduced-commit check excludes earlier history.");
     }
     for (sha, roles) in &failures {
@@ -184,6 +203,7 @@ pub fn validate_workflow_contract(root: &Path, filename: &str, source: &str) -> 
     let jobs = value["jobs"]
         .as_object()
         .context("workflow jobs mapping missing")?;
+    invocations::workflow(filename, &value)?;
     for job in jobs.values() {
         if let Some(reference) = job["uses"].as_str() {
             if let Some(local) = reference.strip_prefix("./") {
@@ -220,7 +240,13 @@ pub fn validate_workflow_contract(root: &Path, filename: &str, source: &str) -> 
     Ok(())
 }
 pub fn cli_workflow(args: &[String]) -> Result<i32> {
-    ensure!(args.is_empty(), "usage: check-workflows");
+    if args == ["source-audit"] {
+        source_audit::run()?;
+        return Ok(0);
+    }
+    if let Some(code) = automation::cli(args)? {
+        return Ok(code);
+    }
     let root = crate::distribution::repository_root()?;
     let mut files = fs::read_dir(root.join(".github/workflows"))?
         .map(|entry| entry.map(|e| e.path()))
@@ -228,6 +254,15 @@ pub fn cli_workflow(args: &[String]) -> Result<i32> {
     files.retain(|p| p.extension().is_some_and(|e| e == "yml" || e == "yaml"));
     files.sort();
     ensure!(!files.is_empty(), "no workflows found");
+    let dockerfile = root.join("skills/revayat-scientific/assets/Dockerfile.tex");
+    if dockerfile.try_exists()? {
+        ensure!(
+            !crate::identity::is_link(&dockerfile)?
+                && fs::metadata(&dockerfile)?.len() <= 1024 * 1024,
+            "Dockerfile must be a plain file of at most 1 MiB"
+        );
+        validate_docker_invocations(&fs::read_to_string(dockerfile)?)?;
+    }
     let mut failed = false;
     for path in files {
         ensure!(
@@ -240,25 +275,57 @@ pub fn cli_workflow(args: &[String]) -> Result<i32> {
             .replace('\\', "/");
         let source = actionlint_source(&filename, &fs::read_to_string(&path)?)?;
         validate_workflow_contract(&root, &filename, &source)?;
-        let mut spec =
-            CommandSpec::new("actionlint").args(["-stdin-filename", filename.as_str(), "-"]);
-        spec.cwd = Some(root.clone());
-        spec.timeout = Duration::from_secs(30);
-        let output = crate::runtime::run_with_input(&spec, source.as_bytes())?;
+        let output = lint_one(&root, &filename, &source)?;
         print!("{}", output.stdout_text());
         eprint!("{}", output.stderr_text());
         failed |= !output.success();
     }
     Ok(i32::from(failed))
 }
+pub fn lint_spec(root: &Path, filename: &str) -> CommandSpec {
+    let mut spec = CommandSpec::new("actionlint").args(["-stdin-filename", filename, "-"]);
+    spec.cwd = Some(root.to_owned());
+    spec.timeout = Duration::from_secs(30);
+    spec
+}
+
+pub fn lint_one(
+    root: &Path,
+    filename: &str,
+    source: &str,
+) -> Result<crate::runtime::CommandOutput> {
+    lint_one_with(root, filename, source, crate::runtime::run_with_input)
+}
+
+pub fn lint_one_with(
+    root: &Path,
+    filename: &str,
+    source: &str,
+    runner: impl FnOnce(&CommandSpec, &[u8]) -> Result<crate::runtime::CommandOutput>,
+) -> Result<crate::runtime::CommandOutput> {
+    let translated = actionlint_source(filename, source)?;
+    runner(&lint_spec(root, filename), translated.as_bytes())
+}
+
 pub fn cli_sha(args: &[String]) -> Result<i32> {
+    if args == ["--ci-base"] {
+        let root = crate::distribution::repository_root()?;
+        let base = automation::base_from_environment(&root)?;
+        automation::github_output(&base)?;
+        return Ok(0);
+    }
+    ensure!(args.len() == 1, "check-sha requires one full commit SHA");
+    require_sha(&args[0])?;
+    Ok(0)
+}
+
+fn require_sha(value: &str) -> Result<()> {
     ensure!(
-        args.len() == 1
-            && args[0].len() == 40
-            && args[0]
+        value.len() == 40
+            && value
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
         "dependency review requires a full base commit SHA"
     );
-    Ok(0)
+    Ok(())
 }

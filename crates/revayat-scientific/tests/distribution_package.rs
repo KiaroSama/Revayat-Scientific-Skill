@@ -26,7 +26,7 @@ impl Fixture {
             .join(".scratch");
         fs::create_dir_all(&scratch).unwrap();
         let temp = tempfile::tempdir_in(scratch).unwrap();
-        let root = temp.path().to_owned();
+        let root = temp.path().canonicalize().unwrap();
         let repo = root.join("checkout");
         let source = repo.join("skills").join(NAME);
         fs::create_dir_all(source.join("references")).unwrap();
@@ -96,6 +96,13 @@ impl Fixture {
         let error = self.package(target).unwrap_err();
         assert!(!error.to_string().is_empty());
         assert_eq!(fs::read(target).ok(), before);
+        if let Some(parent) = target.parent().filter(|path| path.is_dir()) {
+            assert!(!fs::read_dir(parent).unwrap().any(|entry| {
+                let name = entry.unwrap().file_name();
+                let name = name.to_string_lossy();
+                name.starts_with(".revayat-package-") || name.starts_with(".revayat-publish-")
+            }));
+        }
     }
     fn child(&self, target: &Path, env: &[(&str, &Path)]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_revayat-scientific"));
@@ -128,131 +135,7 @@ fn link(source: &Path, dest: &Path) {
 fn link(source: &Path, dest: &Path) {
     std::os::windows::fs::symlink_file(source, dest).unwrap();
 }
-#[test]
-fn test_ordinary_git_config_index_head_and_new_objects_are_protected() {
-    let f = Fixture::new();
-    for name in ["config", "index", "HEAD", "objects/new.skill"] {
-        f.refused(&f.repo.join(".git").join(name));
-    }
-    assert!(
-        f.git(&["status", "--porcelain", "--untracked-files=no"])
-            .is_empty()
-    );
-}
-#[test]
-fn test_separate_git_directory_and_pointer_file_are_protected() {
-    let f = Fixture::new();
-    let admin = f.root.join("relocated");
-    f.git(&[
-        "init",
-        "--quiet",
-        "--separate-git-dir",
-        admin.to_str().unwrap(),
-    ]);
-    for path in [
-        f.repo.join(".git"),
-        admin.join("config"),
-        admin.join("new.skill"),
-    ] {
-        f.refused(&path);
-    }
-    assert!(admin.join("HEAD").is_file());
-}
-#[test]
-fn test_linked_worktree_shared_and_private_metadata_are_protected() {
-    let f = Fixture::new();
-    let linked = f.worktree();
-    let private = PathBuf::from(f.git_at(&linked, &["rev-parse", "--absolute-git-dir"]));
-    for path in [
-        linked.join(".git"),
-        private.join("HEAD"),
-        private.join("index"),
-        f.repo.join(".git/config"),
-    ] {
-        assert!(d::package(&linked.join("skills").join(NAME), &linked, &path, None).is_err());
-    }
-    assert_eq!(
-        f.git_at(&linked, &["rev-parse", "HEAD"]),
-        f.git(&["rev-parse", "HEAD"])
-    );
-}
-#[test]
-fn test_legitimate_archive_and_exported_source_output_remain_available() -> Result<()> {
-    let f = Fixture::new();
-    let output = f.repo.join("dist/bundle.skill");
-    f.package(&output)?;
-    let mut zip = zip::ZipArchive::new(fs::File::open(output)?)?;
-    let mut text = String::new();
-    zip.by_name("revayat-scientific/SKILL.md")?
-        .read_to_string(&mut text)?;
-    assert!(text.contains("unchanged instructions"));
-    let exported = f.root.join("exported");
-    fs::create_dir(&exported)?;
-    d::package(&f.source, &exported, &exported.join("bundle.skill"), None)?;
-    assert!(exported.join("bundle.skill").is_file());
-    Ok(())
-}
-#[test]
-fn test_metadata_resolution_failure_is_not_an_empty_allowlist() {
-    let f = Fixture::new();
-    fs::remove_file(f.repo.join(".git/HEAD")).unwrap();
-    let target = f.repo.join("previous.skill");
-    fs::write(&target, "approved delivery").unwrap();
-    f.refused(&target);
-    assert_eq!(fs::read(target).unwrap(), b"approved delivery");
-}
-#[test]
-fn test_git_selected_external_index_and_object_store_are_protected() {
-    let f = Fixture::new();
-    let index = f.root.join("external-index");
-    fs::copy(f.repo.join(".git/index"), &index).unwrap();
-    let objects = f.root.join("external-objects");
-    fs::create_dir(&objects).unwrap();
-    for path in [&index, &objects.join("new.skill")] {
-        let before = fs::read(path).ok();
-        let output = f.child(
-            path,
-            &[
-                ("GIT_INDEX_FILE", &index),
-                ("GIT_OBJECT_DIRECTORY", &objects),
-            ],
-        );
-        assert!(!output.status.success());
-        assert_eq!(fs::read(path).ok(), before);
-    }
-}
-#[test]
-fn test_explicit_git_dir_without_gitfile_is_protected() {
-    let f = Fixture::new();
-    let admin = f.root.join("explicit");
-    f.git(&[
-        "init",
-        "--quiet",
-        "--separate-git-dir",
-        admin.to_str().unwrap(),
-    ]);
-    fs::remove_file(f.repo.join(".git")).unwrap();
-    let config = admin.join("config");
-    let before = fs::read(&config).unwrap();
-    assert!(
-        !f.child(&config, &[("GIT_DIR", &admin), ("GIT_WORK_TREE", &f.repo)])
-            .status
-            .success()
-    );
-    assert_eq!(fs::read(config).unwrap(), before);
-}
-#[test]
-fn test_invalid_explicit_git_dir_is_not_treated_as_an_export() {
-    let f = Fixture::new();
-    let path = f.repo.join("previous.skill");
-    fs::write(&path, "approved delivery").unwrap();
-    assert!(
-        !f.child(&path, &[("GIT_DIR", &f.root.join("missing"))])
-            .status
-            .success()
-    );
-    assert_eq!(fs::read(path).unwrap(), b"approved delivery");
-}
+include!("support/distribution_package_git.rs");
 #[test]
 fn test_index_config_head_and_refs_remain_byte_exact() {
     let f = Fixture::new();
@@ -279,6 +162,7 @@ fn test_linked_worktree_gitfile_and_private_admin_directory_are_protected() {
     for path in [
         linked.join(".git"),
         admin.join("HEAD"),
+        admin.join("index"),
         admin.join("new.skill"),
     ] {
         let before = fs::read(&path).ok();
@@ -310,10 +194,13 @@ fn test_external_separate_git_directory_is_protected() {
     for path in [
         admin.join("HEAD"),
         admin.join("index"),
+        admin.join("config"),
         admin.join("objects/new.skill"),
+        admin.join("new.skill"),
     ] {
         f.refused(&path);
     }
+    f.git(&["status", "--porcelain"]);
 }
 #[test]
 fn test_environment_selected_index_is_not_an_output() {
@@ -342,7 +229,13 @@ fn test_valid_output_does_not_require_mutating_repository_metadata() -> Result<(
     let f = Fixture::new();
     let index = fs::read(f.repo.join(".git/index"))?;
     let head = f.git(&["rev-parse", "HEAD"]);
-    f.package(&f.repo.join("dist/bundle.skill"))?;
+    for target in [f.repo.join("dist/bundle.skill"), f.root.join("outside.skill")] {
+        f.package(&target)?;
+        let mut archive = zip::ZipArchive::new(fs::File::open(target)?)?;
+        let mut bytes = Vec::new();
+        archive.by_name(&format!("{NAME}/SKILL.md"))?.read_to_end(&mut bytes)?;
+        assert_eq!(bytes, fs::read(f.source.join("SKILL.md"))?);
+    }
     assert_eq!(fs::read(f.repo.join(".git/index"))?, index);
     assert_eq!(f.git(&["rev-parse", "HEAD"]), head);
     Ok(())
@@ -354,14 +247,15 @@ fn test_exported_source_with_no_git_metadata_remains_packagable() -> Result<()> 
     let target = f.repo.join("export.skill");
     f.package(&target)?;
     assert!(zip::ZipArchive::new(fs::File::open(target)?).is_ok());
+    assert!(!f.repo.join(".git").exists());
     Ok(())
 }
 #[test]
 fn test_dotgithub_and_similarly_named_outputs_are_not_metadata() -> Result<()> {
     let f = Fixture::new();
-    for name in [".github/bundle.skill", "not.git/bundle.skill"] {
-        f.package(&f.repo.join(name))?;
-        assert!(f.repo.join(name).is_file());
+    for target in [f.repo.join(".github/bundle.skill"), f.repo.join("not.git/bundle.skill"), f.root.join(".git-notes.skill")] {
+        f.package(&target)?;
+        assert!(zip::ZipArchive::new(fs::File::open(target)?).is_ok());
     }
     Ok(())
 }
@@ -382,19 +276,38 @@ fn test_vendored_source_uses_the_parent_repository_admin_directory() {
     let target = f.repo.join(".git/objects/new.skill");
     assert!(d::package(&f.source, &vendored, &target, None).is_err());
     assert!(!target.exists());
+    let valid = vendored.join("dist/result.skill");
+    d::package(&f.source, &vendored, &valid, None).unwrap();
+    assert!(valid.is_file());
+    let nested_source = vendored.join("skills").join(NAME);
+    fs::create_dir_all(&nested_source).unwrap();
+    fs::write(nested_source.join("SKILL.md"), HEADER).unwrap();
+    let external = f.root.join("external metadata");
+    f.git(&["init", "--quiet", "--separate-git-dir", external.to_str().unwrap()]);
+    let index = external.join("index");
+    let before = fs::read(&index).unwrap();
+    assert!(d::package(&nested_source, &vendored, &index, None).is_err());
+    assert_eq!(fs::read(index).unwrap(), before);
+    let valid = vendored.join("dist/relocated.skill");
+    d::package(&nested_source, &vendored, &valid, None).unwrap();
+    let mut archive = zip::ZipArchive::new(fs::File::open(valid).unwrap()).unwrap();
+    let mut bytes = Vec::new();
+    archive.by_name(&format!("{NAME}/SKILL.md")).unwrap().read_to_end(&mut bytes).unwrap();
+    assert_eq!(bytes, fs::read(nested_source.join("SKILL.md")).unwrap());
+    f.git_at(&vendored, &["status", "--porcelain"]);
 }
 #[test]
 fn test_redirected_object_database_is_protected() {
     let f = Fixture::new();
     let objects = f.root.join("redirected-objects");
     fs::create_dir(&objects).unwrap();
-    let target = objects.join("new.skill");
-    assert!(
-        !f.child(&target, &[("GIT_OBJECT_DIRECTORY", &objects)])
-            .status
-            .success()
-    );
-    assert!(!target.exists());
+    for existing in [false, true] {
+        let target = objects.join(if existing { "existing-object" } else { "new.skill" });
+        if existing { fs::write(&target, b"untouched object sentinel").unwrap(); }
+        let before = fs::read(&target).ok();
+        assert!(!f.child(&target, &[("GIT_OBJECT_DIRECTORY", &objects)]).status.success());
+        assert_eq!(fs::read(target).ok(), before);
+    }
 }
 #[test]
 fn test_configured_external_hooks_directory_is_protected() {
@@ -405,6 +318,10 @@ fn test_configured_external_hooks_directory_is_protected() {
     let target = hooks.join("new.skill");
     f.refused(&target);
     assert!(!target.exists());
+    let existing = hooks.join("pre-commit");
+    fs::write(&existing, b"untouched hook sentinel").unwrap();
+    f.refused(&existing);
+    assert_eq!(fs::read(existing).unwrap(), b"untouched hook sentinel");
 }
 #[test]
 fn test_explicit_repository_environment_without_a_dotgit_marker_is_respected() {
@@ -433,6 +350,25 @@ fn test_ambiguous_admin_paths_fail_without_publishing() {
     let path = f.repo.join("approved.skill");
     fs::write(&path, "approved").unwrap();
     f.refused(&path);
+    // Exercise the exact production parser, not an invented broken repository
+    // response. Actual Git invocation remains covered by the controls above.
+    use revayat_scientific::distribution_paths::parse_git_paths;
+    let absolute = f.repo.join(".git").to_str().unwrap().to_owned();
+    let valid = format!("{0}\n{0}\n{0}\n{0}\n{0}\n", absolute);
+    assert_eq!(parse_git_paths(valid.as_bytes()).unwrap().len(), 5);
+    assert_eq!(parse_git_paths(format!("{valid}\n").as_bytes()).unwrap().len(), 5);
+    assert_eq!(parse_git_paths(format!("{valid}{absolute}\n").as_bytes()).unwrap().len(), 6);
+    let malformed = [
+        format!("relative\n{0}\n{0}\n{0}\n{0}\n", absolute).into_bytes(),
+        format!("\n{0}\n{0}\n{0}\n{0}\n", absolute).into_bytes(),
+        format!("{0}\n{0}\n", absolute).into_bytes(),
+        format!("{valid}relative-shared-index\n").into_bytes(),
+        [valid.as_bytes(), &[0xff, b'\n']].concat(),
+    ];
+    for raw in malformed {
+        assert!(parse_git_paths(&raw).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"approved");
+    }
 }
 #[test]
 fn test_index_relocation_during_staging_is_rechecked() {
@@ -440,6 +376,13 @@ fn test_index_relocation_during_staging_is_rechecked() {
     let selected = f.root.join("late-index");
     fs::copy(f.repo.join(".git/index"), &selected).unwrap();
     let before = fs::read(&selected).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_revayat-test-tool"))
+        .arg("package-relocated-index")
+        .arg(&f.source).arg(&f.repo).arg(&selected)
+        .output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("staged=true"));
+    assert_eq!(fs::read(&selected).unwrap(), before);
     let result = package_observed(&f.source, &f.repo, &selected, None, |at, _| {
         if at == B::Staged {
             f.git(&["config", "core.hooksPath", selected.to_str().unwrap()]);
@@ -462,8 +405,26 @@ fn test_external_index_shared_storage_and_hardlink_remain_unchanged() {
             .status
             .success()
     );
-    assert_eq!(fs::read(index).unwrap(), before);
+    assert_eq!(fs::read(&index).unwrap(), before);
     assert_eq!(fs::read(alias).unwrap(), before);
+    let output = Command::new("git")
+        .args(["update-index", "--split-index"]).current_dir(&f.repo)
+        .env("GIT_INDEX_FILE", &index).output().unwrap();
+    assert!(output.status.success());
+    let output = Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--shared-index-path"])
+        .current_dir(&f.repo).env("GIT_INDEX_FILE", &index).output().unwrap();
+    assert!(output.status.success());
+    let shared = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim());
+    assert!(shared.is_file());
+    let previous = fs::read(&shared).unwrap();
+    let linked = f.root.join("shared-alias.skill");
+    fs::hard_link(&shared, &linked).unwrap();
+    for target in [&shared, &linked] {
+        let output = f.child(target, &[("GIT_INDEX_FILE", &index)]);
+        assert!(!output.status.success());
+    }
+    assert_eq!(fs::read(shared).unwrap(), previous);
 }
 #[test]
 fn test_reserved_case_variant_git_component_is_refused() {
@@ -471,6 +432,11 @@ fn test_reserved_case_variant_git_component_is_refused() {
     for name in [".GIT", ".Git"] {
         f.refused(&f.repo.join(name).join("new.skill"));
     }
+    let target = f.root.join(".GIT/index");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(&target, b"protected metadata sentinel").unwrap();
+    f.refused(&target);
+    assert_eq!(fs::read(target).unwrap(), b"protected metadata sentinel");
 }
 #[test]
 fn test_output_cannot_overwrite_distributed_source() {
@@ -500,6 +466,10 @@ fn test_hardlink_alias_of_source_is_refused() {
     let alias = f.repo.join("alias.skill");
     fs::hard_link(f.source.join("SKILL.md"), &alias).unwrap();
     f.refused(&alias);
+    assert_eq!(
+        revayat_scientific::identity::path_object_id(&alias).unwrap(),
+        revayat_scientific::identity::path_object_id(&f.source.join("SKILL.md")).unwrap()
+    );
 }
 #[test]
 fn test_case_variant_and_directory_destinations_fail_without_side_effects() {
@@ -516,18 +486,22 @@ fn test_case_variant_and_directory_destinations_fail_without_side_effects() {
 fn test_valid_archive_and_repeat_build_preserve_payload() -> Result<()> {
     let f = Fixture::new();
     let target = f.repo.join("bundle.skill");
-    for _ in 0..2 {
-        f.package(&target)?;
-        let mut archive = zip::ZipArchive::new(fs::File::open(&target)?)?;
-        for row in d::Payload::collect(&f.source, None)?.files {
-            let mut bytes = Vec::new();
-            archive
-                .by_name(&format!(
-                    "{NAME}/{}",
-                    row.relative.to_string_lossy().replace('\\', "/")
-                ))?
-                .read_to_end(&mut bytes)?;
-            assert_eq!(bytes, fs::read(row.source)?);
+    for newline in [b"retained reference\n".as_slice(), b"retained reference\r\n".as_slice()] {
+        fs::write(f.source.join("references/contract.md"), newline)?;
+        for _ in 0..2 {
+            f.package(&target)?;
+            let mut archive = zip::ZipArchive::new(fs::File::open(&target)?)?;
+            for row in d::Payload::collect(&f.source, None)?.files {
+                let mut bytes = Vec::new();
+                archive
+                    .by_name(&format!(
+                        "{NAME}/{}",
+                        row.relative.to_string_lossy().replace('\\', "/")
+                    ))?
+                    .read_to_end(&mut bytes)?;
+                assert_eq!(bytes, fs::read(row.source)?);
+            }
+            assert_eq!(fs::read(f.source.join("references/contract.md"))?, newline);
         }
     }
     Ok(())
@@ -544,8 +518,12 @@ fn test_tracked_nonpayload_document_is_protected() {
 #[test]
 fn test_new_output_inside_implementation_directories_is_rejected() {
     let f = Fixture::new();
-    for name in ["tools/new.skill", "install/new.skill", "crates/new.skill"] {
-        let path = f.repo.join(name);
+    for path in [
+        f.repo.join("tools/new.skill"),
+        f.repo.join("install/new.skill"),
+        f.repo.join("crates/new.skill"),
+        f.source.join("new-package.skill"),
+    ] {
         f.refused(&path);
         assert!(!path.exists());
     }
@@ -567,7 +545,46 @@ fn test_missing_skill_and_late_archive_failure_keep_previous_output() {
         })
         .is_err()
     );
-    assert_eq!(fs::read(path).unwrap(), b"approved");
+    assert_eq!(fs::read(&path).unwrap(), b"approved");
+    for foreign in [false, true] {
+        let mut reached = false;
+        let error = package_observed(&f.source, &f.repo, &path, None, |at, source| {
+            if at == B::BeforeArchiveEntry(1) {
+                reached = true;
+                if foreign {
+                    let replacement = f.root.join("foreign entry");
+                    let original = fs::metadata(source)?.modified()?;
+                    fs::write(&replacement, fs::read(source)?)?;
+                    fs::File::options().write(true).open(&replacement)?
+                        .set_times(fs::FileTimes::new().set_modified(original))?;
+                    assert_ne!(revayat_scientific::identity::path_object_id(source)?,
+                        revayat_scientific::identity::path_object_id(&replacement)?);
+                    fs::rename(replacement, source)?;
+                } else {
+                    fs::OpenOptions::new().append(true).open(source)?.write_all(b" growth")?;
+                }
+            }
+            Ok(())
+        }).unwrap_err();
+        assert!(reached);
+        assert!(error.to_string().contains("payload changed before archive write"));
+        assert_eq!(fs::read(&path).unwrap(), b"approved");
+    }
+    let mut entry_reached = false;
+    let error = package_observed(&f.source, &f.repo, &path, None, |at, source| {
+        if at == B::BeforeArchiveEntry(1) {
+            entry_reached = true;
+            fs::remove_file(source)?;
+        }
+        Ok(())
+    }).unwrap_err();
+    assert!(entry_reached);
+    // The callback succeeds; the subsequent actual entry File::open fails.
+    assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(fs::read(&path).unwrap(), b"approved");
+    assert!(!fs::read_dir(&f.repo).unwrap().any(|entry| {
+        entry.unwrap().file_name().to_string_lossy().starts_with(".revayat-package-")
+    }));
 }
 #[test]
 fn test_publication_failure_keeps_approved_archive() {
@@ -583,7 +600,45 @@ fn test_publication_failure_keeps_approved_archive() {
         })
         .is_err()
     );
-    assert_eq!(fs::read(target).unwrap(), b"approved");
+    assert_eq!(fs::read(&target).unwrap(), b"approved");
+    for native_failure in [false, true] {
+        let mut reached = false;
+        let error = package_observed(&f.source, &f.repo, &target, None, |at, path| {
+            let event = if native_failure {
+                revayat_scientific::publication::Boundary::BeforeReplace
+            } else {
+                revayat_scientific::publication::Boundary::AfterCommit
+            };
+            if at == B::Publication(event) {
+                reached = true;
+                assert_eq!(path, target);
+                if native_failure {
+                    let stage = fs::read_dir(&f.repo)?.map(|e| e.unwrap().path())
+                        .find(|p| p.file_name().unwrap().to_string_lossy()
+                            .starts_with(".revayat-package-")).unwrap();
+                    fs::remove_file(stage)?;
+                } else {
+                    assert!(zip::ZipArchive::new(fs::File::open(path)?).is_ok());
+                    bail!("controlled failure inside actual archive publisher");
+                }
+            }
+            Ok(())
+        }).unwrap_err();
+        assert!(reached);
+        if native_failure {
+            // Callback succeeds; the actual rename then fails on the missing stage.
+            assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                std::io::ErrorKind::NotFound);
+        } else {
+            assert!(error.to_string().contains("inside actual archive publisher"));
+        }
+        assert_eq!(fs::read(&target).unwrap(), b"approved");
+    }
+    assert!(!fs::read_dir(&f.repo).unwrap().any(|entry| {
+        let name = entry.unwrap().file_name();
+        let name = name.to_string_lossy();
+        name.starts_with(".revayat-package-") || name.starts_with(".revayat-publish-")
+    }));
 }
 #[test]
 fn test_unreadable_git_index_refuses_before_packaging() {
@@ -593,96 +648,4 @@ fn test_unreadable_git_index_refuses_before_packaging() {
     fs::write(f.repo.join(".git/index"), "invalid index data").unwrap();
     f.refused(&path);
 }
-#[test]
-fn test_metadata_and_references() -> Result<()> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-    revayat_scientific::validation::validate_family_layout(root)?;
-    for name in [
-        ".codex-plugin/plugin.json",
-        ".claude-plugin/plugin.json",
-        ".cursor-plugin/plugin.json",
-    ] {
-        let value: serde_json::Value = serde_json::from_slice(&fs::read(root.join(name))?)?;
-        assert_eq!(value["version"], "2.0.0");
-        assert!(
-            value["keywords"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|v| v == "rust")
-        );
-    }
-    Ok(())
-}
-#[test]
-fn test_install_launchers_replacement_and_logs() -> Result<()> {
-    let f = Fixture::new();
-    let target = f.root.join("installed");
-    let output = Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .env("REVAYAT_REPOSITORY", &f.repo)
-        .args(["install", "--dest"])
-        .arg(&target)
-        .output()?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let executable = target.join("bin").join(if cfg!(windows) {
-        "revayat-scientific.exe"
-    } else {
-        "revayat-scientific"
-    });
-    let output = Command::new(executable).arg("--version").output()?;
-    assert!(output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("2.0.0"));
-    assert!(target.join("LICENSE").is_file());
-    Ok(())
-}
-#[test]
-fn test_archive_is_self_contained() -> Result<()> {
-    let f = Fixture::new();
-    let binary = f.root.join("native-binary");
-    fs::write(&binary, b"synthetic executable payload")?;
-    let target = f.repo.join("bundle.skill");
-    d::package(&f.source, &f.repo, &target, Some(&binary))?;
-    let mut archive = zip::ZipArchive::new(fs::File::open(target)?)?;
-    for name in ["SKILL.md", "LICENSE", "NOTICE.md", "references/contract.md"] {
-        assert!(archive.by_name(&format!("{NAME}/{name}")).is_ok());
-    }
-    let name = format!(
-        "{NAME}/bin/{}",
-        if cfg!(windows) {
-            "revayat-scientific.exe"
-        } else {
-            "revayat-scientific"
-        }
-    );
-    let mut file = archive.by_name(&name)?;
-    assert_eq!(file.unix_mode().unwrap() & 0o777, 0o755);
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
-    assert_eq!(bytes, b"synthetic executable payload");
-    Ok(())
-}
-#[test]
-fn archive_corruption_is_rejected_before_previous_delivery_changes() {
-    let f = Fixture::new();
-    let target = f.repo.join("approved.skill");
-    fs::write(&target, "approved").unwrap();
-    assert!(
-        package_observed(&f.source, &f.repo, &target, None, |at, path| {
-            if at == B::Staged {
-                let mut file = fs::OpenOptions::new().write(true).open(path)?;
-                file.write_all(b"damaged archive")?;
-            }
-            Ok(())
-        })
-        .is_err()
-    );
-    assert_eq!(fs::read(target).unwrap(), b"approved");
-}
+include!("support/distribution_package_delivery.rs");

@@ -1,5 +1,7 @@
 //! Native bounded PDF admission, object-preserving transformations and reports.
-use crate::{identity, pdf_forms, pdf_navigation as nav, publication};
+use crate::{pdf_forms, pdf_navigation as nav, publication};
+#[path = "pdf_transaction.rs"]
+mod transaction;
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, Subcommand};
 use lopdf::{Document, Object, ObjectId, dictionary};
@@ -8,9 +10,12 @@ use serde_json::{Value, json};
 use std::{
     collections::HashSet,
     fs,
-    io::Read,
     path::{Path, PathBuf},
     time::Duration,
+};
+pub use transaction::{
+    AdmissionLimits, PdfBoundary, open_pdf, open_pdf_with_limits, save_document,
+    save_document_observed, write_report, write_report_observed,
 };
 
 pub const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
@@ -122,48 +127,6 @@ pub fn geometry(doc: &Document) -> Result<Vec<PageGeometry>> {
         })
         .collect()
 }
-pub fn open_pdf(path: &Path, transform: bool) -> Result<Document> {
-    crate::images::plain_path(path)?;
-    let before = identity::file_identity(path, Some(MAX_PDF_BYTES))?;
-    let mut raw = Vec::new();
-    fs::File::open(path)?
-        .take(MAX_PDF_BYTES + 1)
-        .read_to_end(&mut raw)?;
-    ensure!(
-        raw.len() as u64 <= MAX_PDF_BYTES,
-        "PDF exceeds bounded read limit"
-    );
-    ensure!(
-        raw.starts_with(b"%PDF-") && raw.trim_ascii_end().ends_with(b"%%EOF"),
-        "PDF incomplete or requires parser repair"
-    );
-    let doc = Document::load_mem_with_options(
-        &raw,
-        lopdf::LoadOptions {
-            strict: true,
-            max_decompressed_size: Some(128 * 1024 * 1024),
-            ..Default::default()
-        },
-    )
-    .context("PDF parse failed; repaired sources must be validated separately")?;
-    ensure!(
-        !doc.trailer.has(b"Encrypt") && !doc.is_encrypted() && doc.encryption_state.is_none(),
-        "encrypted PDF requires authorized decrypted copy"
-    );
-    ensure!(
-        doc.objects.len() <= MAX_PDF_OBJECTS && doc.max_id as usize <= MAX_PDF_OBJECTS,
-        "PDF exceeds object limit"
-    );
-    let _ = geometry(&doc)?;
-    if transform {
-        pdf_forms::ensure_transformable(&doc)?;
-    }
-    ensure!(
-        before == identity::file_identity(path, Some(MAX_PDF_BYTES))?,
-        "PDF changed during admission"
-    );
-    Ok(doc)
-}
 pub fn validate_pdf(path: &Path) -> Result<()> {
     let _ = open_pdf(path, false)?;
     Ok(())
@@ -193,43 +156,6 @@ fn embedded_count(doc: &Document) -> Result<usize> {
     }
     Ok(count)
 }
-pub fn write_report(value: &Value, destination: &Path, sources: &[PathBuf]) -> Result<()> {
-    let destination = publication::validate_destination(destination, sources)?;
-    let parent = destination.parent().context("report parent missing")?;
-    fs::create_dir_all(parent)?;
-    let stage = tempfile::Builder::new()
-        .prefix(".revayat-pdf-")
-        .tempdir_in(parent)?;
-    let path = stage.path().join("report.json");
-    let mut raw = serde_json::to_vec_pretty(value)?;
-    raw.push(b'\n');
-    fs::write(&path, raw)?;
-    let _: Value = serde_json::from_slice(&fs::read(&path)?)?;
-    publication::publish_files(&[(path, destination)], sources, Some(MAX_PDF_BYTES))
-}
-pub fn save_document(
-    doc: &mut Document,
-    destination: &Path,
-    sources: &[PathBuf],
-    expected: &[PageGeometry],
-    validator: impl Fn(&Document) -> Result<()>,
-) -> Result<()> {
-    let destination = publication::validate_destination(destination, sources)?;
-    let parent = destination.parent().context("PDF output parent missing")?;
-    fs::create_dir_all(parent)?;
-    let stage = tempfile::Builder::new()
-        .prefix(".revayat-pdf-")
-        .tempdir_in(parent)?;
-    let path = stage.path().join("result.pdf");
-    doc.save(&path)?;
-    let reopened = open_pdf(&path, false)?;
-    ensure!(
-        geometry(&reopened)? == expected,
-        "staged PDF changed page count or geometry"
-    );
-    validator(&reopened)?;
-    publication::publish_files(&[(path, destination)], sources, Some(MAX_PDF_BYTES))
-}
 fn materialize_page_inheritance(doc: &mut Document, ids: &[ObjectId]) -> Result<()> {
     for id in ids {
         for key in [b"MediaBox".as_slice(), b"CropBox", b"Rotate", b"Resources"] {
@@ -244,6 +170,13 @@ fn materialize_page_inheritance(doc: &mut Document, ids: &[ObjectId]) -> Result<
 }
 /// Copy every source once, preserving the identities of shared fonts and images.
 pub fn merge_pdfs(sources: &[PathBuf], destination: &Path) -> Result<()> {
+    merge_pdfs_observed(sources, destination, |_, _| Ok(()))
+}
+pub fn merge_pdfs_observed(
+    sources: &[PathBuf],
+    destination: &Path,
+    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
     ensure!(
         (1..=1000).contains(&sources.len()),
         "merge needs 1..1000 input PDFs"
@@ -322,26 +255,50 @@ pub fn merge_pdfs(sources: &[PathBuf], destination: &Path) -> Result<()> {
     result.objects.insert(catalog, Object::Dictionary(root));
     result.trailer.set("Root", catalog);
     result.trailer.remove(b"Info");
-    save_document(&mut result, destination, sources, &expected, |doc| {
-        ensure!(
-            nav::links(doc, 0, expected.len() - 1, 0)? == links,
-            "staged PDF changed page links"
-        );
-        ensure!(
-            nav::outlines(doc, 0)?.0 == outlines,
-            "staged PDF changed outlines"
-        );
-        Ok(())
-    })
+    save_document_observed(
+        &mut result,
+        destination,
+        sources,
+        &expected,
+        |doc| {
+            ensure!(
+                nav::links(doc, 0, expected.len() - 1, 0)? == links,
+                "staged PDF changed page links"
+            );
+            ensure!(
+                nav::outlines(doc, 0)?.0 == outlines,
+                "staged PDF changed outlines"
+            );
+            Ok(())
+        },
+        observer,
+    )
 }
 pub fn extract_pages(source: &Path, destination: &Path, first: usize, last: usize) -> Result<()> {
+    extract_pages_observed(
+        source,
+        destination,
+        first,
+        last,
+        AdmissionLimits::default(),
+        |_, _| Ok(()),
+    )
+}
+pub fn extract_pages_observed(
+    source: &Path,
+    destination: &Path,
+    first: usize,
+    last: usize,
+    limits: AdmissionLimits,
+    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
     ensure!(
         first > 0 && last >= first,
         "page range must be positive and ordered"
     );
     let protected = [source.to_owned()];
     publication::validate_destination(destination, &protected)?;
-    let mut doc = open_pdf(source, true)?;
+    let mut doc = open_pdf_with_limits(source, true, limits)?;
     let all = page_ids(&doc)?;
     ensure!(last <= all.len(), "requested range exceeds source pages");
     let expected_links = nav::links(&doc, first - 1, last - 1, 0)?;
@@ -363,19 +320,37 @@ pub fn extract_pages(source: &Path, destination: &Path, first: usize, last: usiz
     catalog.remove(b"OpenAction");
     catalog.remove(b"AA");
     doc.prune_objects();
-    save_document(&mut doc, destination, &protected, &expected, |d| {
-        ensure!(
-            nav::links(d, 0, selected.len() - 1, 0)? == expected_links,
-            "staged extraction changed page links"
-        );
-        Ok(())
-    })
+    save_document_observed(
+        &mut doc,
+        destination,
+        &protected,
+        &expected,
+        |d| {
+            ensure!(
+                nav::links(d, 0, selected.len() - 1, 0)? == expected_links,
+                "staged extraction changed page links"
+            );
+            Ok(())
+        },
+        observer,
+    )
 }
 pub fn fill_pdf(
     source: &Path,
     destination: &Path,
     values: &serde_json::Map<String, Value>,
     additional_sources: &[PathBuf],
+) -> Result<()> {
+    fill_pdf_observed(source, destination, values, additional_sources, |_, _| {
+        Ok(())
+    })
+}
+pub fn fill_pdf_observed(
+    source: &Path,
+    destination: &Path,
+    values: &serde_json::Map<String, Value>,
+    additional_sources: &[PathBuf],
+    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
     let mut protected = vec![source.to_owned()];
     protected.extend_from_slice(additional_sources);
@@ -384,9 +359,14 @@ pub fn fill_pdf(
     let expected = geometry(&doc)?;
     let plan = pdf_forms::plan_fill(&doc, values)?;
     pdf_forms::apply_fill(&mut doc, &plan)?;
-    save_document(&mut doc, destination, &protected, &expected, |d| {
-        pdf_forms::verify_fill(d, &plan)
-    })
+    save_document_observed(
+        &mut doc,
+        destination,
+        &protected,
+        &expected,
+        |d| pdf_forms::verify_fill(d, &plan),
+        observer,
+    )
 }
 pub fn page_text(doc: &Document, page: usize) -> Result<String> {
     let ids = page_ids(doc)?;

@@ -159,6 +159,12 @@ fn test_relationship_boundaries_and_signed_refusal() {
     let mut m = base();
     m.insert("_xmlsignatures/sig1.xml".into(), b"<signature/>".to_vec());
     f.write(&m);
+    assert!(
+        d::inspect_package(&f.source).unwrap()["unsupported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("digital-signatures"))
+    );
     assert!(d::edit_package(&f.source, &f.output, &patch("Original text", "متن"), &[]).is_err());
     assert!(!f.output.exists());
 }
@@ -188,6 +194,8 @@ fn test_create_sections_rtl_tables_images_and_edit() {
     let body = String::from_utf8(m["word/document.xml"].clone()).unwrap();
     let xml = roxmltree::Document::parse(&body).unwrap();
     assert!(xml.descendants().any(|n| n.has_tag_name((d::W, "bidi"))));
+    assert!(xml.descendants().any(|n| n.has_tag_name((d::W, "rtl"))));
+    assert!(xml.descendants().any(|n| n.has_tag_name((d::W,"lang")) && n.attribute((d::W,"bidi")) == Some("fa-IR")));
     let run = xml
         .descendants()
         .find(|n| {

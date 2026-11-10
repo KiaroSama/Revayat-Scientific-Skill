@@ -1,7 +1,7 @@
 //! Recoverable publication of a checked file set. Refuse aliases and foreign
 //! revisions; retain journals and locks whenever recovery cannot be proved.
 use crate::identity::{Fingerprint, ObjectId, file_identity, is_link, object_id, path_object_id};
-use anyhow::{Context, Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -9,6 +9,12 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use unicode_casefold::UnicodeCaseFold;
+#[path = "publication_cancellation.rs"]
+mod cancellation;
+pub(crate) use cancellation::retain_cancellation_after;
+pub use cancellation::{
+    Cancellation, RecoveryFailures, RetainedPrimary, cancelled, retain_cancellation, retain_recovery,
+};
 
 fn absolute(path: &Path) -> Result<PathBuf> {
     let raw = std::path::absolute(path)?;
@@ -96,10 +102,12 @@ pub enum Boundary {
     BackupPrepared,
     BackupReady,
     BeforeCommit,
+    BeforeReplace,
     AfterCommit,
     BeforeRollback,
     AfterRollback,
     BeforeCleanup,
+    BeforeBackupDisposal,
 }
 
 /// Hooks identify real publication boundaries for deterministic failure/race
@@ -236,8 +244,15 @@ fn prepare_inherited_stage(
         fs::rename(&candidate, stage)?;
         Ok(())
     })();
-    if candidate.try_exists()? && !is_link(&candidate)? && path_identity(&candidate)? == Some(id) {
-        fs::remove_file(candidate)?;
+    let cleanup = (|| -> Result<()> {
+        if candidate.try_exists()? && !is_link(&candidate)? && path_identity(&candidate)? == Some(id) {
+            fs::remove_file(&candidate)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = cleanup {
+        return Err(retain_recovery(result.err(), vec![error])
+            .context("inherited stage cleanup needs recovery; candidate retained"));
     }
     result
 }
@@ -246,7 +261,17 @@ pub fn publish_observed(
     entries: &[(PathBuf, PathBuf)],
     protected: &[PathBuf],
     max_bytes: Option<u64>,
+    boundary: impl FnMut(Boundary, &Path) -> Result<()>,
+) -> Result<()> {
+    publish_with_identity(entries, protected, max_bytes, boundary, file_identity)
+}
+
+pub fn publish_with_identity(
+    entries: &[(PathBuf, PathBuf)],
+    protected: &[PathBuf],
+    max_bytes: Option<u64>,
     mut boundary: impl FnMut(Boundary, &Path) -> Result<()>,
+    mut inspect: impl FnMut(&Path, Option<u64>) -> Result<Fingerprint>,
 ) -> Result<()> {
     let stages: Vec<PathBuf> = entries
         .iter()
@@ -317,8 +342,12 @@ pub fn publish_observed(
                 max_bytes,
                 &mut boundary,
             )?;
-            let previous = fingerprint(destination, max_bytes)?;
-            let published = file_identity(stage, max_bytes)?;
+            let previous = if destination.try_exists()? {
+                Some(inspect(destination, max_bytes)?)
+            } else {
+                None
+            };
+            let published = inspect(stage, max_bytes)?;
             let temp = tempfile::Builder::new()
                 .prefix(".revayat-publish-")
                 .tempdir_in(destination.parent().unwrap())?;
@@ -388,6 +417,7 @@ pub fn publish_observed(
                 "stage changed before publication"
             );
             committed.push(index);
+            boundary(Boundary::BeforeReplace, &recovery.destination)?;
             // rename replaces files atomically on supported Unix and Windows.
             // On Windows std::fs::rename uses MoveFileExW(REPLACE_EXISTING).
             fs::rename(&recovery.stage, &recovery.destination)?;
@@ -396,6 +426,7 @@ pub fn publish_observed(
         Ok(())
     })();
     let mut failures = Vec::new();
+    let mut secondary = Vec::new();
     if operation.is_err() {
         for &index in committed.iter().rev() {
             let plan = &plans[index];
@@ -440,6 +471,12 @@ pub fn publish_observed(
                 }
                 Ok(())
             })();
+            if let Err(error) = &restored
+                && cancelled(error)
+            {
+                return Err(retain_cancellation_after(operation.err(), restored.unwrap_err(), secondary)
+                    .context("publication rollback cancelled; owned recovery records retained"));
+            }
             if restored.is_err() {
                 // A native operation can complete before its caller observes an
                 // error. Reconcile only the exact recorded backup object (or
@@ -459,19 +496,20 @@ pub fn publish_observed(
                 if !reconciled {
                     failures.push(plan.directory.join("recovery.json"));
                 }
+                secondary.push(restored.unwrap_err());
             }
         }
     }
     if !failures.is_empty() {
-        bail!(
-            "publication rollback needs recovery: {}",
-            failures
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        return Err(retain_recovery(operation.err(), secondary)
+            .context("publication rollback needs recovery; owned records retained"));
     }
+    let operation = if secondary.is_empty() {
+        operation
+    } else {
+        Err(retain_recovery(operation.err(), secondary)
+            .context("publication failed; rollback completed with secondary diagnostics"))
+    };
     let cleanup = (|| -> Result<()> {
         for plan in &plans {
             boundary(Boundary::BeforeCleanup, &plan.recovery.destination)?;
@@ -500,6 +538,8 @@ pub fn publish_observed(
                     plan.backup_identity
                         .context("backup ownership was not recorded")?,
                 )?;
+                boundary(Boundary::BeforeBackupDisposal, path)?;
+                owned(path, plan.backup_identity.unwrap())?;
                 fs::remove_file(path)?;
             }
         }
@@ -516,15 +556,14 @@ pub fn publish_observed(
         }
         Ok(())
     })();
-    cleanup.map_err(|error| {
-        anyhow!(
-            "publication cleanup needs recovery: {}; cause: {error}",
-            plans
-                .iter()
-                .map(|p| p.directory.join("recovery.json").display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    })?;
+    if let Err(error) = cleanup {
+        return Err(if cancelled(&error) {
+            retain_cancellation(operation.err(), error)
+                .context("publication cleanup cancelled; owned recovery records retained")
+        } else {
+            retain_recovery(operation.err(), vec![error])
+                .context("publication cleanup needs recovery; owned records retained")
+        });
+    }
     operation
 }

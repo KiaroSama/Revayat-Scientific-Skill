@@ -7,6 +7,11 @@ use anyhow::{Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path};
 
+pub mod activation;
+pub mod image;
+pub mod policy;
+pub mod sxs;
+
 #[cfg(windows)]
 #[path = "windows_security/native.rs"]
 pub mod native;

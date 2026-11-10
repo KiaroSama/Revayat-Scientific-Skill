@@ -9,8 +9,10 @@ use std::{
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PackageBoundary {
+    BeforeArchiveEntry(usize),
     Staged,
     BeforePublish,
+    Publication(crate::publication::Boundary),
 }
 pub fn package(
     source: &Path,
@@ -52,10 +54,11 @@ pub fn package_observed(
         .tempfile_in(parent)?;
     {
         let mut archive = zip::ZipWriter::new(stage.as_file_mut());
-        for row in &payload.files {
+        for (index, row) in payload.files.iter().enumerate() {
             let executable = row.relative.starts_with("bin");
             let options = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated)
+                .system(zip::System::Unix)
                 .unix_permissions(if executable { 0o755 } else { 0o644 });
             archive.start_file(
                 format!(
@@ -64,8 +67,20 @@ pub fn package_observed(
                 ),
                 options,
             )?;
-            let mut handle = File::open(&row.source)?;
-            let copied = std::io::copy(&mut handle, &mut archive)?;
+            observe(PackageBoundary::BeforeArchiveEntry(index), &row.source)?;
+            let handle = File::open(&row.source)?;
+            let metadata = handle.metadata()?;
+            ensure!(
+                metadata.is_file()
+                    && crate::identity::object_id(&handle)? == row.fingerprint.identity
+                    && metadata.len() == row.fingerprint.size
+                    && metadata.modified()? == row.fingerprint.modified,
+                "payload changed before archive write"
+            );
+            let copied = std::io::copy(
+                &mut handle.take(row.fingerprint.size.saturating_add(1)),
+                &mut archive,
+            )?;
             ensure!(
                 copied == row.fingerprint.size,
                 "payload changed during archive write"
@@ -117,10 +132,11 @@ pub fn package_observed(
     }
     observe(PackageBoundary::BeforePublish, &output)?;
     protected_location(&output, repository, source, false)?;
-    crate::publication::publish_files(
+    crate::publication::publish_observed(
         &[(stage.path().to_owned(), output)],
         &protected,
         Some(MAX_PAYLOAD_BYTES),
+        |boundary, path| observe(PackageBoundary::Publication(boundary), path),
     )?;
     Ok(())
 }

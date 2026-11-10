@@ -1,6 +1,7 @@
 //! Native ports of source-token extraction evidence; no serialized markup evidence.
+use revayat_scientific::runtime::{CommandSpec, run};
 use revayat_scientific::text_order::*;
-use std::{fs, process::Command};
+use std::fs;
 const VISIBLE: &str = "متن علمی اصلی برای بررسی دقیق ترتیب حروف";
 const HIDDEN: &str = "داده آزمایشی غیر قابل نمایش در سند";
 #[test]
@@ -23,20 +24,20 @@ fn test_ignored_end_tags_cannot_expose_hidden_source_evidence() {
     let text = format!("<html lang=\"fa\"><body>{body}</body></html>");
     fs::write(&source, &text).unwrap();
     fs::write(&extracted, VISIBLE).unwrap();
-    let result = Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args([
+    let result = run(
+        &CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args([
             "text-order",
             "--source",
             source.to_str().unwrap(),
             "--extracted",
             extracted.to_str().unwrap(),
             "--json",
-        ])
-        .output()
-        .unwrap();
+        ]),
+    )
+    .unwrap();
     assert_eq!(
-        result.status.code(),
-        Some(3),
+        result.code,
+        3,
         "{}",
         String::from_utf8_lossy(&result.stderr)
     );
@@ -112,7 +113,11 @@ fn test_invalid_raw_context_is_not_certified_by_another_parser() {
     }
 }
 fn legacy(text: &str, threshold: usize) -> Vec<Vec<String>> {
-    let words: Vec<String> = text.split_whitespace().map(fold).collect();
+    let pattern = regex::Regex::new(r"[\u{0600}-\u{06ff}\u{0750}-\u{077f}\u{08a0}-\u{08ff}\u{fb50}-\u{fdff}\u{fe70}-\u{feff}\u{200c}]+").unwrap();
+    let words: Vec<String> = pattern
+        .find_iter(text)
+        .map(|word| fold(word.as_str()))
+        .collect();
     let mut result = Vec::new();
     for start in 0..words.len() {
         let mut letters = 0;
@@ -135,7 +140,10 @@ fn legacy(text: &str, threshold: usize) -> Vec<Vec<String>> {
 }
 #[test]
 fn test_window_results_match_legacy_algorithm_on_bounded_inputs() {
-    let words: Vec<_> = VISIBLE.split_whitespace().collect();
+    let words: Vec<_> = VISIBLE
+        .split_whitespace()
+        .chain(["Latin123", "،علمی،", "ﻋﻠﻢ", "می\u{200c}شود", "\u{200c}"])
+        .collect();
     let mut state = 20261004u64;
     for threshold in [1, 4, 12, 50] {
         for _ in 0..12 {
@@ -162,6 +170,10 @@ fn test_windows_do_not_copy_whole_remaining_source_for_every_probe() {
     assert!(!actual.is_empty());
     assert!(actual.iter().all(|w| w.len() <= 3));
     assert_eq!(actual, legacy(&text, 12));
+    // Unlike Python list slicing, a borrowed Rust suffix does not materialize tokens.
+    // The required libunit witness measures actual Clone calls in the production-used
+    // window helper; spelling checks are neither AST nor allocation evidence.
+    assert!(persian_windows_bounded(&text, 12, 10).is_err());
 }
 #[test]
 fn test_invalid_threshold_and_excessive_work_are_explicit_errors() {
@@ -169,17 +181,17 @@ fn test_invalid_threshold_and_excessive_work_are_explicit_errors() {
         assert!(persian_windows(VISIBLE, n).is_err());
     }
     assert!(persian_windows_bounded(&VISIBLE.repeat(10), 12, 10).is_err());
-    let result = Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args([
+    let result = run(
+        &CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args([
             "text-order",
             "--source",
             "missing.html",
             "--min-letters",
             "-1",
-        ])
-        .output()
-        .unwrap();
-    assert!(!result.status.success());
+        ]),
+    )
+    .unwrap();
+    assert!(!result.success());
 }
 #[test]
 fn test_cli_cannot_pass_using_attribute_only_evidence() {
@@ -192,23 +204,18 @@ fn test_cli_cannot_pass_using_attribute_only_evidence() {
     )
     .unwrap();
     fs::write(&extracted, HIDDEN).unwrap();
-    let r = Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args([
+    let r = run(
+        &CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args([
             "text-order",
             "--source",
             source.to_str().unwrap(),
             "--extracted",
             extracted.to_str().unwrap(),
             "--json",
-        ])
-        .output()
-        .unwrap();
-    assert_eq!(
-        r.status.code(),
-        Some(3),
-        "{}",
-        String::from_utf8_lossy(&r.stderr)
-    );
+        ]),
+    )
+    .unwrap();
+    assert_eq!(r.code, 3, "{}", String::from_utf8_lossy(&r.stderr));
     assert!(String::from_utf8_lossy(&r.stdout).contains("inconclusive"));
 }
 #[test]
@@ -233,7 +240,18 @@ fn test_real_two_page_pdf_matches_source_tokens() -> anyhow::Result<()> {
         "logical",
         "native extracted text: {extracted:?}"
     );
-    assert_eq!(fs::read_to_string(source)?, text);
+    assert_eq!(fs::read_to_string(&source)?, text);
+    if let Some(evidence) = std::env::var_os("SCIENTIFIC_EVIDENCE_DIR") {
+        fs::create_dir_all(&evidence)?;
+        for page in 1..=2 {
+            revayat_scientific::pdf::render_page(
+                &pdf,
+                page,
+                72,
+                &std::path::Path::new(&evidence).join(format!("order-source-page-{page}.png")),
+            )?;
+        }
+    }
     Ok(())
 }
 #[test]

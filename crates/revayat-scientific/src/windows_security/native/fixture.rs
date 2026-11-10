@@ -1,6 +1,11 @@
 //! Fresh per-run HKCU registry fixture; never changes a machine or existing key.
 use super::authority::{Descriptor, wide};
 use super::*;
+#[path = "registry_policy.rs"]
+mod registry_policy;
+pub(super) use registry_policy::{
+    identity_label as registry_identity, preserved as registry_preserved,
+};
 
 #[link(name = "advapi32")]
 unsafe extern "system" {
@@ -129,6 +134,10 @@ impl RegistryFixture {
         )?;
         Ok(owner)
     }
+    #[cfg(test)]
+    pub(super) fn retained_root(&self) -> Handle {
+        self.root
+    }
     fn native_name(&self) -> Result<String> {
         let mut data = [0u64; 512];
         let mut returned = 0;
@@ -180,6 +189,7 @@ impl Drop for RegistryFixture {
 }
 
 fn apply_registry_acl(key: Handle, sddl: &str) -> Result<()> {
+    let mut before = registry_policy::identity_label(key)?;
     let mut descriptor = Descriptor::new(sddl)?;
     let mut present = 0;
     let mut defaulted = 0;
@@ -204,9 +214,23 @@ fn apply_registry_acl(key: Handle, sddl: &str) -> Result<()> {
             null_mut(),
         )
     };
-    descriptor.close()?;
-    ensure!(applied == 0, "set owned registry fixture ACL");
-    Ok(())
+    let result = if applied == 0 {
+        registry_policy::preserved(&before, key)
+    } else {
+        Err(anyhow::anyhow!(
+            "set owned registry fixture ACL failed winerror={applied}"
+        ))
+    };
+    before.fill(0);
+    let closed = descriptor.close();
+    match (result, closed) {
+        (result, Ok(())) => result,
+        (Err(primary), Err(cleanup)) => Err(crate::windows_security::activation::Failures {
+            errors: vec![primary, cleanup],
+        }
+        .into()),
+        (Ok(()), Err(cleanup)) => Err(cleanup),
+    }
 }
 
 pub(super) fn protect_foreign(path: &Path, package: &str) -> Result<()> {

@@ -20,6 +20,16 @@ jobs:
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 .
       - name: Prove production Linux containment and publication contracts
         run: cargo run --locked --bin revayat-scientific -- security-linux
+      - name: Require actual native stage execution adapter
+        if: ${{ always() }}
+        run: cargo run --locked --bin revayat-test-runner -- --tier native --profile debug --ignored --output execution/native-debug.json --timeout 1200
+      - name: Preserve native Linux report including adapter failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: execution-native-linux
+          if-no-files-found: error
+          path: execution/*.json
   windows-security:
     runs-on: windows-2025
     timeout-minutes: 40
@@ -32,13 +42,24 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
-      - name: Format and lint native Windows security authority
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Format native Windows security authority
+        run: cargo fmt --all -- --check
+      - name: Lint native Windows security authority
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Build complete Windows executables before containment tests
         run: cargo build --locked --workspace --all-targets
       - name: Prove native containment before Windows junction and OPC scenarios
         run: cargo run --locked --bin revayat-scientific -- security-windows --authority-image target/debug/registry-authority.exe
-      - name: Run independent Rust registry oracle and all native security contracts
+      - name: Require actual native stage execution adapter
+        if: ${{ always() }}
+        run: cargo run --locked --bin revayat-test-runner -- --tier native --profile debug --ignored --output execution/native-debug.json --timeout 1200
+      - name: Retain independent Rust registry and native contracts until stage adapter exists
+        if: ${{ always() }}
         run: cargo test --locked --workspace --all-targets -- --test-threads=1
+      - name: Preserve native Windows report including adapter failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: execution-native-windows
+          if-no-files-found: error
+          path: execution/*.json

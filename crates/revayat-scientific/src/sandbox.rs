@@ -1,6 +1,6 @@
 //! Verify effective Linux controls using the production container launch path.
 use crate::{tex_container as tex, tex_supervisor};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::fs;
 #[path = "sandbox_helper.rs"]
@@ -17,28 +17,20 @@ fn run_owned(
 ) -> Result<(tempfile::TempDir, String)> {
     let directory = stage.path();
     let receipt = tex_supervisor::register(config, directory, run)?;
-    let outcome = tex::call_with_environment(args, timeout, environment);
-    if let Err(error) = tex::cleanup(config, directory, run, false) {
-        fs::write(
-            directory.join("recovery.json"),
-            serde_json::to_vec_pretty(&json!({"run_id":run,"status":"cleanup_not_verified"}))?,
-        )?;
-        let retained = stage.keep();
-        bail!(
-            "sandbox cleanup unverified; retained evidence {}: {error}",
-            retained.display()
-        );
-    }
-    if let Err(error) = tex_supervisor::acknowledge(receipt.as_deref()) {
-        let retained = stage.keep();
-        bail!(
-            "sandbox receipt acknowledgement failed; retained evidence {}: {error}",
-            retained.display()
-        );
-    }
-    let (code, text) = outcome?;
-    ensure!(code == 0, "native sandbox failed (exit {code}): {text}");
-    Ok((stage, text))
+    let outcome =
+        tex::call_with_environment(args, timeout, environment).and_then(|(code, text)| {
+            ensure!(code == 0, "native sandbox failed (exit {code})");
+            Ok(text)
+        });
+    let cleanup = tex::cleanup(config, directory, run, false);
+    tex::finalize::finish_stage(
+        stage,
+        run,
+        outcome,
+        cleanup,
+        || tex_supervisor::acknowledge(receipt.as_deref()),
+        tex::finalize::recovery,
+    )
 }
 
 pub fn probe() -> Result<Value> {
@@ -87,20 +79,47 @@ pub fn probe() -> Result<Value> {
         35,
         &[("REVAYAT_HOST_ONLY_CANARY", &run)],
     )?;
-    let directory = stage.path();
-    let path = directory.join("output/sandbox-verified.json");
-    ensure!(
-        !crate::identity::is_link(&path)? && fs::metadata(&path)?.len() <= 4096,
-        "invalid bounded sandbox evidence"
-    );
-    let proof: Value = serde_json::from_slice(&fs::read(&path)?)?;
+    verify_probe_output(stage.path())?;
+    Ok(
+        json!({"verified":true,"checks":29,"run_id":run,"container_cleanup":"verified","production_output_aggregate_quota":"unresolved"}),
+    )
+}
+
+/// Verify actual mounted input/output bytes as well as the native control report.
+pub fn verify_probe_output(directory: &std::path::Path) -> Result<()> {
+    let read = |name: &str, limit: u64| -> Result<Vec<u8>> {
+        use std::io::Read;
+        let path = directory.join(name);
+        ensure!(
+            !crate::identity::is_link(&path)?
+                && fs::metadata(&path)?.is_file()
+                && fs::metadata(&path)?.len() <= limit,
+            "invalid bounded sandbox evidence"
+        );
+        let mut bytes = Vec::new();
+        fs::File::open(path)?
+            .take(limit + 1)
+            .read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.len() as u64 <= limit,
+            "sandbox evidence grew beyond bound"
+        );
+        Ok(bytes)
+    };
+    let proof: Value = serde_json::from_slice(&read("output/sandbox-verified.json", 4096)?)?;
     ensure!(
         proof == json!({"verified":true,"checks":29}),
         "native probe did not verify every effective control"
     );
-    Ok(
-        json!({"verified":true,"checks":29,"run_id":run,"container_cleanup":"verified","production_output_aggregate_quota":"unresolved"}),
-    )
+    ensure!(
+        read("input/sentinel.txt", 64)? == b"public sandbox fixture",
+        "sandbox changed approved input bytes"
+    );
+    ensure!(
+        read("output/probe.txt", 64)? == b"allowed output\n",
+        "sandbox did not preserve exact allowed output"
+    );
+    Ok(())
 }
 
 pub fn cli(args: &[String]) -> Result<i32> {

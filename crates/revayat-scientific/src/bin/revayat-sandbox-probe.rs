@@ -103,7 +103,7 @@ fn run() -> io::Result<()> {
         "toolchain is writable",
     )?;
     probe.require(
-        fs::write("/output/probe.txt", b"allowed output").is_ok(),
+        fs::write("/output/probe.txt", b"allowed output\n").is_ok(),
         "approved output is not writable",
     )?;
     probe.require(

@@ -5,7 +5,19 @@ use std::io::Write;
 
 #[path = "authority_abi.rs"]
 mod abi;
+#[path = "authority_image.rs"]
+mod authority_image;
+#[path = "authority_observer.rs"]
+mod observer;
+pub(crate) use observer::AuthorityObserver;
+use observer::NoObserver;
+#[path = "authority_creation.rs"]
+mod creation;
+#[cfg(test)]
+#[path = "authority_tests.rs"]
+mod tests;
 use abi::*;
+use creation::{creation_result, retain_cleanup};
 
 pub(super) fn wide(value: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
     value.as_ref().encode_wide().chain(Some(0)).collect()
@@ -54,6 +66,14 @@ impl Drop for Descriptor {
 
 struct Owned(Handle);
 impl Owned {
+    fn creation_output(handle: Handle) -> Self {
+        // Defensive only: an invalid creation output must not become a pseudo-process owner.
+        Self(if handle as isize == -1 {
+            null_mut()
+        } else {
+            handle
+        })
+    }
     fn checked(handle: Handle) -> Result<Self> {
         ensure!(
             !handle.is_null() && handle as isize != -1,
@@ -109,77 +129,157 @@ fn restricted_primary() -> Result<Owned> {
             &mut restricted,
         )
     };
-    let owner = Owned(restricted);
-    original.close()?;
-    ensure!(
-        success != 0 && !owner.0.is_null(),
-        "create restricted LUA primary failed"
+    let creation = creation_result(
+        success,
+        !restricted.is_null() && restricted as isize != -1,
+        "CreateRestrictedToken",
+        || unsafe { GetLastError() },
     );
+    let mut owner = Owned::creation_output(restricted);
+    let mut cleanup = usize::from(original.close().is_err());
+    if (creation.is_err() || cleanup != 0) && owner.close().is_err() {
+        cleanup += 1;
+    }
+    retain_cleanup(creation, cleanup)?;
     Ok(owner)
 }
 struct Profile {
     name: Vec<u16>,
     sid: Handle,
+    created: bool,
+    outer_recovery: bool,
 }
 impl Profile {
     fn new() -> Result<Self> {
-        let nonce = tempfile::Builder::new()
-            .prefix("revayat-profile-")
-            .tempdir()?;
-        let name = wide(nonce.path().file_name().context("profile nonce")?);
-        let mut sid = null_mut();
-        // SAFETY: live terminated name; empty capability set; returned SID owned below.
-        ensure!(
-            unsafe {
-                CreateAppContainerProfile(
-                    name.as_ptr(),
-                    name.as_ptr(),
-                    name.as_ptr(),
-                    null_mut(),
-                    0,
-                    &mut sid,
-                )
-            } == 0,
-            "create owned AppContainer profile"
-        );
-        ensure!(!sid.is_null(), "profile SID unavailable");
-        Ok(Self { name, sid })
+        let mut storage = profile_storage::Storage::before_create()?;
+        let mut profile = Self {
+            name: storage.name(),
+            sid: null_mut(),
+            created: false,
+            outer_recovery: false,
+        };
+        // The exact new package path and expected derived SID were bound before creation.
+        let status = unsafe {
+            CreateAppContainerProfile(
+                profile.name.as_ptr(),
+                profile.name.as_ptr(),
+                profile.name.as_ptr(),
+                null_mut(),
+                0,
+                &mut profile.sid,
+            )
+        };
+        profile.created = status == 0;
+        let result = (|| {
+            ensure!(
+                status == 0 && !profile.sid.is_null(),
+                "create owned AppContainer profile failed hresult={:08X}",
+                status as u32
+            );
+            storage.prepare(profile.sid, |record| NoObserver.token_metadata(record))
+        })();
+        let storage_cleanup = storage.close();
+        let uncertain = storage_cleanup.is_err();
+        let result = profile_storage::combine(result, storage_cleanup);
+        if let Err(primary) = result {
+            // A failed close never authorizes deleting a profile with potentially live objects.
+            let cleanup = if uncertain {
+                profile.retain()
+            } else {
+                profile.close()
+            };
+            return profile_storage::combine(Err(primary), cleanup);
+        }
+        Ok(profile)
+    }
+    fn new_owned(view: &super::state::NativeRunView) -> Result<Self> {
+        view.require()?;
+        let mut storage =
+            profile_storage::Storage::for_profile(&view.profile_name(), view.package_sid())?;
+        view.begin_profile()?;
+        let mut profile = Self {
+            name: storage.name(),
+            sid: null_mut(),
+            created: false,
+            outer_recovery: true,
+        };
+        let status = unsafe {
+            CreateAppContainerProfile(
+                profile.name.as_ptr(),
+                profile.name.as_ptr(),
+                profile.name.as_ptr(),
+                null_mut(),
+                0,
+                &mut profile.sid,
+            )
+        };
+        profile.created = status == 0;
+        let recorded = view.profile_result(status);
+        let result = (|| {
+            ensure!(
+                status == 0 && !profile.sid.is_null(),
+                "create owned AppContainer profile failed hresult={:08X}",
+                status as u32
+            );
+            storage.prepare(profile.sid, |record| NoObserver.token_metadata(record))
+        })();
+        let result = profile_storage::combine(result, recorded);
+        let result = profile_storage::combine(result, storage.close());
+        if let Err(primary) = result {
+            return profile_storage::combine(Err(primary), profile.close());
+        }
+        Ok(profile)
     }
     fn sid_text(&self) -> Result<String> {
-        let mut text = null_mut();
-        // SAFETY: profile owns SID; conversion allocation is released after bounded read.
-        ensure!(
-            unsafe { ConvertSidToStringSidW(self.sid, &mut text) } != 0,
-            "convert package SID"
-        );
-        let result = (|| {
-            let mut length = 0;
-            while length < 256 && unsafe { *text.add(length) } != 0 {
-                length += 1;
-            }
-            ensure!(length < 256, "package SID exceeds bound");
-            // SAFETY: terminator was located in native SID string allocation.
-            Ok(String::from_utf16(unsafe {
-                std::slice::from_raw_parts(text, length)
-            })?)
-        })();
-        // SAFETY: native conversion used LocalAlloc.
-        ensure!(
-            unsafe { LocalFree(text.cast()) }.is_null(),
-            "SID text cleanup failed"
-        );
-        result
+        profile_storage::sid_text(self.sid)
+    }
+    fn retain(&mut self) -> Result<()> {
+        // Uncertain retained keys/files/processes forbid deleting their owned profile.
+        self.created = false;
+        let sid = std::mem::replace(&mut self.sid, null_mut());
+        if !sid.is_null() {
+            ensure!(
+                unsafe { FreeSid(sid) }.is_null(),
+                "retained profile SID cleanup failed"
+            );
+        }
+        Ok(())
     }
     fn close(&mut self) -> Result<()> {
-        if self.sid.is_null() {
-            return Ok(());
-        }
+        self.close_with(
+            |sid| {
+                ensure!(
+                    unsafe { FreeSid(sid) }.is_null(),
+                    "owned profile SID cleanup failed"
+                );
+                Ok(())
+            },
+            |name| {
+                let status = unsafe { DeleteAppContainerProfile(name.as_ptr()) };
+                ensure!(
+                    status == 0,
+                    "owned profile deletion failed hresult={:08X}",
+                    status as u32
+                );
+                Ok(())
+            },
+        )
+    }
+    fn close_with(
+        &mut self,
+        free: impl FnOnce(Handle) -> Result<()>,
+        delete: impl FnOnce(&[u16]) -> Result<()>,
+    ) -> Result<()> {
         let sid = std::mem::replace(&mut self.sid, null_mut());
-        // SAFETY: FreeSid releases exact owned profile SID; delete exact generated profile only.
-        let freed = unsafe { FreeSid(sid) }.is_null();
-        let deleted = unsafe { DeleteAppContainerProfile(self.name.as_ptr()) } == 0;
-        ensure!(freed && deleted, "owned profile cleanup failed");
-        Ok(())
+        let created = std::mem::replace(&mut self.created, false);
+        let released = if sid.is_null() { Ok(()) } else { free(sid) };
+        // Successful creation owns profile deletion independently of a malformed NULL SID output.
+        let deleted = if created && !self.outer_recovery {
+            delete(&self.name)
+        } else {
+            Ok(())
+        };
+        profile_storage::combine(released, deleted)
     }
 }
 impl Drop for Profile {
@@ -193,9 +293,16 @@ struct Attributes {
 }
 impl Attributes {
     fn new() -> Result<Self> {
+        Self::with_count(3)
+    }
+    fn with_count(count: u32) -> Result<Self> {
+        ensure!(
+            matches!(count, 1 | 3),
+            "unsupported fixed process attribute count"
+        );
         let mut size = 0;
         // SAFETY: size-only call cannot dereference null list.
-        unsafe { InitializeProcThreadAttributeList(null_mut(), 3, 0, &mut size) };
+        unsafe { InitializeProcThreadAttributeList(null_mut(), count, 0, &mut size) };
         ensure!(
             (1..=65536).contains(&size),
             "invalid process attribute size"
@@ -207,7 +314,12 @@ impl Attributes {
         // SAFETY: aligned allocation spans requested size and remains live until deletion.
         ensure!(
             unsafe {
-                InitializeProcThreadAttributeList(value.data.as_mut_ptr().cast(), 3, 0, &mut size)
+                InitializeProcThreadAttributeList(
+                    value.data.as_mut_ptr().cast(),
+                    count,
+                    0,
+                    &mut size,
+                )
             } != 0,
             "initialize process attributes"
         );
@@ -332,6 +444,112 @@ fn remove_privileges(process: Handle) -> Result<()> {
     remove.fill(0);
     token.close()
 }
+fn metadata_unknown(stage: &str, code: u32) -> String {
+    let code = code as i32; // Match Marshal.GetLastWin32Error's original signed field.
+    format!(
+        "WINDOWS_DEFAULT_DACL status=unknown stage={stage} native_error={code} effective_access_proved=False"
+    )
+}
+fn read_default_metadata(
+    mut query: impl FnMut(i32, &mut [u64]) -> std::result::Result<usize, u32>,
+    close: impl FnOnce() -> Result<()>,
+) -> Result<String> {
+    use crate::windows_security::policy::{
+        DefaultAclSummary, default_acl_summary, token_default_acl, token_metadata_sid,
+    };
+    // Fixed, eight-byte-aligned capacity is shared by all three same-token queries.
+    let mut buffer = vec![0u64; 65536 / 8];
+    let start = buffer.as_ptr() as u64;
+    let mut acl = Vec::new();
+    let mut user = Vec::new();
+    let mut package = Vec::new();
+    let observed = (|| -> std::result::Result<String, (&'static str, u32)> {
+        let returned = query(6, &mut buffer).map_err(|code| ("query-default", code))?;
+        if !(8..=65536).contains(&returned) {
+            return Err(("default-length", 0));
+        }
+        // SAFETY: fixed allocation is live; only the bounded returned span is decoded.
+        let bytes = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), returned) };
+        let Some(value) = token_default_acl(bytes, start).map_err(|stage| (stage, 0))? else {
+            return Ok(DefaultAclSummary {
+                is_null: true,
+                ..Default::default()
+            }
+            .record(0));
+        };
+        acl.extend_from_slice(value); // Native query reuse must not overwrite the ACL being summarized.
+        for (kind, output) in [(1, &mut user), (31, &mut package)] {
+            buffer.fill(0);
+            let returned = query(kind, &mut buffer).map_err(|_| ("identity-query", 0))?;
+            if returned > 65536 {
+                return Err(("identity-query", 0));
+            }
+            let bytes =
+                unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), returned) };
+            output.extend_from_slice(
+                token_metadata_sid(bytes, start, kind == 1).map_err(|_| ("identity-query", 0))?,
+            );
+        }
+        default_acl_summary(Some(&acl), &user, &package)
+            .map(|value| value.record(acl.len()))
+            .map_err(|_| ("managed-structure", 0))
+    })();
+    buffer.fill(0);
+    acl.fill(0);
+    user.fill(0);
+    package.fill(0);
+    let record = match observed {
+        Ok(record) => record,
+        Err((stage, code)) => metadata_unknown(stage, code),
+    };
+    close().map_err(|_| anyhow::anyhow!("close default-DACL diagnostic token failed"))?;
+    Ok(record)
+}
+fn default_metadata(process: Handle) -> Result<String> {
+    if size_of::<usize>() != 8 {
+        return Ok(metadata_unknown("unsupported-abi", 0));
+    }
+    let mut raw = null_mut();
+    let success = unsafe { OpenProcessToken(process, 8, &mut raw) };
+    let error = if success == 0 {
+        unsafe { GetLastError() }
+    } else {
+        0
+    };
+    let mut token = Owned::creation_output(raw);
+    if success == 0 || token.0.is_null() {
+        token
+            .close()
+            .map_err(|_| anyhow::anyhow!("close default-DACL diagnostic token failed"))?;
+        return Ok(metadata_unknown("open-token", error));
+    }
+    let handle = token.0;
+    read_default_metadata(
+        |kind, buffer| {
+            let mut returned = 0;
+            let success = unsafe {
+                GetTokenInformation(
+                    handle,
+                    kind,
+                    buffer.as_mut_ptr().cast(),
+                    65536,
+                    &mut returned,
+                )
+            };
+            let error = if success == 0 {
+                unsafe { GetLastError() }
+            } else {
+                0
+            };
+            if success == 0 {
+                Err(error)
+            } else {
+                Ok(returned as usize)
+            }
+        },
+        || token.close(),
+    )
+}
 fn drain(pipe: &Owned, capture: &mut Capture, limit: usize) -> Result<()> {
     for _ in 0..=limit {
         let mut available = 0;
@@ -380,273 +598,19 @@ fn drain(pipe: &Owned, capture: &mut Capture, limit: usize) -> Result<()> {
     anyhow::bail!("capture read budget exhausted")
 }
 
-/// Run only the fixed native verifier. A host launch cannot satisfy this API.
-/// Success requires the primary AND descendant's actual token/registry proofs.
-pub fn run_registry_authority(image: &Path) -> Result<String> {
-    plain_path(image)?;
-    ensure!(image.is_file(), "authority image is missing");
-    let mut profile = Profile::new()?;
-    let sid = profile.sid_text()?;
-    let network = super::network::NetworkControls::new()?;
-    let mut registry = super::fixture::RegistryFixture::new(&sid)?;
-    let foreign = tempfile::Builder::new()
-        .prefix("revayat-private-control-")
-        .tempdir()?;
-    let foreign_file = foreign.path().join("private-sentinel");
-    std::fs::write(&foreign_file, b"owned private sentinel\0\r\n")?;
-    super::fixture::protect_foreign(foreign.path(), &sid)?;
-    super::fixture::protect_foreign(&foreign_file, &sid)?;
-    let foreign_identity = crate::identity::file_identity(&foreign_file, None)?;
-    let prepared = tempfile::Builder::new()
-        .prefix("revayat-authority-")
-        .tempdir()?;
-    protect_scratch(prepared.path(), &sid)?;
-    let target = prepared.path().join("registry-authority.exe");
-    let source = crate::identity::file_identity(image, Some(8 * 1024 * 1024))?;
-    let mut output = std::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&target)?;
-    let mut input = std::fs::File::open(image)?;
-    std::io::copy(&mut input, &mut output)?;
-    output.flush()?;
-    output.sync_all()?;
-    drop(output);
-    let copied = crate::identity::file_identity(&target, Some(8 * 1024 * 1024))?;
-    ensure!(
-        source.same_bytes(&copied)
-            && crate::identity::file_identity(image, Some(8 * 1024 * 1024))? == source,
-        "authority image changed during preparation"
-    );
-    protect_image(&target, &sid)?;
-    let (mut stdout, mut stdout_writer) = pipe()?;
-    let (mut stderr, mut stderr_writer) = pipe()?;
-    let security = Security {
-        size: size_of::<Security>() as u32,
-        descriptor: null_mut(),
-        inherit: 1,
-    };
-    let nul = wide("NUL");
-    let mut stdin = Owned::checked(unsafe {
-        CreateFileW(nul.as_ptr(), 0x80000000, 3, &security, 3, 0x80, null_mut())
-    })?;
-    let mut attributes = Attributes::new()?;
-    let mut capabilities = Capabilities {
-        sid: profile.sid,
-        capabilities: null_mut(),
-        count: 0,
-        reserved: 0,
-    };
-    let mut lpac = 1u32;
-    let mut handles = [stdin.0, stdout_writer.0, stderr_writer.0];
-    attributes.set(
-        0x20009,
-        (&mut capabilities as *mut Capabilities).cast(),
-        size_of::<Capabilities>(),
-    )?;
-    attributes.set(0x2000f, (&mut lpac as *mut u32).cast(), 4)?;
-    attributes.set(0x20002, handles.as_mut_ptr().cast(), size_of_val(&handles))?;
-    let startup = StartupEx {
-        startup: Startup {
-            size: size_of::<StartupEx>() as u32,
-            flags: 0x100,
-            input: stdin.0,
-            output: stdout_writer.0,
-            error: stderr_writer.0,
-            ..Default::default()
-        },
-        attributes: attributes.data.as_mut_ptr().cast(),
-    };
-    let target_wide = wide(&target);
-    let mut command = wide(format!("\"{}\"", target.display()));
-    let cwd = wide(prepared.path());
-    let root = std::env::var_os("SystemRoot").context("SystemRoot is required")?;
-    let mut environment = wide(format!(
-        "REVAYAT_AUTHORITY_FIXTURE={}\0REVAYAT_AUTHORITY_FOREIGN={}\0REVAYAT_AUTHORITY_NETWORK={}\0SystemRoot={}\0TEMP={}\0TMP={}\0WINDIR={}\0",
-        registry.name,
-        foreign_file.display(),
-        network.ports,
-        root.to_string_lossy(),
-        prepared.path().display(),
-        prepared.path().display(),
-        root.to_string_lossy()
-    ));
-    let mut info = ProcessInfo::default();
-    let mut job = WindowsJob::create(JobLimits::default())?;
-    let mut restricted = restricted_primary()?;
-    let mut descriptor = Descriptor::new(&format!(
-        "D:P(A;;GA;;;SY)(A;;GA;;;OW)(A;;GA;;;{sid})S:(ML;;NW;;;LW)"
-    ))?;
-    let process_security = Security {
-        size: size_of::<Security>() as u32,
-        descriptor: descriptor.0,
-        inherit: 0,
-    };
-    // SAFETY: every pointer references initialized live backing storage; exact three-handle allowlist;
-    // explicit image, environment, cwd; no thread may run before attachment/qualification below.
-    let created = unsafe {
-        CreateProcessAsUserW(
-            restricted.0,
-            target_wide.as_ptr(),
-            command.as_mut_ptr(),
-            &process_security,
-            &process_security,
-            1,
-            0x80000 | 0x400 | 8 | 4,
-            environment.as_mut_ptr().cast(),
-            cwd.as_ptr(),
-            &startup,
-            &mut info,
-        )
-    };
-    let mut process = Owned(info.process);
-    let mut thread = Owned(info.thread);
-    ensure!(
-        created != 0 && !process.0.is_null() && !thread.0.is_null(),
-        "create suspended zero-capability LPAC authority failed"
-    );
-    job.state.advance(Lifecycle::Suspended)?;
-    let mut out = Capture::default();
-    let mut err = Capture::default();
-    let execution = (|| {
-        ensure!(
-            unsafe { AssignProcessToJobObject(job.handle, process.0) } != 0,
-            "assign authority job"
-        );
-        job.state.advance(Lifecycle::Attached)?;
-        let mut member = 0;
-        ensure!(
-            unsafe { IsProcessInJob(process.0, job.handle, &mut member) } != 0 && member != 0,
-            "authority job membership mismatch"
-        );
-        remove_privileges(process.0)?;
-        job.state.advance(Lifecycle::Qualified)?;
-        restricted.close()?;
-        descriptor.close()?;
-        stdout_writer.close()?;
-        stderr_writer.close()?;
-        stdin.close()?;
-        ensure!(
-            unsafe { NtResumeProcess(process.0) } == 0,
-            "resume authority"
-        );
-        job.state.advance(Lifecycle::Running)?;
-        let started = Instant::now();
-        loop {
-            drain(&stdout, &mut out, OUTPUT_LIMIT)?;
-            drain(&stderr, &mut err, ERROR_LIMIT)?;
-            let wait = unsafe { WaitForSingleObject(process.0, 10) };
-            ensure!(wait == 0 || wait == 258, "authority wait failed");
-            if wait == 0 {
-                break;
-            }
-            ensure!(
-                started.elapsed() < Duration::from_secs(20),
-                "authority wall deadline exceeded"
-            );
-        }
-        let mut code = 0;
-        ensure!(
-            unsafe { GetExitCodeProcess(process.0, &mut code) } != 0,
-            "authority exit query failed"
-        );
-        // Kill/reap surviving descendants before final EOF, policy restore, or profile deletion.
-        job.terminate()?;
-        drain(&stdout, &mut out, OUTPUT_LIMIT)?;
-        drain(&stderr, &mut err, ERROR_LIMIT)?;
-        let output = out.finish(OUTPUT_LIMIT)?;
-        let errors = err.finish(ERROR_LIMIT)?;
-        ensure!(
-            code == 0 && errors.is_empty(),
-            "native authority refused containment exit={code:08X}"
-        );
-        let lines = output.split_inclusive('\n').collect::<Vec<_>>();
-        ensure!(
-            lines.len() == 2,
-            "authority must provide two complete records"
-        );
-        let child = registry_authority::protocol::fixture_child_record(lines[1].as_bytes())
-            .map_err(|_| anyhow::anyhow!("invalid descendant authority frame"))?;
-        ensure!(
-            child
-                == registry_authority::protocol::fixture_record("descendant", 1, 0)
-                    .map_err(|_| anyhow::anyhow!("invalid fixed fixture record"))?,
-            "owned fixture inventory differs"
-        );
-        let expected = child.replace("\"role\":\"descendant\"", "\"role\":\"primary\"");
-        // Native controls guarantee accessible=0; permissive source-oracle fixtures are not admission.
-        ensure!(
-            lines[0] == expected && lines[0].starts_with("{\"accessible\":0,"),
-            "primary and descendant authority differ"
-        );
-        Ok(output.to_owned())
-    })();
-    let mut cleanup = Vec::new();
-    // A failed assignment must also reap a still-suspended, not-yet-job-owned child.
-    let wait = unsafe { WaitForSingleObject(process.0, 0) };
-    if wait == 258 {
-        let killed = unsafe { TerminateProcess(process.0, 125) };
-        let waited = unsafe { WaitForSingleObject(process.0, 2000) };
-        if killed == 0 || waited != 0 {
-            cleanup.push("process");
-        }
-    } else if wait != 0 {
-        cleanup.push("process");
-    }
-    if job.finish().is_err() {
-        cleanup.push("job");
-    }
-    drop(job);
-    for owned in [
-        &mut thread,
-        &mut process,
-        &mut stdin,
-        &mut stdout_writer,
-        &mut stderr_writer,
-        &mut stdout,
-        &mut stderr,
-    ] {
-        if owned.close().is_err() {
-            cleanup.push("handle");
-        }
-    }
-    if restricted.close().is_err() {
-        cleanup.push("restricted-token");
-    }
-    if descriptor.close().is_err() {
-        cleanup.push("descriptor");
-    }
-    drop(attributes);
-    out.clear();
-    err.clear();
-    drop(input);
-    match crate::identity::file_identity(&foreign_file, None) {
-        Ok(current) if current == foreign_identity => {}
-        _ => cleanup.push("private-sentinel"),
-    }
-    if registry.close().is_err() {
-        cleanup.push("registry-fixture");
-    }
-    if prepared.close().is_err() {
-        cleanup.push("scratch");
-    }
-    if foreign.close().is_err() {
-        cleanup.push("private-fixture");
-    }
-    if profile.close().is_err() {
-        cleanup.push("profile");
-    }
-    if cleanup.is_empty() {
-        return execution;
-    }
-    match execution {
-        Err(primary) => Err(primary.context(format!(
-            "authority cleanup also failed in {} owned operations",
-            cleanup.len()
-        ))),
-        Ok(_) => anyhow::bail!(
-            "authority cleanup failed in {} owned operations",
-            cleanup.len()
-        ),
-    }
+#[path = "authority_run.rs"]
+mod runner;
+pub(crate) use runner::run_observed;
+pub(super) fn assigned_package(name: &str) -> Result<String> {
+    profile_storage::Storage::assigned_sid(name)
 }
+#[path = "profile_registry.rs"]
+mod profile_registry;
+#[path = "profile_storage.rs"]
+mod profile_storage;
+#[path = "startup_access.rs"]
+mod startup_access;
+#[path = "sxs_tool.rs"]
+mod sxs_tool;
+pub use runner::{run_owned_registry_authority, run_registry_authority};
+pub(crate) use sxs_tool::run as run_sxs_tool;

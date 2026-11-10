@@ -240,9 +240,25 @@ fn test_region_offsets_and_newline_styles() {
         fs::write(&path, &text).unwrap();
         let model = TexSource::load(&path).unwrap();
         assert!(!protected(&model, "متن"));
-        assert_eq!(model.location(model.text().find("متن").unwrap()).1, 2);
+        assert_eq!(
+            model.location(model.text().find("متن").unwrap()),
+            (path.canonicalize().unwrap(), 2)
+        );
         let masked = masked_tex(&text).unwrap();
         assert_eq!(masked.len(), text.len());
+        assert_eq!(
+            masked
+                .char_indices()
+                .filter(|(_, c)| *c != ' ')
+                .map(|(i, _)| i)
+                .collect::<Vec<_>>(),
+            text.char_indices()
+                .filter(
+                    |(i, c)| !model.literals.iter().any(|(a, b)| *a <= *i && *i < *b) && *c != ' '
+                )
+                .map(|(i, _)| i)
+                .collect::<Vec<_>>()
+        );
         assert_eq!(
             masked
                 .match_indices('\n')
@@ -403,6 +419,7 @@ fn test_real_tex_accepts_literal_graphics_and_keeps_parent_after_eof_comment() -
             .args([root.join("main.pdf").into_os_string(), "-".into()]))?;
     assert!(extracted.success());
     assert!(extracted.stdout_text().contains("ParentVisibleMarker"));
+    assert_eq!(fs::read(root.join("child.tex"))?, b"% EOF comment");
     let model = TexSource::load(&path)?;
     assert!(model.image_references().is_empty());
     assert!(!model.is_protected(model.text().find("ParentVisibleMarker").unwrap()));

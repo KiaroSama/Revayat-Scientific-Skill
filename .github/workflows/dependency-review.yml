@@ -18,19 +18,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+      - name: Build the base resolver and owned process companion
+        run: cargo build --locked -p revayat-scientific --bin revayat-scientific --bin revayat-process-owner
       - name: Require an explicit base commit
         id: base
         env:
           BASE_REF: ${{ inputs.base_ref }}
           HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          review_base="$BASE_REF"
-          if [ "$review_base" = 0000000000000000000000000000000000000000 ]; then
-            review_base="$(git merge-base -- "origin/$DEFAULT_BRANCH" "$HEAD_REF")"
-          fi
-          cargo run --locked --bin revayat-scientific -- check-sha "$review_base"
-          echo "sha=$review_base" >> "$GITHUB_OUTPUT"
+        run: cargo run --locked --bin revayat-scientific -- check-sha --ci-base
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
           fail-on-severity: moderate

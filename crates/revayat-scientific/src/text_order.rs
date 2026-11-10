@@ -3,10 +3,9 @@ use crate::{html::ParsedHtml, resource::bounded_read, tex};
 use anyhow::{Result, bail};
 use clap::Parser;
 use regex::Regex;
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
+#[path = "text_order_windows.rs"]
+mod windows;
 use unicode_normalization::UnicodeNormalization;
 pub const MAX_PROBE_STEPS: usize = 2_000_000;
 pub fn strip_bidi(s: &str) -> String {
@@ -64,29 +63,7 @@ pub fn persian_windows_bounded(
         .filter(|s| !s.is_empty())
         .collect();
     let counts: Vec<_> = words.iter().map(|s| s.chars().count()).collect();
-    let mut windows = Vec::new();
-    let mut seen = HashSet::new();
-    let (mut end, mut letters, mut steps) = (0, 0, 0);
-    for start in 0..words.len() {
-        while letters < min_letters && end < words.len() {
-            letters += counts[end];
-            end += 1;
-            steps += 1;
-        }
-        if letters < min_letters {
-            break;
-        }
-        steps += end - start;
-        if steps > max_steps {
-            bail!("text-order probe work limit exceeded; check bounded document parts");
-        }
-        let acc = words[start..end].to_vec();
-        if seen.insert(acc.clone()) {
-            windows.push(acc);
-        }
-        letters -= counts[start];
-    }
-    Ok(windows)
+    windows::token_windows(&words, &counts, min_letters, max_steps)
 }
 pub fn classify(windows: &[Vec<String>], extracted: &str, min_letters: usize) -> &'static str {
     let hay = fold(extracted);

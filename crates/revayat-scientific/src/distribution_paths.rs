@@ -61,10 +61,18 @@ pub(crate) fn git_result(anchor: &Path, args: &[&str]) -> Result<crate::runtime:
     crate::runtime::run(&spec)
         .context("Git is required to protect detected repository administration")
 }
-fn git(anchor: &Path, args: &[&str]) -> Result<String> {
-    let output = git_result(anchor, args)?;
-    ensure!(output.success(), "cannot resolve Git administration");
-    String::from_utf8(output.stdout).context("Git administration paths are not UTF-8")
+/// Parse the exact rev-parse response, retaining no relative or extra rows.
+/// The optional shared-index row is either empty or an absolute path.
+pub fn parse_git_paths(raw: &[u8]) -> Result<Vec<PathBuf>> {
+    let raw = std::str::from_utf8(raw).context("Git administration paths are not UTF-8")?;
+    let values: Vec<_> = raw.lines().collect();
+    ensure!(
+        (5..=6).contains(&values.len())
+            && values[..5].iter().all(|s| !s.is_empty() && Path::new(s).is_absolute())
+            && values.get(5).is_none_or(|s| s.is_empty() || Path::new(s).is_absolute()),
+        "ambiguous Git administration paths"
+    );
+    Ok(values.into_iter().filter(|s| !s.is_empty()).map(PathBuf::from).collect())
 }
 /// Protect worktree markers, private/common directories, redirected object/index
 /// storage, configured hooks and critical hardlinked files. Discovery fails closed.
@@ -95,7 +103,7 @@ pub fn git_paths(anchor: &Path) -> Result<Vec<PathBuf>> {
     if marker.is_none() && !bare && !selected {
         return Ok(Vec::new());
     }
-    let raw = git(
+    let raw = git_result(
         &anchor,
         &[
             "rev-parse",
@@ -111,14 +119,8 @@ pub fn git_paths(anchor: &Path) -> Result<Vec<PathBuf>> {
             "--shared-index-path",
         ],
     )?;
-    let values: Vec<_> = raw.lines().collect();
-    ensure!(
-        (5..=6).contains(&values.len())
-            && values[..5]
-                .iter()
-                .all(|s| !s.is_empty() && Path::new(s).is_absolute()),
-        "ambiguous Git administration paths"
-    );
+    ensure!(raw.success(), "cannot resolve Git administration");
+    let mut paths = parse_git_paths(&raw.stdout)?;
     // Git can silently walk past a damaged nested repository and discover an
     // ancestor checkout. Such fallback must not turn broken discovery into a
     // smaller protected set.
@@ -159,15 +161,10 @@ pub fn git_paths(anchor: &Path) -> Result<Vec<PathBuf>> {
     };
     if let Some(expected) = expected {
         ensure!(
-            fs::canonicalize(expected)? == fs::canonicalize(values[0])?,
+            fs::canonicalize(expected)? == fs::canonicalize(&paths[0])?,
             "Git administration discovery escaped the detected repository"
         );
     }
-    let mut paths: Vec<PathBuf> = values
-        .into_iter()
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .collect();
     if let Some(marker) = marker {
         paths.push(marker);
     }

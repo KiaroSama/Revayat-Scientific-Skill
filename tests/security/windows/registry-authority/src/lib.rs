@@ -2,6 +2,8 @@
 #[cfg(windows)]
 pub mod native;
 pub mod oracle;
+#[cfg(test)]
+mod oracle_events;
 #[cfg(windows)]
 pub mod pipe;
 #[cfg(windows)]

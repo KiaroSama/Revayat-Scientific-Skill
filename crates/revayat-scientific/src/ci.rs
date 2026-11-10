@@ -18,6 +18,7 @@ pub const REQUIRED_JOBS: &[&str] = &[
     "portable (windows-latest)",
     "scientific",
     "quality",
+    "behavior-aggregate",
 ];
 pub const SUMMARY: &str = "ci/manual-summary";
 pub const HTTP_TIMEOUT_SECONDS: u64 = 15;
@@ -176,9 +177,8 @@ fn validate_run(api: &mut impl GitHubApi, id: &ReportingIdentity<'_>) -> Result<
         value["id"].as_u64() == Some(id.run_id)
             && value["head_sha"] == id.sha
             && value["run_attempt"].as_u64() == Some(id.attempt)
-            && ["workflow_dispatch", "push", "pull_request"]
-                .iter()
-                .any(|e| value["event"] == *e)
+            // The root run keeps its initiating event even for reusable child jobs.
+            && value["event"] == "workflow_dispatch"
             && value["path"] == ".github/workflows/ci.yml"
             && value["repository"]["full_name"]
                 .as_str()
@@ -319,7 +319,7 @@ pub fn publish(
                 .filter(|j| j["name"] == "status-pending")
                 .max_by_key(|j| j["run_attempt"].as_u64().unwrap_or(0));
             reporting_failed =
-                pending.is_some_and(|j| j["status"] != "completed" || j["conclusion"] != "success");
+                pending.is_none_or(|j| j["status"] != "completed" || j["conclusion"] != "success");
             let seen: HashSet<_> = result.keys().map(|c| c.to_lowercase()).collect();
             for (key, c) in &contexts {
                 if !seen.contains(key) {

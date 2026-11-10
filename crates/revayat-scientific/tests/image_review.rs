@@ -96,10 +96,37 @@ fn test_review_cannot_waive_transparency_depth_or_frames() {
     }
     f.approve();
     assert!(images::inspect(&f.image).is_err());
-    let multi = f.image.with_extension("gif");
+    let multi = f.image.with_extension("tiff");
     {
-        let file = fs::File::create(&multi).unwrap();
-        let mut encoder = gif::Encoder::new(file, 20, 20, &[0, 0, 0, 255, 255, 255]).unwrap();
+        let mut encoder =
+            tiff::encoder::TiffEncoder::new(fs::File::create(&multi).unwrap()).unwrap();
+        encoder
+            .write_image::<tiff::encoder::colortype::RGB8>(20, 20, &[0; 1200])
+            .unwrap();
+        encoder
+            .write_image::<tiff::encoder::colortype::RGB8>(20, 20, &[0; 1200])
+            .unwrap();
+    }
+    let hash = revayat_scientific::identity::file_identity(&multi, None)
+        .unwrap()
+        .sha256;
+    let review = multi.with_file_name("figure.tiff.review.json");
+    fs::write(&review,serde_json::to_vec(&json!({"version":1,"sha256":hash,"decision":"preserve-dark-original","note":"Reviewed multiple frames"})).unwrap()).unwrap();
+    let before = (fs::read(&multi).unwrap(), fs::read(&review).unwrap());
+    assert!(images::inspect(&multi).is_err());
+    assert_eq!(
+        (fs::read(&multi).unwrap(), fs::read(&review).unwrap()),
+        before
+    );
+    let animated = f.image.with_extension("gif");
+    {
+        let mut encoder = gif::Encoder::new(
+            fs::File::create(&animated).unwrap(),
+            20,
+            20,
+            &[0, 0, 0, 255, 255, 255],
+        )
+        .unwrap();
         let frame = gif::Frame {
             width: 20,
             height: 20,
@@ -109,7 +136,7 @@ fn test_review_cannot_waive_transparency_depth_or_frames() {
         encoder.write_frame(&frame).unwrap();
         encoder.write_frame(&frame).unwrap();
     }
-    assert!(images::inspect(&multi).is_err());
+    assert!(images::inspect(&animated).is_err());
 }
 #[test]
 fn test_one_review_does_not_approve_another_asset() {
@@ -119,6 +146,23 @@ fn test_one_review_does_not_approve_another_asset() {
     fs::copy(&f.image, &other).unwrap();
     assert!(!f.check().requires_review);
     assert!(images::inspect(&other).unwrap().requires_review);
+    use revayat_scientific::runtime::{CommandSpec, run};
+    let binary = env!("CARGO_BIN_EXE_revayat-scientific");
+    let batch = run(&CommandSpec::new(binary).args([
+        std::ffi::OsStr::new("figures"),
+        f.image.as_os_str(),
+        other.as_os_str(),
+        std::ffi::OsStr::new("--check"),
+    ]))
+    .unwrap();
+    assert_eq!(batch.code, 1);
+    let reviewed = run(&CommandSpec::new(binary).args([
+        std::ffi::OsStr::new("figures"),
+        f.image.as_os_str(),
+        std::ffi::OsStr::new("--check"),
+    ]))
+    .unwrap();
+    assert_eq!(reviewed.code, 0);
 }
 #[test]
 fn test_directory_or_linked_review_is_rejected() {
@@ -137,9 +181,9 @@ fn test_directory_or_linked_review_is_rejected() {
     #[cfg(windows)]
     {
         use std::os::windows::fs::symlink_file;
-        if symlink_file(&target, &f.review).is_ok() {
-            assert!(images::inspect(&f.image).is_err());
-        }
+        symlink_file(&target, &f.review)
+            .expect("required Windows linked-review fixture needs symlink capability");
+        assert!(images::inspect(&f.image).is_err());
     }
 }
 #[test]
@@ -156,18 +200,24 @@ fn test_public_command_honors_review_and_preserves_inputs() {
     let f = F::new();
     f.approve();
     let before = (fs::read(&f.image).unwrap(), fs::read(&f.review).unwrap());
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args(["figures", f.image.to_str().unwrap(), "--check"])
-        .output()
-        .unwrap();
+    let output = revayat_scientific::runtime::run(
+        &revayat_scientific::runtime::CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific"))
+            .args(["figures", f.image.to_str().unwrap(), "--check"]),
+    )
+    .unwrap();
     assert!(
-        output.status.success(),
+        output.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
     let text = String::from_utf8(output.stdout).unwrap();
     assert!(text.contains("reviewed=true"));
     assert!(!text.contains("Compared with source"));
+    assert!(
+        !String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("Compared with source")
+    );
     assert_eq!(
         (fs::read(&f.image).unwrap(), fs::read(&f.review).unwrap()),
         before

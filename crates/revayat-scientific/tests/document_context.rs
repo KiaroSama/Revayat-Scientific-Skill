@@ -50,6 +50,13 @@ fn test_nested_prose_and_repeated_includes_keep_order_and_location() {
         closure.location(closure.text.find("متن").unwrap() as isize),
         (chapter.clone(), 1)
     );
+    assert_eq!(closure.sources, [main.clone(), chapter.clone()]);
+    let repeated = closure.text.rfind("متن").unwrap();
+    assert_eq!(closure.location(repeated as isize), (chapter.clone(), 1));
+    assert_eq!(
+        closure.location(closure.text.find("پایان").unwrap() as isize),
+        (main.clone(), 3)
+    );
     fs::write(chapter, r"\input{main}").unwrap();
     assert!(
         source_closure(&main, None)

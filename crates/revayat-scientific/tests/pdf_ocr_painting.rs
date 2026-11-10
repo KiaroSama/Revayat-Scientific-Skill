@@ -11,7 +11,12 @@ use std::fs;
 fn layer(paint: Option<&str>) -> lopdf::Document {
     let mut d = document(1);
     let page = pages(&d)[0];
-    let mut content = Content::decode(&d.get_page_content(page)).unwrap();
+    let mut content = Content::decode(&d.get_page_content(page).unwrap()).unwrap();
+    for operation in &mut content.operations {
+        if operation.operator == "Tj" {
+            operation.operands = vec![Object::string_literal("OCRMarker Untouched source 1")];
+        }
+    }
     content
         .operations
         .insert(1, Operation::new("Tr", vec![3.into()]));
@@ -23,9 +28,19 @@ fn layer(paint: Option<&str>) -> lopdf::Document {
     }
     d
 }
+fn painted_source() -> lopdf::Document {
+    let mut doc = blank();
+    let page = pages(&doc)[0];
+    doc.add_page_contents(
+        page,
+        b"q 0.2 0.4 0.8 rg 20 20 90 90 re f 0.8 0.1 0.2 RG 3 w 30 150 m 220 150 l S Q".to_vec(),
+    )
+    .unwrap();
+    doc
+}
 fn refuse(layer: lopdf::Document) {
     let x = Fixture::new();
-    x.save(blank());
+    x.save(painted_source());
     x.previous();
     let before = fs::read(&x.source).unwrap();
     assert!(pdf_ocr::ocr_with_backend(&x.source, &x.output, |_, _| Ok(layer.clone())).is_err());
@@ -79,18 +94,23 @@ fn test_empty_layer_is_not_claimed_as_success() {
 #[ignore = "requires Poppler"]
 fn test_valid_invisible_text_keeps_every_pixel_and_source_byte() {
     let x = Fixture::new();
-    x.save(blank());
+    x.save(painted_source());
     let before = fs::read(&x.source).unwrap();
     let pixels = render(&x.source, 1);
     pdf_ocr::ocr_with_backend(&x.source, &x.output, |_, _| Ok(layer(None))).unwrap();
     assert_eq!(render(&x.output, 1), pixels);
+    assert!(p::pdf_text(&x.output).unwrap().contains("OCRMarker"));
     assert!(p::pdf_text(&x.output).unwrap().contains("Untouched source"));
+    assert_eq!(
+        p::geometry(&p::open_pdf(&x.output, false).unwrap()).unwrap(),
+        p::geometry(&p::open_pdf(&x.source, false).unwrap()).unwrap()
+    );
     assert_eq!(fs::read(&x.source).unwrap(), before);
 }
 #[test]
 fn test_late_bad_layer_rolls_back_whole_document() {
     let x = Fixture::new();
-    let mut d = blank();
+    let mut d = painted_source();
     let first = pages(&d)[0];
     let parent = d
         .get_dictionary(first)
@@ -109,23 +129,33 @@ fn test_late_bad_layer_rolls_back_whole_document() {
     x.save(d);
     x.previous();
     let before = fs::read(&x.source).unwrap();
+    let mut calls = Vec::new();
     assert!(
-        pdf_ocr::ocr_with_backend(&x.source, &x.output, |index, _| Ok(layer(if index == 0 {
-            None
-        } else {
-            Some("0 0 400 500 re f")
-        })))
+        pdf_ocr::ocr_with_backend(&x.source, &x.output, |index, _| {
+            calls.push(index);
+            Ok(layer(if index == 0 {
+                None
+            } else {
+                Some("0 0 400 500 re f")
+            }))
+        })
         .is_err()
     );
+    assert_eq!(calls, vec![0, 1]);
     x.preserved();
     assert_eq!(fs::read(&x.source).unwrap(), before);
+    assert!(
+        !fs::read_dir(x.temp.path())
+            .unwrap()
+            .any(|entry| entry.unwrap().path().is_dir())
+    );
 }
 #[test]
 #[ignore = "requires Poppler"]
 fn test_rotation_and_nonzero_crop_keep_geometry_and_pixels() {
     for rotation in [0, 90, 180, 270] {
         let x = Fixture::new();
-        let mut d = blank();
+        let mut d = painted_source();
         let page = pages(&d)[0];
         let page = d.get_object_mut(page).unwrap().as_dict_mut().unwrap();
         page.set(
@@ -146,6 +176,8 @@ fn test_rotation_and_nonzero_crop_keep_geometry_and_pixels() {
         })
         .unwrap();
         assert_eq!(render(&x.output, 1), pixels);
+        assert!(p::pdf_text(&x.output).unwrap().contains("OCRMarker"));
+        assert!(p::pdf_text(&x.output).unwrap().contains("Untouched source"));
         assert_eq!(
             p::geometry(&p::open_pdf(&x.output, false).unwrap()).unwrap(),
             geometry
@@ -166,7 +198,7 @@ fn test_dimension_mismatch_remains_blocking() {
 #[test]
 fn test_backend_failure_and_deadline_keep_previous_output() {
     let x = Fixture::new();
-    x.save(blank());
+    x.save(painted_source());
     x.previous();
     let before = fs::read(&x.source).unwrap();
     for deadline in [false, true] {
@@ -182,6 +214,15 @@ fn test_backend_failure_and_deadline_keep_previous_output() {
             }
         });
         assert!(result.is_err());
+        if !deadline {
+            assert!(
+                result
+                    .as_ref()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("injected backend failure")
+            );
+        }
         if deadline {
             assert!(
                 result
@@ -197,7 +238,7 @@ fn test_backend_failure_and_deadline_keep_previous_output() {
 #[test]
 fn test_original_alias_refuses_before_backend_invocation() {
     let x = Fixture::new();
-    x.save(blank());
+    x.save(painted_source());
     let before = fs::read(&x.source).unwrap();
     let mut called = false;
     assert!(

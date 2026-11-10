@@ -137,7 +137,11 @@ impl Snapshot {
         } else {
             position.min(length)
         };
-        self.newlines.partition_point(|n| (*n as i128) < clamped) + 1
+        if clamped == 0 {
+            return 1;
+        }
+        crate::source::query::partition_index(&self.newlines, |n| *n as usize, clamped as usize - 1)
+            + 1
     }
 
     pub fn index_bytes(&self) -> usize {
@@ -167,10 +171,16 @@ impl SourceClosure {
         if self.segments.is_empty() {
             return (self.sources.first().cloned().unwrap_or_default(), 1);
         }
-        let index = self
-            .segments
-            .partition_point(|s| (s.start as i128) <= offset as i128)
-            .saturating_sub(1);
+        let index = if offset < 0 {
+            0
+        } else {
+            crate::source::query::partition_index(
+                &self.segments,
+                |segment| segment.start,
+                offset as usize,
+            )
+            .saturating_sub(1)
+        };
         let segment = &self.segments[index];
         let position = segment.original_offset as i128 + offset as i128 - segment.start as i128;
         (

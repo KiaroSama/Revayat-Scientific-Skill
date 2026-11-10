@@ -109,6 +109,7 @@ pub struct TextSpan {
     pub x: f64,
     pub y: f64,
     pub text: String,
+    pub axis: [f64; 2],
 }
 #[derive(Default)]
 pub(crate) struct Parsed {
@@ -286,7 +287,8 @@ fn parse_stream(
                 );
                 if actual_depth == 0 {
                     let text = glyphs.iter().map(|g| g.text.as_str()).collect::<String>();
-                    let p = point(compose(state.ctm, state.text_matrix), 0., 0.);
+                    let transform = display(compose(state.ctm, state.text_matrix), g);
+                    let p = point(transform, 0., 0.);
                     ensure!(
                         out.text.len().saturating_add(text.len()) <= 64 * 1024 * 1024,
                         "page Unicode text budget exceeded"
@@ -296,6 +298,7 @@ fn parse_stream(
                         x: p[0],
                         y: p[1],
                         text,
+                        axis: [transform[0], transform[1]],
                     });
                     for glyph in &glyphs {
                         out.glyphs.push(positioned(glyph, &state, g, false)?);
@@ -361,11 +364,13 @@ fn parse_stream(
                         };
                         active_actual = Some((out.glyphs.len(), false));
                         out.glyphs.push(positioned(&marker, &state, g, true)?);
-                        let p = point(compose(state.ctm, state.text_matrix), 0., 0.);
+                        let transform = display(compose(state.ctm, state.text_matrix), g);
+                        let p = point(transform, 0., 0.);
                         out.texts.push(TextSpan {
                             x: p[0],
                             y: p[1],
                             text: text.clone(),
+                            axis: [transform[0], transform[1]],
                         });
                     }
                     actual_depth += 1;
@@ -430,7 +435,11 @@ fn parse_stream(
                     if (r[2] - r[0]) * (r[3] - r[1]) >= 80. {
                         out.drawings.push(r);
                     }
-                    out.lines.append(&mut segments);
+                    out.lines.extend(
+                        segments
+                            .drain(..)
+                            .map(|(a, b)| (point(t, a[0], a[1]), point(t, b[0], b[1]))),
+                    );
                     path.clear();
                 }
             }

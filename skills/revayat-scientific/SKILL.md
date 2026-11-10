@@ -21,12 +21,24 @@ Resolve once:
 - `REVAYAT` — the native executable: `$SKILL_DIR/bin/revayat-scientific` on Unix,
   or `$SKILL_DIR/bin/revayat-scientific.exe` on Windows. For a source plugin checkout,
   build with `cargo build --locked --release --workspace --bins` and resolve `target/release`.
+  Linux/macOS also require executable `revayat-process-owner` beside it, from the same
+  build and revision. Keep both files together; `cargo run --bin revayat-scientific`
+  alone does not rebuild the sibling. Windows does not require that Unix companion.
+  Missing/linked/nonregular companions are refused, not replaced with unowned spawning;
+  this is not a signed same-build/version compatibility check.
 - `LEVEL` — `journal` for papers and theses; `system-docs` for technical books,
   tutorials and operational references. Carry the same value through all checks.
 - `OUTPUT` — the user's requested directory, otherwise `$HOME/Documents/books`.
 
 Commands use `"$REVAYAT" <stage>`.
 In PowerShell put `&` before the quoted executable. Quote every path.
+
+A source checkout of `rewrite/rust-native` is still under behavioral-parity and
+hosted CI verification. Resolve a native executable for the exact reviewed
+revision; a test registration, `doctor` tool-path listing or main-branch badge
+is not proof of native startup, complete parity or successful document output.
+Do not claim unavailable or unrun checks passed. Follow the user's execution
+restrictions; this rewrite's agent-run builds/tests/native validation are hosted-only.
 
 ---
 

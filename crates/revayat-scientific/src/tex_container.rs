@@ -18,6 +18,18 @@ use std::{
     time::Duration,
 };
 
+#[path = "tex_execution.rs"]
+mod execution;
+#[path = "tex_finalize.rs"]
+pub(crate) mod finalize;
+pub use execution::{
+    TexBoundary, compile_document, compile_document_observed, compile_document_with_lifecycle,
+    compile_document_with_recovery,
+};
+#[path = "tex_config.rs"]
+mod config;
+pub use config::{runtime_config, runtime_config_with};
+
 pub const DEFAULT_IMAGE: &str = "revayat-scientific-tex:1";
 pub const IMAGE_LABEL: &str = "org.revayat.tex.toolchain";
 pub const RUN_LABEL: &str = "org.revayat.tex.run";
@@ -77,11 +89,6 @@ pub fn call_with_environment(
         .context("container runtime returned invalid structured output")?;
     Ok((output.code, text))
 }
-fn query(arguments: &[String]) -> Result<Value> {
-    let (code, text) = call(arguments, 15)?;
-    ensure!(code == 0, "local container runtime query failed");
-    Ok(serde_json::from_str(&text)?)
-}
 fn append(base: &[String], args: &[&str]) -> Vec<String> {
     base.iter()
         .cloned()
@@ -139,121 +146,6 @@ pub fn validate_runtime_information(information: &Value, kind: &str) -> Result<(
         }
     }
     Ok(())
-}
-
-pub fn runtime_config() -> Result<RuntimeConfig> {
-    let executable = if let Ok(requested) = std::env::var("REVAYAT_CONTAINER_RUNTIME") {
-        runtime::executable(&requested)?
-    } else {
-        runtime::executable("docker").or_else(|_| runtime::executable("podman"))?
-    };
-    let kind = executable
-        .file_stem()
-        .context("runtime has no basename")?
-        .to_string_lossy()
-        .to_lowercase();
-    ensure!(
-        kind == "docker" || kind == "podman",
-        "runtime must be Docker or Podman"
-    );
-    let executable = executable
-        .to_str()
-        .context("runtime path must be UTF-8")?
-        .to_owned();
-    let base = if kind == "docker" {
-        let context = std::env::var("DOCKER_CONTEXT")
-            .ok()
-            .filter(|s| !s.is_empty());
-        let endpoint = if context.is_none() {
-            std::env::var("DOCKER_HOST").ok().filter(|s| !s.is_empty())
-        } else {
-            None
-        };
-        let endpoint = if let Some(endpoint) = endpoint {
-            endpoint
-        } else {
-            let mut args = vec![executable.clone(), "context".into(), "inspect".into()];
-            if let Some(context) = context {
-                args.push(context);
-            }
-            query(&args)?[0]["Endpoints"]["docker"]["Host"]
-                .as_str()
-                .context("Docker context omitted endpoint")?
-                .to_owned()
-        };
-        validate_endpoint(&endpoint, &kind)?;
-        vec![executable, "--host".into(), endpoint]
-    } else if cfg!(target_os = "linux")
-        && std::env::var("CONTAINER_HOST")
-            .unwrap_or_default()
-            .is_empty()
-        && std::env::var("CONTAINER_CONNECTION")
-            .unwrap_or_default()
-            .is_empty()
-    {
-        vec![executable, "--remote=false".into()]
-    } else {
-        let rows = query(&[
-            executable.clone(),
-            "system".into(),
-            "connection".into(),
-            "list".into(),
-            "--format=json".into(),
-        ])?;
-        let selected = std::env::var("CONTAINER_CONNECTION").unwrap_or_default();
-        let requested = std::env::var("CONTAINER_HOST").unwrap_or_default();
-        let choices = rows
-            .as_array()
-            .context("invalid Podman connection list")?
-            .iter()
-            .filter(|row| {
-                if !requested.is_empty() {
-                    row["URI"] == requested
-                } else if !selected.is_empty() {
-                    row["Name"] == selected
-                } else {
-                    row["Default"] == true
-                }
-            })
-            .collect::<Vec<_>>();
-        ensure!(
-            choices.len() == 1,
-            "a single configured local Podman connection is required"
-        );
-        let connection = choices[0];
-        let endpoint = connection["URI"]
-            .as_str()
-            .context("connection endpoint missing")?;
-        validate_endpoint(endpoint, &kind)?;
-        let mut args = vec![executable, "--url".into(), endpoint.into()];
-        if let Some(identity) = connection["Identity"].as_str().filter(|s| !s.is_empty()) {
-            args.extend(["--identity".into(), identity.into()]);
-        }
-        args
-    };
-    let information = query(&append(&base, &["info", "--format=json"]))?;
-    validate_runtime_information(&information, &kind)?;
-    let image = std::env::var("REVAYAT_TEX_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.into());
-    ensure!(
-        !image.is_empty() && !image.starts_with('-') && !image.chars().any(char::is_whitespace),
-        "invalid preinstalled TeX image reference"
-    );
-    let images = query(&append(&base, &["image", "inspect", &image]))?;
-    let images = images.as_array().context("invalid image inspection")?;
-    ensure!(
-        images.len() == 1 && images[0]["Config"]["Labels"][IMAGE_LABEL] == "1",
-        "preinstalled TeX image does not declare supported toolchain"
-    );
-    let id = images[0]["Id"]
-        .as_str()
-        .or_else(|| images[0]["ID"].as_str())
-        .context("image identity missing")?;
-    ensure!(hash_id(id, true), "container image identity is invalid");
-    Ok(RuntimeConfig {
-        base,
-        kind,
-        image: id.into(),
-    })
 }
 
 pub fn approved_files(source: &Path) -> Result<Vec<(PathBuf, PathBuf)>> {
@@ -606,162 +498,6 @@ pub fn retain_fixture_console(
         let destination = evidence.join(format!("fixture-tex-{run_id}-{name}"));
         validate_destination(&destination, std::slice::from_ref(&path))?;
         fs::write(destination, bytes)?;
-    }
-    Ok(())
-}
-
-pub fn compile_document(
-    source: &Path,
-    output: &Path,
-    config: Option<RuntimeConfig>,
-    guard: Option<&Path>,
-) -> Result<()> {
-    let config = if let Some(config) = config {
-        config
-    } else {
-        runtime_config()?
-    }; // Readiness precedes document access.
-    compile_document_observed(source, output, config, guard, &mut call, |_, _, _| Ok(()))
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TexBoundary {
-    BeforeCopy,
-    AfterCopy,
-    BeforeBackend,
-    AfterBackend,
-}
-pub fn compile_document_observed(
-    source: &Path,
-    output: &Path,
-    config: RuntimeConfig,
-    guard: Option<&Path>,
-    execute: &mut impl FnMut(&[String], u64) -> Result<(i32, String)>,
-    mut boundary: impl FnMut(TexBoundary, &Path, &Path) -> Result<()>,
-) -> Result<()> {
-    let source = source.canonicalize()?;
-    let inputs = approved_files(&source)?;
-    let protected = inputs.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
-    let output = validate_destination(output, &protected)?;
-    if let Some(path) = guard {
-        ensure!(
-            BuildGuard::check(path, None)?.outputs[0] == output,
-            "TeX guard belongs to another renderer output"
-        );
-    }
-    fs::create_dir_all(output.parent().context("output parent missing")?)?;
-    let stage = tempfile::Builder::new()
-        .prefix(".revayat-tex-")
-        .tempdir_in(output.parent().unwrap())?;
-    let directory = stage.path().to_owned();
-    let run_id = crate::tex_supervisor::new_token();
-    let incoming = directory.join("input");
-    let outgoing = directory.join("output");
-    fs::create_dir(&incoming)?;
-    fs::create_dir(&outgoing)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&outgoing, fs::Permissions::from_mode(0o777))?;
-    }
-    let snapshots = inputs
-        .iter()
-        .map(|(original, _)| Ok((original.clone(), file_hash(original)?)))
-        .collect::<Result<BTreeMap<_, _>>>()?;
-    for (original, relative) in &inputs {
-        let digest = &snapshots[original];
-        let target = incoming.join(relative);
-        fs::create_dir_all(target.parent().unwrap())?;
-        boundary(TexBoundary::BeforeCopy, original, &target)?;
-        fs::copy(original, &target)?;
-        boundary(TexBoundary::AfterCopy, original, &target)?;
-        ensure!(
-            file_hash(&target)? == *digest,
-            "TeX input changed preparing checked copy"
-        );
-    }
-    for (original, digest) in &snapshots {
-        ensure!(
-            file_hash(original)? == *digest,
-            "TeX input changed preparing checked copy"
-        );
-    }
-    // A constant, read-only renderer filename keeps the trusted XeTeX driver
-    // independent of manuscript filename syntax while preserving input bytes.
-    let main = incoming.join(STAGED_MAIN);
-    let checked_main = incoming.join(source.file_name().context("source basename missing")?);
-    ensure!(
-        !main.try_exists()? || main == checked_main,
-        "approved input collides with reserved renderer filename"
-    );
-    if main != checked_main {
-        fs::copy(&checked_main, &main)?;
-    }
-    ensure!(
-        file_hash(&main)? == snapshots[&source],
-        "renderer main copy differs from checked source"
-    );
-    if let Some(path) = guard {
-        BuildGuard::check(path, Some(&snapshots))?;
-    }
-    boundary(TexBoundary::BeforeBackend, &source, &directory)?;
-    let receipt = crate::tex_supervisor::register(&config, &directory, &run_id)?;
-    let rendered = execute(
-        &run_arguments(&config, &directory, STAGED_MAIN, &run_id)?,
-        INNER_TIMEOUT + 30,
-    );
-    let after = boundary(TexBoundary::AfterBackend, &source, &directory);
-    if let Err(error) = cleanup_with(&config, &directory, &run_id, false, execute) {
-        fs::write(
-            directory.join("recovery.json"),
-            serde_json::to_vec_pretty(
-                &json!({"run_id":run_id,"container_name":format!("revayat-tex-{run_id}"),"status":"cleanup_not_verified"}),
-            )?,
-        )?;
-        let retained = stage.keep();
-        bail!(
-            "container cleanup failed; retained evidence: {} ({error})",
-            retained.display()
-        );
-    }
-    crate::tex_supervisor::acknowledge(receipt.as_deref())?;
-    after?;
-    let (code, _) = rendered?;
-    if code != 0 {
-        let evidence = std::env::var_os("SCIENTIFIC_EVIDENCE_DIR").map(PathBuf::from);
-        let _ = retain_fixture_console(
-            &source,
-            &outgoing,
-            &run_id,
-            evidence.as_deref(),
-            std::env::var("SCIENTIFIC_RENDER").as_deref() == Ok("1"),
-        );
-    }
-    ensure!(
-        code == 0,
-        "isolated XeLaTeX failed or exceeded its deadline (exit_code={code}, category={})",
-        failure_class(&outgoing)?
-    );
-    let pdf = outgoing.join("document.pdf");
-    crate::render::validate_pdf(&pdf)?;
-    for (original, relative) in &inputs {
-        ensure!(
-            file_hash(original)? == snapshots[original]
-                && file_hash(&incoming.join(relative))? == snapshots[original],
-            "TeX input or staged copy changed during rendering"
-        );
-    }
-    ensure!(
-        file_hash(&main)? == snapshots[&source],
-        "renderer main copy changed during compilation"
-    );
-    let mut protected = protected;
-    if let Some(path) = guard {
-        protected.extend(BuildGuard::check(path, None)?.protected(path));
-    }
-    let digest = file_hash(&pdf)?;
-    publish_files(&[(pdf, output.clone())], &protected, Some(MAX_INPUT_BYTES))?;
-    if let Some(path) = guard {
-        BuildGuard::seal(path, &output, &digest)?;
     }
     Ok(())
 }

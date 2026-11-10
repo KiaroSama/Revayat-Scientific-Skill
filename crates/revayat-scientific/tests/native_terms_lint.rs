@@ -2,14 +2,16 @@
 use revayat_scientific::{
     lint::{self, LintOptions, Source},
     resource::ResourcePolicy,
+    runtime::{self, CommandSpec},
     terms,
 };
-use std::{fs, path::PathBuf, process::Command};
-fn invoke(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args(args)
-        .output()
-        .unwrap()
+use std::{fs, path::PathBuf, time::Duration};
+fn invoke(args: &[&str]) -> runtime::CommandOutput {
+    let mut spec =
+        CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args(args.iter().copied());
+    spec.timeout = Duration::from_secs(30);
+    spec.max_output = 1024 * 1024;
+    runtime::run(&spec).unwrap()
 }
 fn strings(paths: &[&std::path::Path]) -> Vec<String> {
     paths
@@ -23,7 +25,7 @@ fn test_multilingual_source_locations_and_ambiguity() {
     let source = d.path().join("source.txt");
     let ledger = d.path().join("terms.tsv");
     let text = "核融合 در متن اصلی.\nAbhängigkeit و nodes.\nnode\n";
-    let data = "source\toutput\tstep\tcount\tforbidden_fa\tconcept\tstatus\tadmitted\tdeprecated\n核融合\tهمجوشی هسته‌ای\t3 subject-lexicon\t1\t\tphysics-fusion\tpreferred\t\t\nAbhängigkeit\tوابستگی\t3 subject-lexicon\t1\t\tdependency\tpreferred\t\t\nnode\tگره\t3 subject-lexicon\t1\t\tgraph-node\tpreferred\t\t\nnode\tراس\t3 subject-lexicon\t1\t\tgraph-vertex\tpreferred\t\t\nnode\tنامشخص\t3 subject-lexicon\t1\t\tundecided\t\t\t\nnode\tگره‌ها\t3 subject-lexicon\t1\t\tgraph-nodes\trejected\t\t\n";
+    let data = "source\toutput\tstep\tcount\tforbidden_fa\tconcept\tstatus\tadmitted\tdeprecated\n核融合\tهمجوشی هسته‌ای\t3 subject-lexicon\t1\t\tphysics-fusion\tpreferred\t\t\nAbhängigkeit\tوابستگی\t3 subject-lexicon\t1\t\tdependency\tpreferred\t\t\nnode\tگره\t3 subject-lexicon\t1\t\tgraph-node\tpreferred\t\t\nnode\tراس\t3 subject-lexicon\t1\t\tgraph-vertex\tpreferred\t\t\nnode\tنامشخص\t3 subject-lexicon\t1\t\tundecided\t\t\t\nnodes\tگره‌ها\t3 subject-lexicon\t1\t\tgraph-nodes\trejected\t\t\n";
     fs::write(&source, text).unwrap();
     fs::write(&ledger, data).unwrap();
     let paths = strings(&[&source, &ledger]);
@@ -36,7 +38,7 @@ fn test_multilingual_source_locations_and_ambiguity() {
         "ja",
     ]);
     assert!(
-        result.status.success(),
+        result.success(),
         "{}",
         String::from_utf8_lossy(&result.stderr)
     );
@@ -86,7 +88,6 @@ fn test_missing_malformed_or_binary_inputs_fail_without_mutation() {
                 "--language",
                 "fa"
             ])
-            .status
             .success()
         );
     }
@@ -103,7 +104,6 @@ fn test_missing_malformed_or_binary_inputs_fail_without_mutation() {
             "--language",
             "fa"
         ])
-        .status
         .success()
     );
     assert_eq!(fs::read(source).unwrap(), b"%PDF-1.7\n");
@@ -144,8 +144,8 @@ fn test_cli_rejects_malformed_ledger_without_changing_inputs() {
     let p = strings(&[&source, &ledger]);
     let result = invoke(&["lint", &p[0], "--terms", &p[1], "--level", "journal"]);
     assert_eq!(
-        result.status.code(),
-        Some(2),
+        result.code,
+        2,
         "{}",
         String::from_utf8_lossy(&result.stderr)
     );
@@ -184,12 +184,10 @@ fn test_job_sidecars_are_independent_of_argument_order() {
                 .map(|p: &PathBuf| p.to_string_lossy().into_owned()),
         );
         args.extend(["--level".into(), "journal".into(), "--strict".into()]);
-        let result = Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-            .args(args)
-            .output()
-            .unwrap();
+        let borrowed = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let result = invoke(&borrowed);
         assert!(
-            result.status.success(),
+            result.success(),
             "{}{}",
             String::from_utf8_lossy(&result.stdout),
             String::from_utf8_lossy(&result.stderr)
@@ -200,11 +198,33 @@ fn test_job_sidecars_are_independent_of_argument_order() {
         ..LintOptions::default()
     };
     assert!(lint::lint_file(&sources[0], &opt).is_err());
-    fs::write(opt.pairs.as_ref().unwrap(), "malformed\trow\n").unwrap();
+    let sidecar = opt.pairs.as_ref().unwrap();
+    assert_eq!(
+        invoke(&[
+            "lint",
+            sources[0].to_str().unwrap(),
+            "--pairs",
+            sidecar.to_str().unwrap(),
+        ])
+        .code,
+        2
+    );
+    fs::write(sidecar, "malformed\trow\n").unwrap();
     assert!(lint::lint_file(&sources[0], &opt).is_err());
+    assert_eq!(
+        invoke(&[
+            "lint",
+            sources[0].to_str().unwrap(),
+            "--pairs",
+            sidecar.to_str().unwrap(),
+        ])
+        .code,
+        2
+    );
     let md = d.path().join("notes.md");
     fs::write(&md, "text").unwrap();
     assert!(lint::lint_file(&md, &LintOptions::default()).is_err());
+    assert_eq!(invoke(&["lint", md.to_str().unwrap()]).code, 2);
 }
 #[test]
 fn test_journal_names_and_foreign_original_identity_are_preserved() {
@@ -225,7 +245,6 @@ fn test_journal_names_and_foreign_original_identity_are_preserved() {
         assert!(found.is_empty(), "{found:?}");
         assert!(
             invoke(&["lint", p.to_str().unwrap(), "--level", "journal"])
-                .status
                 .success()
         );
     }
@@ -243,11 +262,10 @@ fn test_journal_terms_and_scoped_original_quote() {
     assert!(lint::lint_file(&p, &opts).unwrap().is_empty());
     assert!(
         invoke(&["lint", p.to_str().unwrap(), "--level", "journal"])
-            .status
             .success()
     );
     let operational = invoke(&["lint", p.to_str().unwrap(), "--level", "system-docs"]);
-    assert_eq!(operational.status.code(), Some(1));
+    assert_eq!(operational.code, 1);
     assert!(String::from_utf8_lossy(&operational.stdout).contains("forbidden-fa"));
     assert!(
         lint::lint_file(&p, &LintOptions::default())
@@ -267,132 +285,12 @@ fn test_journal_terms_and_scoped_original_quote() {
     assert!(findings.iter().any(|f| f.check == "arabic-letters"));
     assert!(findings.iter().any(|f| f.check == "missing-image"));
     let broken = invoke(&["lint", p.to_str().unwrap(), "--level", "journal"]);
-    assert_eq!(broken.status.code(), Some(1));
+    assert_eq!(broken.code, 1);
     let output = String::from_utf8_lossy(&broken.stdout);
     assert!(output.contains("arabic-letters"));
     assert!(output.contains("missing-image"));
 }
-fn tex_source(d: &tempfile::TempDir, body: &str) -> Source {
-    let path = d.path().join("source.tex");
-    fs::write(
-        &path,
-        format!("\\begin{{document}}\n{body}\n\\end{{document}}"),
-    )
-    .unwrap();
-    Source::load(&path).unwrap()
-}
-#[test]
-fn test_real_listing_openers_remain_available_to_direction_checks() {
-    let d = tempfile::tempdir().unwrap();
-    for env in ["verbatim", "verbatim*", "Verbatim", "lstlisting", "minted"] {
-        let s = tex_source(&d, &format!("\\begin{{{env}}}\nCodeMarker\n\\end{{{env}}}"));
-        let opener = s.text().find(&format!("\\begin{{{env}}}")).unwrap();
-        assert!(!s.inert(opener));
-        assert!(s.is_protected(opener));
-        let marker = s.text().find("CodeMarker").unwrap();
-        assert!(s.inert(marker));
-        assert!(s.is_protected(marker));
-    }
-}
-#[test]
-fn test_fake_listing_openers_remain_inert() {
-    let d = tempfile::tempdir().unwrap();
-    for body in [
-        r"\verb|\begin{verbatim}|",
-        "% \\begin{verbatim}",
-        "\\begin{verbatim}\n\\begin{lstlisting}\n\\end{verbatim}",
-    ] {
-        let s = tex_source(&d, body);
-        let marker = if body.contains("lstlisting") {
-            r"\begin{lstlisting}"
-        } else {
-            r"\begin{verbatim}"
-        };
-        assert!(s.inert(s.text().find(marker).unwrap()));
-    }
-}
-#[test]
-fn test_ignored_direction_and_bookmark_context_cannot_hide_live_findings() {
-    let d = tempfile::tempdir().unwrap();
-    let listing = "\\begin{verbatim}\nCodeMarker\n\\end{verbatim}";
-    let image = r"\includegraphics{missing.png}";
-    let heading = r"\section{\en{Title}}";
-    for fake in [
-        r"\verb|\begin{latin}\pdfstringdefDisableCommands|",
-        "% \\begin{latin}\\pdfstringdefDisableCommands",
-        r"\\begin{latin}\\pdfstringdefDisableCommands",
-    ] {
-        let s = tex_source(&d, &format!("{fake}\n{listing}\n{image}\n{heading}"));
-        let found = lint::check(&s, &[], None, "system-docs").unwrap();
-        for id in ["code-direction", "figure-direction", "bookmark-guard"] {
-            assert!(found.iter().any(|f| f.check == id), "{fake}: {found:?}");
-        }
-    }
-    let s = tex_source(
-        &d,
-        &format!(
-            "\\pdfstringdefDisableCommands{{}}\n\\begin{{latin}}\n{listing}\n{image}\n\\end{{latin}}\n{heading}"
-        ),
-    );
-    assert!(
-        !lint::check(&s, &[], None, "system-docs")
-            .unwrap()
-            .iter()
-            .any(|f| ["code-direction", "figure-direction", "bookmark-guard"]
-                .contains(&f.check.as_str()))
-    );
-}
-#[test]
-fn test_listing_and_figure_require_live_containing_direction_scopes() {
-    let d = tempfile::tempdir().unwrap();
-    let listing = "\\begin{verbatim}\nCodeMarker\n\\end{verbatim}";
-    let image = r"\includegraphics{missing.png}";
-    let cases = [
-        (
-            format!(
-                "\\begin{{latin}}\n{}{listing}\n\\end{{latin}}",
-                "متن\n".repeat(200)
-            ),
-            vec![],
-        ),
-        (
-            format!("\\begin{{latin}}\n\\end{{latin}}\n{listing}"),
-            vec!["code-direction"],
-        ),
-        (
-            format!("\\LR{{earlier}}\n{image}"),
-            vec!["figure-direction"],
-        ),
-        (
-            format!("\\begin{{LTR}}\n\\begin{{latin}}\n\\end{{latin}}\n{image}\n\\end{{LTR}}"),
-            vec![],
-        ),
-        (format!("\\LR{{{image}}}"), vec![]),
-        (
-            format!("\\begin{{latin}}\n{listing}\n\\end{{latin}}\n{image}"),
-            vec!["figure-direction"],
-        ),
-    ];
-    for (body, expected) in cases {
-        let s = tex_source(&d, &body);
-        let found = lint::check(&s, &[], None, "system-docs").unwrap();
-        let checks: Vec<_> = found
-            .iter()
-            .filter(|f| ["code-direction", "figure-direction"].contains(&f.check.as_str()))
-            .map(|f| f.check.as_str())
-            .collect();
-        assert_eq!(checks, expected, "{body}");
-    }
-}
-#[test]
-fn test_real_listing_inside_preamble_remains_inert() {
-    let d = tempfile::tempdir().unwrap();
-    let p = d.path().join("source.tex");
-    fs::write(&p,"\\begin{verbatim}\nPreambleLiteral\n\\end{verbatim}\n\\begin{document}\nBodyMarker\n\\end{document}").unwrap();
-    let s = Source::load(&p).unwrap();
-    assert!(s.inert(0));
-    assert!(!s.is_protected(s.text().find("BodyMarker").unwrap()));
-}
+include!("native_terms_lint/listing.rs");
 #[test]
 fn test_fetch_allows_job_assets_and_denies_outside_network_and_attachments() {
     let d = tempfile::tempdir().unwrap();
@@ -540,7 +438,7 @@ fn test_live_root_entities_and_comment_only_waivers() {
         fs::write(&p, body).unwrap();
         let f = lint::lint_file(&p, &LintOptions::default()).unwrap();
         let result = invoke(&["lint", p.to_str().unwrap()]);
-        assert_eq!(result.status.code(), Some(i32::from(diagnostic.is_some())));
+        assert_eq!(result.code, i32::from(diagnostic.is_some()));
         if let Some(id) = diagnostic {
             assert!(f.iter().any(|f| f.check == id), "{id}: {f:?}");
             assert!(String::from_utf8_lossy(&result.stdout).contains(id));
@@ -589,15 +487,25 @@ fn test_encoded_and_starred_assets_share_lint_and_build_resolution() {
             lint::resolve_asset(d.path(), &refs[0].1).unwrap(),
             image.canonicalize().unwrap()
         );
-        assert!(
-            revayat_scientific::build::document_inputs(p, &[], None)
-                .unwrap()
-                .contains(&image.canonicalize().unwrap())
-        );
+        let inputs = revayat_scientific::build::document_inputs(p, &[], None).unwrap();
+        let sources = [
+            p.canonicalize().unwrap(),
+            d.path().join("chapters/one.tex").canonicalize().unwrap(),
+        ];
+        let assets = inputs
+            .into_iter()
+            .filter(|path| !sources.contains(path))
+            .collect::<Vec<_>>();
+        assert_eq!(assets, vec![image.canonicalize().unwrap()]);
+        assert!(revayat_scientific::build::validate_assets(p).is_err());
         assert!(
             revayat_scientific::images::inspect(&image)
                 .unwrap()
                 .requires_review
+        );
+        assert_eq!(
+            invoke(&["figures", "--check", image.to_str().unwrap()]).code,
+            1
         );
     }
     image::RgbImage::from_pixel(8, 8, image::Rgb([255, 255, 255]))
@@ -608,6 +516,11 @@ fn test_encoded_and_starred_assets_share_lint_and_build_resolution() {
             .unwrap()
             .requires_review
     );
+    assert_eq!(
+        invoke(&["figures", "--check", image.to_str().unwrap()]).code,
+        0
+    );
+    revayat_scientific::build::validate_assets(&tex).unwrap();
     fs::remove_file(&image).unwrap();
     for p in [&html, &tex] {
         let found = lint::check(
@@ -619,6 +532,7 @@ fn test_encoded_and_starred_assets_share_lint_and_build_resolution() {
         .unwrap();
         assert!(found.iter().any(|f| f.check == "missing-image"));
         assert!(revayat_scientific::build::document_inputs(p, &[], None).is_err());
+        assert!(revayat_scientific::build::validate_assets(p).is_err());
     }
 }
 #[test]

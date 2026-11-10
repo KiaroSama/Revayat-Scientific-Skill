@@ -203,15 +203,17 @@ fn test_public_inspect_reports_restriction_and_edit_preserves_delivery() {
     )
     .unwrap();
     let binary = env!("CARGO_BIN_EXE_revayat-scientific");
-    let inspected = std::process::Command::new(binary)
-        .args(["docx", "inspect"])
-        .arg(&f.source)
-        .arg("--output")
-        .arg(&report)
-        .output()
-        .unwrap();
+    use revayat_scientific::runtime::{CommandSpec, run};
+    let inspected = run(&CommandSpec::new(binary).args([
+        std::ffi::OsStr::new("docx"),
+        std::ffi::OsStr::new("inspect"),
+        f.source.as_os_str(),
+        std::ffi::OsStr::new("--output"),
+        report.as_os_str(),
+    ]))
+    .unwrap();
     assert!(
-        inspected.status.success(),
+        inspected.success(),
         "{}",
         String::from_utf8_lossy(&inspected.stderr)
     );
@@ -222,15 +224,16 @@ fn test_public_inspect_reports_restriction_and_edit_preserves_delivery() {
             .unwrap()
             .contains(&json!("digital-signatures"))
     );
-    let edited = std::process::Command::new(binary)
-        .args(["docx", "edit"])
-        .arg(&f.source)
-        .arg(&f.output)
-        .arg("--patch")
-        .arg(patch_file)
-        .output()
-        .unwrap();
-    assert!(!edited.status.success());
+    let edited = run(&CommandSpec::new(binary).args([
+        std::ffi::OsStr::new("docx"),
+        std::ffi::OsStr::new("edit"),
+        f.source.as_os_str(),
+        f.output.as_os_str(),
+        std::ffi::OsStr::new("--patch"),
+        patch_file.as_os_str(),
+    ]))
+    .unwrap();
+    assert!(!edited.success());
     assert_eq!(fs::read(&f.output).unwrap(), b"previous approved delivery");
     assert_eq!(fs::read(&f.source).unwrap(), before);
 }

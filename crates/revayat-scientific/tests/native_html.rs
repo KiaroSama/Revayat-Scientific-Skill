@@ -17,6 +17,7 @@ fn live(body: &str) -> HtmlSource {
     let p = m.html.text.rfind("كي").unwrap();
     assert!(!m.is_protected(p), "{body}");
     assert!(!m.suppressed(p, "arabic-letters"), "{body}");
+    assert_eq!(m.path, PathBuf::from("/tmp/document.html"));
     m
 }
 fn invalid(body: &str) {
@@ -84,7 +85,10 @@ fn test_rcdata_end_tag_attributes_do_not_hide_following_text() {
         "</textarea data-x=\">\">",
         "</textarea/>",
     ] {
-        live(&format!("<textarea>literal{end}كي"));
+        let m = live(&format!("<textarea>literal{end}كي"));
+        let node = m.html.nodes.iter().find(|n| n.tag == "textarea").unwrap();
+        assert_eq!(&m.html.text[node.content..node.content_end], "literal");
+        assert_eq!(node.end, m.html.text.rfind("كي").unwrap());
     }
 }
 #[test]
@@ -119,7 +123,9 @@ fn test_templates_fail_explicitly_before_claiming_engine_independent_coverage() 
 #[test]
 fn test_plaintext_is_explicitly_unsupported_but_rcdata_examples_are_safe() {
     for tag in ["<plaintext>", "<plaintext/>"] {
-        invalid(&format!("{tag}<!-- fa-lint: allow all -->كي"));
+        let error = ParsedHtml::parse(&format!("<html>{tag}<!-- fa-lint: allow all -->كي</html>"))
+            .unwrap_err();
+        assert!(error.to_string().contains("static"));
     }
     assert!(
         live("<textarea><template>literal</template><plaintext>literal</textarea>كي")
@@ -275,11 +281,18 @@ fn test_foreign_breakout_preserves_html_isolate_and_neighbor_checks() {
 }
 #[test]
 fn test_public_lint_keeps_a_real_error_after_a_fake_waiver() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("document.html");
+    let original = "<html lang=\"fa\" dir=\"rtl\"><textarea/><!-- fa-lint: allow all --></textarea>كي</html>";
+    fs::write(&path, original).unwrap();
     assert!(
-        findings("<textarea/><!-- fa-lint: allow all --></textarea>كي")
+        lint::check(&Source::load(&path).unwrap(), &[], None, "system-docs")
+            .unwrap()
             .iter()
             .any(|f| f.check == "arabic-letters")
     );
+    ResourcePolicy::new(&path).unwrap();
+    assert_eq!(fs::read_to_string(path).unwrap(), original);
 }
 #[test]
 fn test_paragraph_boundaries_end_language_hidden_and_isolate_scope() {
@@ -334,7 +347,10 @@ fn test_optional_head_end_does_not_protect_body() {
             &format!("<html>{b}</html>"),
         )
         .unwrap();
-        assert!(!m.is_protected(m.html.text.find("كي").unwrap()));
+        let position = m.html.text.find("كي").unwrap();
+        assert!(!m.is_protected(position));
+        assert!(!m.suppressed(position, "arabic-letters"));
+        assert_eq!(m.path, PathBuf::from("/tmp/doc.html"));
     }
 }
 #[test]
@@ -464,138 +480,7 @@ fn test_table_parts_outside_a_table_do_not_create_fake_exemptions() {
         invalid(&format!("<{tag} lang=\"en\">كي</{tag}>"));
     }
 }
-fn oracle_language(text: &str, target: &str) -> String {
-    let dom = scraper::Html::parse_document(text);
-    let selector = scraper::Selector::parse(target).unwrap();
-    let element = dom.select(&selector).next().unwrap();
-    if let Some(language) = element.value().attr("lang") {
-        return language.into();
-    }
-    for node in element.ancestors() {
-        if let Some(e) = scraper::ElementRef::wrap(node)
-            && let Some(language) = e.value().attr("lang")
-        {
-            return language.into();
-        }
-    }
-    "fa".into()
-}
-#[test]
-fn test_bounded_sibling_matrix_matches_or_explicitly_refuses_html5_repair() {
-    let openers = [
-        "p", "h1", "li", "dt", "dd", "td", "th", "tr", "tbody", "thead", "tfoot", "caption",
-        "colgroup", "option", "optgroup",
-    ];
-    let followers = [
-        "p", "div", "li", "dt", "dd", "td", "th", "tr", "tbody", "caption", "h1", "h2", "option",
-        "optgroup", "hr", "span",
-    ];
-    let (mut accepted, mut refused) = (0, 0);
-    for opener in openers {
-        let wrapper = if [
-            "td", "th", "tr", "tbody", "thead", "tfoot", "caption", "colgroup",
-        ]
-        .contains(&opener)
-        {
-            "table"
-        } else if opener == "li" {
-            "ul"
-        } else if ["dt", "dd"].contains(&opener) {
-            "dl"
-        } else if ["option", "optgroup"].contains(&opener) {
-            "select"
-        } else {
-            "div"
-        };
-        for follower in followers {
-            let lead = if opener == "colgroup" {
-                "<col>"
-            } else if ["tbody", "thead", "tfoot"].contains(&opener) {
-                "<tr><td>A"
-            } else if opener == "tr" {
-                "<td>A"
-            } else {
-                "A"
-            };
-            let child = if follower == "tr" {
-                "<td>كي"
-            } else if follower == "tbody" {
-                "<tr><td>كي"
-            } else {
-                "كي"
-            };
-            let text = format!(
-                "<html lang=\"fa\"><body><{wrapper}><{opener} lang=\"en\">{lead}<{follower} id=\"target\">{child}</{follower}></{wrapper}></body></html>"
-            );
-            let Ok(m) = ParsedHtml::parse(&text) else {
-                refused += 1;
-                continue;
-            };
-            let actual = &m
-                .nodes
-                .iter()
-                .find(|n| n.attr("id") == "target")
-                .unwrap()
-                .language;
-            assert_eq!(
-                actual,
-                &oracle_language(&text, "#target"),
-                "{opener}/{follower}: {text}"
-            );
-            accepted += 1;
-        }
-    }
-    assert_eq!((accepted, refused), (176, 64));
-}
-#[test]
-fn test_special_barriers_match_independent_html5_tree() {
-    for body in [
-        "<ul><li lang=\"en\"><section>A<li id=\"target\">كي</section></ul>",
-        "<dl><dt lang=\"en\"><section>A<dd id=\"target\">كي</section></dl>",
-        "<span lang=\"en\"><p>A</span><p id=\"target\">كي</p>",
-        "<div lang=\"en\"><table><tr><td>A</div><span id=\"target\">كي</span></table>",
-    ] {
-        let text = format!("<html lang=\"fa\"><body>{body}</body></html>");
-        let m = ParsedHtml::parse(&text).unwrap();
-        let expected = oracle_language(&text, "#target");
-        assert_eq!(expected, "en");
-        assert_eq!(
-            m.nodes
-                .iter()
-                .find(|n| n.attr("id") == "target")
-                .unwrap()
-                .language,
-            expected
-        );
-    }
-    for body in [
-        "<form hidden><div>A</form>كي</div>",
-        "<form><div lang=\"en\">A</form>كي</div>",
-    ] {
-        invalid(body);
-    }
-}
-#[test]
-fn test_implicit_scope_vectors_match_independent_html5_tree() {
-    for body in [
-        "<p lang=\"en\">English<p id=\"target\">كي",
-        "<ul><li lang=\"en\">English<li id=\"target\">كي</ul>",
-        "<table><tr><td lang=\"en\">English<td id=\"target\">كي</table>",
-        "<head><title>English</title><body><p id=\"target\">كي",
-        "<select><option lang=\"en\">English<option id=\"target\">كي</select>",
-    ] {
-        let text = format!("<html lang=\"fa\">{body}</html>");
-        let m = ParsedHtml::parse(&text).unwrap();
-        assert_eq!(
-            m.nodes
-                .iter()
-                .find(|n| n.attr("id") == "target")
-                .unwrap()
-                .language,
-            oracle_language(&text, "#target")
-        );
-    }
-}
+include!("native_html/scope_oracle.rs");
 #[test]
 fn test_html5_oracle_keeps_markup_inside_textarea_as_text() {
     let source = "<!doctype html><html lang=\"fa\" dir=\"rtl\"><body><textarea/><!-- fa-lint: allow all --><img src=\"missing.png\"></textarea><span dir=\"ltr\"/>125</span></body></html>";
@@ -661,8 +546,23 @@ fn test_bounded_tokenizer_vectors_match_independent_html5_text_and_namespaces() 
                 .count(),
             m.image_references().len()
         );
+        let mut tail = String::new();
+        for sibling in e.next_siblings() {
+            if let Some(text) = sibling.value().as_text() {
+                tail.push_str(text);
+            } else {
+                break;
+            }
+        }
+        assert!(tail.contains("كي"), "{body}");
         if tag != "textarea" {
             assert_eq!(e.text().collect::<String>(), "125");
+            let position = m.text.find("125").unwrap();
+            assert!(
+                m.protected
+                    .iter()
+                    .any(|&(start, end)| start <= position && position < end)
+            );
         }
     }
 }
@@ -704,6 +604,12 @@ fn test_two_page_render_matches_explicit_equivalent_markup() -> anyhow::Result<(
         );
     let original = d.path().join("original.html");
     fs::write(&original, &actual)?;
+    assert!(
+        !ParsedHtml::parse(&actual)?
+            .nodes
+            .iter()
+            .any(|node| node.tag == "img")
+    );
     let browser = revayat_scientific::render::discover_browser(None)?;
     for (label, source) in [("actual", &actual), ("expected", &expected)] {
         let p = d.path().join(format!("{label}.html"));
@@ -734,8 +640,27 @@ fn test_two_page_render_matches_explicit_equivalent_markup() -> anyhow::Result<(
             image::open(b_png)?.to_rgba8()
         );
     }
-    assert!(revayat_scientific::pdf::pdf_text(&a)?.contains("125"));
-    assert!(revayat_scientific::pdf::pdf_text(&a)?.contains("Unchanged second page"));
+    let document = revayat_scientific::pdf::open_pdf(&a, false)?;
+    assert!(revayat_scientific::pdf::page_text(&document, 1)?.contains("125"));
+    assert!(revayat_scientific::pdf::page_text(&document, 2)?.contains("Unchanged second page"));
+    if let Some(evidence) = std::env::var_os("SCIENTIFIC_EVIDENCE_DIR") {
+        let destination = PathBuf::from(evidence);
+        fs::create_dir_all(&destination)?;
+        for page in 1..=2 {
+            let output = destination.join(format!("html-context-page-{page}.png"));
+            anyhow::ensure!(
+                !revayat_scientific::identity::is_link(&output)?,
+                "linked evidence output refused"
+            );
+            fs::copy(d.path().join(format!("a-{page}.png")), output)?;
+        }
+        let output = destination.join("html-context.pdf");
+        anyhow::ensure!(
+            !revayat_scientific::identity::is_link(&output)?,
+            "linked evidence output refused"
+        );
+        fs::copy(&a, output)?;
+    }
     assert_eq!(fs::read_to_string(original)?, actual);
     Ok(())
 }

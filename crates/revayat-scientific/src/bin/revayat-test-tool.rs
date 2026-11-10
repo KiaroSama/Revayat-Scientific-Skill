@@ -30,6 +30,68 @@ fn docker(args: &[String]) {
         std::process::exit(2);
     }
 }
+fn browser_protocol(args: &[String]) {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use lopdf::{Document, Object, dictionary};
+    use serde_json::json;
+    let profile = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("--user-data-dir="))
+        .unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    fs::write(
+        Path::new(profile).join("DevToolsActivePort"),
+        format!("{port}\n/devtools/browser/fixture\n"),
+    )
+    .unwrap();
+    let mut socket = tungstenite::accept(listener.accept().unwrap().0).unwrap();
+    loop {
+        let message = socket.read().unwrap();
+        let tungstenite::Message::Text(text) = message else {
+            continue;
+        };
+        let request: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let method = request["method"].as_str().unwrap();
+        let result = match method {
+            "Browser.getVersion" => json!({"product":"Fixture/1","protocolVersion":"1.3"}),
+            "Target.getTargets" => json!({"targetInfos":[{"type":"page","targetId":"fixture"}]}),
+            "Target.attachToTarget" => json!({"sessionId":"fixture"}),
+            "Page.printToPDF" => {
+                let mut pdf = Document::with_version("1.7");
+                let pages = pdf.new_object_id();
+                let content = pdf.add_object(lopdf::Stream::new(dictionary! {}, Vec::new()));
+                let page = pdf.add_object(dictionary!{"Type"=>"Page","Parent"=>pages,"MediaBox"=>vec![0.into(),0.into(),200.into(),300.into()],"Resources"=>dictionary!{},"Contents"=>content});
+                pdf.objects.insert(pages, Object::Dictionary(dictionary!{"Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>1}));
+                let catalog = pdf.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages});
+                pdf.trailer.set("Root", catalog);
+                let mut bytes = Vec::new();
+                pdf.save_to(&mut bytes).unwrap();
+                json!({"data":STANDARD.encode(bytes)})
+            }
+            _ => json!({}),
+        };
+        socket
+            .send(tungstenite::Message::Text(
+                json!({"id":request["id"],"result":result})
+                    .to_string()
+                    .into(),
+            ))
+            .unwrap();
+        if method == "Page.navigate" {
+            socket
+                .send(tungstenite::Message::Text(
+                    json!({"method":"Page.loadEventFired"}).to_string().into(),
+                ))
+                .unwrap();
+        }
+        if method == "Page.printToPDF" {
+            loop {
+                thread::sleep(Duration::from_secs(60));
+            }
+        }
+    }
+}
 fn main() {
     let args = env::args().collect::<Vec<_>>();
     if Path::new(&args[0])
@@ -55,6 +117,25 @@ fn main() {
         std::process::exit(status.code().unwrap_or(2));
     }
     match args.get(1).map(String::as_str) {
+        Some("package-relocated-index") => {
+            let (source, repository, output) = (
+                Path::new(&args[2]), Path::new(&args[3]), Path::new(&args[4]),
+            );
+            let mut reached = false;
+            let result = revayat_scientific::distribution_package::package_observed(
+                source, repository, output, None,
+                |boundary, _| {
+                    if boundary == revayat_scientific::distribution_package::PackageBoundary::Staged {
+                        // SAFETY: dedicated child, no live threads; only its own environment changes.
+                        unsafe { env::set_var("GIT_INDEX_FILE", output); }
+                        reached = true;
+                    }
+                    Ok(())
+                },
+            );
+            println!("staged={reached}");
+            std::process::exit(if result.is_err() { 2 } else { 0 });
+        }
         Some("runtime-environment-parent") => {
             let mut spec = revayat_scientific::runtime::CommandSpec::new(args.get(2).expect("fixture program missing"));
             spec.args = vec!["runtime-environment".into(), args.get(3).expect("fixture PATH missing").into()];
@@ -125,6 +206,76 @@ fn main() {
                     env::current_dir().unwrap().to_string_lossy().as_bytes(),
                 )
                 .unwrap();
+            }
+            let mode = Path::new(&args[0]).file_stem().unwrap().to_string_lossy();
+            match mode.strip_prefix("browser-").unwrap_or("early") {
+                "protocol" => browser_protocol(&args),
+                "silent" => loop {
+                    thread::sleep(Duration::from_secs(60));
+                },
+                "flood" => {
+                    for _ in 0..128 {
+                        if io::stderr().write_all(&[b'x'; 8192]).is_err() {
+                            break;
+                        }
+                    }
+                }
+                "invalid" => {
+                    io::stderr()
+                        .write_all(b"\xff\xfePRIVATE_BROWSER_CANARY\n")
+                        .unwrap();
+                }
+                "ready-exit" => {
+                    let profile = args
+                        .iter()
+                        .find_map(|arg| arg.strip_prefix("--user-data-dir="))
+                        .unwrap();
+                    fs::write(
+                        Path::new(profile).join("DevToolsActivePort"),
+                        "0\n/devtools/browser/fixture\n",
+                    )
+                    .unwrap();
+                    while !Path::new(profile).join("exit-now").exists() {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                }
+                "ready-private" => {
+                    let profile = args
+                        .iter()
+                        .find_map(|arg| arg.strip_prefix("--user-data-dir="))
+                        .expect("browser profile argument missing");
+                    fs::write(
+                        Path::new(profile).join("DevToolsActivePort"),
+                        "0\n/devtools/browser/private-token\n",
+                    )
+                    .unwrap();
+                    eprintln!("PRIVATE_BROWSER_CANARY secret-profile");
+                    io::stderr().write_all(&[255, 254, b'\n']).unwrap();
+                    loop {
+                        thread::sleep(Duration::from_secs(60));
+                    }
+                }
+                "held" => {
+                    let child = Command::new(env::current_exe().unwrap())
+                        .arg("silent")
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::inherit())
+                        .spawn()
+                        .unwrap();
+                    let destination = Path::new(&args[0])
+                        .parent()
+                        .unwrap()
+                        .join("browser-child.pid");
+                    fs::write(destination, child.id().to_string()).unwrap();
+                    std::mem::forget(child);
+                }
+                "private" => eprintln!(
+                    "PRIVATE_BROWSER_CANARY secret-profile https://private.invalid/devtools/browser/private-token"
+                ),
+                _ => eprintln!(
+                    "No usable sandbox! PRIVATE_BROWSER_CANARY devtools/browser/private-token"
+                ),
             }
             std::process::exit(42);
         }

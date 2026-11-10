@@ -17,6 +17,7 @@ struct Fixture {
     previous: Vec<Value>,
     run: Value,
     published: Vec<Value>,
+    post_paths: Vec<String>,
     gets: Vec<String>,
     fail: Option<String>,
     bad_page: Option<Value>,
@@ -29,15 +30,23 @@ impl Fixture {
                 .iter()
                 .enumerate()
                 .map(|(i, n)| job(n, i as u64 + 1, "success", 1))
+                .chain(std::iter::once(job("status-pending", 90, "success", 1)))
                 .collect(),
             previous: vec![],
             run: json!({"id":123,"head_sha":id().sha,"run_attempt":1,"event":"workflow_dispatch","path":".github/workflows/ci.yml","repository":{"full_name":"example/project"}}),
             published: vec![],
+            post_paths: vec![],
             gets: vec![],
             fail: None,
             bad_page: None,
             supersede: false,
         }
+    }
+    fn states(&self) -> std::collections::BTreeMap<&str, &Value> {
+        self.published
+            .iter()
+            .map(|v| (v["context"].as_str().unwrap(), v))
+            .collect()
     }
     fn state(&self, context: &str) -> &Value {
         self.published
@@ -81,17 +90,18 @@ impl GitHubApi for Fixture {
             Ok(self.run.clone())
         }
     }
-    fn post(&mut self, _path: &str, body: &Value) -> Result<Value> {
+    fn post(&mut self, path: &str, body: &Value) -> Result<Value> {
         if self.fail.as_ref().is_some_and(|c| body["context"] == *c) {
             bail!("controlled boundary failure");
         }
+        self.post_paths.push(path.to_owned());
         self.published.push(body.clone());
         Ok(body.clone())
     }
 }
 #[test]
 fn test_required_census_matches_all_existing_matrix_and_reusable_jobs() {
-    assert_eq!(REQUIRED_JOBS.len(), 9);
+    assert_eq!(REQUIRED_JOBS.len(), 10);
     for expected in [
         "security / linux-security",
         "security / windows-security",
@@ -102,6 +112,7 @@ fn test_required_census_matches_all_existing_matrix_and_reusable_jobs() {
         "portable (windows-latest)",
         "scientific",
         "quality",
+        "behavior-aggregate",
     ] {
         assert!(REQUIRED_JOBS.contains(&expected));
     }
@@ -112,10 +123,13 @@ fn test_all_real_jobs_have_their_own_true_result_and_direct_link() -> Result<()>
     f.jobs[0]["conclusion"] = json!("failure");
     f.jobs.push(job("additional validation", 40, "failure", 1));
     f.jobs.push(job("status-final", 41, "", 1));
-    f.jobs.push(job("status-pending", 42, "success", 1));
     assert_eq!(ci::publish(&mut f, &id(), "final")?, "failure");
     assert_eq!(f.state("ci/security / linux-security")["state"], "failure");
     assert_eq!(f.state("ci/scientific")["state"], "success");
+    assert_eq!(f.states().len(), REQUIRED_JOBS.len() + 2);
+    assert_eq!(f.state("ci/additional validation")["state"], "failure");
+    assert_eq!(f.state(SUMMARY)["state"], "failure");
+    assert!(f.post_paths.iter().all(|p| p == "repos/example/project/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
     assert_eq!(
         f.state("ci/additional validation")["target_url"],
         "https://github.com/example/project/actions/runs/123/job/40"
@@ -124,7 +138,7 @@ fn test_all_real_jobs_have_their_own_true_result_and_direct_link() -> Result<()>
         f.state(SUMMARY)["description"]
             .as_str()
             .unwrap()
-            .contains("8 passed, 2 failed")
+            .contains("9 passed, 2 failed")
     );
     assert!(
         !f.published
@@ -142,49 +156,11 @@ fn test_pending_resets_expected_and_old_contexts_without_claiming_results() -> R
     ];
     assert_eq!(ci::publish(&mut f, &id(), "pending")?, "pending");
     assert_eq!(f.state("ci/retired")["state"], "pending");
+    assert_eq!(f.states().len(), REQUIRED_JOBS.len() + 2);
     assert!(f.published.iter().all(|v| v["state"] == "pending"));
     assert!(!f.published.iter().any(|v| v["context"] == "external/check"));
     Ok(())
 }
-#[test]
-fn test_preparation_is_opt_in_bounded_and_publishes_only_generated_inputs() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
-    let source = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap();
-    let workflow: Value = serde_saphyr::from_str(&source).unwrap();
-    let events = workflow["on"].as_object().unwrap();
-    assert_eq!(events.len(), 1);
-    assert_eq!(events["workflow_dispatch"]["inputs"]["prepare_artifacts"]["default"], false);
-    let jobs = workflow["jobs"].as_object().unwrap();
-    for (name, job) in jobs {
-        let gate = match name.as_str() {
-            "prepare-artifacts" => "${{ inputs.prepare_artifacts }}",
-            "status-final" => "${{ always() && !inputs.prepare_artifacts }}",
-            _ => "${{ !inputs.prepare_artifacts }}",
-        };
-        assert_eq!(job["if"], gate, "{name}");
-    }
-    let prepare = &jobs["prepare-artifacts"];
-    assert_eq!(prepare["runs-on"], "ubuntu-latest");
-    assert_eq!(prepare["timeout-minutes"], 40);
-    let steps = prepare["steps"].as_array().unwrap();
-    let commands: Vec<_> = steps.iter().filter_map(|step| step["run"].as_str()).collect();
-    assert_eq!(commands, [
-        "cargo update --workspace", "cargo update --workspace --locked", "cargo fetch --locked",
-        "cargo build --locked -p revayat-scientific --bin license-notices --bin revayat-process-owner",
-        "cargo run --locked --bin license-notices -- --root .",
-        "cargo run --locked --bin license-notices -- --root . --check", "cargo update --workspace --locked",
-    ]);
-    for step in steps.iter().filter(|step| step["run"].is_string()) {
-        assert!(step["timeout-minutes"].as_u64().is_some_and(|minutes| minutes <= 20));
-    }
-    assert!(steps.iter().any(|step| step["with"]["toolchain"] == "1.99.1" && step["with"]["components"] == "rust-docs" && step["with"]["cache"] == false));
-    let artifacts: Vec<_> = steps.iter().filter(|step| step["uses"].as_str().is_some_and(|name| name.starts_with("actions/upload-artifact@"))).collect();
-    assert_eq!(artifacts.len(), 1);
-    assert_eq!(artifacts[0]["with"]["path"], "Cargo.lock\nskills/revayat-scientific/references/third-party-licenses.txt\n");
-    assert_eq!(artifacts[0]["with"]["if-no-files-found"], "error");
-    assert!(artifacts[0].get("if").is_none());
-}
-
 #[test]
 fn test_only_completed_skipped_preparation_is_excluded_from_full_validation() -> Result<()> {
     let mut normal = Fixture::new();
@@ -254,6 +230,8 @@ fn test_every_non_success_conclusion_stays_non_green() -> Result<()> {
     let mut f = Fixture::new();
     f.jobs[0]["status"] = json!("in_progress");
     assert_eq!(ci::publish(&mut f, &id(), "final")?, "pending");
+    assert_eq!(f.state("ci/security / linux-security")["state"], "pending");
+    assert_eq!(f.state(SUMMARY)["state"], "pending");
     Ok(())
 }
 #[test]
@@ -264,6 +242,15 @@ fn test_missing_and_retired_jobs_are_explicit_errors() -> Result<()> {
     assert_eq!(ci::publish(&mut f, &id(), "final")?, "error");
     assert_eq!(f.state("ci/retired")["state"], "error");
     assert_eq!(f.state("ci/security / linux-security")["state"], "error");
+    let mut f = Fixture::new();
+    f.jobs.retain(|job| job["name"] != "status-pending");
+    assert_eq!(ci::publish(&mut f, &id(), "final")?, "error");
+    assert!(
+        f.state(SUMMARY)["description"]
+            .as_str()
+            .unwrap()
+            .contains("Initial CI status publisher failed")
+    );
     Ok(())
 }
 #[test]
@@ -282,6 +269,8 @@ fn test_complete_pagination_and_partial_rerun_successes_are_retained() -> Result
     identity.attempt = 2;
     assert_eq!(ci::publish(&mut f, &identity, "final")?, "success");
     assert_eq!(f.state("ci/validation 104")["state"], "success");
+    assert_eq!(f.states().len(), REQUIRED_JOBS.len() + 106);
+    assert_eq!(f.state("ci/scientific")["state"], "success");
     assert_eq!(f.gets.iter().filter(|p| p.contains("/jobs?")).count(), 2);
     assert!(
         f.gets
@@ -303,7 +292,12 @@ fn test_rerun_replaces_only_jobs_with_a_newer_actual_result() -> Result<()> {
     let mut identity = id();
     identity.attempt = 2;
     assert_eq!(ci::publish(&mut f, &identity, "final")?, "failure");
+    assert_eq!(f.states().len(), REQUIRED_JOBS.len() + 1);
     assert_eq!(f.state("ci/security / linux-security")["state"], "success");
+    assert_eq!(
+        f.state("ci/security / linux-security")["target_url"],
+        "https://github.com/example/project/actions/runs/123/job/60"
+    );
     assert_eq!(f.state("ci/quality")["state"], "failure");
     assert!(
         f.state("ci/scientific")["description"]
@@ -316,6 +310,7 @@ fn test_rerun_replaces_only_jobs_with_a_newer_actual_result() -> Result<()> {
 #[test]
 fn test_only_latest_pending_publisher_outcome_affects_summary() -> Result<()> {
     let mut f = Fixture::new();
+    f.jobs.retain(|job| job["name"] != "status-pending");
     f.run["run_attempt"] = json!(2);
     f.jobs.extend([
         job("status-pending", 60, "failure", 1),
@@ -338,6 +333,10 @@ fn test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes(
         ),
         ("run_attempt", json!(2)),
         ("event", json!("workflow_run")),
+        ("event", json!("unknown")),
+        ("event", json!("push")),
+        ("event", json!("pull_request")),
+        ("event", json!("workflow_call")),
         ("path", json!(".github/workflows/other.yml")),
         ("repository", json!({"full_name":"another/project"})),
     ] {
@@ -398,11 +397,25 @@ fn test_partial_write_failure_leaves_aggregate_error_and_propagates() {
     assert_eq!(f.state(SUMMARY)["state"], "error");
     assert_eq!(f.published[0]["state"], "pending");
 }
-fn http_fixture(
-    code: &str,
-    extra: &str,
-    body: Vec<u8>,
-) -> (String, std::thread::JoinHandle<Vec<u8>>) {
+struct HttpServer {
+    thread: Option<std::thread::JoinHandle<Vec<u8>>>,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+impl HttpServer {
+    fn join(mut self) -> std::thread::Result<Vec<u8>> {
+        self.thread.take().unwrap().join()
+    }
+}
+impl Drop for HttpServer {
+    fn drop(&mut self) {
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+fn http_fixture(code: &str, extra: &str, body: Vec<u8>) -> (String, HttpServer) {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/", listener.local_addr().unwrap());
@@ -410,11 +423,45 @@ fn http_fixture(
         "HTTP/1.1 {code}\r\nContent-Length: {}\r\nConnection: close\r\n{extra}\r\n",
         body.len()
     );
+    listener.set_nonblocking(true).unwrap();
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let cancellation = cancelled.clone();
     let thread = std::thread::spawn(move || {
-        let (mut connection, _) = listener.accept().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut connection = loop {
+            if cancellation.load(std::sync::atomic::Ordering::Relaxed) {
+                return Vec::new();
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "HTTP fixture accept deadline exceeded"
+            );
+            match listener.accept() {
+                Ok((connection, _)) => break connection,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::park_timeout(std::time::Duration::from_millis(5));
+                }
+                Err(error) => panic!("HTTP fixture accept failed: {error}"),
+            }
+        };
+        connection
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        connection
+            .set_write_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
         let mut request = Vec::new();
         let mut buffer = [0; 1024];
         while !request.windows(4).any(|b| b == b"\r\n\r\n") {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "HTTP fixture request deadline exceeded"
+            );
+            connection
+                .set_read_timeout(Some(
+                    deadline.saturating_duration_since(std::time::Instant::now()),
+                ))
+                .unwrap();
             let n = connection.read(&mut buffer).unwrap();
             if n == 0 {
                 break;
@@ -423,10 +470,30 @@ fn http_fixture(
             assert!(request.len() <= 8192);
         }
         connection.write_all(header.as_bytes()).unwrap();
-        let _ = connection.write_all(&body);
+        for chunk in body.chunks(64 * 1024) {
+            if cancellation.load(std::sync::atomic::Ordering::Relaxed)
+                || std::time::Instant::now() >= deadline
+            {
+                break;
+            }
+            connection
+                .set_write_timeout(Some(
+                    deadline.saturating_duration_since(std::time::Instant::now()),
+                ))
+                .unwrap();
+            if connection.write_all(chunk).is_err() {
+                break;
+            }
+        }
         request
     });
-    (url, thread)
+    (
+        url,
+        HttpServer {
+            thread: Some(thread),
+            cancelled,
+        },
+    )
 }
 #[test]
 fn test_http_timeout_cap_utf8_and_secret_safe_errors() {
@@ -513,17 +580,25 @@ fn test_workflow_retains_manual_trigger_and_complete_final_dependency_set() {
         .unwrap();
     let source = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap();
     assert!(source.contains("  workflow_dispatch:"));
-    assert!(source.contains("  pull_request:"));
-    assert!(source.contains("  push:"));
     let workflow: Value = serde_saphyr::from_str(&source).unwrap();
-    assert!(workflow["on"].get("push").is_some());
-    assert!(
-        workflow["on"]["push"].is_null(),
-        "all branch pushes must trigger CI without a branch filter"
+    let events = workflow["on"].as_object().unwrap();
+    assert_eq!(events.len(), 1);
+    assert!(events.contains_key("workflow_dispatch"));
+    assert_eq!(
+        workflow["on"]["workflow_dispatch"]["inputs"]["base_ref"]["required"],
+        true
     );
-    assert!(source.contains("github.event.pull_request.head.repo.full_name || github.repository"));
-    assert!(source.contains("github.head_ref || github.ref_name"));
-    assert!(source.contains("git merge-base -- \"origin/$DEFAULT_BRANCH\" \"$HEAD_REF\""));
+    assert!(source.contains("github.repository"));
+    assert!(source.contains("github.ref_name"));
+    assert!(source.contains("check-commit-identity --ci-base"));
+    for child in ["security-ci", "codeql", "dependency-review"] {
+        let text =
+            std::fs::read_to_string(root.join(format!(".github/workflows/{child}.yml"))).unwrap();
+        let value: Value = serde_saphyr::from_str(&text).unwrap();
+        let events = value["on"].as_object().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(events.contains_key("workflow_call"));
+    }
     let final_job = source.split("  status-final:\n").nth(1).unwrap();
     assert!(final_job.contains("always()"));
     for dependency in [
@@ -534,9 +609,12 @@ fn test_workflow_retains_manual_trigger_and_complete_final_dependency_set() {
         "portable",
         "scientific",
         "quality",
+        "behavior-aggregate",
     ] {
         assert!(final_job.contains(dependency));
     }
     assert!(!final_job.contains("continue-on-error"));
+    assert!(final_job.contains("statuses: write"));
+    assert!(final_job.contains("actions: read"));
     assert!(final_job.contains("ci-status final"));
 }

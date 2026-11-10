@@ -56,13 +56,21 @@ impl Fixture {
                 .unwrap()
                 .contains(&json!(category))
         );
-        let e = d::edit_package(
+        let mut published = false;
+        let e = d::edit_package_observed(
             &self.source,
             &self.output,
             &patch("Original text", "Reviewed replacement"),
             &[],
+            |event| {
+                if matches!(event, d::EditEvent::Publication { .. }) {
+                    published = true;
+                }
+                Ok(())
+            },
         )
         .unwrap_err();
+        assert!(!published, "restricted package reached publication");
         assert!(e.to_string().contains(category));
         assert_eq!(fs::read(&self.source).unwrap(), before);
         assert_eq!(
@@ -280,7 +288,7 @@ fn has_node(report: &Value, part: &str, text: &str) -> bool {
         .as_array()
         .unwrap()
         .iter()
-        .any(|n| n["part"] == part && n["text"] == text)
+        .any(|n| n["part"] == part && n["index"] == 0 && n["text"] == text)
 }
 fn exact_except(before: &Members, after: &Members, part: &str, expected: &[u8]) {
     assert_eq!(before.len(), after.len());
@@ -297,6 +305,8 @@ fn exact_except(before: &Members, after: &Members, part: &str, expected: &[u8]) 
     }
 }
 fn fail_commit(f: &Fixture, patches: &Value) {
+    let before = fs::read(&f.source).unwrap();
+    let mut reached = false;
     let e = d::edit_package_observed(&f.source, &f.output, patches, &[], |event| {
         if matches!(
             event,
@@ -305,11 +315,17 @@ fn fail_commit(f: &Fixture, patches: &Value) {
                 ..
             }
         ) {
+            reached = true;
             anyhow::bail!("injected publication failure");
         }
         Ok(())
     });
     assert!(e.is_err());
+    assert!(
+        reached,
+        "publication failure must reach the real commit boundary"
+    );
+    assert_eq!(fs::read(&f.source).unwrap(), before);
     f.clean();
 }
 fn batch(f: &Fixture, count: usize) -> Members {

@@ -26,21 +26,10 @@ fn png(path: &Path) -> Result<()> {
     image::RgbImage::from_pixel(24, 24, image::Rgb([255, 255, 255])).save(path)?;
     Ok(())
 }
-fn pdf(path: &Path) -> Result<()> {
-    use lopdf::{Document, Object, Stream, dictionary};
-    let mut d = Document::with_version("1.7");
-    let pages = d.new_object_id();
-    let stream = d.add_object(Stream::new(dictionary! {}, vec![]));
-    let page=d.add_object(dictionary!{"Type"=>"Page","Parent"=>pages,"MediaBox"=>vec![Object::from(0),Object::from(0),Object::from(220),Object::from(330)],"Contents"=>stream,"Resources"=>dictionary!{}});
-    d.objects.insert(
-        pages,
-        dictionary! {"Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>1}.into(),
-    );
-    let catalog = d.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages});
-    d.trailer.set("Root", catalog);
-    d.save(path)?;
-    Ok(())
-}
+#[path = "support/build_limits.rs"]
+mod limits;
+mod runtime_support;
+use runtime_support::pdf;
 impl Fixture {
     fn new() -> Result<Self> {
         let temp = tempfile::tempdir()?;
@@ -124,10 +113,24 @@ fn test_plan_captures_explicit_inputs_assets_and_requested_fallback() -> Result<
         Some(&requested),
     )?;
     let g = BuildGuard::create(&f.record, &inputs, &f.outputs())?;
-    assert_eq!(g.inputs.len(), 5);
-    assert!(g.inputs.contains_key(&requested));
+    assert_eq!(
+        g.inputs
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>(),
+        [
+            f.source.clone(),
+            f.asset.clone(),
+            f.terms.clone(),
+            f.manifest.clone(),
+            requested
+        ]
+        .into_iter()
+        .collect()
+    );
     assert_eq!(g.outputs.len(), 5);
-    BuildGuard::check(&f.record, None)?;
+    let checked = BuildGuard::check(&f.record, None)?;
+    assert_eq!(serde_json::to_value(&checked)?, serde_json::to_value(&g)?);
     Ok(())
 }
 #[test]
@@ -138,9 +141,15 @@ fn test_nested_tex_closure_is_captured_without_modifying_inputs() -> Result<()> 
     fs::write(&source, b"\\input{part}\n\\includegraphics{figure.png}")?;
     fs::write(&child, b"child without newline")?;
     let before = fs::read(&child)?;
+    let asset_before = fs::read(&f.asset)?;
     let inputs = build::document_inputs(&source, &[], None)?;
     assert!(inputs.contains(&child) && inputs.contains(&f.asset));
-    assert_eq!(fs::read(child)?, before);
+    assert_eq!(fs::read(&child)?, before);
+    assert_eq!(
+        fs::read(&source)?,
+        b"\\input{part}\n\\includegraphics{figure.png}"
+    );
+    assert_eq!(fs::read(&f.asset)?, asset_before);
     Ok(())
 }
 #[test]
@@ -157,7 +166,12 @@ fn test_each_preview_collision_is_rejected_before_mutation() -> Result<()> {
             ),
         )?;
         let before = fs::read(&sample)?;
-        assert!(f.create().is_err());
+        assert!(
+            f.create()
+                .unwrap_err()
+                .to_string()
+                .contains("protected source")
+        );
         assert_eq!(fs::read(sample)?, before);
         assert!(!f.record.exists());
     }
@@ -183,6 +197,7 @@ fn test_pdf_destinations_cannot_overwrite_sidecars_or_vector_assets() -> Result<
             BuildGuard::create(&f.record, &inputs, &[f.working.clone(), target.clone()]).is_err()
         );
         assert_eq!(fs::read(target)?, before);
+        assert!(!f.record.exists());
     }
     Ok(())
 }
@@ -191,12 +206,19 @@ fn test_symlink_hardlink_and_duplicate_output_aliases_are_rejected() -> Result<(
     let f = Fixture::new()?;
     let alias = f.root.join("alias.pdf");
     fs::hard_link(&f.terms, &alias)?;
+    let terms_id = revayat_scientific::identity::path_object_id(&f.terms)?;
     assert!(
         BuildGuard::create(&f.record, &f.inputs()?, &[f.working.clone(), alias.clone()]).is_err()
     );
+    assert_eq!(
+        revayat_scientific::identity::path_object_id(&alias)?,
+        terms_id
+    );
     fs::remove_file(&alias)?;
     fs::hard_link(&f.working, &alias)?;
-    assert!(BuildGuard::create(&f.record, &f.inputs()?, &[f.working.clone(), alias]).is_err());
+    assert!(
+        BuildGuard::create(&f.record, &f.inputs()?, &[f.working.clone(), alias.clone()]).is_err()
+    );
     assert!(
         BuildGuard::create(
             &f.record,
@@ -205,6 +227,20 @@ fn test_symlink_hardlink_and_duplicate_output_aliases_are_rejected() -> Result<(
         )
         .is_err()
     );
+    fs::remove_file(&alias)?;
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(&f.output, &alias);
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_file(&f.output, &alias);
+    if linked.is_ok() {
+        assert!(
+            BuildGuard::create(&f.record, &f.inputs()?, &[f.working.clone(), alias.clone()])
+                .is_err()
+        );
+        assert!(fs::symlink_metadata(&alias)?.file_type().is_symlink());
+    } else {
+        eprintln!("symlink capability unavailable; hardlink controls executed");
+    }
     Ok(())
 }
 #[test]
@@ -252,6 +288,7 @@ fn test_css_only_preview_dependency_is_not_a_publish_destination() -> Result<()>
         .is_err()
     );
     assert_eq!(fs::read(&f.record)?, before);
+    assert_eq!(fs::read(&f.samples[0])?, fs::read(&f.asset)?);
     Ok(())
 }
 #[test]
@@ -284,6 +321,13 @@ fn test_unsealed_or_wrong_target_delivery_cannot_pass() -> Result<()> {
     assert!(BuildGuard::deliver(&f.record).is_err());
     f.seal()?;
     assert!(BuildGuard::seal(&f.record, &f.output, &build::file_hash(&f.output)?).is_err());
+    let other = f.root.join("other.pdf");
+    let mut forged = serde_json::to_value(BuildGuard::check(&f.record, None)?)?;
+    forged["rendered"] =
+        serde_json::json!({other.display().to_string():build::file_hash(&f.working)?});
+    fs::write(&f.record, serde_json::to_vec(&forged)?)?;
+    assert!(BuildGuard::deliver(&f.record).is_err());
+    assert!(!other.exists());
     f.unchanged()
 }
 #[test]
@@ -305,7 +349,27 @@ fn test_delivery_uses_bounded_streaming_identity() -> Result<()> {
     let file = fs::OpenOptions::new().write(true).open(&f.working)?;
     file.set_len(8 * 1024 * 1024)?;
     BuildGuard::seal(&f.record, &f.working, &build::file_hash(&f.working)?)?;
-    BuildGuard::deliver(&f.record)?;
+    let mut reads = 0;
+    BuildGuard::deliver_with_identity(
+        &f.record,
+        build::MAX_FILE_BYTES,
+        |_, _, _| Ok(()),
+        |path, limit| {
+            assert_eq!(limit, Some(build::MAX_FILE_BYTES));
+            revayat_scientific::identity::file_identity_observed(path, limit, |boundary, _| {
+                if let revayat_scientific::identity::ReadBoundary::BeforeRead(requested) = boundary
+                {
+                    assert!(requested <= revayat_scientific::identity::CHUNK_BYTES);
+                    reads += 1;
+                }
+                Ok(())
+            })
+        },
+    )?;
+    assert!(
+        reads > 8,
+        "actual guarded delivery must stream through bounded read chunks"
+    );
     assert_eq!(build::file_hash(&f.output)?, build::file_hash(&f.working)?);
     assert!(f.working.exists());
     Ok(())
@@ -330,6 +394,7 @@ fn test_delivery_rejects_changed_staging_and_preserves_previous_output() -> Resu
 }
 #[test]
 fn test_delivery_rejects_a_source_revision_copied_as_a_new_baseline() -> Result<()> {
+    limits::growing_delivery()?;
     let f = Fixture::new()?;
     f.create()?;
     f.seal()?;
@@ -355,13 +420,46 @@ fn test_delivery_still_refuses_inputs_above_the_explicit_build_limit() -> Result
         .open(&f.working)?
         .set_len(build::MAX_FILE_BYTES + 1)?;
     assert!(BuildGuard::deliver(&f.record).is_err());
-    f.unchanged()
+    f.unchanged()?;
+    let f = Fixture::new()?;
+    f.create()?;
+    f.seal()?;
+    let original = fs::read(&f.working)?;
+    assert!(
+        BuildGuard::deliver_with_identity(
+            &f.record,
+            4,
+            |_, _, _| Ok(()),
+            revayat_scientific::identity::file_identity
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read(&f.working)?, original);
+    f.unchanged()?;
+    assert!(!fs::read_dir(&f.root)?.any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".revayat-delivery-")
+    }));
+    Ok(())
 }
 #[test]
 fn test_invalid_record_duplicate_keys_and_oversized_maps_fail_explicitly() -> Result<()> {
     let f = Fixture::new()?;
     f.create()?;
     let original = fs::read(&f.record)?;
+    assert!(
+        BuildGuard::load_with_limit(&f.record, 10)
+            .unwrap_err()
+            .to_string()
+            .contains("bounded")
+    );
+    assert_eq!(
+        BuildGuard::load_with_limit(&f.record, original.len() as u64)?.schema,
+        1
+    );
     for raw in [
         b"[]".as_slice(),
         b"{\"schema\":1,\"schema\":1}",
@@ -370,6 +468,29 @@ fn test_invalid_record_duplicate_keys_and_oversized_maps_fail_explicitly() -> Re
         fs::write(&f.record, raw)?;
         assert!(BuildGuard::load(&f.record).is_err());
     }
+    let correct: serde_json::Value = serde_json::from_slice(&original)?;
+    for key in ["schema", "inputs", "outputs", "rendered"] {
+        let mut wrong = correct.clone();
+        wrong[key] = match key {
+            "schema" => serde_json::json!(true),
+            "inputs" => serde_json::json!([]),
+            "outputs" => serde_json::json!([{}, f.output]),
+            _ => serde_json::json!({f.output.display().to_string():"0".repeat(64)}),
+        };
+        fs::write(&f.record, serde_json::to_vec(&wrong)?)?;
+        assert!(BuildGuard::check(&f.record, None).is_err(), "{key}");
+    }
+    let mut oversized = correct.clone();
+    let map = oversized["inputs"].as_object_mut().unwrap();
+    map.clear();
+    for i in 0..=build::MAX_FILES {
+        map.insert(
+            f.root.join(format!("input-{i}")).display().to_string(),
+            serde_json::json!("0".repeat(64)),
+        );
+    }
+    fs::write(&f.record, serde_json::to_vec(&oversized)?)?;
+    assert!(BuildGuard::check(&f.record, None).is_err());
     fs::write(&f.record, &original)?;
     fs::OpenOptions::new()
         .write(true)
@@ -412,6 +533,7 @@ fn test_missing_and_oversized_inputs_are_not_silently_fingerprinted() -> Result<
 }
 #[test]
 fn test_sample_batch_validates_every_png_before_replacing_any_preview() -> Result<()> {
+    limits::preview_admission()?;
     let f = Fixture::new()?;
     f.create()?;
     f.seal()?;
@@ -447,6 +569,13 @@ fn test_sample_publication_rolls_back_earlier_replacements() -> Result<()> {
     for sample in &f.samples {
         assert_eq!(fs::read(sample)?, b"previous preview");
     }
+    assert!(!fs::read_dir(&f.root)?.any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".revayat-publish-")
+    }));
     Ok(())
 }
 #[test]
@@ -457,10 +586,17 @@ fn test_sample_staging_cannot_consume_unplanned_or_outside_files() -> Result<()>
     let stages = f.stages()?;
     let outside = f.root.join(stages[0].file_name().unwrap());
     png(&outside)?;
+    let before = fs::read(&outside)?;
     let mut selected = stages.clone();
     selected[0] = outside.clone();
     assert!(BuildGuard::publish_previews(&f.record, &selected).is_err());
     assert!(outside.exists());
+    assert_eq!(fs::read(&outside)?, before);
+    let unplanned = f.private.join("unplanned.png");
+    png(&unplanned)?;
+    let unplanned_before = fs::read(&unplanned)?;
+    assert!(BuildGuard::publish_previews(&f.record, &[unplanned.clone()]).is_err());
+    assert_eq!(fs::read(&unplanned)?, unplanned_before);
     Ok(())
 }
 #[test]
@@ -475,6 +611,7 @@ fn test_partial_preview_set_and_duplicate_basenames_are_refused() -> Result<()> 
     assert!(BuildGuard::publish_previews(&f.record, &stages[..2]).is_err());
     let duplicate = vec![stages[0].clone(), stages[0].clone(), stages[2].clone()];
     assert!(BuildGuard::publish_previews(&f.record, &duplicate).is_err());
+    assert!(!f.samples.iter().any(|path| path.exists()));
     Ok(())
 }
 #[test]

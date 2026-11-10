@@ -7,6 +7,8 @@ use anyhow::Result;
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+#[path = "source_query.rs"]
+pub(crate) mod query;
 
 #[derive(Clone, Debug)]
 pub struct Isolate {
@@ -252,7 +254,7 @@ impl TexSource {
     }
 
     pub fn is_protected(&self, pos: usize) -> bool {
-        let index = self.protected.partition_point(|(start, _)| *start <= pos);
+        let index = query::partition_index(&self.protected, |(start, _)| *start, pos);
         index > 0 && pos < self.protected[index - 1].1
     }
 
@@ -276,11 +278,7 @@ impl TexSource {
 
     pub fn suppressed(&self, pos: usize, check: &str) -> bool {
         let (path, line) = self.location(pos);
-        [line, line.saturating_sub(1)].into_iter().any(|line| {
-            self.waivers
-                .get(&(path.clone(), line))
-                .is_some_and(|allowed| allowed.contains(check) || allowed.contains("all"))
-        })
+        query::allowed(&self.waivers, &path, line, check)
     }
 
     pub fn in_direction_scope(&self, pos: usize, names: &[&str]) -> bool {

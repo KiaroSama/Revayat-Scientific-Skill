@@ -1,15 +1,19 @@
 # Installation
 
-Build the native executable with the pinned toolchain, or obtain the artifact for your operating system from the CI run of the revision you reviewed. CI artifacts are build outputs, not automatically published releases.
+These native instructions apply to `rewrite/rust-native`; the default `main` checkout is not yet the completed Rust rewrite. Use the exact reviewed rewrite revision and matching successful hosted CI artifacts for your operating system. Current rewrite package/install acceptance is still being verified; historical or partial CI results do not certify a new revision. CI artifacts are intermediate build outputs, not automatically published or signed final releases.
 
 ```console
+git clone --branch rewrite/rust-native https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
 cargo run --locked --release --bin revayat-scientific -- install --scope project --path /path/to/project
 cargo run --locked --release --bin revayat-scientific -- install --dest /path/to/final/revayat-scientific
 ```
 
-Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientific.exe` on Windows. The executable is self-contained with its Rust dependencies; Windows CI also links the C runtime statically. Optional native document/rendering tools are separate. A source plugin checkout needs a compiled executable before command checks can run.
+Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientific.exe` on Windows. Linux/macOS also require executable `bin/revayat-process-owner` beside the main program. Keep both from the same build and revision; do not copy only the main program or mix artifacts. Windows does not require the Unix companion. Rust dependencies are compiled into these binaries; external document/rendering tools are separate.
+
+Build with `--workspace --bins` before using a source checkout or plugin. `cargo run --bin revayat-scientific` selects the main binary, not a rebuild of every sibling. The Unix companion has a private runtime protocol, not a user document-processing command. Missing, linked or nonregular companion files cause refusal before install/package publication; runtime also refuses an absent companion rather than spawning an unowned fallback. These checks do not authenticate a signed release or enforce a same-version handshake.
 
 | Host | User skill directory | Project skill directory |
 | --- | --- | --- |
@@ -23,16 +27,6 @@ Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientifi
 | Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
 
 `--agent all` is the default and installs only into detected host configuration roots; explicit `--agent` may create its directory. A Codex `.codex` configuration also counts as detection. Shared destinations are deduplicated. Project scope requires `--path`. `--dest` names the final skill directory, not its parent. Installation does not edit host configuration or install system dependencies.
-
-## Unix companion and preparation limits
-
-Linux/macOS tool invocations require regular executable `revayat-process-owner` beside the caller, from the same revision/profile. Build both with `cargo build --locked --release --workspace --bins`; a selected `cargo run --bin` does not rebuild all siblings. Missing companions fail rather than use unowned spawning. Windows does not require this Unix companion. Its private protocol is not a document-processing command.
-
-Companion-aware distribution changes are not in this preparation snapshot. Existing install/archive commands must not be treated as producing a complete Unix runtime payload until that integration and installed execution are verified. Use the source build layout for preparation. No signed version handshake or successful install/document check is claimed.
-
-Manual CI input `prepare_artifacts` defaults to `false`. The approved `true` run requires full `base_ref`, uses Rust1.99.1 plus `rust-docs`, generates/checks lock and notices, and uploads exactly `Cargo.lock` plus `skills/revayat-scientific/references/third-party-licenses.txt` in a revision/run/attempt-named artifact. Inspect both members and provenance before import. Ordinary validation/status jobs are skipped in this mode; complete locked final verification remains required. Preparation does not produce a release or prove native parity.
-
-The notice generator admits logical retained occurrence material against256MiB before retention; unique shared bodies and rendered output each have64MiB bounds, not allocator/RSS guarantees. It preserves exact legal bytes and occurrence attribution, deduplicates only identical bodies, and refuses overflow without omitting notices or replacing the previous bundle. Actual generation/runtime remain subject to hosted verification.
 
 Existing destinations are refused without `--force`. Force replacement requires an empty directory or a simple, unambiguous `name: revayat-scientific` frontmatter identity. Duplicate keys, ambiguous continuations, foreign contents, linked trees and reserved recovery/backup locations are refused. Every target is staged and checked before activation. Old editions remain in `skill-backups` outside ordinary skill discovery. See [installation integrity](installation-integrity.md).
 
@@ -51,6 +45,10 @@ The Claude Code plugin exposes `/translate-paper`, `/revayat-scientific-resume` 
 cargo run --locked --release --bin revayat-scientific -- package --output dist/revayat-scientific.skill
 ```
 
-The ZIP root is `revayat-scientific/`. It includes the exact native executable, skill instructions, references, allowed assets, agent metadata, GPL license and notices. Executable ZIP permission bits are retained for Unix extraction; use an extractor that preserves them. Choose the archive built on the target operating system. Fonts, job data, logs, credentials, hidden files and build caches are excluded. Font delivery is a separate licensed/provenance-checked operation.
+The ZIP root is `revayat-scientific/`. It includes the collected native main executable and, on Linux/macOS, its adjacent `bin/revayat-process-owner`, plus skill instructions, eligible references/assets/agent metadata, `LICENSE` and `NOTICE.md`. ZIP entries use Unix creator metadata, `0755` for `bin/` and `0644` for data; use an extractor that preserves executable bits. Choose the archive for the target operating system and architecture. Collection refuses payloads above 64 MiB and bounds source-tree entries/files; the staged archive is reopened and checked against exact collected members, sizes and hashes before recoverable publication.
+
+Packaging does not bundle external engines, installed fonts, job data, logs, credentials, hidden files or build caches. Font delivery is a separate licensed/provenance-checked operation. HTML rendering needs a sandboxed Chromium-family browser; TeX needs the supported Linux Docker/Podman image with effective resource controls, not an unrestricted host XeLaTeX fallback. Poppler provides required PDF verification/extraction; OCR needs Tesseract language data and independent DOCX rendering needs LibreOffice. Installers do not provision these tools.
+
+Installed/extracted CLI, companion byte/mode/version and real-document regressions are authored but remain unexecuted in this source checkpoint. Neither archive construction nor `doctor` discovery establishes successful document output, effective containment or signed-release trust.
 
 Do not install or publish over source, implementation or Git administration. Failed publication preserves the previous approved archive; unresolved installation recovery names the complete local journal and retains evidence for deliberate recovery.

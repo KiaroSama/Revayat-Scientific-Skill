@@ -862,6 +862,7 @@
     {
       "legacy_id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_unsigned_real_document_stays_editable_without_unrelated_member_changes",
       "rust_test": "docx_native::docx_feature_identity::test_unsigned_real_document_stays_editable_without_unrelated_member_changes",
+      "additional_rust_tests": ["docx_native::docx_story_render::test_two_page_renamed_header_footer_matches_independent_expected_render"],
       "rationale": "Uses a checked-in python-docx-generated real two-page source with header/footer/table; verifies edited visible text, exact untouched members and unchanged original. Independent office rendering is covered in the scientific tier.",
       "platforms": []
     },
@@ -1018,6 +1019,7 @@
     {
       "legacy_id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_python_docx_reads_and_edits_a_renamed_real_header",
       "rust_test": "docx_native::docx_story_parts::test_python_docx_reads_and_edits_a_renamed_real_header",
+      "additional_rust_tests": ["docx_native::docx_story_render::test_two_page_renamed_header_footer_matches_independent_expected_render"],
       "rationale": "Interpreter-specific reader is replaced with a checked-in python-docx-generated real two-page fixture and native resolved-relationship/XML byte assertions. Independent LibreOffice readability and exact rendering are also covered by the scientific DOCX story render test.",
       "platforms": []
     },
@@ -2506,12 +2508,14 @@
     {
       "legacy_id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_repeated_protection_and_waiver_queries_use_snapshot_indexes",
       "rust_test": "source_location_index::test_repeated_protection_and_waiver_queries_use_snapshot_indexes",
+      "additional_rust_tests": ["crates/revayat-scientific/lib/revayat_scientific::source::query::tests::index_queries_measure_actual_projection_reads", "crates/revayat-scientific/lib/revayat_scientific::source::query::tests::waiver_queries_use_only_precomputed_locations"],
       "rationale": "Preserves original source-location, bounded parsing, exact identity, refusal, or recoverable-publication assertions using native Rust and actual file fixtures.",
       "platforms": []
     },
     {
       "legacy_id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_repeated_queries_do_not_rescan_source_prefixes",
       "rust_test": "source_location_index::test_repeated_queries_do_not_rescan_source_prefixes",
+      "additional_rust_tests": ["crates/revayat-scientific/lib/revayat_scientific::source::query::tests::index_queries_measure_actual_projection_reads"],
       "rationale": "Preserves original source-location, bounded parsing, exact identity, refusal, or recoverable-publication assertions using native Rust and actual file fixtures.",
       "platforms": []
     },
@@ -2524,6 +2528,7 @@
     {
       "legacy_id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_segment_start_keys_are_not_rebuilt_per_query",
       "rust_test": "source_location_index::test_segment_start_keys_are_not_rebuilt_per_query",
+      "additional_rust_tests": ["crates/revayat-scientific/lib/revayat_scientific::source::query::tests::index_queries_measure_actual_projection_reads"],
       "rationale": "Preserves original source-location, bounded parsing, exact identity, refusal, or recoverable-publication assertions using native Rust and actual file fixtures.",
       "platforms": []
     },
@@ -2986,6 +2991,7 @@
     {
       "legacy_id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_windows_do_not_copy_whole_remaining_source_for_every_probe",
       "rust_test": "text_order_sources::test_windows_do_not_copy_whole_remaining_source_for_every_probe",
+      "additional_rust_tests": ["crates/revayat-scientific/lib/revayat_scientific::text_order::windows::tests::bounded_token_materialization_tracks_actual_clones"],
       "rationale": "Preserves the named source-scoping, terminology, lint, refusal and immutable-input regression in native Rust with the original fixture vectors.",
       "platforms": []
     },
@@ -3484,6 +3490,7 @@
     {
       "legacy_id": "tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input",
       "rust_test": "workflow_lint::test_actual_callee_contract_still_rejects_missing_input",
+      "additional_rust_tests": ["workflow_lint::equipped_actionlint_rejects_missing_callee_input"],
       "rationale": "actual callee contract still rejects missing input: retained through literal workflow adaptation, native callee policy and the actual pinned linter.",
       "platforms": []
     },

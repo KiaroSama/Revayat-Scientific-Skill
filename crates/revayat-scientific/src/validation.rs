@@ -101,6 +101,42 @@ pub fn validate_family_layout(root: &Path) -> Result<()> {
     }
     Ok(())
 }
+fn validate_source_length(filename: &str, source: &str) -> Result<()> {
+    ensure!(
+        Path::new(filename)
+            .extension()
+            .and_then(|value| value.to_str())
+            != Some("rs")
+            || source.lines().count() <= 799,
+        "{filename}: exceeds 799 lines"
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn rust_source_limit_accepts_799_and_refuses_800_lines() {
+        for newline in ["\n", "\r\n"] {
+            assert!(
+                super::validate_source_length(
+                    "fixture.rs",
+                    &format!("fn item() {{}}{newline}").repeat(799)
+                )
+                .is_ok()
+            );
+            assert!(
+                super::validate_source_length(
+                    "fixture.rs",
+                    &format!("fn item() {{}}{newline}").repeat(800)
+                )
+                .is_err()
+            );
+        }
+        assert!(super::validate_source_length("fixture.md", &"text\n".repeat(800)).is_ok());
+    }
+}
+
 pub fn validate_repository(root: &Path) -> Result<()> {
     let listing = crate::distribution_paths::git_result(
         root,
@@ -139,10 +175,7 @@ pub fn validate_repository(root: &Path) -> Result<()> {
         let source = std::str::from_utf8(&bytes)
             .with_context(|| format!("{filename}: invalid UTF-8"))?
             .trim_start_matches('\u{feff}');
-        ensure!(
-            extension != "rs" || source.lines().count() <= 800,
-            "{filename}: exceeds 800 lines"
-        );
+        validate_source_length(filename, source)?;
         if extension == "json" {
             let _: serde_json::Value = serde_json::from_str(source)
                 .with_context(|| format!("{filename}: invalid JSON"))?;

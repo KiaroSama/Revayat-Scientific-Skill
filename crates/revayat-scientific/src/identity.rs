@@ -148,7 +148,16 @@ pub fn file_identity(path: &Path, max_bytes: Option<u64>) -> Result<Fingerprint>
 pub fn file_identity_observed(
     path: &Path,
     max_bytes: Option<u64>,
+    boundary: impl FnMut(ReadBoundary, &Path) -> Result<()>,
+) -> Result<Fingerprint> {
+    file_identity_opened(path, max_bytes, boundary, |path| Ok(File::open(path)?))
+}
+
+pub fn file_identity_opened(
+    path: &Path,
+    max_bytes: Option<u64>,
     mut boundary: impl FnMut(ReadBoundary, &Path) -> Result<()>,
+    mut open_reader: impl FnMut(&Path) -> Result<File>,
 ) -> Result<Fingerprint> {
     let before_metadata = fs::metadata(path)?;
     ensure!(
@@ -167,7 +176,7 @@ pub fn file_identity_observed(
     let expected = observation(&path_handle, &before_metadata)?;
     drop(path_handle);
     boundary(ReadBoundary::BeforeOpen, path)?;
-    let mut file = File::open(path)?;
+    let mut file = open_reader(path)?;
     let opened = observation(&file, &file.metadata()?)?;
     ensure!(
         opened.id == expected.id

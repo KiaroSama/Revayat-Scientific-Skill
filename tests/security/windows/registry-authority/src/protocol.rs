@@ -479,47 +479,9 @@ mod tests {
         }
     }
 
-    fn hex(value: &str) -> Vec<u8> {
-        value
-            .as_bytes()
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|pair| {
-                u8::from_str_radix(std::str::from_utf8(pair).expect("fixture ASCII"), 16)
-                    .expect("fixture hex")
-            })
-            .collect()
-    }
-
     #[test]
     fn source_generated_oracle() {
-        let source = crate::oracle::generate();
-        let mut count = 0;
-        for line in source.lines() {
-            let row = line.split('\t').collect::<Vec<_>>();
-            let n = |index: usize| row[index].parse::<u32>().expect("oracle integer");
-            let actual = match row[0] {
-                "token" => token_fields(n(1), n(2), n(3)),
-                "denied" => denied(n(1), n(2) as usize),
-                "basic" => basic(n(1), n(2), n(3), n(4)),
-                "identity" => identity(n(1), n(2) as usize, &hex(row[3]), n(4) as usize).is_ok(),
-                "wire" => {
-                    assert_eq!(
-                        record(row[1], n(2), n(3))
-                            .expect("valid source record")
-                            .as_bytes(),
-                        hex(row[4])
-                    );
-                    count += 1;
-                    continue;
-                }
-                _ => panic!("unknown oracle case"),
-            };
-            assert_eq!(actual, row[row.len() - 1] == "1", "{line}");
-            count += 1;
-        }
-        assert_eq!(count, 41);
+        crate::oracle_events::source_generated_oracle();
     }
 
     #[test]

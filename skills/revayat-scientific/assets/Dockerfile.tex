@@ -2,21 +2,20 @@ FROM rust:1.99.1-slim-trixie AS entry-build
 COPY crates/revayat-scientific/src/bin/revayat-tex-entry.rs /build/entry.rs
 COPY crates/revayat-scientific/src/bin/revayat-sandbox-probe.rs /build/probe.rs
 COPY crates/revayat-scientific/src/bin/security_helper /build/security_helper
-RUN rustc --edition=2024 -O /build/entry.rs -o /build/revayat-tex-entry \
-    && rustc --edition=2024 -O /build/probe.rs -o /build/revayat-sandbox-probe
+RUN ["rustc", "--edition=2024", "-O", "/build/entry.rs", "-o", "/build/revayat-tex-entry"]
+RUN ["rustc", "--edition=2024", "-O", "/build/probe.rs", "-o", "/build/revayat-sandbox-probe"]
 
 FROM debian:trixie-slim
 
 LABEL org.revayat.tex.toolchain="1"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    texlive-xetex texlive-lang-arabic texlive-latex-extra texlive-fonts-recommended \
-    fonts-vazirmatn fonts-texgyre fonts-dejavu-core fontconfig coreutils \
-    && test -s /usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf \
-    && test -s /usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf \
-    && test -s /usr/share/texlive/texmf-dist/fonts/tfm/adobe/zapfding/pzdr.tfm \
-    && fc-cache -f \
-    && rm -rf /var/lib/apt/lists/*
+RUN ["/usr/bin/apt-get", "update"]
+RUN ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "texlive-xetex", "texlive-lang-arabic", "texlive-latex-extra", "texlive-fonts-recommended", "fonts-vazirmatn", "fonts-texgyre", "fonts-dejavu-core", "fontconfig", "coreutils"]
+RUN ["/usr/bin/test", "-s", "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf"]
+RUN ["/usr/bin/test", "-s", "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf"]
+RUN ["/usr/bin/test", "-s", "/usr/share/texlive/texmf-dist/fonts/tfm/adobe/zapfding/pzdr.tfm"]
+RUN ["/usr/bin/fc-cache", "-f"]
+RUN ["/usr/bin/rm", "-rf", "/var/lib/apt/lists"]
 
 COPY --from=entry-build --chmod=0555 /build/revayat-tex-entry /usr/local/bin/revayat-tex-entry
 COPY --from=entry-build --chmod=0555 /build/revayat-sandbox-probe /usr/local/bin/revayat-sandbox-probe

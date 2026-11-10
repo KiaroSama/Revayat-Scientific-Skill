@@ -208,7 +208,20 @@ pub struct Args {
     #[arg(long, default_value_t = 300)]
     pub dpi: u32,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CropBoundary {
+    BeforeRender,
+    Publication(publication::Boundary),
+}
 pub fn crop_document(args: &Args) -> Result<usize> {
+    crop_document_observed(args, pdf::AdmissionLimits::default(), |_, _| Ok(()))
+}
+/// Observe the actual renderer and recoverable publication, with per-call admission bounds.
+pub fn crop_document_observed(
+    args: &Args,
+    limits: pdf::AdmissionLimits,
+    mut observe: impl FnMut(CropBoundary, &Path) -> Result<()>,
+) -> Result<usize> {
     ensure!(
         (72..=2400).contains(&args.dpi),
         "--dpi must be between 72 and 2400"
@@ -217,7 +230,7 @@ pub fn crop_document(args: &Args) -> Result<usize> {
         args.map.is_some() || args.cover || args.author_page > 0,
         "need --map, --cover or --author-page"
     );
-    let doc = pdf::open_pdf(&args.pdf, false)?;
+    let doc = pdf::open_pdf_with_limits(&args.pdf, false, limits)?;
     let geometry = pdf::geometry(&doc)?;
     let by_page = args
         .map
@@ -343,10 +356,16 @@ pub fn crop_document(args: &Args) -> Result<usize> {
         let stage = work
             .path()
             .join(destination.file_name().context("crop filename missing")?);
+        observe(CropBoundary::BeforeRender, destination)?;
         pdf::render_region(&args.pdf, *number, *dpi, *clip, &stage)?;
         entries.push((stage, destination.clone()));
     }
-    publication::publish_files(&entries, &protected, Some(pdf::MAX_PDF_BYTES))?;
+    publication::publish_observed(
+        &entries,
+        &protected,
+        Some(pdf::MAX_PDF_BYTES),
+        |boundary, path| observe(CropBoundary::Publication(boundary), path),
+    )?;
     Ok(entries.len())
 }
 pub fn cli(args: &[String]) -> Result<i32> {

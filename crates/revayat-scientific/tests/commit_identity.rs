@@ -1,15 +1,18 @@
 use revayat_scientific::ci_tools::{
     APPROVED_EMAIL as OWNER, DEPENDABOT_EMAIL as BOT, inspect_identities,
 };
+use revayat_scientific::runtime::{self, CommandSpec};
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
-    process::Command,
+    time::Duration,
 };
 struct Fixture {
     _temp: tempfile::TempDir,
     root: PathBuf,
+    author_name: String,
+    committer_name: String,
 }
 impl Fixture {
     fn new() -> Self {
@@ -24,27 +27,35 @@ impl Fixture {
         let f = Self {
             root: temp.path().to_owned(),
             _temp: temp,
+            author_name: "Synthetic Fixture".into(),
+            committer_name: "Synthetic Fixture".into(),
         };
         f.git(&["init", "--quiet"], OWNER, OWNER);
         f
     }
     fn git(&self, args: &[&str], author: &str, committer: &str) -> String {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(&self.root)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env(
-                "GIT_CONFIG_GLOBAL",
-                if cfg!(windows) { "NUL" } else { "/dev/null" },
-            )
-            .env("GIT_AUTHOR_NAME", "Synthetic Fixture")
-            .env("GIT_COMMITTER_NAME", "Synthetic Fixture")
-            .env("GIT_AUTHOR_EMAIL", author)
-            .env("GIT_COMMITTER_EMAIL", committer)
-            .output()
-            .unwrap();
+        let hooks = self.root.join("empty-hooks");
+        fs::create_dir_all(&hooks).unwrap();
+        let mut spec = CommandSpec::new("git")
+            .args(["-c", &format!("core.hooksPath={}", hooks.display())])
+            .args(args.iter().copied());
+        spec.cwd = Some(self.root.clone());
+        spec.timeout = Duration::from_secs(20);
+        spec.max_output = 1024 * 1024;
+        for (key, value) in [
+            ("GIT_CONFIG_NOSYSTEM", "1"),
+            ("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" }),
+            ("GIT_CONFIG_COUNT", "0"),
+            ("GIT_AUTHOR_NAME", self.author_name.as_str()),
+            ("GIT_COMMITTER_NAME", self.committer_name.as_str()),
+            ("GIT_AUTHOR_EMAIL", author),
+            ("GIT_COMMITTER_EMAIL", committer),
+        ] {
+            spec.env.insert(key.into(), value.into());
+        }
+        let out = runtime::run(&spec).unwrap();
         assert!(
-            out.status.success(),
+            out.success(),
             "{}",
             String::from_utf8_lossy(&out.stderr)
         );
@@ -126,7 +137,9 @@ fn test_github_service_identity_is_committer_only() {
 }
 #[test]
 fn test_service_names_lookalikes_and_mailmap_cannot_hide_other_role() {
-    let f = Fixture::new();
+    let mut f = Fixture::new();
+    f.author_name = "dependabot[bot]".into();
+    f.committer_name = "GitHub".into();
     fs::write(
         f.root.join(".mailmap"),
         format!("<{BOT}> <fixture-only@example.invalid>\n"),
@@ -274,14 +287,15 @@ fn test_environment_selected_grafts_are_rejected_without_removal() {
     let head = f.commit(OWNER, OWNER);
     let grafts = f.root.join("custom-grafts");
     fs::write(&grafts, format!("{head}\n")).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .current_dir(&f.root)
-        .env("REVAYAT_REPOSITORY", &f.root)
-        .env("GIT_GRAFT_FILE", &grafts)
-        .args(["check-commit-identity"])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
+    let mut spec = CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific"))
+        .args(["check-commit-identity"]);
+    spec.cwd = Some(f.root.clone());
+    spec.timeout = Duration::from_secs(30);
+    spec.max_output = 1024 * 1024;
+    spec.env.insert("REVAYAT_REPOSITORY".into(), f.root.as_os_str().to_owned());
+    spec.env.insert("GIT_GRAFT_FILE".into(), grafts.as_os_str().to_owned());
+    let output = runtime::run(&spec).unwrap();
+    assert!(!output.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("grafts"));
     assert_eq!(fs::read_to_string(grafts).unwrap(), format!("{head}\n"));
 }

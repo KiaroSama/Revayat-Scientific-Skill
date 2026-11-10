@@ -94,12 +94,12 @@ fn test_every_offset_matches_old_mapping_for_nested_repeated_mixed_sources() {
         for b in ["\n", "\r\n"] {
             fs::write(
                 &source,
-                format!("Intro{a}\\input{{child}}{a}\\input{{child}} Tail"),
+                format!("پیشگفتار Intro{a}\\input{{child}}{a}\\input{{child}} پایان Tail"),
             )
             .unwrap();
             fs::write(
                 root.join("child.tex"),
-                format!("Child{b}\\input{{nested}} End"),
+                format!("فصل Child{b}\\input{{nested}} پایان End"),
             )
             .unwrap();
             fs::write(root.join("nested.tex"), b"% EOF comment").unwrap();

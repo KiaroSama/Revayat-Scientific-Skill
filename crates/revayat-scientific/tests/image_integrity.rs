@@ -1,7 +1,7 @@
 #[path = "common/image.rs"]
 mod common;
 use common::*;
-use image::ImageEncoder;
+use image::{GenericImageView, ImageEncoder};
 use revayat_scientific::images;
 use std::fs;
 fn snapshot(dir: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
@@ -54,7 +54,10 @@ fn test_depth_frames_and_invalid_profile_refuse_without_mutation() {
         enc.write_image::<tiff::encoder::colortype::Gray16>(4, 1, &[256, 512, 1024, 65535])
             .unwrap();
     }
+    let before = snapshot(f._t.path());
     assert!(images::inspect(&tiff).is_err());
+    assert!(images::prepare(std::slice::from_ref(&tiff), false).is_err());
+    assert_eq!(snapshot(f._t.path()), before);
     {
         let mut enc = tiff::encoder::TiffEncoder::new(fs::File::create(&tiff).unwrap()).unwrap();
         enc.write_image::<tiff::encoder::colortype::RGB8>(2, 2, &[0; 12])
@@ -62,7 +65,10 @@ fn test_depth_frames_and_invalid_profile_refuse_without_mutation() {
         enc.write_image::<tiff::encoder::colortype::RGB8>(2, 2, &[255; 12])
             .unwrap();
     }
+    let before = snapshot(f._t.path());
     assert!(images::inspect(&tiff).is_err());
+    assert!(images::prepare(std::slice::from_ref(&tiff), false).is_err());
+    assert_eq!(snapshot(f._t.path()), before);
 }
 #[test]
 fn test_rgb16_png_is_refused_before_lazy_metadata_decodes_pixels() {
@@ -80,6 +86,24 @@ fn test_rgb16_png_is_refused_before_lazy_metadata_decodes_pixels() {
     let original = fs::read(&f.image).unwrap();
     assert!(images::inspect(&f.image).is_err());
     assert!(images::prepare(std::slice::from_ref(&f.image), true).is_err());
+    for arguments in [
+        vec!["figures", f.image.to_str().unwrap(), "--check"],
+        vec!["figures", f.image.to_str().unwrap(), "--invert-dark"],
+    ] {
+        let output = revayat_scientific::runtime::run(
+            &revayat_scientific::runtime::CommandSpec::new(env!(
+                "CARGO_BIN_EXE_revayat-scientific"
+            ))
+            .args(arguments),
+        )
+        .unwrap();
+        assert!(!output.success());
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("bit depth")
+        );
+    }
     assert_eq!(fs::read(&f.image).unwrap(), original);
     assert!(!f.image.with_file_name("figure.png.orig").exists());
 }
@@ -136,10 +160,12 @@ fn test_transparency_forms_and_check_only() {
             [255; 3]
         );
         assert!(!f.check().requires_review);
+        let prepared = snapshot(f._t.path());
         assert_eq!(
             images::prepare(std::slice::from_ref(&f.image), false).unwrap(),
             0
         );
+        assert_eq!(snapshot(f._t.path()), prepared);
     }
 }
 fn exif_orientation() -> Vec<u8> {
@@ -154,6 +180,23 @@ fn exif_orientation() -> Vec<u8> {
 #[test]
 fn test_unsupported_color_and_orientation_metadata_preserve_original() {
     let f = F::new();
+    {
+        let mut info = png::Info::with_size(8, 4);
+        info.color_type = png::ColorType::Rgba;
+        info.bit_depth = png::BitDepth::Eight;
+        info.exif_metadata = Some(exif_orientation().into());
+        let mut encoder =
+            png::Encoder::with_info(fs::File::create(&f.image).unwrap(), info).unwrap();
+        encoder.set_source_gamma(png::ScaledFloat::new(0.45455));
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&[30; 128])
+            .unwrap();
+    }
+    let before = snapshot(f._t.path());
+    assert!(images::prepare(std::slice::from_ref(&f.image), false).is_err());
+    assert_eq!(snapshot(f._t.path()), before);
     {
         let mut info = png::Info::with_size(8, 4);
         info.color_type = png::ColorType::Rgba;
@@ -201,11 +244,9 @@ fn test_unsupported_color_and_orientation_metadata_preserve_original() {
 fn test_metadata_orientation_and_source_preservation() {
     let t = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let source = t.path().join("portrait.jpg");
-    let mut profile = vec![0u8; 132];
-    profile[..4].copy_from_slice(&132u32.to_be_bytes());
-    profile[16..20].copy_from_slice(b"RGB ");
-    profile[36..40].copy_from_slice(b"acsp");
-    let pixels = image::RgbImage::from_pixel(8, 4, image::Rgb([100, 150, 200]));
+    let profile = include_bytes!("../../../tests/fixtures/native-image-srgb.icc").to_vec();
+    let mut pixels = image::RgbImage::from_pixel(8, 4, image::Rgb([100, 150, 200]));
+    pixels.put_pixel(0, 0, image::Rgb([20, 230, 40]));
     {
         let mut encoder = image::codecs::jpeg::JpegEncoder::new(fs::File::create(&source).unwrap());
         encoder.set_pixel_density(image::codecs::jpeg::PixelDensity {
@@ -221,6 +262,7 @@ fn test_metadata_orientation_and_source_preservation() {
     expected.apply_orientation(image::metadata::Orientation::Rotate90);
     images::prepare(std::slice::from_ref(&source), false).unwrap();
     let png = source.with_extension("png");
+    assert_eq!(image::open(&png).unwrap().dimensions(), (4, 8));
     assert_eq!(image::open(&png).unwrap().to_rgb8(), expected.to_rgb8());
     let reader = png::Decoder::new(std::io::Cursor::new(fs::read(png).unwrap()))
         .read_info()
@@ -267,9 +309,13 @@ fn test_repeated_arguments_existing_backup_and_unavailable_backend() {
     let before = snapshot(f._t.path());
     assert!(images::prepare(std::slice::from_ref(&f.image), false).is_err());
     assert_eq!(snapshot(f._t.path()), before);
+    // The native decoder is linked, so there is no optional Pillow backend to remove.
+    // Preserve the replacement refusal contract with a real undecodable input.
     let invalid = f._t.path().join("invalid.webp");
     fs::write(&invalid, b"not decodable").unwrap();
+    let before = snapshot(f._t.path());
     assert!(images::inspect(&invalid).is_err());
+    assert_eq!(snapshot(f._t.path()), before);
 }
 #[test]
 fn test_save_and_publication_failure_roll_back_full_batch() {
@@ -283,28 +329,34 @@ fn test_save_and_publication_failure_roll_back_full_batch() {
         paths.push(p);
     }
     let before = snapshot(t.path());
+    let mut reached_encode_failure = false;
     assert!(
         images::prepare_observed(&paths, false, |b, p| {
             if b == images::Boundary::BeforeEncode && p.file_name().unwrap() == "second.png" {
+                reached_encode_failure = true;
                 anyhow::bail!("injected encode failure");
             }
             Ok(())
         })
         .is_err()
     );
+    assert!(reached_encode_failure);
     assert_eq!(snapshot(t.path()), before);
+    let mut reached_publication_failure = false;
     assert!(
         images::prepare_observed(&paths, false, |b, p| {
             if b == images::Boundary::Publication(
                 revayat_scientific::publication::Boundary::BeforeCommit,
             ) && p.file_name().unwrap() == "second.png"
             {
+                reached_publication_failure = true;
                 anyhow::bail!("injected publish failure");
             }
             Ok(())
         })
         .is_err()
     );
+    assert!(reached_publication_failure);
     assert_eq!(snapshot(t.path()), before);
     assert!(
         fs::read_dir(t.path())

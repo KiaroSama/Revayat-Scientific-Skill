@@ -1,0 +1,1351 @@
+{
+  "schema": 1,
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "kind": "oracle-case",
+  "source": "tests/security/windows/registry_authority_oracle.py",
+  "original_predicates": "tests/security/windows/RegistryAuthorityProbe.py:L270-L288",
+  "rust_source": "tests/security/windows/registry-authority/src/oracle.rs:L15-L104",
+  "carrier_test": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+  "carrier_legacy_id": "tests/security/windows/registry-authority/src/protocol.rs::tests::source_generated_oracle",
+  "relationship": "carrier invokes all rows in listed order; rows are not independent libtest registrations",
+  "required_witness": "instrumented-row",
+  "required_evidence": {
+    "binding": [
+      "tested_sha",
+      "run_id",
+      "run_attempt",
+      "job",
+      "platform",
+      "tier",
+      "profile",
+      "baseline_commit",
+      "census_sha256"
+    ],
+    "row_fields": [
+      "case_id",
+      "parent_id",
+      "obligation_ids",
+      "source",
+      "outcome",
+      "exit",
+      "cleanup_complete"
+    ],
+    "success": "Actual execution source, passed outcome, exit0 and verified cleanup for every exact case id; input/expected result assertion reached before event. Parent is actual source_generated_oracle carrier execution, not null. Carrier itself must pass in the same report. Duplicate/unknown/missing row, wrong parent/scope/digest or registration-only event fails.",
+    "producer_status": "source-authored-unexecuted",
+    "consumer_rule": "Fail closed until an actual instrumented row producer and same-run reconciliation exist. Never expand carrier Passed into row Passed records."
+  },
+  "execution_status": "not-run",
+  "execution_contract": {
+    "entries": [
+      {
+        "id": "registry-oracle::token/0/0/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-001"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/0/0/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-002"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/0/1/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-003"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/0/1/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-004"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/1/0/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-005"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/1/0/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-006"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/1/1/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-007"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/1/1/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-008"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/2/0/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-009"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/2/0/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-010"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/2/1/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-011"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::token/2/1/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::token_fields"
+        ],
+        "obligation_ids": [
+          "ORACLE-012"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/0/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-013"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/0/4",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-014"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/1/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-015"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/1/4",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-016"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/3221225506/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-017"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/3221225506/4",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-018"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/4294967295/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-019"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::denied/4294967295/4",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::denied"
+        ],
+        "obligation_ids": [
+          "ORACLE-020"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::basic/0/56/0/131097",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::basic"
+        ],
+        "obligation_ids": [
+          "ORACLE-021"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::basic/1/56/0/131097",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::basic"
+        ],
+        "obligation_ids": [
+          "ORACLE-022"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::basic/0/55/0/131097",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::basic"
+        ],
+        "obligation_ids": [
+          "ORACLE-023"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::basic/0/57/0/131097",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::basic"
+        ],
+        "obligation_ids": [
+          "ORACLE-024"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::basic/0/56/1/131097",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::basic"
+        ],
+        "obligation_ids": [
+          "ORACLE-025"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::basic/0/56/0/131099",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::basic"
+        ],
+        "obligation_ids": [
+          "ORACLE-026"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/latin-A",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-027"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/Registry",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-028"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/surrogate-pair",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-029"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/embedded-NUL",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-030"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/lone-surrogate",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-031"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/truncated-header",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-032"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/oversized-return",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-033"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/short-body",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-034"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::identity/odd-count",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::identity"
+        ],
+        "obligation_ids": [
+          "ORACLE-035"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::wire/primary/0/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::record"
+        ],
+        "obligation_ids": [
+          "ORACLE-036"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::wire/primary/2/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::record"
+        ],
+        "obligation_ids": [
+          "ORACLE-037"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::wire/primary/256/256",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::record"
+        ],
+        "obligation_ids": [
+          "ORACLE-038"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::wire/descendant/0/0",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::record"
+        ],
+        "obligation_ids": [
+          "ORACLE-039"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::wire/descendant/2/1",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::record"
+        ],
+        "obligation_ids": [
+          "ORACLE-040"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "registry-oracle::wire/descendant/256/256",
+        "parent_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "invokes_ids": [
+          "tests/security/windows/registry-authority/lib/registry_authority::protocol::record"
+        ],
+        "obligation_ids": [
+          "ORACLE-041"
+        ],
+        "variant_ids": [],
+        "checks": []
+      }
+    ],
+    "scopes": [
+      {
+        "scope": {
+          "platform": "linux",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "entry_ids": [
+          "registry-oracle::token/0/0/0",
+          "registry-oracle::token/0/0/1",
+          "registry-oracle::token/0/1/0",
+          "registry-oracle::token/0/1/1",
+          "registry-oracle::token/1/0/0",
+          "registry-oracle::token/1/0/1",
+          "registry-oracle::token/1/1/0",
+          "registry-oracle::token/1/1/1",
+          "registry-oracle::token/2/0/0",
+          "registry-oracle::token/2/0/1",
+          "registry-oracle::token/2/1/0",
+          "registry-oracle::token/2/1/1",
+          "registry-oracle::denied/0/0",
+          "registry-oracle::denied/0/4",
+          "registry-oracle::denied/1/0",
+          "registry-oracle::denied/1/4",
+          "registry-oracle::denied/3221225506/0",
+          "registry-oracle::denied/3221225506/4",
+          "registry-oracle::denied/4294967295/0",
+          "registry-oracle::denied/4294967295/4",
+          "registry-oracle::basic/0/56/0/131097",
+          "registry-oracle::basic/1/56/0/131097",
+          "registry-oracle::basic/0/55/0/131097",
+          "registry-oracle::basic/0/57/0/131097",
+          "registry-oracle::basic/0/56/1/131097",
+          "registry-oracle::basic/0/56/0/131099",
+          "registry-oracle::identity/latin-A",
+          "registry-oracle::identity/Registry",
+          "registry-oracle::identity/surrogate-pair",
+          "registry-oracle::identity/embedded-NUL",
+          "registry-oracle::identity/lone-surrogate",
+          "registry-oracle::identity/truncated-header",
+          "registry-oracle::identity/oversized-return",
+          "registry-oracle::identity/short-body",
+          "registry-oracle::identity/odd-count",
+          "registry-oracle::wire/primary/0/0",
+          "registry-oracle::wire/primary/2/1",
+          "registry-oracle::wire/primary/256/256",
+          "registry-oracle::wire/descendant/0/0",
+          "registry-oracle::wire/descendant/2/1",
+          "registry-oracle::wire/descendant/256/256"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "linux",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "entry_ids": [
+          "registry-oracle::token/0/0/0",
+          "registry-oracle::token/0/0/1",
+          "registry-oracle::token/0/1/0",
+          "registry-oracle::token/0/1/1",
+          "registry-oracle::token/1/0/0",
+          "registry-oracle::token/1/0/1",
+          "registry-oracle::token/1/1/0",
+          "registry-oracle::token/1/1/1",
+          "registry-oracle::token/2/0/0",
+          "registry-oracle::token/2/0/1",
+          "registry-oracle::token/2/1/0",
+          "registry-oracle::token/2/1/1",
+          "registry-oracle::denied/0/0",
+          "registry-oracle::denied/0/4",
+          "registry-oracle::denied/1/0",
+          "registry-oracle::denied/1/4",
+          "registry-oracle::denied/3221225506/0",
+          "registry-oracle::denied/3221225506/4",
+          "registry-oracle::denied/4294967295/0",
+          "registry-oracle::denied/4294967295/4",
+          "registry-oracle::basic/0/56/0/131097",
+          "registry-oracle::basic/1/56/0/131097",
+          "registry-oracle::basic/0/55/0/131097",
+          "registry-oracle::basic/0/57/0/131097",
+          "registry-oracle::basic/0/56/1/131097",
+          "registry-oracle::basic/0/56/0/131099",
+          "registry-oracle::identity/latin-A",
+          "registry-oracle::identity/Registry",
+          "registry-oracle::identity/surrogate-pair",
+          "registry-oracle::identity/embedded-NUL",
+          "registry-oracle::identity/lone-surrogate",
+          "registry-oracle::identity/truncated-header",
+          "registry-oracle::identity/oversized-return",
+          "registry-oracle::identity/short-body",
+          "registry-oracle::identity/odd-count",
+          "registry-oracle::wire/primary/0/0",
+          "registry-oracle::wire/primary/2/1",
+          "registry-oracle::wire/primary/256/256",
+          "registry-oracle::wire/descendant/0/0",
+          "registry-oracle::wire/descendant/2/1",
+          "registry-oracle::wire/descendant/256/256"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "macos",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "entry_ids": [
+          "registry-oracle::token/0/0/0",
+          "registry-oracle::token/0/0/1",
+          "registry-oracle::token/0/1/0",
+          "registry-oracle::token/0/1/1",
+          "registry-oracle::token/1/0/0",
+          "registry-oracle::token/1/0/1",
+          "registry-oracle::token/1/1/0",
+          "registry-oracle::token/1/1/1",
+          "registry-oracle::token/2/0/0",
+          "registry-oracle::token/2/0/1",
+          "registry-oracle::token/2/1/0",
+          "registry-oracle::token/2/1/1",
+          "registry-oracle::denied/0/0",
+          "registry-oracle::denied/0/4",
+          "registry-oracle::denied/1/0",
+          "registry-oracle::denied/1/4",
+          "registry-oracle::denied/3221225506/0",
+          "registry-oracle::denied/3221225506/4",
+          "registry-oracle::denied/4294967295/0",
+          "registry-oracle::denied/4294967295/4",
+          "registry-oracle::basic/0/56/0/131097",
+          "registry-oracle::basic/1/56/0/131097",
+          "registry-oracle::basic/0/55/0/131097",
+          "registry-oracle::basic/0/57/0/131097",
+          "registry-oracle::basic/0/56/1/131097",
+          "registry-oracle::basic/0/56/0/131099",
+          "registry-oracle::identity/latin-A",
+          "registry-oracle::identity/Registry",
+          "registry-oracle::identity/surrogate-pair",
+          "registry-oracle::identity/embedded-NUL",
+          "registry-oracle::identity/lone-surrogate",
+          "registry-oracle::identity/truncated-header",
+          "registry-oracle::identity/oversized-return",
+          "registry-oracle::identity/short-body",
+          "registry-oracle::identity/odd-count",
+          "registry-oracle::wire/primary/0/0",
+          "registry-oracle::wire/primary/2/1",
+          "registry-oracle::wire/primary/256/256",
+          "registry-oracle::wire/descendant/0/0",
+          "registry-oracle::wire/descendant/2/1",
+          "registry-oracle::wire/descendant/256/256"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "macos",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "entry_ids": [
+          "registry-oracle::token/0/0/0",
+          "registry-oracle::token/0/0/1",
+          "registry-oracle::token/0/1/0",
+          "registry-oracle::token/0/1/1",
+          "registry-oracle::token/1/0/0",
+          "registry-oracle::token/1/0/1",
+          "registry-oracle::token/1/1/0",
+          "registry-oracle::token/1/1/1",
+          "registry-oracle::token/2/0/0",
+          "registry-oracle::token/2/0/1",
+          "registry-oracle::token/2/1/0",
+          "registry-oracle::token/2/1/1",
+          "registry-oracle::denied/0/0",
+          "registry-oracle::denied/0/4",
+          "registry-oracle::denied/1/0",
+          "registry-oracle::denied/1/4",
+          "registry-oracle::denied/3221225506/0",
+          "registry-oracle::denied/3221225506/4",
+          "registry-oracle::denied/4294967295/0",
+          "registry-oracle::denied/4294967295/4",
+          "registry-oracle::basic/0/56/0/131097",
+          "registry-oracle::basic/1/56/0/131097",
+          "registry-oracle::basic/0/55/0/131097",
+          "registry-oracle::basic/0/57/0/131097",
+          "registry-oracle::basic/0/56/1/131097",
+          "registry-oracle::basic/0/56/0/131099",
+          "registry-oracle::identity/latin-A",
+          "registry-oracle::identity/Registry",
+          "registry-oracle::identity/surrogate-pair",
+          "registry-oracle::identity/embedded-NUL",
+          "registry-oracle::identity/lone-surrogate",
+          "registry-oracle::identity/truncated-header",
+          "registry-oracle::identity/oversized-return",
+          "registry-oracle::identity/short-body",
+          "registry-oracle::identity/odd-count",
+          "registry-oracle::wire/primary/0/0",
+          "registry-oracle::wire/primary/2/1",
+          "registry-oracle::wire/primary/256/256",
+          "registry-oracle::wire/descendant/0/0",
+          "registry-oracle::wire/descendant/2/1",
+          "registry-oracle::wire/descendant/256/256"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "windows",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "entry_ids": [
+          "registry-oracle::token/0/0/0",
+          "registry-oracle::token/0/0/1",
+          "registry-oracle::token/0/1/0",
+          "registry-oracle::token/0/1/1",
+          "registry-oracle::token/1/0/0",
+          "registry-oracle::token/1/0/1",
+          "registry-oracle::token/1/1/0",
+          "registry-oracle::token/1/1/1",
+          "registry-oracle::token/2/0/0",
+          "registry-oracle::token/2/0/1",
+          "registry-oracle::token/2/1/0",
+          "registry-oracle::token/2/1/1",
+          "registry-oracle::denied/0/0",
+          "registry-oracle::denied/0/4",
+          "registry-oracle::denied/1/0",
+          "registry-oracle::denied/1/4",
+          "registry-oracle::denied/3221225506/0",
+          "registry-oracle::denied/3221225506/4",
+          "registry-oracle::denied/4294967295/0",
+          "registry-oracle::denied/4294967295/4",
+          "registry-oracle::basic/0/56/0/131097",
+          "registry-oracle::basic/1/56/0/131097",
+          "registry-oracle::basic/0/55/0/131097",
+          "registry-oracle::basic/0/57/0/131097",
+          "registry-oracle::basic/0/56/1/131097",
+          "registry-oracle::basic/0/56/0/131099",
+          "registry-oracle::identity/latin-A",
+          "registry-oracle::identity/Registry",
+          "registry-oracle::identity/surrogate-pair",
+          "registry-oracle::identity/embedded-NUL",
+          "registry-oracle::identity/lone-surrogate",
+          "registry-oracle::identity/truncated-header",
+          "registry-oracle::identity/oversized-return",
+          "registry-oracle::identity/short-body",
+          "registry-oracle::identity/odd-count",
+          "registry-oracle::wire/primary/0/0",
+          "registry-oracle::wire/primary/2/1",
+          "registry-oracle::wire/primary/256/256",
+          "registry-oracle::wire/descendant/0/0",
+          "registry-oracle::wire/descendant/2/1",
+          "registry-oracle::wire/descendant/256/256"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "windows",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "tests/security/windows/registry-authority/lib/registry_authority::protocol::tests::source_generated_oracle",
+        "entry_ids": [
+          "registry-oracle::token/0/0/0",
+          "registry-oracle::token/0/0/1",
+          "registry-oracle::token/0/1/0",
+          "registry-oracle::token/0/1/1",
+          "registry-oracle::token/1/0/0",
+          "registry-oracle::token/1/0/1",
+          "registry-oracle::token/1/1/0",
+          "registry-oracle::token/1/1/1",
+          "registry-oracle::token/2/0/0",
+          "registry-oracle::token/2/0/1",
+          "registry-oracle::token/2/1/0",
+          "registry-oracle::token/2/1/1",
+          "registry-oracle::denied/0/0",
+          "registry-oracle::denied/0/4",
+          "registry-oracle::denied/1/0",
+          "registry-oracle::denied/1/4",
+          "registry-oracle::denied/3221225506/0",
+          "registry-oracle::denied/3221225506/4",
+          "registry-oracle::denied/4294967295/0",
+          "registry-oracle::denied/4294967295/4",
+          "registry-oracle::basic/0/56/0/131097",
+          "registry-oracle::basic/1/56/0/131097",
+          "registry-oracle::basic/0/55/0/131097",
+          "registry-oracle::basic/0/57/0/131097",
+          "registry-oracle::basic/0/56/1/131097",
+          "registry-oracle::basic/0/56/0/131099",
+          "registry-oracle::identity/latin-A",
+          "registry-oracle::identity/Registry",
+          "registry-oracle::identity/surrogate-pair",
+          "registry-oracle::identity/embedded-NUL",
+          "registry-oracle::identity/lone-surrogate",
+          "registry-oracle::identity/truncated-header",
+          "registry-oracle::identity/oversized-return",
+          "registry-oracle::identity/short-body",
+          "registry-oracle::identity/odd-count",
+          "registry-oracle::wire/primary/0/0",
+          "registry-oracle::wire/primary/2/1",
+          "registry-oracle::wire/primary/256/256",
+          "registry-oracle::wire/descendant/0/0",
+          "registry-oracle::wire/descendant/2/1",
+          "registry-oracle::wire/descendant/256/256"
+        ]
+      }
+    ]
+  },
+  "missing_evidence": "Actual row journal source is authored; no hosted emitted journal, outer-cleanup-finalized OperationReport or six-scope execution result exists. Flat carrier Passed cannot substitute for missing actual row observations.",
+  "cases": [
+    {
+      "id": "registry-oracle::token/0/0/0",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        0,
+        0,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/0/0/1",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        0,
+        0,
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/0/1/0",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        0,
+        1,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/0/1/1",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        0,
+        1,
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/1/0/0",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        1,
+        0,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/1/0/1",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        1,
+        0,
+        1
+      ],
+      "accepted": true
+    },
+    {
+      "id": "registry-oracle::token/1/1/0",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        1,
+        1,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/1/1/1",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        1,
+        1,
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/2/0/0",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        2,
+        0,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/2/0/1",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        2,
+        0,
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/2/1/0",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        2,
+        1,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::token/2/1/1",
+      "source_lines": "L23-L27",
+      "rust_lines": "L17-L29",
+      "family": "token",
+      "inputs": [
+        2,
+        1,
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::denied/0/0",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        0,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::denied/0/4",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        0,
+        4
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::denied/1/0",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        1,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::denied/1/4",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        1,
+        4
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::denied/3221225506/0",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        3221225506,
+        0
+      ],
+      "accepted": true
+    },
+    {
+      "id": "registry-oracle::denied/3221225506/4",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        3221225506,
+        4
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::denied/4294967295/0",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        4294967295,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::denied/4294967295/4",
+      "source_lines": "L28-L31",
+      "rust_lines": "L30-L39",
+      "family": "denied",
+      "inputs": [
+        4294967295,
+        4
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::basic/0/56/0/131097",
+      "source_lines": "L32-L34",
+      "rust_lines": "L40-L53",
+      "family": "basic",
+      "inputs": [
+        0,
+        56,
+        0,
+        131097
+      ],
+      "accepted": true
+    },
+    {
+      "id": "registry-oracle::basic/1/56/0/131097",
+      "source_lines": "L32-L34",
+      "rust_lines": "L40-L53",
+      "family": "basic",
+      "inputs": [
+        1,
+        56,
+        0,
+        131097
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::basic/0/55/0/131097",
+      "source_lines": "L32-L34",
+      "rust_lines": "L40-L53",
+      "family": "basic",
+      "inputs": [
+        0,
+        55,
+        0,
+        131097
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::basic/0/57/0/131097",
+      "source_lines": "L32-L34",
+      "rust_lines": "L40-L53",
+      "family": "basic",
+      "inputs": [
+        0,
+        57,
+        0,
+        131097
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::basic/0/56/1/131097",
+      "source_lines": "L32-L34",
+      "rust_lines": "L40-L53",
+      "family": "basic",
+      "inputs": [
+        0,
+        56,
+        1,
+        131097
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::basic/0/56/0/131099",
+      "source_lines": "L32-L34",
+      "rust_lines": "L40-L53",
+      "family": "basic",
+      "inputs": [
+        0,
+        56,
+        0,
+        131099
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::identity/latin-A",
+      "source_lines": "L35-L39",
+      "rust_lines": "L54-L75",
+      "family": "identity",
+      "inputs": [
+        0,
+        6,
+        "020000004100",
+        2
+      ],
+      "accepted": true
+    },
+    {
+      "id": "registry-oracle::identity/Registry",
+      "source_lines": "L35-L39",
+      "rust_lines": "L54-L75",
+      "family": "identity",
+      "inputs": [
+        0,
+        20,
+        "1000000052006500670069007300740072007900",
+        16
+      ],
+      "accepted": true
+    },
+    {
+      "id": "registry-oracle::identity/surrogate-pair",
+      "source_lines": "L35-L39",
+      "rust_lines": "L54-L75",
+      "family": "identity",
+      "inputs": [
+        0,
+        8,
+        "040000003dd842de",
+        4
+      ],
+      "accepted": true
+    },
+    {
+      "id": "registry-oracle::identity/embedded-NUL",
+      "source_lines": "L35-L39",
+      "rust_lines": "L54-L75",
+      "family": "identity",
+      "inputs": [
+        0,
+        6,
+        "020000000000",
+        2
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::identity/lone-surrogate",
+      "source_lines": "L35-L39",
+      "rust_lines": "L54-L75",
+      "family": "identity",
+      "inputs": [
+        0,
+        6,
+        "0200000000d8",
+        2
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::identity/truncated-header",
+      "source_lines": "L40-L44",
+      "rust_lines": "L76-L88",
+      "family": "identity",
+      "inputs": [
+        0,
+        3,
+        "00000000",
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::identity/oversized-return",
+      "source_lines": "L40-L44",
+      "rust_lines": "L76-L88",
+      "family": "identity",
+      "inputs": [
+        0,
+        4097,
+        "00000000",
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::identity/short-body",
+      "source_lines": "L40-L44",
+      "rust_lines": "L76-L88",
+      "family": "identity",
+      "inputs": [
+        0,
+        6,
+        "040000004100",
+        4
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::identity/odd-count",
+      "source_lines": "L40-L44",
+      "rust_lines": "L76-L88",
+      "family": "identity",
+      "inputs": [
+        0,
+        5,
+        "0100000041",
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "id": "registry-oracle::wire/primary/0/0",
+      "source_lines": "L47-L55",
+      "rust_lines": "L89-L102",
+      "family": "wire",
+      "inputs": [
+        "primary",
+        0,
+        0
+      ],
+      "assertion": "Exact sorted compact ASCII version1 JSON plus one newline; independent literal schema in oracle.rs92-94, byte-equal protocol::record."
+    },
+    {
+      "id": "registry-oracle::wire/primary/2/1",
+      "source_lines": "L47-L55",
+      "rust_lines": "L89-L102",
+      "family": "wire",
+      "inputs": [
+        "primary",
+        2,
+        1
+      ],
+      "assertion": "Exact sorted compact ASCII version1 JSON plus one newline; independent literal schema in oracle.rs92-94, byte-equal protocol::record."
+    },
+    {
+      "id": "registry-oracle::wire/primary/256/256",
+      "source_lines": "L47-L55",
+      "rust_lines": "L89-L102",
+      "family": "wire",
+      "inputs": [
+        "primary",
+        256,
+        256
+      ],
+      "assertion": "Exact sorted compact ASCII version1 JSON plus one newline; independent literal schema in oracle.rs92-94, byte-equal protocol::record."
+    },
+    {
+      "id": "registry-oracle::wire/descendant/0/0",
+      "source_lines": "L47-L55",
+      "rust_lines": "L89-L102",
+      "family": "wire",
+      "inputs": [
+        "descendant",
+        0,
+        0
+      ],
+      "assertion": "Exact sorted compact ASCII version1 JSON plus one newline; independent literal schema in oracle.rs92-94, byte-equal protocol::record."
+    },
+    {
+      "id": "registry-oracle::wire/descendant/2/1",
+      "source_lines": "L47-L55",
+      "rust_lines": "L89-L102",
+      "family": "wire",
+      "inputs": [
+        "descendant",
+        2,
+        1
+      ],
+      "assertion": "Exact sorted compact ASCII version1 JSON plus one newline; independent literal schema in oracle.rs92-94, byte-equal protocol::record."
+    },
+    {
+      "id": "registry-oracle::wire/descendant/256/256",
+      "source_lines": "L47-L55",
+      "rust_lines": "L89-L102",
+      "family": "wire",
+      "inputs": [
+        "descendant",
+        256,
+        256
+      ],
+      "assertion": "Exact sorted compact ASCII version1 JSON plus one newline; independent literal schema in oracle.rs92-94, byte-equal protocol::record."
+    }
+  ],
+  "execution_contract_source": "Actual oracle_events.rs row_identity/Journal.observe/assert_rows source implements these ordered case IDs, parent, ORACLE-001..041 and actual predicate invokes after each original assertion. Each distinct input is a case, so no hidden variant IDs. Same carrier executes in the existing six portable scopes; source-closed contract is not evidence of execution or cleanup."
+}

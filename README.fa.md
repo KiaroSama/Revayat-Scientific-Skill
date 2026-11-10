@@ -31,6 +31,8 @@
 
 [English](README.md)
 
+**وضعیت بازنویسی Rust:** این راهنما شاخهٔ `rewrite/rust-native` را توصیف می‌کند، نه پیاده‌سازی فعلی `main`. برابری رفتاری تست‌ها و CI میزبانی‌شده هنوز در حال بررسی است؛ ثبت نام تست اثبات اجرای assertionهای اصلی یا موفقیت کنترل بومی نیست. نشان‌های بالا وضعیت `main` هستند و این شاخه یا آخرین commit آن را تأیید نمی‌کنند. آرشیو را از اجرای CI بازبینی‌شدهٔ همان نسخه بگیرید؛ بستهٔ میانی را release نهایی امضاشده معرفی نکنید.
+
 ## تفاوت با ترجمهٔ عمومی
 
 | قابلیت | رفتار |
@@ -43,14 +45,6 @@
 | تحویل قابل بررسی | بررسی منبع، فونت، صفحه، ترتیب استخراج متن و خروجی واقعی رندر. |
 | بازیابی تغییرات | آماده‌سازی همهٔ مقصدها، نگهداری نسخهٔ قبلی و حفظ شواهد بازیابی در شکست حل‌نشده. |
 
-## وضعیت snapshot آماده‌سازی
-
-این snapshot شاخهٔ `rewrite/rust-native` آماده‌سازی hosted محدود lock/notices است، نه مهاجرت کامل یا release تأییدشده. نشان‌ها مربوط به `main` هستند؛ برابری کامل native و CI نهایی همان SHA هنوز تأیید نشده‌اند.
-
-در Linux/macOS، فراخوانی ابزار به `revayat-process-owner` کنار برنامه و از همان build/revision نیاز دارد. همهٔ binaryها را با `cargo build --locked --release --workspace --bins` بسازید؛ `cargo run --bin revayat-scientific` sibling را دوباره نمی‌سازد. Windows از Job بومی استفاده می‌کند. تغییرات package/install همراه companion هنوز در این snapshot نیست؛ آرشیو `.skill` را payload کامل یونیکس فرض نکنید. موتورهای سند جدا هستند.
-
-برای آماده‌سازی hosted تأییدشده، workflow موجود CI را روی revision بازبینی‌شده انتخاب کنید، SHA کامل `base_ref` را بدهید و `prepare_artifacts=true` بگذارید؛ پیش‌فرض `false` است. artifact با نام `prepared-lock-notices-<sha>-<run_id>-<attempt>` فقط `Cargo.lock` و `skills/revayat-scientific/references/third-party-licenses.txt` دارد. عضویت دقیق و revision/run/attempt را پیش از import بررسی کنید. jobهای عادی و status publisherها در این حالت اجرا نمی‌شوند؛ موفقیت آماده‌سازی، پذیرش مهاجرت یا CI کامل نیست. [جزئیات نصب](docs/installation.md).
-
 ## نصب
 
 برای ساخت از منبع، [Rust](https://rustup.rs/) را نصب کنید؛ نسخهٔ دقیق در `rust-toolchain.toml` ثبت شده است.
@@ -58,7 +52,7 @@
 <div dir="ltr">
 
 ```console
-git clone https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+git clone --branch rewrite/rust-native https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
@@ -68,7 +62,9 @@ cargo run --locked --release --bin revayat-scientific -- install --agent codex
 
 گزینهٔ `--agent all` میزبان‌های شناسایی‌شده، `--scope project --path <directory>` پروژه و `--dest <directory>` مقصد سفارشی را انتخاب می‌کند. جایگزینی با `--force` فقط برای نصب دارای هویت روشن روایت مجاز است. همهٔ مقصدها پیش از فعال‌سازی آماده می‌شوند و نسخهٔ قبلی در `skill-backups` می‌ماند. [جزئیات نصب](docs/installation.md).
 
-CI برای Linux، macOS و Windows فایل اجرایی و آرشیو `.skill` می‌سازد. آرشیو بومی شامل برنامه، اسکیل، مراجع، قالب‌ها، مجوز و اعلان‌هاست. Rust برای کامپایل لازم است؛ اجرای فایل ساخته‌شده به مفسر زبان دیگری نیاز ندارد.
+jobهای CI برای هر سیستم‌عامل فایل اجرایی و آرشیو `.skill` می‌سازند؛ پذیرش نهایی بازنویسی هنوز تأیید نشده است. در Linux/macOS، دو فایل `bin/revayat-scientific` و `bin/revayat-process-owner` را از همان build و revision کنار هم نگه دارید. Windows فقط `bin/revayat-scientific.exe` را لازم دارد. آرشیو شامل اسکیل، مراجع، assetهای مجاز، فرادادهٔ ایجنت، مجوز و اعلان‌ها نیز هست. نصب ساخته‌شده به مفسر زبان دیگری نیاز ندارد، اما موتورهای پردازش سند جدا هستند.
+
+پیش از نصب، بسته‌بندی یا استفاده از فرمان‌های سورس، همهٔ binaryها را با فرمان بالا بسازید. `cargo run --bin revayat-scientific` به‌تنهایی sibling یونیکس را دوباره نمی‌سازد. companion مفقود، لینک‌شده یا غیرعادی رد می‌شود؛ کنارهم‌بودن و بایت‌های جمع‌آوری‌شده بررسی می‌شوند، نه اصالت امضاشده یا سازگاری نسخهٔ دو برنامه.
 
 <div dir="ltr">
 
@@ -140,7 +136,9 @@ revayat-scientific pdf --help
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo build --locked --workspace --all-targets
-cargo test --locked --workspace --all-targets -- --test-threads=1
+cargo build --locked --release --workspace --bins
+cargo run --locked --bin revayat-test-runner -- --tier portable --profile debug --output execution/portable-debug.json --timeout 1800
+cargo run --locked --bin revayat-test-runner -- --tier portable --profile release --output execution/portable-release.json --timeout 1800
 cargo run --locked --bin revayat-scientific -- migration-check
 cargo run --locked --bin revayat-scientific -- validate
 cargo run --locked --release --bin revayat-scientific -- package
@@ -148,7 +146,11 @@ cargo run --locked --release --bin revayat-scientific -- package
 
 </div>
 
-فهرست مهاجرت، هر ۵۸۳ تست عمومی قبلی را به سناریوی ثبت‌شدهٔ Rust نگاشت می‌کند. هر ۳۷ بررسی مستقل علمی بالادستی و ۴۱ سناریوی مستقل امنیتی نیز با فهرست‌های جداگانه حفظ شده‌اند؛ از جمله مصرف‌کنندهٔ مستقل OPC ویندوز و فراخوان‌های واقعی مسیر junction. تست رندر دارای پیش‌نیاز صریح است و CI علمی آن را با `--include-ignored` واقعاً اجرا می‌کند. مرحله‌های امنیت Linux و Windows، CodeQL، بازبینی وابستگی، سه سیستم‌عامل، رندر علمی، کیفیت و گزارش جمعی حفظ شده‌اند. هر سیستم‌عامل بیلد release و آرشیو خودش را تولید می‌کند. Dependabot وابستگی‌های Cargo، Actions و کانتینر را دنبال می‌کند؛ ممیزی سخت‌گیرانهٔ Cargo، rustfmt، Clippy، actionlint و zizmor اجباری‌اند.
+فرمان‌های runner به اطلاعات اجرای GitHub Actions و تطابق SHA با checkout نیاز دارند؛ این‌ها فرمان‌های نوشته‌شدهٔ CI هستند، نه دستور پذیرش محلی. caseهای مجهز و قرارداد جمع‌بندی یازده scope در [تست امنیت](docs/security-testing.md) آمده‌اند. collector بومی فعلاً به‌دلیل نبود adapter شاهددار صریحاً شکست می‌خورد؛ گزارش اجرای کامل ادعا نمی‌شود.
+
+نگاشت مهاجرت ۵۸۳ شناسهٔ تست عمومی قبلی را نگه می‌دارد؛ فهرست‌های جداگانه نیز ۳۷ بررسی بالادستی و ۴۱ سناریوی مستقل امنیتی را ثبت می‌کنند. این تعدادها و counterpartهای ثبت‌شدهٔ Rust، **برابری assertionها یا اجرای واقعی را اثبات نمی‌کنند**. مرحله‌های bootstrap ویندوز، check/helperهای هم‌پوشان و caseهای مستقل oracle رجیستری به شاهد رفتاری و بومی جدا نیاز دارند؛ استفادهٔ پیاده‌سازی قبلی از زبان دیگر مجوز حذف این تعهدها نیست.
+
+قرارداد CI شامل buildهای debug/release و تست portable روی Linux، macOS و Windows، اجرای مجهز علمی برای caseهای اجباری ignored، امنیت Linux/Windows، CodeQL، بازبینی وابستگی، بررسی workflow و گزارش جمعی fail-closed است. اتصال workflow و شاهد اجرای واقعی هنوز در حال تکمیل است. بازگردانی کامل تشخیص‌های بومی Windows و اثبات کامل حذف کد مرده یا تکراری هنوز کامل نشده‌اند. ممیزی سورس، طبقه‌بندی و سقف ۷۹۹ خط برای هر فایل را کنترل و اندازهٔ قابل‌مقایسهٔ سورس و تست را گزارش می‌کند؛ پایین‌تر بودن مجموع از baseline قبلی شرط نیست. کیفیت به شاهد بازبینی حذف و حفظ رفتار و اجرای واقعی تست نیاز دارد، نه صرفاً تعداد خط کمتر. برابری کامل بومی ادعا نمی‌شود. گزارش کامل job/case و SHA آزمایش‌شدهٔ همان run را بررسی کنید؛ این راهنما موفقیت همهٔ CI یا برابری کامل تست‌ها را ادعا نمی‌کند. Dependabot وابستگی‌های Cargo، Actions و کانتینر را دنبال می‌کند؛ ممیزی سخت‌گیرانهٔ Cargo، rustfmt، Clippy، actionlint و zizmor اجباری‌اند.
 
 گزارش ترجمه را کنار سند و در تمام نه مرحله تکمیل کنید. برنامه گزارش عملیاتی جداگانه با زمان UTC در `./logs` می‌نویسد؛ `REVAYAT_LOG_DIR` محل و `REVAYAT_LOG_LEVEL` یکی از `DEBUG`، `INFO`، `WARNING` یا `ERROR` را تعیین می‌کند. این گزارش فقط نام دستهٔ فرمان، دسته و کد خروج و مدت اجرا را ثبت می‌کند و شامل آرگومان، خروجی ابزار یا مسیر خصوصی نیست. تشخیص‌ها و دفتر بازیابی محلی‌اند.
 

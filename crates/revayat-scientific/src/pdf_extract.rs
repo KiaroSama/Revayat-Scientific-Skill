@@ -7,13 +7,57 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs, path::Path};
 pub fn extract_tables(source: &Path, destination: &Path) -> Result<()> {
+    extract_tables_observed(source, destination, |_, _| Ok(()))
+}
+pub fn extract_tables_observed(
+    source: &Path,
+    destination: &Path,
+    mut observer: impl FnMut(pdf::PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
     let doc = pdf::open_pdf(source, false)?;
     let mut pages = Vec::new();
     for (index, id) in pdf::page_ids(&doc)?.into_iter().enumerate() {
+        observer(pdf::PdfBoundary::TableDiscovery, source)?;
         let p = parse_page(&doc, id)?;
+        // Read the grid in its writing orientation, not in stored PDF axes or
+        // page rotation alone. An upright counter-rotated table stays upright.
+        let grid = p.lines.iter().flat_map(|(a, b)| [a, b]).fold(
+            [
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ],
+            |r, point| {
+                [
+                    r[0].min(point[0]),
+                    r[1].min(point[1]),
+                    r[2].max(point[0]),
+                    r[3].max(point[1]),
+                ]
+            },
+        );
+        let axis = p
+            .texts
+            .iter()
+            .find(|span| {
+                span.x >= grid[0] && span.x <= grid[2] && span.y >= grid[1] && span.y <= grid[3]
+            })
+            .map(|span| span.axis)
+            .unwrap_or([1., 0.]);
+        let length = axis[0].hypot(axis[1]);
+        ensure!(length > 0., "degenerate table writing axis");
+        let axis = [axis[0] / length, axis[1] / length];
+        let project = |point: [f64; 2]| {
+            [
+                point[0] * axis[0] + point[1] * axis[1],
+                -point[0] * axis[1] + point[1] * axis[0],
+            ]
+        };
         let mut xs = Vec::new();
         let mut ys = Vec::new();
         for (a, b) in &p.lines {
+            let (a, b) = (project(*a), project(*b));
             if (a[0] - b[0]).abs() < 0.01 && (a[1] - b[1]).abs() > 2. {
                 xs.push(a[0]);
             }
@@ -23,7 +67,7 @@ pub fn extract_tables(source: &Path, destination: &Path) -> Result<()> {
         }
         xs.sort_by(f64::total_cmp);
         xs.dedup_by(|a, b| (*a - *b).abs() < 0.1);
-        ys.sort_by(|a, b| b.total_cmp(a));
+        ys.sort_by(f64::total_cmp);
         ys.dedup_by(|a, b| (*a - *b).abs() < 0.1);
         ensure!(
             xs.len() <= 1000 && ys.len() <= 1000,
@@ -31,23 +75,45 @@ pub fn extract_tables(source: &Path, destination: &Path) -> Result<()> {
         );
         let mut tables = Vec::new();
         if xs.len() >= 2 && ys.len() >= 2 {
+            observer(pdf::PdfBoundary::TableCells, source)?;
             let mut cells = vec![vec![String::new(); xs.len() - 1]; ys.len() - 1];
             for span in p.texts {
+                let [x, y] = project([span.x, span.y]);
                 if let (Some(row), Some(col)) = (
-                    ys.windows(2).position(|v| span.y <= v[0] && span.y >= v[1]),
-                    xs.windows(2).position(|v| span.x >= v[0] && span.x < v[1]),
+                    ys.windows(2).position(|v| y >= v[0] && y <= v[1]),
+                    xs.windows(2).position(|v| x >= v[0] && x < v[1]),
                 ) {
                     cells[row][col].push_str(&span.text);
                 }
             }
-            tables.push(json!({"index":0,"bbox":[xs[0],*ys.last().unwrap(),*xs.last().unwrap(),ys[0]],"row_count":ys.len()-1,"column_count":xs.len()-1,"cells":cells}));
+            let corners = [
+                [xs[0], ys[0]],
+                [*xs.last().unwrap(), ys[0]],
+                [xs[0], *ys.last().unwrap()],
+                [*xs.last().unwrap(), *ys.last().unwrap()],
+            ]
+            .map(|[x, y]| [x * axis[0] - y * axis[1], x * axis[1] + y * axis[0]]);
+            let bbox = [
+                corners.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min),
+                corners.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min),
+                corners
+                    .iter()
+                    .map(|p| p[0])
+                    .fold(f64::NEG_INFINITY, f64::max),
+                corners
+                    .iter()
+                    .map(|p| p[1])
+                    .fold(f64::NEG_INFINITY, f64::max),
+            ];
+            tables.push(json!({"index":0,"bbox":bbox,"row_count":ys.len()-1,"column_count":xs.len()-1,"cells":cells}));
         }
         pages.push(json!({"page":index+1,"tables":tables}));
     }
-    pdf::write_report(
+    pdf::write_report_observed(
         &json!({"format":"pdf-tables","detection":"heuristic-review-required","pages":pages}),
         destination,
         &[source.to_owned()],
+        observer,
     )
 }
 fn image_bytes(stream: &Stream) -> Result<(&'static str, Vec<u8>)> {

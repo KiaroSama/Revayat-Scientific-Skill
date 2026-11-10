@@ -222,21 +222,31 @@ fn installed_bundle(stage: &Path, version: &str) -> Result<bool> {
         }
     }
     for style in ["Regular", "Bold"] {
-        if let Ok(result) = std::process::Command::new("fc-match")
-            .args(["-f", "%{file}\n", &format!("Vazirmatn:style={style}")])
-            .output()
-            && result.status.success()
-        {
-            for path in String::from_utf8_lossy(&result.stdout).lines() {
+        let mut command = crate::runtime::CommandSpec::new("fc-match")
+            .args(["-f", "%{file}\n", &format!("Vazirmatn:style={style}")]);
+        command.timeout = Duration::from_secs(5);
+        command.max_output = 64 * 1024;
+        let result = match crate::runtime::run(&command) {
+            Ok(result) => result,
+            Err(error) if crate::runtime::is_missing_executable(&error) => continue,
+            Err(error) => return Err(error.context("installed font discovery failed")),
+        };
+        if result.success() {
+            let paths = std::str::from_utf8(&result.stdout)
+                .context("fontconfig paths are not UTF-8")?;
+            for path in paths.lines() {
                 if let Some(parent) = Path::new(path).parent() {
                     candidates.extend(parent.ancestors().take(3).map(Path::to_owned));
                 }
             }
         }
     }
+    installed_from_candidates(stage, version, &candidates)
+}
+pub fn installed_from_candidates(stage: &Path, version: &str, candidates: &[PathBuf]) -> Result<bool> {
     for candidate in candidates {
-        if validate_bundle(&candidate, version, false).is_ok() {
-            copy_bundle(&candidate, stage)?;
+        if validate_bundle(candidate, version, false).is_ok() {
+            copy_bundle(candidate, stage)?;
             return Ok(true);
         }
     }

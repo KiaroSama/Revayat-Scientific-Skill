@@ -187,8 +187,57 @@ fn validate_spec(spec: &CommandSpec) -> Result<()> {
     Ok(())
 }
 
+/// A recovery capability minted only after owned job, child and capture finalization.
+/// It cannot be constructed, cloned or deserialized by a caller or child process.
+pub struct ReapedProcessTree {
+    binding: String,
+}
+impl ReapedProcessTree {
+    pub fn require_binding(&self, expected: &str) -> Result<()> {
+        ensure!(
+            self.binding == expected,
+            "recovery proof belongs to a different owner"
+        );
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+pub fn run_with_recovery(
+    spec: &CommandSpec,
+    binding: &str,
+    recover: impl FnOnce(&ReapedProcessTree) -> Result<()>,
+) -> Result<CommandOutput> {
+    ensure!(
+        binding.len() == 64
+            && binding
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+        "invalid recovery owner binding"
+    );
+    let mut recover = Some(recover);
+    run_input_owned(
+        spec,
+        None,
+        Some((binding, &mut |proof| {
+            recover
+                .take()
+                .context("recovery callback already consumed")?(proof)
+        })),
+    )
+}
+
 #[cfg(not(unix))]
 fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
+    run_input_owned(spec, input, None)
+}
+
+#[cfg(not(unix))]
+fn run_input_owned(
+    spec: &CommandSpec,
+    input: Option<&[u8]>,
+    recovery: Option<(&str, &mut dyn FnMut(&ReapedProcessTree) -> Result<()>)>,
+) -> Result<CommandOutput> {
     validate_spec(spec)?;
     let mut command = Command::new(&spec.program);
     command
@@ -346,27 +395,79 @@ fn run_input(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> 
         Ok(())
     };
     let finalization = (|| -> Result<()> {
+        let mut failures = Vec::new();
         #[cfg(windows)]
-        cleanup?;
-        if child.try_wait()?.is_none() {
-            child.kill()?;
+        if let Err(error) = cleanup {
+            failures.push(error);
         }
-        child.wait()?;
+        // Keep attempting every owned cleanup even when job termination failed.
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let waited = (|| -> Result<()> {
+            if child.try_wait()?.is_none() {
+                child.kill()?;
+            }
+            while child.try_wait()?.is_none() {
+                ensure!(
+                    Instant::now() < deadline,
+                    "owned child wait deadline exceeded"
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+            child.wait()?;
+            Ok(())
+        })();
+        if let Err(error) = waited {
+            failures.push(error);
+        }
         for reader in readers {
-            reader
-                .join()
-                .map_err(|_| anyhow::anyhow!("tool diagnostic reader failed"))?;
+            while !reader.is_finished() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(5));
+            }
+            if !reader.is_finished() {
+                failures.push(anyhow::anyhow!(
+                    "tool diagnostic reader cleanup deadline exceeded"
+                ));
+            } else if reader.join().is_err() {
+                failures.push(anyhow::anyhow!("tool diagnostic reader failed"));
+            }
         }
         if let Some(writer) = writer {
-            let wrote = writer
-                .join()
-                .map_err(|_| anyhow::anyhow!("tool stdin writer failed"))?;
-            if result.as_ref().is_ok_and(CommandOutput::success) {
-                wrote.context("tool did not consume its bounded input")?;
+            while !writer.is_finished() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(5));
             }
+            if !writer.is_finished() {
+                failures.push(anyhow::anyhow!(
+                    "tool stdin writer cleanup deadline exceeded"
+                ));
+            } else {
+                match writer.join() {
+                    Err(_) => failures.push(anyhow::anyhow!("tool stdin writer failed")),
+                    Ok(Err(error)) if result.as_ref().is_ok_and(CommandOutput::success) => failures
+                        .push(
+                            anyhow::Error::new(error)
+                                .context("tool did not consume its bounded input"),
+                        ),
+                    _ => (),
+                }
+            }
+        }
+        let mut failures = failures.into_iter();
+        if let Some(mut error) = failures.next() {
+            for secondary in failures {
+                error = error.context(CleanupFailure(secondary));
+            }
+            return Err(error);
         }
         Ok(())
     })();
+    let finalization = finalization.and_then(|()| {
+        if let Some((binding, recover)) = recovery {
+            recover(&ReapedProcessTree {
+                binding: binding.to_owned(),
+            })?;
+        }
+        Ok(())
+    });
     with_cleanup(result, finalization)
 }
 

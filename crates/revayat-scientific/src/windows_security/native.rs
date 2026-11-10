@@ -12,11 +12,24 @@ use std::time::{Duration, Instant};
 type Handle = *mut c_void;
 #[path = "native/authority.rs"]
 mod authority;
+#[path = "native/debug.rs"]
+mod debug;
 #[path = "native/fixture.rs"]
 mod fixture;
+pub use debug::{
+    DebugBoundary, EntryProof, observe_authority_entry, observe_authority_entry_observed,
+    observe_explicit_id2_dispatch,
+};
 #[path = "native/network.rs"]
 mod network;
-pub use authority::run_registry_authority;
+pub use authority::{run_owned_registry_authority, run_registry_authority};
+#[path = "native/recovery.rs"]
+mod recovery;
+#[path = "native/state.rs"]
+mod state;
+pub(crate) use authority::{AuthorityObserver, run_observed, run_sxs_tool};
+pub use recovery::recover_profile;
+pub use state::{NativeRunOwner, NativeRunView};
 const KILL_ON_CLOSE: u32 = 0x2000;
 const REQUIRED_LIMITS: u32 = KILL_ON_CLOSE | 0x200 | 0x100 | 8 | 4;
 

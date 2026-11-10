@@ -54,6 +54,8 @@ fn dispatch(cli: &Cli) -> Result<i32> {
                         required_unless_present = "authority_image"
                     )]
                     image: Option<PathBuf>,
+                    #[arg(long, hide = true, num_args = 4)]
+                    owned_run: Vec<std::ffi::OsString>,
                 }
                 let options = Options::try_parse_from(
                     std::iter::once("security-windows".to_owned()).chain(args.iter().cloned()),
@@ -62,7 +64,15 @@ fn dispatch(cli: &Cli) -> Result<i32> {
                     .authority_image
                     .or(options.image)
                     .expect("required image argument checked by clap");
-                let report = revayat::windows_security::native::run_registry_authority(&image)?;
+                anyhow::ensure!(
+                    options.owned_run.len() == 4,
+                    "native worker requires an owned run binding"
+                );
+                let view = revayat::windows_security::native::NativeRunView::from_arguments(
+                    &options.owned_run,
+                )?;
+                let report =
+                    revayat::windows_security::native::run_owned_registry_authority(&image, &view)?;
                 println!("{report}");
                 Ok(0)
             }
@@ -136,6 +146,25 @@ fn run_owned(cli: &Cli) -> Result<i32> {
         ])
         .args(cli.arguments.iter().cloned());
     command.timeout = Duration::from_secs(cli.timeout);
+    #[cfg(windows)]
+    if cli.command == "security-windows" {
+        anyhow::ensure!(
+            !cli.arguments
+                .iter()
+                .any(|arg| arg == "--owned-run" || arg.starts_with("--owned-run=")),
+            "owned native run locators are internal"
+        );
+        let mut owner =
+            revayat::windows_security::native::NativeRunOwner::create(&std::env::current_dir()?)?;
+        command.args.push("--owned-run".into());
+        command.args.extend(owner.worker_arguments());
+        let binding = owner.recovery_binding().to_owned();
+        let output =
+            revayat::runtime::run_with_recovery(&command, &binding, |proof| owner.recover(proof))?;
+        io::stdout().write_all(&output.stdout)?;
+        io::stderr().write_all(&output.stderr)?;
+        return Ok(output.code);
+    }
     let output = if ["build", "tex-container", "run-check", "security-linux"]
         .contains(&cli.command.as_str())
     {

@@ -2,30 +2,34 @@
 use crate::{
     build::{BuildGuard, MAX_FILE_BYTES, file_hash},
     publication::{publish_files, validate_destination},
-    resource::{ORIGIN, ResourcePolicy},
+    resource::ResourcePolicy,
     runtime,
 };
 use anyhow::{Context, Result, bail, ensure};
-use base64::{Engine, engine::general_purpose::STANDARD};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{
     fs,
     io::Read,
-    net::TcpStream,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
-use tungstenite::{Message, WebSocket, stream::MaybeTlsStream};
 
+#[path = "render_diagnostics.rs"]
+mod diagnostics;
+
+#[cfg(unix)]
+type BrowserChild = runtime::owner::Interactive;
+#[cfg(windows)]
+type BrowserChild = std::process::Child;
 struct Browser {
-    child: Child,
+    child: BrowserChild,
     profile: tempfile::TempDir,
-    #[cfg(unix)]
-    owns_group: bool,
+    diagnostics: Option<diagnostics::Diagnostics>,
+    stopped: Option<bool>,
     #[cfg(windows)]
-    owner: crate::windows_security::native::WindowsJob,
+    owner: Option<crate::windows_security::native::WindowsJob>,
 }
 impl Browser {
     fn launch(executable: &Path, parent: &Path) -> Result<(Self, u16, String)> {
@@ -51,41 +55,61 @@ impl Browser {
             .arg("about:blank")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        #[cfg(unix)]
-        let owns_group = std::env::var_os("REVAYAT_RUNTIME_GROUP").as_deref()
-            != Some(std::ffi::OsStr::new("inherit"));
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            if owns_group {
-                command.process_group(0);
-            }
-            command.env("REVAYAT_RUNTIME_GROUP", "inherit");
-        }
+            .stderr(Stdio::piped());
         #[cfg(windows)]
         let (child, owner) = crate::windows_security::native::spawn_owned(
             &mut command,
             crate::windows_security::JobLimits::browser(),
         )?;
-        #[cfg(not(windows))]
-        let child = command.spawn().context("cannot start sandboxed Chromium")?;
+        #[cfg(unix)]
+        let child = runtime::owner::Interactive::from_command(&command)
+            .context("cannot start sandboxed Chromium owner")?;
         let mut browser = Self {
             child,
             profile,
-            #[cfg(unix)]
-            owns_group,
+            diagnostics: None,
+            stopped: None,
             #[cfg(windows)]
-            owner,
+            owner: Some(owner),
         };
+        #[cfg(unix)]
+        let stderr = browser.child.take_stderr();
+        #[cfg(windows)]
+        let stderr = browser.child.stderr.take();
+        let initialized = stderr
+            .context("browser stderr pipe missing")
+            .and_then(|pipe| {
+                diagnostics::Diagnostics::start(pipe)
+                    .map_err(|_| anyhow::anyhow!("browser diagnostic reader initialization failed"))
+            });
+        match initialized {
+            Ok(diagnostics) => browser.diagnostics = Some(diagnostics),
+            Err(error) => return Err(browser.initialization_failure(error)),
+        }
+        let ready = browser.wait_ready();
+        match ready {
+            Ok((port, endpoint)) => Ok((browser, port, endpoint)),
+            Err(error) => Err(browser
+                .finish_operation::<()>(Err(error), "startup")
+                .unwrap_err()),
+        }
+    }
+
+    fn wait_ready(&mut self) -> Result<(u16, String)> {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             ensure!(
-                browser.child.try_wait()?.is_none(),
+                self.child.try_wait()?.is_none(),
                 "Chromium exited before its sandboxed endpoint became available"
             );
-            if let Ok(text) = fs::read_to_string(browser.profile.path().join("DevToolsActivePort"))
-            {
+            ensure!(
+                !self
+                    .diagnostics
+                    .as_ref()
+                    .is_some_and(diagnostics::Diagnostics::failed),
+                "Chromium diagnostic capture failed its bound"
+            );
+            if let Ok(text) = fs::read_to_string(self.profile.path().join("DevToolsActivePort")) {
                 let mut lines = text.lines();
                 let port: u16 = lines
                     .next()
@@ -100,7 +124,7 @@ impl Browser {
                         && !endpoint.contains(['\r', '\n', ' ']),
                     "invalid Chromium endpoint"
                 );
-                return Ok((browser, port, endpoint));
+                return Ok((port, endpoint));
             }
             ensure!(
                 Instant::now() < deadline,
@@ -109,235 +133,109 @@ impl Browser {
             thread::sleep(Duration::from_millis(20));
         }
     }
-}
-impl Drop for Browser {
-    fn drop(&mut self) {
+
+    fn initialization_failure(&mut self, error: anyhow::Error) -> anyhow::Error {
+        let clean = self.stop();
+        error.context(format!(
+            "phase=startup diagnostic_init=false cleanup_complete={clean}"
+        ))
+    }
+
+    fn stop(&mut self) -> bool {
+        if let Some(clean) = self.stopped {
+            return clean;
+        }
+        let mut clean = true;
         #[cfg(unix)]
-        if self.owns_group {
-            let _ = runtime::kill_owned_group(self.child.id());
+        {
+            clean &= self.child.finish().is_ok();
         }
         #[cfg(windows)]
-        let _ = self.owner.finish();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-struct DevTools<'a> {
-    socket: WebSocket<MaybeTlsStream<TcpStream>>,
-    next_id: u64,
-    session: Option<String>,
-    policy: &'a mut ResourcePolicy,
-    deadline: Instant,
-    failed: bool,
-    loaded: bool,
-}
-impl<'a> DevTools<'a> {
-    fn connect(port: u16, endpoint: &str, policy: &'a mut ResourcePolicy) -> Result<Self> {
-        // Only a loopback endpoint read from the newly owned browser profile is
-        // ever connected. No network URL from document data reaches this client.
-        let config = tungstenite::protocol::WebSocketConfig::default()
-            .max_message_size(Some(384 * 1024 * 1024))
-            .max_frame_size(Some(384 * 1024 * 1024));
-        let (mut socket, _) = tungstenite::client::connect_with_config(
-            format!("ws://127.0.0.1:{port}{endpoint}"),
-            Some(config),
-            0,
-        )?;
-        if let MaybeTlsStream::Plain(stream) = socket.get_mut() {
-            stream.set_read_timeout(Some(Duration::from_millis(250)))?;
-            stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+        if let Some(mut owner) = self.owner.take() {
+            clean &= owner.finish().is_ok();
+            // KILL_ON_JOB_CLOSE fallback runs before the diagnostic reader joins.
+            drop(owner);
         }
-        Ok(Self {
-            socket,
-            next_id: 0,
-            session: None,
-            policy,
-            deadline: Instant::now() + Duration::from_secs(120),
-            failed: false,
-            loaded: false,
-        })
-    }
-    fn send(&mut self, method: &str, params: Value) -> Result<u64> {
-        self.next_id += 1;
-        let id = self.next_id;
-        let mut request = json!({"id":id,"method":method,"params":params});
-        if let Some(session) = &self.session {
-            request["sessionId"] = json!(session);
-        }
-        self.socket
-            .send(Message::Text(request.to_string().into()))?;
-        Ok(id)
-    }
-    fn receive(&mut self) -> Result<Option<Value>> {
-        ensure!(
-            Instant::now() < self.deadline,
-            "Chromium render exceeded its deadline"
-        );
-        match self.socket.read() {
-            Ok(Message::Text(text)) => {
-                ensure!(
-                    text.len() <= 384 * 1024 * 1024,
-                    "Chromium response exceeds output limit"
-                );
-                Ok(Some(serde_json::from_str(&text)?))
+        #[cfg(windows)]
+        {
+            // Windows Job owns descendants independently of process-ID lifetime.
+            if !matches!(self.child.try_wait(), Ok(Some(_))) {
+                clean &= self.child.kill().is_ok();
             }
-            Ok(Message::Ping(bytes)) => {
-                self.socket.send(Message::Pong(bytes))?;
-                Ok(None)
-            }
-            Ok(Message::Close(_)) => bail!("Chromium closed its render channel"),
-            Ok(_) => Ok(None),
-            Err(tungstenite::Error::Io(e))
-                if matches!(
-                    e.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                Ok(None)
-            }
-            Err(error) => Err(error.into()),
-        }
-    }
-    fn event(&mut self, message: &Value) -> Result<()> {
-        match message["method"].as_str().unwrap_or("") {
-            "Fetch.requestPaused" => {
-                let params = &message["params"];
-                let id = params["requestId"]
-                    .as_str()
-                    .context("resource request has no identity")?;
-                let request = &params["request"];
-                let url = request["url"]
-                    .as_str()
-                    .context("resource request has no URL")?;
-                if request["method"] != "GET" {
-                    self.failed = true;
-                    self.send(
-                        "Fetch.failRequest",
-                        json!({"requestId":id,"errorReason":"BlockedByClient"}),
-                    )?;
-                } else if url == format!("{ORIGIN}/favicon.ico") {
-                    self.send(
-                        "Fetch.fulfillRequest",
-                        json!({"requestId":id,"responseCode":204,"body":""}),
-                    )?;
-                } else {
-                    match self.policy.fetch(url) {
-                        Ok((bytes, mime)) => {
-                            self.send("Fetch.fulfillRequest",json!({"requestId":id,"responseCode":200,"body":STANDARD.encode(bytes),"responseHeaders":[{"name":"Content-Type","value":mime},{"name":"Content-Security-Policy","value":"script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"}]}))?;
-                        }
-                        Err(_) => {
-                            self.failed = true;
-                            self.send(
-                                "Fetch.failRequest",
-                                json!({"requestId":id,"errorReason":"BlockedByClient"}),
-                            )?;
-                        }
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                match self.child.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) if Instant::now() < deadline => {
+                        thread::sleep(Duration::from_millis(5))
+                    }
+                    _ => {
+                        clean = false;
+                        break;
                     }
                 }
             }
-            "Network.loadingFailed" => self.failed = true,
-            "Page.loadEventFired" => self.loaded = true,
-            _ => (),
         }
-        Ok(())
+        self.stopped = Some(clean);
+        clean
     }
-    fn call(&mut self, method: &str, params: Value) -> Result<Value> {
-        let id = self.send(method, params)?;
-        loop {
-            if let Some(message) = self.receive()? {
-                if message["id"].as_u64() == Some(id) {
-                    ensure!(
-                        message.get("error").is_none(),
-                        "Chromium protocol operation failed: {method}"
-                    );
-                    return Ok(message["result"].clone());
-                }
-                self.event(&message)?;
+
+    fn finish_operation<T>(&mut self, result: Result<T>, phase: &str) -> Result<T> {
+        let observed = self.child.try_wait();
+        let status_observed = observed.is_ok();
+        let status = observed.ok().flatten();
+        let clean = self.stop();
+        #[cfg(unix)]
+        let status = status.or(self.child.natural_status());
+        let diagnostics = self
+            .diagnostics
+            .as_mut()
+            .context("browser diagnostics missing")?;
+        let reader_complete = diagnostics.finish();
+        let capture_failed = diagnostics.failed();
+        // Only a naturally observed failure invalidates a completed print. A live
+        // browser deliberately terminated by our owner is not an exit-zero contract.
+        let naturally_failed = status.is_some_and(|value| !value.success());
+        #[cfg(unix)]
+        let signal = {
+            use std::os::unix::process::ExitStatusExt;
+            status.and_then(|value| value.signal())
+        };
+        #[cfg(not(unix))]
+        let signal = None;
+        let report = diagnostics.report(phase, status.and_then(|value| value.code()), signal);
+        #[cfg(unix)]
+        let scope = "registered-guardian-owned-group";
+        #[cfg(windows)]
+        let scope = "owned-job";
+        let cleanup = format!("cleanup_complete={clean} cleanup_scope={scope}");
+        match result {
+            Err(error) => Err(error.context(format!("browser {report} {cleanup}"))),
+            Ok(value)
+                if clean
+                    && status_observed
+                    && reader_complete
+                    && !capture_failed
+                    && !naturally_failed =>
+            {
+                Ok(value)
             }
+            Ok(_) => bail!("browser verification failed {report} {cleanup}"),
         }
-    }
-    fn print(&mut self) -> Result<Vec<u8>> {
-        let targets = self.call("Target.getTargets", json!({}))?;
-        let target = targets["targetInfos"]
-            .as_array()
-            .context("browser has no targets")?
-            .iter()
-            .find(|t| t["type"] == "page")
-            .and_then(|t| t["targetId"].as_str())
-            .context("browser has no page")?;
-        let target = target.to_owned();
-        let result = self.call(
-            "Target.attachToTarget",
-            json!({"targetId":target,"flatten":true}),
-        )?;
-        self.session = Some(
-            result["sessionId"]
-                .as_str()
-                .context("browser omitted session identity")?
-                .into(),
-        );
-        self.call("Page.enable", json!({}))?;
-        self.call("Network.enable", json!({}))?;
-        self.call(
-            "Emulation.setScriptExecutionDisabled",
-            json!({"value":true}),
-        )?;
-        self.call("Network.setBypassServiceWorker", json!({"bypass":true}))?;
-        self.call("Page.setDownloadBehavior", json!({"behavior":"deny"}))?;
-        self.call(
-            "Fetch.enable",
-            json!({"patterns":[{"urlPattern":"*","requestStage":"Request"}]}),
-        )?;
-        let name = self
-            .policy
-            .source
-            .file_name()
-            .context("source has no basename")?
-            .to_string_lossy();
-        let encoded = name
-            .bytes()
-            .map(|b| {
-                if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
-                    (b as char).to_string()
-                } else {
-                    format!("%{b:02X}")
-                }
-            })
-            .collect::<String>();
-        self.loaded = false;
-        self.call(
-            "Page.navigate",
-            json!({"url":format!("{ORIGIN}/{encoded}")}),
-        )?;
-        while !self.loaded {
-            if let Some(message) = self.receive()? {
-                self.event(&message)?;
-            }
-        }
-        self.call(
-            "Runtime.evaluate",
-            json!({"expression":"document.fonts.ready","awaitPromise":true,"returnByValue":true}),
-        )?;
-        ensure!(
-            !self.failed && !self.policy.denied,
-            "render resource access was denied or failed"
-        );
-        let result=self.call("Page.printToPDF",json!({"printBackground":true,"preferCSSPageSize":true,"generateTaggedPDF":true,"transferMode":"ReturnAsBase64"}))?;
-        ensure!(
-            !self.failed && !self.policy.denied,
-            "render resource access was denied or failed"
-        );
-        let data = result["data"]
-            .as_str()
-            .context("Chromium omitted PDF bytes")?;
-        ensure!(
-            data.len() <= 384 * 1024 * 1024,
-            "Chromium PDF exceeds output limit"
-        );
-        Ok(STANDARD.decode(data)?)
     }
 }
+impl Drop for Browser {
+    fn drop(&mut self) {
+        self.stop();
+        if let Some(diagnostics) = self.diagnostics.as_mut() {
+            diagnostics.finish();
+        }
+    }
+}
+
+#[path = "render_protocol.rs"]
+mod protocol;
+use protocol::DevTools;
 
 pub fn validate_pdf(path: &Path) -> Result<()> {
     ensure!(
@@ -364,6 +262,129 @@ pub fn validate_pdf(path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    fn launch_fixture() -> (Browser, tempfile::TempDir) {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().canonicalize().unwrap();
+        let profile = tempfile::tempdir_in(&parent).unwrap();
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "render::lifecycle_tests::fixture_child",
+                "--nocapture",
+            ])
+            .env(
+                "REVAYAT_BROWSER_FIXTURE_EXIT",
+                profile.path().join("exit-now"),
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        let (mut child, owner) = crate::windows_security::native::spawn_owned(
+            &mut command,
+            crate::windows_security::JobLimits::browser(),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        let mut child = runtime::owner::Interactive::from_command(&command).unwrap();
+        #[cfg(unix)]
+        let stderr = child.take_stderr();
+        #[cfg(windows)]
+        let stderr = child.stderr.take();
+        let diagnostics = diagnostics::Diagnostics::start(stderr.unwrap()).unwrap();
+        (
+            Browser {
+                child,
+                profile,
+                diagnostics: Some(diagnostics),
+                stopped: None,
+                #[cfg(windows)]
+                owner: Some(owner),
+            },
+            temp,
+        )
+    }
+
+    #[test]
+    fn fixture_child() {
+        let Some(marker) = std::env::var_os("REVAYAT_BROWSER_FIXTURE_EXIT") else {
+            return;
+        };
+        while !Path::new(&marker).exists() {
+            thread::sleep(Duration::from_millis(5));
+        }
+        std::process::exit(42);
+    }
+
+    #[test]
+    fn completed_nonzero_browser_rejects_successful_operation_before_publication() {
+        let (mut browser, _temp) = launch_fixture();
+        fs::write(browser.profile.path().join("exit-now"), b"exit").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while browser.child.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+        let result = browser.finish_operation(Ok(b"validated PDF bytes"), "render");
+        assert!(result.is_err());
+        assert!(format!("{:#}", result.unwrap_err()).contains("exit_code=42"));
+        drop(browser);
+    }
+
+    #[test]
+    fn initialization_failure_keeps_primary_error_and_explicit_cleanup_outcome() {
+        let (mut browser, _temp) = launch_fixture();
+        let error = browser.initialization_failure(anyhow::anyhow!(
+            "injected diagnostic initialization failure"
+        ));
+        let text = format!("{error:#}");
+        assert!(text.contains("injected diagnostic initialization failure"));
+        assert!(text.contains("diagnostic_init=false"));
+        assert!(text.contains("cleanup_complete=true"));
+        assert!(browser.child.try_wait().unwrap().is_some());
+        drop(browser);
+    }
+}
+
+/// Qualify the same sandboxed executable/owned endpoint used for rendering.
+/// The caller supplies an already-owned private scratch parent; no document is rendered.
+pub fn preflight_browser(executable: &Path, parent: &Path) -> Result<()> {
+    let (mut browser, port, endpoint) = Browser::launch(executable, parent)?;
+    let result = (|| {
+        let diagnostics = browser
+            .diagnostics
+            .as_ref()
+            .context("browser diagnostics missing")?;
+        // ResourcePolicy is unused by Browser.getVersion but keeps the existing
+        // protocol client, limits and diagnostic path shared with real rendering.
+        let probe = browser.profile.path().join("preflight.html");
+        fs::write(&probe, b"<html></html>")?;
+        let mut policy = ResourcePolicy::new(&probe)?;
+        let mut tools = DevTools::connect(port, &endpoint, &mut policy, diagnostics)
+            .map_err(|_| anyhow::anyhow!("Chromium preflight protocol connection failed"))?;
+        tools.deadline = Instant::now() + Duration::from_secs(5);
+        let version = tools
+            .call("Browser.getVersion", json!({}))
+            .map_err(|_| anyhow::anyhow!("Chromium preflight protocol handshake failed"))?;
+        ensure!(
+            version["product"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty())
+                && version["protocolVersion"]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty()),
+            "Chromium preflight returned no protocol identity"
+        );
+        Ok(())
+    })();
+    browser.finish_operation(result, "preflight")
+}
+
 pub fn render_html(
     source: &Path,
     output: &Path,
@@ -371,10 +392,21 @@ pub fn render_html(
     guard: Option<&Path>,
 ) -> Result<()> {
     render_html_with(source, output, guard, |policy, rendered| {
-        let (_browser, port, endpoint) = Browser::launch(browser, rendered.parent().unwrap())?;
-        let bytes = DevTools::connect(port, &endpoint, policy)?.print()?;
-        fs::write(rendered, bytes)?;
-        Ok(())
+        let (mut browser, port, endpoint) = Browser::launch(browser, rendered.parent().unwrap())?;
+        let result = (|| {
+            let diagnostics = browser
+                .diagnostics
+                .as_ref()
+                .context("browser diagnostics missing")?;
+            let mut tools = DevTools::connect(port, &endpoint, policy, diagnostics)
+                .map_err(|_| anyhow::anyhow!("Chromium render protocol connection failed"))?;
+            let bytes = tools
+                .print()
+                .map_err(|_| anyhow::anyhow!("Chromium render protocol operation failed"))?;
+            fs::write(rendered, bytes)?;
+            Ok(())
+        })();
+        browser.finish_operation(result, "render")
     })
 }
 

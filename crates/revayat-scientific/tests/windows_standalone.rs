@@ -2,13 +2,17 @@
 //! The workflow proves LPAC containment before running this required target.
 #![cfg(windows)]
 use anyhow::{Context, Result, ensure};
-use revayat_scientific::{identity::file_identity, publication};
+use revayat_scientific::{
+    identity::file_identity,
+    publication,
+    runtime::{self, CommandOutput, CommandSpec},
+};
 use std::{
     fs,
     io::Write,
-    os::windows::ffi::OsStrExt,
+    os::windows::{ffi::OsStrExt, fs::MetadataExt},
     path::{Path, PathBuf},
-    process::Command,
+    time::Duration,
 };
 use windows::{
     Win32::{
@@ -57,6 +61,11 @@ impl Fixture {
         fs::write(outside.join("article.pdf"), OUTSIDE)?;
         let link = root.join("linked-output");
         windows_junction::create(&link, &target)?;
+        ensure!(
+            fs::symlink_metadata(&link)?.file_attributes() & 0x400 != 0
+                && fs::read_link(&link)?.canonicalize()? == target.canonicalize()?,
+            "native junction target identity differs"
+        );
         Ok(Self {
             _temp: temp,
             root,
@@ -158,9 +167,16 @@ fn native_opc_consumer_recognizes_case_variant_relationship_part() -> Result<()>
         let parts = package.GetPartSet()?;
         let document_uri = factory.CreatePartUri(w!("/word/document.xml"))?;
         let document = parts.GetPart(&document_uri)?;
-        let relationship = document
-            .GetRelationshipSet()?
-            .GetRelationship(w!("rIdControlled"))?;
+        let relationships = document.GetRelationshipSet()?.GetEnumerator()?;
+        ensure!(
+            relationships.MoveNext()?.as_bool(),
+            "case-variant OPC relationship was not recognized"
+        );
+        let relationship = relationships.GetCurrent()?;
+        ensure!(
+            !relationships.MoveNext()?.as_bool(),
+            "case-variant OPC relationship was not recognized exactly once"
+        );
         ensure!(
             allocated_text(relationship.GetId()?)? == "rIdControlled",
             "OPC relationship id differs"
@@ -254,34 +270,47 @@ fn ordinary_publication_commits_exact_bytes() -> Result<()> {
     f.sentinels_unchanged()
 }
 
-fn build(source: &Path, output: &Path, marker: &Path) -> Result<std::process::Output> {
-    Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args(["--timeout", "10", "build"])
-        .arg(source)
-        .arg("article")
-        .args([
-            "--engine",
-            "chromium",
-            "--browser",
-            env!("CARGO_BIN_EXE_revayat-test-tool"),
-            "--output-dir",
-        ])
-        .arg(output)
-        .env("REVAYAT_TEST_BROWSER_MARKER", marker)
-        .output()
-        .context("launch real public build CLI")
+fn invoke(mut command: CommandSpec, root: &Path, marker: &Path) -> Result<CommandOutput> {
+    command.cwd = Some(root.to_owned());
+    command.timeout = Duration::from_secs(35);
+    command.max_output = 65536;
+    command.env.insert(
+        "REVAYAT_TEST_BROWSER_MARKER".into(),
+        marker.as_os_str().to_owned(),
+    );
+    runtime::run(&command).context("run bounded standalone fixture child")
+}
+
+fn build(source: &Path, output: &Path, marker: &Path) -> Result<CommandOutput> {
+    let mut command = CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args([
+        "--timeout",
+        "10",
+        "build",
+    ]);
+    command.args.extend([
+        source.as_os_str().to_owned(),
+        "article".into(),
+        "--engine".into(),
+        "chromium".into(),
+        "--browser".into(),
+        env!("CARGO_BIN_EXE_revayat-test-tool").into(),
+        "--output-dir".into(),
+        output.as_os_str().to_owned(),
+    ]);
+    invoke(command, source.parent().context("source parent")?, marker)
 }
 
 #[test]
 fn public_build_junction_refusal_precedes_lint_and_renderer() -> Result<()> {
     let f = Fixture::new()?;
     let marker = f.root.join("renderer-started");
-    let control = Command::new(env!("CARGO_BIN_EXE_revayat-test-tool"))
-        .arg("--headless")
-        .env("REVAYAT_TEST_BROWSER_MARKER", &marker)
-        .output()?;
+    let control = invoke(
+        CommandSpec::new(env!("CARGO_BIN_EXE_revayat-test-tool")).args(["--headless"]),
+        &f.root,
+        &marker,
+    )?;
     ensure!(
-        control.status.code() == Some(42) && marker.is_file(),
+        control.code == 42 && marker.is_file(),
         "fake browser marker control did not execute"
     );
     fs::remove_file(&marker)?;
@@ -297,7 +326,7 @@ fn public_build_junction_refusal_precedes_lint_and_renderer() -> Result<()> {
     let lint = build(&source, &ordinary, &marker)?;
     let diagnostic = String::from_utf8_lossy(&lint.stderr);
     ensure!(
-        !lint.status.success() && diagnostic.contains("lint failed"),
+        !lint.success() && diagnostic.contains("lint failed"),
         "authored fixture must actually fail source lint: {diagnostic}"
     );
     ensure!(
@@ -311,7 +340,7 @@ fn public_build_junction_refusal_precedes_lint_and_renderer() -> Result<()> {
     );
     let diagnostic = String::from_utf8_lossy(&refused.stderr);
     ensure!(
-        !refused.status.success()
+        !refused.success()
             && diagnostic.contains("output path must not contain links or junctions"),
         "public CLI did not reject lexical junction: {diagnostic}"
     );

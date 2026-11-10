@@ -12,11 +12,16 @@ fn test_story_tree_is_walked_once_not_once_per_patch() {
     })
     .unwrap();
     assert_eq!(visits, vec![("word/document.xml".to_owned(), 300)]);
-    assert!(has_node(
-        &d::inspect_package(&f.output).unwrap(),
-        "word/document.xml",
-        "ترجمه 299"
-    ));
+    let report = d::inspect_package(&f.output).unwrap();
+    assert!(
+        report["text_nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["part"] == "word/document.xml"
+                && node["index"] == 299
+                && node["text"] == "ترجمه 299")
+    );
 }
 #[test]
 fn test_multistory_unsorted_edits_preserve_all_untouched_bytes() {
@@ -94,6 +99,25 @@ fn test_duplicate_addresses_and_invalid_characters_remain_rejected() {
     )
     .unwrap();
     assert!(d::load_json(&p).is_err());
+    let before = fs::read(&f.source).unwrap();
+    let raw_patch = fs::read(&p).unwrap();
+    use revayat_scientific::runtime::{CommandSpec, run};
+    let result = run(
+        &CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args([
+            std::ffi::OsStr::new("docx"),
+            std::ffi::OsStr::new("edit"),
+            f.source.as_os_str(),
+            f.output.as_os_str(),
+            std::ffi::OsStr::new("--patch"),
+            p.as_os_str(),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(result.code, 2);
+    assert_eq!(fs::read(&f.output).unwrap(), b"previous");
+    assert_eq!(fs::read(&f.source).unwrap(), before);
+    assert_eq!(fs::read(&p).unwrap(), raw_patch);
+    f.clean();
 }
 #[test]
 fn test_growing_part_limit_preserves_existing_delivery() {

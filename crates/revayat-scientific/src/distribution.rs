@@ -4,6 +4,8 @@ use crate::identity::{Fingerprint, ObjectId, file_identity, is_link, path_object
 use anyhow::{Context, Result, bail, ensure};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+#[path = "distribution_recovery.rs"]
+mod recovery;
 use std::{
     collections::{BTreeMap, HashSet},
     fs::{self, File, OpenOptions},
@@ -162,23 +164,30 @@ impl Payload {
             }
         }
         if let Some(binary) = binary {
-            ensure!(
-                !is_link(binary)?,
-                "distribution executable must be a real file"
-            );
-            let fingerprint = file_identity(binary, Some(MAX_PAYLOAD_BYTES))?;
-            total += fingerprint.size;
-            ensure!(total <= MAX_PAYLOAD_BYTES, "payload exceeds 64 MiB");
-            files.retain(|f| !f.relative.starts_with("bin"));
-            files.push(PayloadFile {
-                source: binary.to_owned(),
-                relative: PathBuf::from("bin").join(if cfg!(windows) {
+            let executables = [
+                (binary.to_owned(), if cfg!(windows) {
                     "revayat-scientific.exe"
                 } else {
                     "revayat-scientific"
                 }),
-                fingerprint,
-            });
+                #[cfg(unix)]
+                (binary.parent().context("distribution executable lacks parent")?
+                    .join("revayat-process-owner"), "revayat-process-owner"),
+            ];
+            for (path, name) in executables {
+                ensure!(
+                    !is_link(&path)? && path.is_file(),
+                    "distribution executable and required companion must be real files"
+                );
+                let fingerprint = file_identity(&path, Some(MAX_PAYLOAD_BYTES))?;
+                total += fingerprint.size;
+                ensure!(total <= MAX_PAYLOAD_BYTES, "payload exceeds 64 MiB");
+                files.push(PayloadFile {
+                    source: path,
+                    relative: PathBuf::from("bin").join(name),
+                    fingerprint,
+                });
+            }
         }
         let mut names = HashSet::new();
         ensure!(
@@ -267,11 +276,14 @@ pub enum InstallBoundary {
     BeforeCopy(usize),
     AfterCopy(usize),
     Staged(usize),
+    BeforeInitialJournal,
     BeforeJournal,
     AfterJournal,
     BeforeActivate(usize),
+    BeforeStageActivate(usize),
     AfterActivate(usize),
     BeforeRestore(usize),
+    BeforeBackupRestore(usize),
     AfterRestore(usize),
     BeforeCleanup,
     BeforeStageCleanup(usize),
@@ -422,12 +434,16 @@ pub fn install_observed(
             .unwrap()
             .join(format!(".revayat-install-recovery-{run_id}"));
         fs::create_dir(&root)?;
+        recovery = Some(recovery::Root {
+            identity: path_object_id(&root)?,
+            path: root.clone(),
+        });
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
         }
-        recovery = Some(root.clone());
+        recovery.as_ref().unwrap().verify()?;
         for target in &mut targets {
             fs::create_dir(&target.stage)?;
             target.stage_identity = Some(path_object_id(&target.stage)?);
@@ -439,6 +455,8 @@ pub fn install_observed(
                 .write_all(root.join("recovery.json").to_string_lossy().as_bytes())?;
             target._handle.sync_all()?;
         }
+        observe(InstallBoundary::BeforeInitialJournal, &root)?;
+        recovery.as_ref().unwrap().verify()?;
         journal(&root.join("recovery.json"), &targets)?;
         observe(InstallBoundary::BeforeJournal, &root)?;
         for (index, target) in targets.iter_mut().enumerate() {
@@ -447,6 +465,11 @@ pub fn install_observed(
                 let dest = target.stage.join(&row.relative);
                 fs::create_dir_all(dest.parent().unwrap())?;
                 fs::copy(&row.source, &dest)?;
+                #[cfg(unix)]
+                if row.relative.starts_with("bin") {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::set_permissions(&dest, fs::Permissions::from_mode(0o755))?;
+                }
                 ensure!(
                     file_identity(&dest, Some(MAX_PAYLOAD_BYTES))?.same_bytes(&row.fingerprint),
                     "staged payload differs from source"
@@ -464,7 +487,9 @@ pub fn install_observed(
             observe(InstallBoundary::Staged(index), &target.stage)?;
         }
         payload.verify()?;
+        recovery.as_ref().unwrap().verify()?;
         journal(&root.join("prepared.json"), &targets)?;
+        recovery.as_ref().unwrap().verify()?;
         fs::rename(root.join("prepared.json"), root.join("recovery.json"))?;
         observe(InstallBoundary::AfterJournal, &root)?;
         for (index, target) in targets.iter().enumerate() {
@@ -486,6 +511,10 @@ pub fn install_observed(
             if target.old.is_some() {
                 fs::rename(&target.destination, &target.backup)?;
             }
+            observe(
+                InstallBoundary::BeforeStageActivate(index),
+                &target.destination,
+            )?;
             fs::rename(&target.stage, &target.destination)?;
             observe(InstallBoundary::AfterActivate(index), &target.destination)?;
         }
@@ -499,54 +528,7 @@ pub fn install_observed(
         Ok(())
     })();
     if let Err(error) = attempt {
-        let mut unresolved = false;
-        for (index, target) in targets.iter().enumerate().rev() {
-            let restored = (|| -> Result<()> {
-                observe(InstallBoundary::BeforeRestore(index), &target.destination)?;
-                directory_path(&target.destination)?;
-                directory_path(&target.stage)?;
-                directory_path(&target.backup)?;
-                if target.prepared.is_some() && same(&target.destination, &target.prepared) {
-                    ensure!(!target.stage.exists(), "stage occupied during rollback");
-                    fs::rename(&target.destination, &target.stage)?;
-                }
-                if target.old.is_some() && !same(&target.destination, &target.old) {
-                    ensure!(
-                        !target.destination.exists() && same(&target.backup, &target.old),
-                        "cannot safely restore previous installation"
-                    );
-                    fs::rename(&target.backup, &target.destination)?;
-                }
-                observe(InstallBoundary::AfterRestore(index), &target.destination)?;
-                ensure!(
-                    same(&target.destination, &target.old),
-                    "installation rollback incomplete"
-                );
-                Ok(())
-            })();
-            if restored.is_err() && !same(&target.destination, &target.old) {
-                unresolved = true;
-            }
-        }
-        for target in &targets {
-            if path_object_id(&target.lock).ok() != Some(target.lock_identity) {
-                unresolved = true;
-            }
-        }
-        if unresolved {
-            bail!(
-                "installation recovery required; preserved complete journal, backups, stages and locks at {}: {error}",
-                recovery.as_ref().map_or_else(
-                    || "installation target parents".into(),
-                    |p| p.display().to_string()
-                )
-            );
-        }
-        for (index, target) in targets.iter().enumerate() {
-            observe(InstallBoundary::BeforeStageCleanup(index), &target.stage)?;
-        }
-        cleanup(&targets, recovery.as_deref(), &created)?;
-        return Err(error);
+        return recovery::rollback(error, &targets, recovery.as_ref(), &created, &mut observe);
     }
     let backups = targets
         .iter()
@@ -556,37 +538,8 @@ pub fn install_observed(
     for (index, target) in targets.iter().enumerate() {
         observe(InstallBoundary::BeforeStageCleanup(index), &target.stage)?;
     }
-    cleanup(&targets, recovery.as_deref(), &[])?;
+    recovery::cleanup(&targets, recovery.as_ref(), &[])?;
     Ok(backups)
-}
-fn cleanup(
-    targets: &[Target],
-    recovery: Option<&Path>,
-    created: &[(PathBuf, ObjectId)],
-) -> Result<()> {
-    for target in targets {
-        if target.stage.exists() {
-            ensure!(
-                path_object_id(&target.stage).ok() == target.stage_identity,
-                "stage ownership changed; recovery required"
-            );
-            fs::remove_dir_all(&target.stage)?;
-        }
-        ensure!(
-            path_object_id(&target.lock)? == target.lock_identity,
-            "lock ownership changed; recovery required"
-        );
-        fs::remove_file(&target.lock)?;
-    }
-    if let Some(root) = recovery {
-        fs::remove_dir_all(root)?;
-    }
-    for (path, id) in created.iter().rev() {
-        if path_object_id(path).ok() == Some(*id) {
-            let _ = fs::remove_dir(path);
-        }
-    }
-    Ok(())
 }
 pub fn repository_root() -> Result<PathBuf> {
     if let Some(root) = std::env::var_os("REVAYAT_REPOSITORY") {

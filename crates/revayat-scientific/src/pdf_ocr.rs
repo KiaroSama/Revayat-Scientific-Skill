@@ -1,7 +1,7 @@
 //! Tesseract text-only grafting. Every accepted painting instruction is invisible.
 use crate::{
     pdf, pdf_content, pdf_forms, pdf_navigation as nav,
-    runtime::{CommandSpec, run},
+    runtime::{CommandOutput, CommandSpec, run},
 };
 use anyhow::{Context, Result, bail, ensure};
 use lopdf::{
@@ -127,6 +127,18 @@ pub fn ocr_pdf(
     dpi: u32,
     timeout: u64,
 ) -> Result<()> {
+    ocr_with_tools(source, destination, language, dpi, timeout, tesseract, run)
+}
+/// The real tool-discovery and bounded command boundaries, without global overrides.
+pub fn ocr_with_tools(
+    source: &Path,
+    destination: &Path,
+    language: &str,
+    dpi: u32,
+    timeout: u64,
+    find: impl FnOnce() -> Result<PathBuf>,
+    mut execute: impl FnMut(&CommandSpec) -> Result<CommandOutput>,
+) -> Result<()> {
     ensure!(
         language.len() <= 256
             && regex::Regex::new(r"^[A-Za-z][A-Za-z0-9_]*(?:\+[A-Za-z][A-Za-z0-9_]*)*$")?
@@ -139,11 +151,11 @@ pub fn ocr_pdf(
     );
     let destination = crate::publication::validate_destination(destination, &[source.to_owned()])?;
     let _ = pdf::open_pdf(source, true)?;
-    let program = tesseract()?;
+    let program = find()?;
     let mut spec = CommandSpec::new(program.as_os_str());
     spec.args = vec!["--list-langs".into()];
     spec.timeout = Duration::from_secs(timeout.min(30));
-    let result = run(&spec)?;
+    let result = execute(&spec)?;
     ensure!(result.success(), "Tesseract language query failed");
     let stdout = result.stdout_text();
     let installed: std::collections::HashSet<_> = stdout.lines().map(str::trim).collect();
@@ -185,7 +197,7 @@ pub fn ocr_pdf(
             "textonly_pdf=1".into(),
             "pdf".into(),
         ];
-        let result = run(&spec)?;
+        let result = execute(&spec)?;
         ensure!(
             result.success() && layer_path.is_file(),
             "Tesseract did not produce fresh text-only PDF"

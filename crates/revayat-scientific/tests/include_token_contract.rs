@@ -118,5 +118,6 @@ fn test_real_compiler_and_source_closure_agree_on_numeric_input() -> Result<()> 
             .text
             .contains("IncludedMarker")
     );
+    assert_eq!(fs::read_to_string(root.join("2.tex"))?, "IncludedMarker\n");
     Ok(())
 }

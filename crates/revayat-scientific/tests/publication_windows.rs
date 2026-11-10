@@ -3,7 +3,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use revayat_scientific::{
     identity::{object_id, path_object_id},
-    publication::{Boundary, publish_files, publish_observed},
+    publication::{Boundary, RecoveryFailures, RetainedPrimary, publish_files, publish_observed},
 };
 use std::{
     collections::BTreeSet,
@@ -298,6 +298,49 @@ fn test_inherited_preparation_refuses_substituted_foreign_temporary_files() -> R
         assert_eq!(fs::read(path)?, contents);
         assert_eq!(fs::read(stage)?, b"candidate");
         assert_eq!(fs::read(destination)?, b"approved");
+    }
+    // A real no-delete-sharing handle makes owned-candidate removal fail after
+    // preparation fails. Keep both errors without exposing their private text.
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = tempfile::tempdir()?;
+        let stage = root.path().join("stage");
+        let destination = root.path().join("dest");
+        fs::write(&stage, b"candidate")?;
+        fs::write(&destination, b"approved")?;
+        let mut held = None;
+        let mut candidate = None;
+        let error = publish_observed(
+            &[(stage.clone(), destination.clone())],
+            &[],
+            None,
+            |event, path| {
+                if event == Boundary::InheritedCandidateReady {
+                    held = Some(File::options().read(true).share_mode(1 | 2).open(path)?);
+                    candidate = Some((path.to_owned(), path_object_id(path)?));
+                    bail!("private preparation failure at {}", root.path().display());
+                }
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        let (path, id) = candidate.context("inherited candidate boundary did not execute")?;
+        assert_eq!(path_object_id(&path)?, id);
+        assert_eq!(fs::read(&path)?, b"candidate");
+        assert_eq!(fs::read(&stage)?, b"candidate");
+        assert_eq!(fs::read(&destination)?, b"approved");
+        assert!(error.downcast_ref::<RetainedPrimary>().unwrap().0.to_string()
+            .contains("private preparation failure"));
+        let secondary = &error.downcast_ref::<RecoveryFailures>().unwrap().0;
+        assert_eq!(secondary.len(), 1);
+        assert_eq!(secondary[0].downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::PermissionDenied);
+        let displayed = format!("{error:#}");
+        assert!(displayed.contains("cleanup needs recovery"));
+        assert!(!displayed.contains("private preparation failure"));
+        assert!(!displayed.contains(root.path().to_str().unwrap()));
+        drop(held);
+        fs::remove_file(path)?;
     }
     Ok(())
 }

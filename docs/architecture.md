@@ -1,6 +1,6 @@
 # Architecture
 
-Revayat contains one Rust workspace, a native command-line executable, a separate native Windows registry authority, an agent skill, document templates and reference material. The host agent owns translation, scientific meaning, linguistic research and visual review. Helpers report observed mechanical facts.
+Revayat contains one Rust workspace, a native command-line executable with a required Unix process-owner companion, a separate native Windows registry authority, an agent skill, document templates and reference material. The host agent owns translation, scientific meaning, linguistic research and visual review. Helpers report observed mechanical facts.
 
 ## Native implementation
 
@@ -17,7 +17,7 @@ Revayat contains one Rust workspace, a native command-line executable, a separat
 | `distribution`, `distribution_paths`, `distribution_package` | Complete native payloads, installation and source/Git-safe archives |
 | `ci`, `ci_tools`, `validation`, `migration` | Truthful status reporting, workflow/history validation and complete test migration inventory |
 
-Modules are under [crates/revayat-scientific/src](../crates/revayat-scientific/src). Rust source files remain bounded to 800 lines. Cargo owns dependencies and the lockfile; product execution does not dispatch through another language interpreter.
+Modules are under [crates/revayat-scientific/src](../crates/revayat-scientific/src). Each source/test file must remain strictly below 800 lines (at most 799); a necessary addition to a near-700-line file requires cohesive extraction first. Source audit reports comparable historical/current physical source/test lines without a total-size quota. Proven dead/duplicate removal needs separate caller and behavior-preservation review plus actual tests; line counts alone are not quality proof. Cargo owns dependencies and the lockfile; product execution does not dispatch through another language interpreter.
 
 ## Source and document boundaries
 
@@ -29,22 +29,22 @@ DOCX edits target original story offsets, inspect package identity and preserve 
 
 The Rust DevTools client renders HTML using a real sandboxed Chromium-family browser and a restricted job-resource policy. TeX runs inside a Linux Docker/Podman image with a Rust entrypoint, fixed compiler arguments and observed containment controls. A native host compiler is not a production fallback. Poppler, Tesseract and LibreOffice are optional external native tools for their documented verification or conversion operations.
 
+The Unix runtime uses the dedicated companion and a private lifeline/accounting protocol for cooperative nested ownership. It holds the unreaped direct-child identity until owned process-group cleanup, waits for registered descendants before container receipt cleanup, and preserves cleanup uncertainty as failure. Generic ownership records use a private temporary root rather than requiring a writable working directory; explicit inherited container scopes retain their hierarchy. Descendants that deliberately escape with a new session are outside this cooperative contract. Source review is complete for the narrow correction batch; actual hosted IPC/timeout/descendant/container proof remains unrun.
+
+The Windows native entry now has source-authored outer-owned durable run state and profile intent. The worker receives validated state locators, not a reaped/gate certificate. Runtime issues a nonconstructible recovery capability only after owned-job termination/accounting, direct-child wait and capture joins; the surviving owner performs profile recovery afterward. Unknown finalization retains state, and this partial profile path is not full LPAC suite, lease or trace cleanup proof. Hosted verification is still pending.
+
 Source revisions, expected outputs and resource decisions are checked across destructive boundaries. Outputs are staged before a complete delivery is published. Cooperative locks and snapshots detect bounded classes of concurrent changes; this is not a globally atomic transaction or a hostile-kernel security proof. Unresolved restoration preserves journals, previous bytes, stages and locks.
 
 ## Skill and installation
 
-The distributable skill contains `SKILL.md`, references, assets, agent metadata, GPL notices and a native executable in `bin/`. Packaging and installation share the same bounded payload. They refuse linked source entries, implementation/source overlap, Git administration, case collisions and known hardlink aliases. Whole-target installations stage every selected host before activation and retain previous editions outside skill discovery.
+The distributable skill contains `SKILL.md`, eligible references/assets, agent metadata, GPL notices and the native executable in `bin/`. Linux/macOS also package its adjacent `revayat-process-owner`; both must come from the same build/revision. Windows uses its native Job path without that companion. Adjacency/type/byte checks do not provide a signed version handshake. Packaging and installation share the same bounded payload. They refuse linked source entries, implementation/source overlap, Git administration, case collisions and known hardlink aliases. Whole-target installations stage every selected host before activation and retain previous editions outside skill discovery.
 
 Original documents, terms, inventories, figure manifests, translation logs and deliverables belong to a job directory outside the installed skill. Translation logging remains required even when no helper command runs.
-## Preparation runtime and notice bounds
-
-Source-built Unix tools require adjacent same-build `revayat-process-owner` and private lifeline/accounting for cooperative nested cleanup; Windows retains native Job ownership. Generic ownership records use private temporary storage rather than requiring writable CWD. Descendants deliberately escaping into new sessions are outside this cooperative process-group contract. Companion-aware package/install integration is outside this preparation snapshot and remains unverified.
-
-Explicit approved manual preparation defaults off and generates/checks only lock/notices inputs, publishing exactly two files with revision/run/attempt artifact provenance. Ordinary validation/status jobs are excluded, never replaced with fabricated green results; complete locked final verification remains mandatory. Notice processing bounds logical occurrence material at256MiB, unique shared bodies at64MiB and rendered output at64MiB before admitted growth/retention, not allocator RSS. Exact legal bytes/provenance survive deduplication; overflow fails without partial bundle publication.
-
 
 ## Verification
 
-The migration inventory binds every one of the 583 original public test IDs to a registered Rust test; a separate 37-check inventory retains the standalone upstream tier. Portable CI runs the native suite on Linux, macOS and Windows. Required rendering tests explicitly declare native prerequisites and are executed in the equipped scientific tier with `--include-ignored`. Separate Linux/Windows security jobs, Rust CodeQL analysis, dependency review, workflow security and strict Cargo audit remain required. A missing or failed job cannot produce a green aggregate status.
+The current maps retain 583 original public test IDs and Rust registration counterparts; separate strict censuses record 37 upstream checks, 41 standalone security leaves and 14 original Rust verifier tests. Additional source censuses retain 53 ordered managed stage invocations plus three direct post-bootstrap checks, 41 nested oracle rows, six discovery checks, nineteen runtime-preparation requirement sites and six coverage scenarios. The latter censuses explicitly record missing counterpart or witness-producer evidence rather than inventing independent test registrations. Registration is not behavioral equivalence or execution. Windows ordered bootstrap invocations, overlapping check/helper declarations and separate registry-oracle input cases retain their own obligation and execution relationships; native diagnostic contracts are still being restored and reviewed, not declared obsolete.
+
+The migration command distinguishes registration-only from scoped execution evidence. Its intermediate evidence validation does not certify complete parity across every inventory, platform and equipped tier. Full trusted runner/result integration and final hosted acceptance remain unfinished. CI must cover Linux/macOS/Windows debug/release and portable cases, required equipped rendering, native Linux/Windows security, CodeQL, dependency/workflow checks and strict Cargo audit. Actual current-head reports, not this architecture description or an ancestor's badge, establish which checks executed and passed.
 
 Commit identity checks inspect stored author/committer addresses with replacements disabled, reject shallow/grafted ancestry and permit only exact documented service identities. A base restricts inspection to introduced commits and does not certify earlier history. Display mailmaps do not alter the checked values.
