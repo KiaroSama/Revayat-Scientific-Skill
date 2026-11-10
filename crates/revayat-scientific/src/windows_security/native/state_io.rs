@@ -305,10 +305,37 @@ pub(super) fn create_private(path: &Path, user: &str) -> Result<()> {
     };
     finish(
         (|| {
-            ensure!(
-                success != 0,
-                "create new private native state failed winerror={code}"
-            );
+            if success == 0 {
+                // Failure-only probes distinguish a parent access refusal from a target
+                // created before Win32 reported failure. They never authorize reuse or
+                // retry and disclose only fixed numeric metadata, never the run locator.
+                let target = std::fs::symlink_metadata(path);
+                let target_attributes = target.as_ref().map(|value| value.file_attributes()).ok();
+                let target_error = target.err().and_then(|error| error.raw_os_error());
+                let parent = wide(path.parent().context("native state parent absent")?);
+                let raw = unsafe {
+                    CreateFileW(
+                        parent.as_ptr(),
+                        0x100084, // SYNCHRONIZE | FILE_READ_ATTRIBUTES | FILE_ADD_SUBDIRECTORY.
+                        7,
+                        std::ptr::null(),
+                        3,
+                        0x02200000,
+                        null_mut(),
+                    )
+                };
+                let (parent_error, cleanup) = if raw.is_null() || raw as isize == -1 {
+                    (unsafe { GetLastError() }, Ok(()))
+                } else {
+                    (0, close(unsafe { File::from_raw_handle(raw) }))
+                };
+                return finish(
+                    Err(anyhow::anyhow!(
+                        "create new private native state failed winerror={code} target_attributes={target_attributes:?} target_metadata_winerror={target_error:?} parent_create_access_winerror={parent_error}"
+                    )),
+                    cleanup,
+                );
+            }
             Ok(())
         })(),
         descriptor.close(),

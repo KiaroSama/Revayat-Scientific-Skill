@@ -1,6 +1,94 @@
 //! Durable profile intent and private state contracts. Native execution is hosted only.
 use super::*;
 
+fn native_private_child(parent: &Pin, name: &str, user: &str) -> Result<()> {
+    use registry_authority::native::{Attributes, Unicode};
+    use std::os::windows::io::AsRawHandle;
+
+    #[repr(C)]
+    struct IoStatus {
+        status: usize,
+        information: usize,
+    }
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn NtCreateFile(
+            handle: *mut Handle,
+            access: u32,
+            attributes: *const Attributes,
+            io: *mut IoStatus,
+            allocation: Handle,
+            flags: u32,
+            share: u32,
+            disposition: u32,
+            options: u32,
+            ea: Handle,
+            ea_length: u32,
+        ) -> i32;
+    }
+    parent.require()?;
+    let path = parent.path.join(name);
+    let name = wide(name);
+    let text = Unicode {
+        length: ((name.len() - 1) * 2) as u16,
+        maximum: (name.len() * 2) as u16,
+        buffer: name.as_ptr(),
+    };
+    let mut descriptor = Descriptor::new(&private_sddl(user, true)?)?;
+    let attributes = Attributes {
+        length: size_of::<Attributes>() as u32,
+        root: parent.file.as_ref().unwrap().as_raw_handle(),
+        name: &text,
+        flags: 0x1040,
+        descriptor: descriptor.0,
+        qos: null_mut(),
+    };
+    let mut raw = null_mut();
+    let mut io = IoStatus {
+        status: usize::MAX,
+        information: 0,
+    };
+    let returned = unsafe {
+        NtCreateFile(
+            &mut raw,
+            0x120080,
+            &attributes,
+            &mut io,
+            null_mut(),
+            0x80,
+            3,
+            2,
+            0x200021,
+            null_mut(),
+            0,
+        )
+    };
+    if returned == 0x103 {
+        std::process::abort();
+    }
+    let result = (|| {
+        ensure!(
+            returned == 0
+                && io.status as u32 == 0
+                && io.information == 2
+                && !raw.is_null()
+                && raw as isize != -1,
+            "native private child returned={:08X} completed={:08X} information={}",
+            returned as u32,
+            io.status as u32,
+            io.information
+        );
+        let pin = Pin::open(&path, true)?;
+        private(pin.file.as_ref().unwrap(), user, true)
+    })();
+    let cleanup = if raw.is_null() || raw as isize == -1 || unsafe { CloseHandle(raw) } != 0 {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("native private child handle close failed"))
+    };
+    finish(finish(result, cleanup), descriptor.close())
+}
+
 #[test]
 fn original_intent_is_exact_three_utf8_lines_and_run_sid_bound() {
     let run = "0123456789abcdef0123456789abcdef";
@@ -45,6 +133,8 @@ fn original_intent_is_exact_three_utf8_lines_and_run_sid_bound() {
 
 #[test]
 fn real_private_state_exists_before_worker_and_refuses_tampered_locator_or_receipt() {
+    use std::os::windows::fs::OpenOptionsExt;
+
     let root = tempfile::tempdir().unwrap();
     let mut owner = NativeRunOwner::create(root.path()).unwrap();
     assert_eq!(owner.run_id().len(), 32);
@@ -80,6 +170,20 @@ fn real_private_state_exists_before_worker_and_refuses_tampered_locator_or_recei
     let receipt = owner.state_path().join("profile.receipt");
     assert!(fs::OpenOptions::new().write(true).open(&receipt).is_err());
     assert!(fs::remove_file(&receipt).is_err());
+    for path in [
+        owner.state_path().to_owned(),
+        owner.state_path().join("owner.json"),
+        receipt,
+    ] {
+        for access in [0x40000, 0x80000] {
+            let error = fs::OpenOptions::new()
+                .access_mode(access)
+                .custom_flags(0x02200000)
+                .open(&path)
+                .unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(5));
+        }
+    }
     drop(view);
     let state = owner.state_path().to_path_buf();
     owner.close().unwrap();
@@ -166,6 +270,24 @@ fn private_state_ownership_never_delegates_to_package_or_inherited_acl() {
     assert!(text.contains(&format!("(A;OICI;0x001F01FF;;;{user})")));
     assert!(!text.contains("S-1-15-") && !text.contains(";;;WD)") && !text.contains(";;;BA)"));
     assert!(private_sddl("S-1-05-21", true).is_err());
+    let root = tempfile::tempdir().unwrap();
+    let host = current_user_sid().unwrap();
+    let parent = root.path().join("private-parent");
+    create_private(&parent, &host).unwrap();
+    let policy = (|| {
+        let pin = Pin::open(&parent, true)?;
+        private(pin.file.as_ref().unwrap(), &host, true)
+    })();
+    let before = create_private(&parent.join("before-pins"), &host);
+    let pins = anchors(&parent.join("during-pins")).unwrap();
+    let during = create_private(&parent.join("during-pins"), &host);
+    let native = native_private_child(pins.last().unwrap(), "native-pins", &host);
+    drop(pins);
+    let after = create_private(&parent.join("after-pins"), &host);
+    assert!(
+        policy.is_ok() && before.is_ok() && during.is_ok() && native.is_ok() && after.is_ok(),
+        "private child creation parent_policy={policy:?} before={before:?} during={during:?} native={native:?} after={after:?}"
+    );
 }
 
 #[test]
