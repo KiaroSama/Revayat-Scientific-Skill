@@ -10,7 +10,7 @@ use std::{
         ffi::OsStringExt,
         net::{UnixListener, UnixStream},
     },
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},

@@ -1,7 +1,7 @@
 //! Caller-side lifeline and interactive process handle for the shared Unix guardian.
 use super::{LIMIT, Request, Response, companion, transfer};
 use crate::runtime::{CommandOutput, CommandSpec, DeadlineExceeded};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},

@@ -1,6 +1,6 @@
 //! Direct-child PGID ownership inside the dedicated cooperative Unix guardian.
 use super::{CommandOutput, CommandSpec, DeadlineExceeded};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use std::{
     io::{Read, Write},
     os::{fd::AsRawFd, unix::process::CommandExt},
