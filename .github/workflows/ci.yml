@@ -49,10 +49,10 @@ jobs:
         run: cargo build --locked -p revayat-scientific --bin license-notices --bin revayat-process-owner
       - name: Generate complete notices from the resolved exact graph
         timeout-minutes: 5
-        run: cargo run --locked --bin license-notices -- --root .
+        run: target/debug/license-notices --root .
       - name: Require byte-exact deterministic notices
         timeout-minutes: 5
-        run: cargo run --locked --bin license-notices -- --root . --check
+        run: target/debug/license-notices --root . --check
       - name: Require unchanged resolution after notice generation
         timeout-minutes: 5
         run: cargo update --workspace --locked
@@ -83,7 +83,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: cargo run --locked --bin revayat-scientific -- ci-status pending
+        run: target/debug/revayat-scientific ci-status pending
   security:
     if: ${{ !inputs.prepare_artifacts }}
     uses: $/.github/workflows/security-ci.yml
@@ -127,38 +127,38 @@ jobs:
         run: brew install poppler
       - name: Prepare checksum-pinned hosted Windows Poppler
         if: runner.os == 'Windows'
-        run: cargo run --locked --bin revayat-scientific -- check-workflows prepare-poppler
+        run: target/debug/revayat-scientific check-workflows prepare-poppler
       - name: Verify actual Poppler raster readiness
-        run: cargo run --locked --bin revayat-scientific -- check-workflows poppler-preflight
+        run: target/debug/revayat-scientific check-workflows poppler-preflight
       - name: Collect every portable debug harness outcome
-        run: cargo run --locked --bin revayat-test-runner -- --tier portable --profile debug --output execution/portable-debug.json --timeout 1800
+        run: target/debug/revayat-test-runner --tier portable --profile debug --output execution/portable-debug.json --timeout 1800
       - name: Select and verify the discovered hosted Windows browser
         if: runner.os == 'Windows'
-        run: cargo run --locked --bin revayat-scientific -- check-workflows select-browser
+        run: target/debug/revayat-scientific check-workflows select-browser
       - name: Prepare licensed fonts for native Windows renderer
         if: runner.os == 'Windows'
-        run: cargo run --locked --bin revayat-scientific -- fonts fonts
+        run: target/debug/revayat-scientific fonts fonts
       - name: Collect required macOS Poppler crop behavior
         if: ${{ always() && !cancelled() && runner.os == 'macOS' }}
-        run: cargo run --locked --bin revayat-test-runner -- --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 900
+        run: target/debug/revayat-test-runner --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 900
       - name: Collect Windows crop and actual rendering preservation
         if: ${{ always() && !cancelled() && runner.os == 'Windows' }}
         env:
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: cargo run --locked --bin revayat-test-runner -- --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 1200
+        run: target/debug/revayat-test-runner --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 1200
       - name: Audit all public, upstream and standalone security scenarios
-        run: cargo run --locked --bin revayat-scientific -- migration-check
+        run: target/debug/revayat-scientific migration-check
       - name: Validate UTF-8, metadata, local links and native skill layout
-        run: cargo run --locked --bin revayat-scientific -- validate
+        run: target/debug/revayat-scientific validate
       - name: Build release executable on every operating system
         if: ${{ always() && !cancelled() }}
         run: cargo build --locked --release --workspace --bins
       - name: Collect every portable release harness outcome
         if: ${{ always() && !cancelled() }}
-        run: cargo run --locked --bin revayat-test-runner -- --tier portable --profile release --output execution/portable-release.json --timeout 1800
+        run: target/release/revayat-test-runner --tier portable --profile release --output execution/portable-release.json --timeout 1800
       - name: Reclaim checksum-pinned Windows Poppler
         if: ${{ always() && runner.os == 'Windows' }}
-        run: cargo run --locked --bin revayat-scientific -- check-workflows cleanup-poppler
+        run: target/debug/revayat-scientific check-workflows cleanup-poppler
       - name: Preserve profile-bound execution reports
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -167,7 +167,7 @@ jobs:
           if-no-files-found: error
           path: execution/*.json
       - name: Package the complete native installed workflow
-        run: cargo run --locked --release --bin revayat-scientific -- package
+        run: target/release/revayat-scientific package
       - name: Preserve native release and complete skill archive
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -208,13 +208,13 @@ jobs:
       - name: Build native document tools
         run: cargo build --locked --workspace --all-targets
       - name: Select the explicit hosted browser without fallback
-        run: cargo run --locked --bin revayat-scientific -- check-workflows select-browser
+        run: target/debug/revayat-scientific check-workflows select-browser
       - name: Verify explicit hosted browser identity and sandboxed readiness
-        run: cargo run --locked --bin revayat-scientific -- check-workflows browser-preflight
+        run: target/debug/revayat-scientific check-workflows browser-preflight
       - name: Install required native workflow regression checker
-        run: cargo run --locked --bin revayat-scientific -- check-workflows prepare-actionlint
+        run: target/debug/revayat-scientific check-workflows prepare-actionlint
       - name: Prepare licensed Persian font pair
-        run: cargo run --locked --bin revayat-scientific -- fonts skills/revayat-scientific/assets/fonts
+        run: target/debug/revayat-scientific fonts skills/revayat-scientific/assets/fonts
       - name: Build isolated Rust-supervised TeX toolchain
         timeout-minutes: 20
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 .
@@ -222,7 +222,7 @@ jobs:
         timeout-minutes: 25
         env:
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
-        run: cargo run --locked --bin revayat-test-runner -- --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 1200
+        run: target/debug/revayat-test-runner --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 1200
       - name: Preserve scientific execution report even on test failure
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -231,7 +231,7 @@ jobs:
           if-no-files-found: error
           path: execution/*.json
       - name: Verify complete migration inventory with scientific tests registered
-        run: cargo run --locked --bin revayat-scientific -- migration-check
+        run: target/debug/revayat-scientific migration-check
       - name: Reclaim the verified owned workflow checker
         if: ${{ always() }}
         run: target/debug/revayat-scientific check-workflows cleanup-actionlint
@@ -264,9 +264,9 @@ jobs:
           IDENTITY_BASE: ${{ inputs.base_ref || github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: cargo run --locked --bin revayat-scientific -- check-commit-identity --ci-base
+        run: target/debug/revayat-scientific check-commit-identity --ci-base
       - name: Audit tracked Rust-only sources and comparable size
-        run: cargo run --locked --bin revayat-scientific -- check-workflows source-audit
+        run: target/debug/revayat-scientific check-workflows source-audit
       - name: Native formatting checks
         run: cargo fmt --all -- --check
       - name: Native lint checks
@@ -274,7 +274,7 @@ jobs:
       - name: Fetch the complete locked cross-platform dependency graph
         run: cargo fetch --locked
       - name: Verify complete third-party license and copyright notices
-        run: cargo run --locked --bin license-notices -- --check
+        run: target/debug/license-notices --check
       - name: Cache pinned native quality tools
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -283,13 +283,13 @@ jobs:
             ~/.cargo/bin/zizmor
           key: native-quality-${{ runner.os }}-audit0.23.0-zizmor1.32.0-actionlint1.7.12
       - name: Install verified pinned dependency and workflow security scanners
-        run: cargo run --locked --bin revayat-scientific -- --timeout 1800 check-workflows prepare-scanners
+        run: target/debug/revayat-scientific --timeout 1800 check-workflows prepare-scanners
       - name: Verify and install pinned official actionlint binary
-        run: cargo run --locked --bin revayat-scientific -- check-workflows prepare-actionlint
+        run: target/debug/revayat-scientific check-workflows prepare-actionlint
       - name: Workflow regression checks
         run: cargo test --locked --test workflow_lint -- --ignored --test-threads=1
       - name: Workflow syntax and local callee contracts
-        run: cargo run --locked --bin revayat-scientific -- check-workflows
+        run: target/debug/revayat-scientific check-workflows
       - name: Workflow security checks
         run: zizmor --offline .github/workflows
       - name: Strict native runtime and development dependency audit
@@ -326,16 +326,16 @@ jobs:
       - name: Build report reconciler and owned process companion
         run: cargo build --locked --workspace --bins
       - name: Require all eleven scopes and full public baseline coverage
-        run: cargo run --locked --bin revayat-test-runner -- --aggregate --ledger tests/behavior/public-B01.json --ledger tests/behavior/public-B02.json --ledger tests/behavior/public-B03.json --ledger tests/behavior/public-B04.json --ledger tests/behavior/public-B05.json --ledger tests/behavior/public-B06.json --ledger tests/behavior/public-B07.json --ledger tests/behavior/public-B08.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json --event-report execution-input/execution-ubuntu-latest/oracle-debug.json --event-report execution-input/execution-ubuntu-latest/oracle-release.json --event-report execution-input/execution-macos-latest/oracle-debug.json --event-report execution-input/execution-macos-latest/oracle-release.json --event-report execution-input/execution-windows-latest/oracle-debug.json --event-report execution-input/execution-windows-latest/oracle-release.json
+        run: target/debug/revayat-test-runner --aggregate --ledger tests/behavior/public-B01.json --ledger tests/behavior/public-B02.json --ledger tests/behavior/public-B03.json --ledger tests/behavior/public-B04.json --ledger tests/behavior/public-B05.json --ledger tests/behavior/public-B06.json --ledger tests/behavior/public-B07.json --ledger tests/behavior/public-B08.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json --event-report execution-input/execution-ubuntu-latest/oracle-debug.json --event-report execution-input/execution-ubuntu-latest/oracle-release.json --event-report execution-input/execution-macos-latest/oracle-debug.json --event-report execution-input/execution-macos-latest/oracle-release.json --event-report execution-input/execution-windows-latest/oracle-debug.json --event-report execution-input/execution-windows-latest/oracle-release.json
       - name: Require full upstream baseline coverage from the same eleven scopes
         if: ${{ always() }}
-        run: cargo run --locked --bin revayat-test-runner -- --aggregate --census upstream --ledger tests/behavior/upstream.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
+        run: target/debug/revayat-test-runner --aggregate --census upstream --ledger tests/behavior/upstream.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
       - name: Require all fourteen verifier tests from actual reused harness reports
         if: ${{ always() }}
-        run: cargo run --locked --bin revayat-test-runner -- --aggregate --census verifier --ledger tests/behavior/verifier.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
+        run: target/debug/revayat-test-runner --aggregate --census verifier --ledger tests/behavior/verifier.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
       - name: Require every standalone security leaf from actual reused reports
         if: ${{ always() }}
-        run: cargo run --locked --bin revayat-test-runner -- --aggregate --census security --ledger tests/behavior/security.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
+        run: target/debug/revayat-test-runner --aggregate --census security --ledger tests/behavior/security.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
   status-final:
     if: ${{ always() && !cancelled() && !inputs.prepare_artifacts }}
     needs: [status-pending, security, codeql, dependency-review, portable, scientific, quality, behavior-aggregate]
@@ -356,4 +356,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: cargo run --locked --bin revayat-scientific -- ci-status final
+        run: target/debug/revayat-scientific ci-status final

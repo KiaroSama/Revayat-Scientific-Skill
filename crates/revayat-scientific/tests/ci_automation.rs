@@ -194,7 +194,7 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
     let collect = steps
         .iter()
         .filter_map(|step| step["run"].as_str())
-        .filter(|run| run.contains("--bin revayat-test-runner"))
+        .filter(|run| run.contains("revayat-test-runner"))
         .collect::<Vec<_>>();
     assert_eq!(collect.len(), 4); // portable debug/release plus Mac/Windows equipped conditions.
     let aggregate = workflow["jobs"]["behavior-aggregate"]["steps"]
@@ -295,8 +295,8 @@ fn artifact_preparation_is_opt_in_and_never_substitutes_for_validation() {
             "cargo update --workspace --locked",
             "cargo fetch --locked",
             "cargo build --locked -p revayat-scientific --bin license-notices --bin revayat-process-owner",
-            "cargo run --locked --bin license-notices -- --root .",
-            "cargo run --locked --bin license-notices -- --root . --check",
+            "target/debug/license-notices --root .",
+            "target/debug/license-notices --root . --check",
             "cargo update --workspace --locked",
         ]
     );
@@ -339,7 +339,12 @@ fn artifact_preparation_is_opt_in_and_never_substitutes_for_validation() {
 
 #[test]
 fn runtime_consumers_build_the_unix_companion_before_first_use() {
-    for (filename, job) in [("ci", "quality"), ("dependency-review", "review")] {
+    for (filename, job) in [
+        ("ci", "quality"),
+        ("ci", "status-pending"),
+        ("ci", "status-final"),
+        ("dependency-review", "review"),
+    ] {
         let source =
             fs::read_to_string(root().join(format!(".github/workflows/{filename}.yml"))).unwrap();
         let workflow: serde_json::Value = serde_saphyr::from_str(&source).unwrap();
@@ -359,7 +364,7 @@ fn runtime_consumers_build_the_unix_companion_before_first_use() {
             .unwrap();
         let first_consumer = commands
             .iter()
-            .position(|run| run.starts_with("cargo run"))
+            .position(|run| run.starts_with("target/debug/"))
             .unwrap();
         assert!(build < first_consumer, "{filename}/{job}");
     }

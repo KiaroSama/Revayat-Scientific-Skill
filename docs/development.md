@@ -27,6 +27,12 @@ so the combined native payload remains under its unchanged 64 MiB admission
 limit. To debug with symbols, use a separate Cargo profile; that executable
 may exceed the installable payload limit.
 
+CI executes those built binaries directly. Repeated `cargo run` invocations
+can select a different dependency feature union from `--all-targets` and trigger
+unnecessary recompilation, including during cancellation cleanup. Release test
+collection uses the release runner and adjacent release process owner, so a debug
+build failure cannot make it borrow a missing debug companion.
+
 ## Hosted checks
 
 CI runs for pushes, pull requests and manual dispatch. No path filter exempts
