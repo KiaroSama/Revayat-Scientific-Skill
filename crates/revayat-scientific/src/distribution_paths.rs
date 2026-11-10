@@ -68,11 +68,19 @@ pub fn parse_git_paths(raw: &[u8]) -> Result<Vec<PathBuf>> {
     let values: Vec<_> = raw.lines().collect();
     ensure!(
         (5..=6).contains(&values.len())
-            && values[..5].iter().all(|s| !s.is_empty() && Path::new(s).is_absolute())
-            && values.get(5).is_none_or(|s| s.is_empty() || Path::new(s).is_absolute()),
+            && values[..5]
+                .iter()
+                .all(|s| !s.is_empty() && Path::new(s).is_absolute())
+            && values
+                .get(5)
+                .is_none_or(|s| s.is_empty() || Path::new(s).is_absolute()),
         "ambiguous Git administration paths"
     );
-    Ok(values.into_iter().filter(|s| !s.is_empty()).map(PathBuf::from).collect())
+    Ok(values
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .collect())
 }
 /// Protect worktree markers, private/common directories, redirected object/index
 /// storage, configured hooks and critical hardlinked files. Discovery fails closed.

@@ -262,95 +262,6 @@ pub fn validate_pdf(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod lifecycle_tests {
-    use super::*;
-
-    fn launch_fixture() -> (Browser, tempfile::TempDir) {
-        let temp = tempfile::tempdir().unwrap();
-        let parent = temp.path().canonicalize().unwrap();
-        let profile = tempfile::tempdir_in(&parent).unwrap();
-        let mut command = Command::new(std::env::current_exe().unwrap());
-        command
-            .args([
-                "--exact",
-                "render::lifecycle_tests::fixture_child",
-                "--nocapture",
-            ])
-            .env(
-                "REVAYAT_BROWSER_FIXTURE_EXIT",
-                profile.path().join("exit-now"),
-            )
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped());
-        #[cfg(windows)]
-        let (mut child, owner) = crate::windows_security::native::spawn_owned(
-            &mut command,
-            crate::windows_security::JobLimits::browser(),
-        )
-        .unwrap();
-        #[cfg(unix)]
-        let mut child = runtime::owner::Interactive::from_command(&command).unwrap();
-        #[cfg(unix)]
-        let stderr = child.take_stderr();
-        #[cfg(windows)]
-        let stderr = child.stderr.take();
-        let diagnostics = diagnostics::Diagnostics::start(stderr.unwrap()).unwrap();
-        (
-            Browser {
-                child,
-                profile,
-                diagnostics: Some(diagnostics),
-                stopped: None,
-                #[cfg(windows)]
-                owner: Some(owner),
-            },
-            temp,
-        )
-    }
-
-    #[test]
-    fn fixture_child() {
-        let Some(marker) = std::env::var_os("REVAYAT_BROWSER_FIXTURE_EXIT") else {
-            return;
-        };
-        while !Path::new(&marker).exists() {
-            thread::sleep(Duration::from_millis(5));
-        }
-        std::process::exit(42);
-    }
-
-    #[test]
-    fn completed_nonzero_browser_rejects_successful_operation_before_publication() {
-        let (mut browser, _temp) = launch_fixture();
-        fs::write(browser.profile.path().join("exit-now"), b"exit").unwrap();
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while browser.child.try_wait().unwrap().is_none() {
-            assert!(Instant::now() < deadline);
-            thread::sleep(Duration::from_millis(5));
-        }
-        let result = browser.finish_operation(Ok(b"validated PDF bytes"), "render");
-        assert!(result.is_err());
-        assert!(format!("{:#}", result.unwrap_err()).contains("exit_code=42"));
-        drop(browser);
-    }
-
-    #[test]
-    fn initialization_failure_keeps_primary_error_and_explicit_cleanup_outcome() {
-        let (mut browser, _temp) = launch_fixture();
-        let error = browser.initialization_failure(anyhow::anyhow!(
-            "injected diagnostic initialization failure"
-        ));
-        let text = format!("{error:#}");
-        assert!(text.contains("injected diagnostic initialization failure"));
-        assert!(text.contains("diagnostic_init=false"));
-        assert!(text.contains("cleanup_complete=true"));
-        assert!(browser.child.try_wait().unwrap().is_some());
-        drop(browser);
-    }
-}
-
 /// Qualify the same sandboxed executable/owned endpoint used for rendering.
 /// The caller supplies an already-owned private scratch parent; no document is rendered.
 pub fn preflight_browser(executable: &Path, parent: &Path) -> Result<()> {
@@ -546,4 +457,93 @@ pub fn cli_render(args: &[String]) -> Result<i32> {
         guard,
     )?;
     Ok(0)
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    fn launch_fixture() -> (Browser, tempfile::TempDir) {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().canonicalize().unwrap();
+        let profile = tempfile::tempdir_in(&parent).unwrap();
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "render::lifecycle_tests::fixture_child",
+                "--nocapture",
+            ])
+            .env(
+                "REVAYAT_BROWSER_FIXTURE_EXIT",
+                profile.path().join("exit-now"),
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        let (mut child, owner) = crate::windows_security::native::spawn_owned(
+            &mut command,
+            crate::windows_security::JobLimits::browser(),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        let mut child = runtime::owner::Interactive::from_command(&command).unwrap();
+        #[cfg(unix)]
+        let stderr = child.take_stderr();
+        #[cfg(windows)]
+        let stderr = child.stderr.take();
+        let diagnostics = diagnostics::Diagnostics::start(stderr.unwrap()).unwrap();
+        (
+            Browser {
+                child,
+                profile,
+                diagnostics: Some(diagnostics),
+                stopped: None,
+                #[cfg(windows)]
+                owner: Some(owner),
+            },
+            temp,
+        )
+    }
+
+    #[test]
+    fn fixture_child() {
+        let Some(marker) = std::env::var_os("REVAYAT_BROWSER_FIXTURE_EXIT") else {
+            return;
+        };
+        while !Path::new(&marker).exists() {
+            thread::sleep(Duration::from_millis(5));
+        }
+        std::process::exit(42);
+    }
+
+    #[test]
+    fn completed_nonzero_browser_rejects_successful_operation_before_publication() {
+        let (mut browser, _temp) = launch_fixture();
+        fs::write(browser.profile.path().join("exit-now"), b"exit").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while browser.child.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+        let result = browser.finish_operation(Ok(b"validated PDF bytes"), "render");
+        assert!(result.is_err());
+        assert!(format!("{:#}", result.unwrap_err()).contains("exit_code=42"));
+        drop(browser);
+    }
+
+    #[test]
+    fn initialization_failure_keeps_primary_error_and_explicit_cleanup_outcome() {
+        let (mut browser, _temp) = launch_fixture();
+        let error = browser.initialization_failure(anyhow::anyhow!(
+            "injected diagnostic initialization failure"
+        ));
+        let text = format!("{error:#}");
+        assert!(text.contains("injected diagnostic initialization failure"));
+        assert!(text.contains("diagnostic_init=false"));
+        assert!(text.contains("cleanup_complete=true"));
+        assert!(browser.child.try_wait().unwrap().is_some());
+        drop(browser);
+    }
 }

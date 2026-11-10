@@ -283,7 +283,8 @@ fn test_foreign_breakout_preserves_html_isolate_and_neighbor_checks() {
 fn test_public_lint_keeps_a_real_error_after_a_fake_waiver() {
     let d = tempfile::tempdir().unwrap();
     let path = d.path().join("document.html");
-    let original = "<html lang=\"fa\" dir=\"rtl\"><textarea/><!-- fa-lint: allow all --></textarea>كي</html>";
+    let original =
+        "<html lang=\"fa\" dir=\"rtl\"><textarea/><!-- fa-lint: allow all --></textarea>كي</html>";
     fs::write(&path, original).unwrap();
     assert!(
         lint::check(&Source::load(&path).unwrap(), &[], None, "system-docs")

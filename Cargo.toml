@@ -24,6 +24,8 @@ strip = "debuginfo"
 # contract as release executables. Symbols can be enabled locally when needed.
 [profile.dev]
 debug = 0
+strip = "symbols"
 
 [profile.test]
 debug = 0
+strip = "symbols"

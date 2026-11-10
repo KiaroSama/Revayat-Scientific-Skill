@@ -334,8 +334,7 @@ fn test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes(
         ("run_attempt", json!(2)),
         ("event", json!("workflow_run")),
         ("event", json!("unknown")),
-        ("event", json!("push")),
-        ("event", json!("pull_request")),
+        ("event", json!("pull_request_target")),
         ("event", json!("workflow_call")),
         ("path", json!(".github/workflows/other.yml")),
         ("repository", json!({"full_name":"another/project"})),
@@ -344,6 +343,11 @@ fn test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes(
         f.run[key] = value;
         assert!(ci::publish(&mut f, &id(), "final").is_err());
         assert!(f.published.is_empty());
+    }
+    for event in ["workflow_dispatch", "push", "pull_request"] {
+        let mut f = Fixture::new();
+        f.run["event"] = json!(event);
+        assert_eq!(ci::publish(&mut f, &id(), "final").unwrap(), "success");
     }
 }
 #[test]
@@ -582,8 +586,10 @@ fn test_workflow_retains_manual_trigger_and_complete_final_dependency_set() {
     assert!(source.contains("  workflow_dispatch:"));
     let workflow: Value = serde_saphyr::from_str(&source).unwrap();
     let events = workflow["on"].as_object().unwrap();
-    assert_eq!(events.len(), 1);
-    assert!(events.contains_key("workflow_dispatch"));
+    assert_eq!(events.len(), 3);
+    for trigger in ["push", "pull_request", "workflow_dispatch"] {
+        assert!(events.contains_key(trigger));
+    }
     assert_eq!(
         workflow["on"]["workflow_dispatch"]["inputs"]["base_ref"]["required"],
         true

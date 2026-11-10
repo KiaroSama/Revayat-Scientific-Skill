@@ -243,10 +243,7 @@ fn test_journal_names_and_foreign_original_identity_are_preserved() {
         )
         .unwrap();
         assert!(found.is_empty(), "{found:?}");
-        assert!(
-            invoke(&["lint", p.to_str().unwrap(), "--level", "journal"])
-                .success()
-        );
+        assert!(invoke(&["lint", p.to_str().unwrap(), "--level", "journal"]).success());
     }
 }
 #[test]
@@ -260,10 +257,7 @@ fn test_journal_terms_and_scoped_original_quote() {
         ..LintOptions::default()
     };
     assert!(lint::lint_file(&p, &opts).unwrap().is_empty());
-    assert!(
-        invoke(&["lint", p.to_str().unwrap(), "--level", "journal"])
-            .success()
-    );
+    assert!(invoke(&["lint", p.to_str().unwrap(), "--level", "journal"]).success());
     let operational = invoke(&["lint", p.to_str().unwrap(), "--level", "system-docs"]);
     assert_eq!(operational.code, 1);
     assert!(String::from_utf8_lossy(&operational.stdout).contains("forbidden-fa"));

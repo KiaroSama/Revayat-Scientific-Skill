@@ -67,7 +67,7 @@ fn safe_member(name: &str) -> Result<PathBuf> {
 fn extract(bytes: &[u8], directory: &Path) -> Result<()> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
     ensure!(
-        archive.len() > 0 && archive.len() <= 16384,
+        !archive.is_empty() && archive.len() <= 16384,
         "invalid Poppler archive member count"
     );
     let mut seen = BTreeSet::new();

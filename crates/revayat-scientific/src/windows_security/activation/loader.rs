@@ -79,11 +79,13 @@ pub fn classify(bytes: &[u8], unicode: u16) -> Result<String> {
     );
     let text = if unicode == 1 {
         ensure!(
-            bytes.len() >= 2 && bytes.len() % 2 == 0 && bytes.ends_with(&[0, 0]),
+            bytes.len() >= 2 && bytes.len().is_multiple_of(2) && bytes.ends_with(&[0, 0]),
             "loader UTF-16 span differs"
         );
         let mut units = bytes[..bytes.len() - 2]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
             .collect::<Vec<_>>();
         let text = String::from_utf16(&units)

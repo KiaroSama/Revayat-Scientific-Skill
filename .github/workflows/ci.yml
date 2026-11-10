@@ -1,5 +1,7 @@
 name: CI
 on:
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
       base_ref:
@@ -14,7 +16,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.repository }}-${{ github.ref_name }}
+  group: ci-${{ github.workflow }}-${{ github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
@@ -75,10 +77,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+      - name: Build status reporter and its required process owner
+        run: cargo build --locked -p revayat-scientific --bin revayat-scientific --bin revayat-process-owner
       - name: Publish pending job statuses
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_HEAD_SHA: ${{ github.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: cargo run --locked --bin revayat-scientific -- ci-status pending
   security:
     if: ${{ !inputs.prepare_artifacts }}
@@ -93,7 +97,7 @@ jobs:
     if: ${{ !inputs.prepare_artifacts }}
     uses: ./.github/workflows/dependency-review.yml
     with:
-      base_ref: ${{ inputs.base_ref }}
+      base_ref: ${{ inputs.base_ref || github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
   portable:
     if: ${{ !inputs.prepare_artifacts }}
     name: portable (${{ matrix.os }})
@@ -257,7 +261,7 @@ jobs:
         run: cargo build --locked --workspace --bins
       - name: Check introduced commit identities
         env:
-          IDENTITY_BASE: ${{ inputs.base_ref }}
+          IDENTITY_BASE: ${{ inputs.base_ref || github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_REF: ${{ github.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: cargo run --locked --bin revayat-scientific -- check-commit-identity --ci-base
@@ -277,7 +281,7 @@ jobs:
           path: |
             ~/.cargo/bin/cargo-audit
             ~/.cargo/bin/zizmor
-          key: native-quality-${{ runner.os }}-audit0.22.2-zizmor1.32.0-actionlint1.7.12
+          key: native-quality-${{ runner.os }}-audit0.23.0-zizmor1.32.0-actionlint1.7.12
       - name: Install verified pinned dependency and workflow security scanners
         run: cargo run --locked --bin revayat-scientific -- --timeout 1800 check-workflows prepare-scanners
       - name: Verify and install pinned official actionlint binary
@@ -346,8 +350,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+      - name: Build status reporter and its required process owner
+        run: cargo build --locked -p revayat-scientific --bin revayat-scientific --bin revayat-process-owner
       - name: Publish every validation job outcome and enforce aggregate result
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_HEAD_SHA: ${{ github.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: cargo run --locked --bin revayat-scientific -- ci-status final

@@ -113,30 +113,6 @@ fn validate_source_length(filename: &str, source: &str) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn rust_source_limit_accepts_799_and_refuses_800_lines() {
-        for newline in ["\n", "\r\n"] {
-            assert!(
-                super::validate_source_length(
-                    "fixture.rs",
-                    &format!("fn item() {{}}{newline}").repeat(799)
-                )
-                .is_ok()
-            );
-            assert!(
-                super::validate_source_length(
-                    "fixture.rs",
-                    &format!("fn item() {{}}{newline}").repeat(800)
-                )
-                .is_err()
-            );
-        }
-        assert!(super::validate_source_length("fixture.md", &"text\n".repeat(800)).is_ok());
-    }
-}
-
 pub fn validate_repository(root: &Path) -> Result<()> {
     let listing = crate::distribution_paths::git_result(
         root,
@@ -230,4 +206,28 @@ pub fn cli(args: &[String]) -> Result<i32> {
     validate_repository(&crate::distribution::repository_root()?)?;
     println!("Repository UTF-8, metadata, file lengths, local links and Revayat layout are valid.");
     Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn rust_source_limit_accepts_799_and_refuses_800_lines() {
+        for newline in ["\n", "\r\n"] {
+            assert!(
+                super::validate_source_length(
+                    "fixture.rs",
+                    &format!("fn item() {{}}{newline}").repeat(799)
+                )
+                .is_ok()
+            );
+            assert!(
+                super::validate_source_length(
+                    "fixture.rs",
+                    &format!("fn item() {{}}{newline}").repeat(800)
+                )
+                .is_err()
+            );
+        }
+        assert!(super::validate_source_length("fixture.md", &"text\n".repeat(800)).is_ok());
+    }
 }

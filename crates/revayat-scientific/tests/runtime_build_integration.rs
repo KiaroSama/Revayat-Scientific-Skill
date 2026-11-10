@@ -121,7 +121,7 @@ fn test_successful_three_to_one_page_rebuild_refreshes_every_preview_role() -> R
         image::open(p)?;
     }
     let shorter = fs::read_to_string(&f.source)?.replace("class=\"page\"", "class=\"continuous\"");
-    fs::write(&f.source, shorter)?;
+    fs::write(&f.source, &shorter)?;
     build::cli_build(&f.args(true))?;
     assert_eq!(
         revayat_scientific::pdf::geometry(&revayat_scientific::pdf::open_pdf(&f.output, false)?)?

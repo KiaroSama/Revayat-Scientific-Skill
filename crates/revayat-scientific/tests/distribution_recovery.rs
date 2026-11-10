@@ -11,10 +11,17 @@ use support::*;
 
 fn assert_payload_at(f: &Fixture, path: &Path) {
     for row in f.payload().files {
-        assert_eq!(fs::read(path.join(row.relative)).unwrap(), fs::read(row.source).unwrap());
+        assert_eq!(
+            fs::read(path.join(row.relative)).unwrap(),
+            fs::read(row.source).unwrap()
+        );
     }
 }
-fn assert_recovery_ownership(f: &Fixture, journal: &Path, stage_exists: bool) -> std::path::PathBuf {
+fn assert_recovery_ownership(
+    f: &Fixture,
+    journal: &Path,
+    stage_exists: bool,
+) -> std::path::PathBuf {
     let record: serde_json::Value = serde_json::from_slice(&fs::read(journal).unwrap()).unwrap();
     let targets = record["targets"].as_array().unwrap();
     assert_eq!(targets.len(), 1);
@@ -122,7 +129,11 @@ fn test_ambiguous_frontmatter_never_replaces_existing_installation() {
 }
 #[test]
 fn test_partial_copy_cleanup_failure_retains_owned_stage_and_lock_evidence() {
-    for cancellation in [None, Some(Cancellation::Signal), Some(Cancellation::Requested)] {
+    for cancellation in [
+        None,
+        Some(Cancellation::Signal),
+        Some(Cancellation::Requested),
+    ] {
         let f = Fixture::new();
         let mut partial = None;
         let mut cleanup_attempts = 0;
@@ -132,7 +143,9 @@ fn test_partial_copy_cleanup_failure_retains_owned_stage_and_lock_evidence() {
                     fs::write(path, b"partial candidate")?;
                     partial = Some(path.to_owned());
                     if let Some(reason) = cancellation {
-                        return Err(anyhow::Error::new(reason).context("private partial cancellation"));
+                        return Err(
+                            anyhow::Error::new(reason).context("private partial cancellation")
+                        );
                     }
                     bail!("partial copy");
                 }
@@ -145,14 +158,23 @@ fn test_partial_copy_cleanup_failure_retains_owned_stage_and_lock_evidence() {
             .unwrap_err();
         assert!(error.to_string().contains("cleanup needs recovery"));
         assert_eq!(error.downcast_ref::<Cancellation>().copied(), cancellation);
-        assert_eq!(revayat_scientific::publication::cancelled(&error), cancellation.is_some());
+        assert_eq!(
+            revayat_scientific::publication::cancelled(&error),
+            cancellation.is_some()
+        );
         let primary = &error.downcast_ref::<RetainedPrimary>().unwrap().0;
-        assert_eq!(primary.downcast_ref::<Cancellation>().copied(), cancellation);
+        assert_eq!(
+            primary.downcast_ref::<Cancellation>().copied(),
+            cancellation
+        );
         if cancellation.is_none() {
             assert!(primary.to_string().contains("partial copy"));
         }
-        assert!(error.downcast_ref::<RecoveryFailures>().unwrap().0[0]
-            .to_string().contains("stage cleanup failure"));
+        assert!(
+            error.downcast_ref::<RecoveryFailures>().unwrap().0[0]
+                .to_string()
+                .contains("stage cleanup failure")
+        );
         assert!(!format!("{error:#}").contains("private partial cancellation"));
         assert!(!format!("{error:#}").contains("stage cleanup failure"));
         assert_eq!(cleanup_attempts, 1);
@@ -192,10 +214,14 @@ fn test_failed_journal_refresh_cleanup_keeps_initial_stage_identity() {
     assert!(error.downcast_ref::<RetainedPrimary>().is_some());
     assert!(
         error.downcast_ref::<RecoveryFailures>().unwrap().0[0]
-            .to_string().contains("retain owned evidence")
+            .to_string()
+            .contains("retain owned evidence")
     );
     assert_eq!(cleanup_attempts, 1);
-    assert!(initial.is_some(), "initial journal must exist before refresh");
+    assert!(
+        initial.is_some(),
+        "initial journal must exist before refresh"
+    );
     assert!(!f.first.exists());
     let journals = f.journals();
     assert_eq!(journals.len(), 1);
@@ -236,7 +262,12 @@ fn test_install_second_cancellation_retains_journal_backups_stages_and_locks() {
                 assert!(interrupted);
                 assert_eq!(error.downcast_ref::<Cancellation>(), Some(&cancellation));
                 let primary = error.downcast_ref::<RetainedPrimary>().unwrap();
-                assert!(primary.0.to_string().contains("controlled activation failure"));
+                assert!(
+                    primary
+                        .0
+                        .to_string()
+                        .contains("controlled activation failure")
+                );
                 let journals = f.journals();
                 assert_eq!(journals.len(), 1);
                 let stage = assert_recovery_ownership(
@@ -285,19 +316,36 @@ fn test_completed_install_restoration_error_reconciles_the_previous_edition() {
         })
         .unwrap_err();
     assert!(restored);
-    assert!(error.to_string().contains("rollback completed with secondary diagnostics"));
-    assert!(error.downcast_ref::<RetainedPrimary>().unwrap().0.to_string()
-        .contains("controlled activation failure"));
+    assert!(
+        error
+            .to_string()
+            .contains("rollback completed with secondary diagnostics")
+    );
+    assert!(
+        error
+            .downcast_ref::<RetainedPrimary>()
+            .unwrap()
+            .0
+            .to_string()
+            .contains("controlled activation failure")
+    );
     let secondary = &error.downcast_ref::<RecoveryFailures>().unwrap().0;
     assert_eq!(secondary.len(), 1);
-    assert!(secondary[0].to_string().contains("completed rename reports error"));
+    assert!(
+        secondary[0]
+            .to_string()
+            .contains("completed rename reports error")
+    );
     assert!(!format!("{error:#}").contains("controlled activation failure"));
     assert!(!format!("{error:#}").contains("completed rename reports error"));
     assert_eq!(d::snapshot(&f.first).unwrap(), old);
     assert!(f.journals().is_empty());
     assert!(!f.lock(&f.first).exists());
     assert!(!fs::read_dir(f.first.parent().unwrap()).unwrap().any(|e| {
-        e.unwrap().file_name().to_string_lossy().starts_with(".revayat-")
+        e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".revayat-")
     }));
 }
 #[test]
@@ -310,7 +358,10 @@ fn test_second_install_restore_cancellation_retains_the_complete_target_plan() {
         let f = Fixture::new();
         f.old(&f.first, "first");
         f.old(&f.second, "second");
-        let previous = [d::snapshot(&f.first).unwrap(), d::snapshot(&f.second).unwrap()];
+        let previous = [
+            d::snapshot(&f.first).unwrap(),
+            d::snapshot(&f.second).unwrap(),
+        ];
         let mut interrupted = false;
         let error = f
             .observed(&[f.first.clone(), f.second.clone()], true, |at, _| {
@@ -328,20 +379,36 @@ fn test_second_install_restore_cancellation_retains_the_complete_target_plan() {
             })
             .unwrap_err();
         assert!(interrupted);
-        assert_eq!(error.downcast_ref::<Cancellation>(), Some(&Cancellation::Requested));
+        assert_eq!(
+            error.downcast_ref::<Cancellation>(),
+            Some(&Cancellation::Requested)
+        );
         let primary = error.downcast_ref::<RetainedPrimary>().unwrap();
-        assert!(primary.0.to_string().contains("controlled second activation failure"));
+        assert!(
+            primary
+                .0
+                .to_string()
+                .contains("controlled second activation failure")
+        );
         let failures = &error.downcast_ref::<RecoveryFailures>().unwrap().0;
         assert_eq!(failures.len(), if earlier_failure { 2 } else { 1 });
         if earlier_failure {
-            assert!(failures[0].to_string().contains("earlier ordinary restoration diagnostic"));
+            assert!(
+                failures[0]
+                    .to_string()
+                    .contains("earlier ordinary restoration diagnostic")
+            );
             assert!(!format!("{error:#}").contains("earlier ordinary restoration diagnostic"));
         }
-        assert_eq!(failures.last().unwrap().downcast_ref::<Cancellation>(), Some(&Cancellation::Requested));
+        assert_eq!(
+            failures.last().unwrap().downcast_ref::<Cancellation>(),
+            Some(&Cancellation::Requested)
+        );
         assert_eq!(d::snapshot(&f.second).unwrap(), previous[1]);
         let journals = f.journals();
         assert_eq!(journals.len(), 1);
-        let j: serde_json::Value = serde_json::from_slice(&fs::read(&journals[0]).unwrap()).unwrap();
+        let j: serde_json::Value =
+            serde_json::from_slice(&fs::read(&journals[0]).unwrap()).unwrap();
         let targets = j["targets"].as_array().unwrap();
         assert_eq!(targets.len(), 2);
         for (index, (entry, destination)) in targets.iter().zip([&f.first, &f.second]).enumerate() {
@@ -353,10 +420,22 @@ fn test_second_install_restore_cancellation_retains_the_complete_target_plan() {
             assert!(lock.is_file());
             let candidate = if staged { stage } else { destination.as_path() };
             assert_payload_at(&f, candidate);
-            assert_eq!(entry["stage_identity"], serde_json::to_value(path_object_id(candidate).unwrap()).unwrap());
-            assert_eq!(entry["lock_identity"], serde_json::to_value(path_object_id(lock).unwrap()).unwrap());
-            assert_eq!(fs::read_to_string(lock).unwrap().trim(), journals[0].to_str().unwrap());
+            assert_eq!(
+                entry["stage_identity"],
+                serde_json::to_value(path_object_id(candidate).unwrap()).unwrap()
+            );
+            assert_eq!(
+                entry["lock_identity"],
+                serde_json::to_value(path_object_id(lock).unwrap()).unwrap()
+            );
+            assert_eq!(
+                fs::read_to_string(lock).unwrap().trim(),
+                journals[0].to_str().unwrap()
+            );
         }
-        assert_eq!(d::snapshot(Path::new(targets[0]["backup"].as_str().unwrap())).unwrap(), previous[0]);
+        assert_eq!(
+            d::snapshot(Path::new(targets[0]["backup"].as_str().unwrap())).unwrap(),
+            previous[0]
+        );
     }
 }

@@ -71,6 +71,9 @@ columns, so the fidelity reviewer must inspect them.
 - Record the selected ledger revision with each reviewed part. Drafting, reviewing
   and resuming use that same ledger. An explicitly supplied unreadable glossary is
   an error; do not silently substitute another or overwrite user corrections.
+  Use the actual source/target language codes when selecting terms. A glossary
+  that parses but contains no applicable rows requires an explicit review;
+  successful loading alone does not show that the draft used those terms.
 - When a term changes, find affected parts and review those spans and nearby
   references. A source or glossary change invalidates their prior review status.
 - Reuse neighbor context to resolve pronouns and repeated names. Keep the source

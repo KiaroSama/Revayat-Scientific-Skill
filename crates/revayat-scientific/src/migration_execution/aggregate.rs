@@ -151,15 +151,26 @@ pub fn aggregate(
     let mut verified = 0;
     let mut failures = Vec::new();
     if census == "public" {
-        match super::events::reconcile_operations(root, event_paths, &reports, (
-            &sha, &run, &attempt, &super::hosted_label("GITHUB_REPOSITORY")?,
-            &super::hosted_label("GITHUB_WORKFLOW_REF")?,
-        )) {
+        match super::events::reconcile_operations(
+            root,
+            event_paths,
+            &reports,
+            (
+                &sha,
+                &run,
+                &attempt,
+                &super::hosted_label("GITHUB_REPOSITORY")?,
+                &super::hosted_label("GITHUB_WORKFLOW_REF")?,
+            ),
+        ) {
             Ok(count) => verified += count,
             Err(_) => failures.push("required nonflat operation evidence incomplete".into()),
         }
     } else {
-        ensure!(event_paths.is_empty(), "operation reports belong to the complete public aggregate");
+        ensure!(
+            event_paths.is_empty(),
+            "operation reports belong to the complete public aggregate"
+        );
     }
     for report in &reports {
         if ledger.obligations.iter().any(|obligation| {

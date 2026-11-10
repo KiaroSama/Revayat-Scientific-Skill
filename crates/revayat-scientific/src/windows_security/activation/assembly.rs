@@ -32,7 +32,7 @@ pub fn decode_path(
         (104..=65536).contains(&returned)
             && returned <= bytes.len()
             && (2..=2048).contains(&length)
-            && length % 2 == 0
+            && length.is_multiple_of(2)
             && pointer >= start
             && pointer - start >= 104
             && pointer - start <= returned as u64
@@ -46,7 +46,9 @@ pub fn decode_path(
         "activation manifest path lacks terminator"
     );
     let mut units = bytes[offset..end]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| u16::from_le_bytes([p[0], p[1]]))
         .collect::<Vec<_>>();
     let path = String::from_utf16(&units)

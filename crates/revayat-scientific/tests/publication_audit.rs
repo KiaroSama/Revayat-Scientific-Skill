@@ -2,7 +2,7 @@
 use anyhow::{Result, bail};
 use revayat_scientific::{
     identity::{object_id, path_object_id},
-    publication::{Boundary, publish_files, publish_observed},
+    publication::{Boundary, RetainedPrimary, publish_files, publish_observed},
 };
 use std::{
     fs::{self, File, FileTimes},
@@ -72,7 +72,11 @@ fn foreign_backup_substitution_after_close_is_retained_for_recovery() -> Result<
         },
     )
     .unwrap_err();
-    assert!(error.to_string().contains("ownership"), "{error}");
+    let primary = &error
+        .downcast_ref::<RetainedPrimary>()
+        .expect("original refusal must remain available")
+        .0;
+    assert!(primary.to_string().contains("ownership"), "{primary:#}");
     let (path, id, contents) = changed.unwrap();
     assert_eq!(path_object_id(&path)?, id);
     assert_eq!(fs::read(&path)?, contents);

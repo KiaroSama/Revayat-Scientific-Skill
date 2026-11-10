@@ -1,6 +1,8 @@
 //! Recover a complete installation plan without dropping cancellation evidence.
 use super::*;
-use crate::publication::{cancelled, retain_cancellation, retain_cancellation_after, retain_recovery};
+use crate::publication::{
+    cancelled, retain_cancellation, retain_cancellation_after, retain_recovery,
+};
 
 pub(super) struct Root {
     pub(super) path: PathBuf,
@@ -41,18 +43,27 @@ pub(super) fn rollback(
                     !target.destination.exists() && same(&target.backup, &target.old),
                     "cannot safely restore previous installation"
                 );
-                observe(InstallBoundary::BeforeBackupRestore(index), &target.destination)?;
+                observe(
+                    InstallBoundary::BeforeBackupRestore(index),
+                    &target.destination,
+                )?;
                 fs::rename(&target.backup, &target.destination)?;
             }
             observe(InstallBoundary::AfterRestore(index), &target.destination)?;
-            ensure!(same(&target.destination, &target.old), "installation rollback incomplete");
+            ensure!(
+                same(&target.destination, &target.old),
+                "installation rollback incomplete"
+            );
             Ok(())
         })();
         if let Err(cancellation) = restored.as_ref()
             && cancelled(cancellation)
         {
-            return Err(retain_cancellation_after(Some(error), restored.unwrap_err(), secondary)
-                .context("installation rollback cancelled; complete owned recovery plan retained"));
+            return Err(
+                retain_cancellation_after(Some(error), restored.unwrap_err(), secondary).context(
+                    "installation rollback cancelled; complete owned recovery plan retained",
+                ),
+            );
         }
         if let Err(failure) = restored {
             // Exact-old reconciliation permits cleanup, not diagnostic loss.

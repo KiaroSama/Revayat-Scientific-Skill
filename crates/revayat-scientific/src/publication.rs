@@ -13,7 +13,8 @@ use unicode_casefold::UnicodeCaseFold;
 mod cancellation;
 pub(crate) use cancellation::retain_cancellation_after;
 pub use cancellation::{
-    Cancellation, RecoveryFailures, RetainedPrimary, cancelled, retain_cancellation, retain_recovery,
+    Cancellation, RecoveryFailures, RetainedPrimary, cancelled, retain_cancellation,
+    retain_recovery,
 };
 
 fn absolute(path: &Path) -> Result<PathBuf> {
@@ -245,7 +246,10 @@ fn prepare_inherited_stage(
         Ok(())
     })();
     let cleanup = (|| -> Result<()> {
-        if candidate.try_exists()? && !is_link(&candidate)? && path_identity(&candidate)? == Some(id) {
+        if candidate.try_exists()?
+            && !is_link(&candidate)?
+            && path_identity(&candidate)? == Some(id)
+        {
             fs::remove_file(&candidate)?;
         }
         Ok(())
@@ -474,10 +478,14 @@ pub fn publish_with_identity(
             if let Err(error) = &restored
                 && cancelled(error)
             {
-                return Err(retain_cancellation_after(operation.err(), restored.unwrap_err(), secondary)
-                    .context("publication rollback cancelled; owned recovery records retained"));
+                return Err(retain_cancellation_after(
+                    operation.err(),
+                    restored.unwrap_err(),
+                    secondary,
+                )
+                .context("publication rollback cancelled; owned recovery records retained"));
             }
-            if restored.is_err() {
+            if let Err(restore_error) = restored {
                 // A native operation can complete before its caller observes an
                 // error. Reconcile only the exact recorded backup object (or
                 // proven absence), never a same-looking foreign replacement.
@@ -496,7 +504,7 @@ pub fn publish_with_identity(
                 if !reconciled {
                     failures.push(plan.directory.join("recovery.json"));
                 }
-                secondary.push(restored.unwrap_err());
+                secondary.push(restore_error);
             }
         }
     }

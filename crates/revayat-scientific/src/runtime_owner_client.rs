@@ -322,6 +322,62 @@ fn decode_events(pending: &mut Vec<u8>) -> Result<Vec<Event>> {
     Ok(events)
 }
 
+pub fn run(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
+    let mut owner = Interactive::start(spec, input, false)?;
+    while owner.response.is_none() {
+        owner.poll()?;
+        ensure!(
+            Instant::now() < owner.deadline,
+            "runtime companion response deadline exceeded"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    let primary = {
+        let response = owner
+            .response
+            .as_ref()
+            .context("runtime completion missing")?;
+        if let Some(idle) = response.deadline_idle {
+            Err(DeadlineExceeded {
+                idle,
+                limit: if idle {
+                    owner.spec.idle_timeout.unwrap_or(spec.timeout)
+                } else {
+                    spec.timeout
+                },
+            }
+            .into())
+        } else if response.error.as_deref() == Some("not-found") {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "owned external tool is missing",
+            )
+            .into())
+        } else if let Some(category) = &response.error {
+            Err(anyhow::anyhow!(match category.as_str() {
+                "output-limit" =>
+                    format!("tool diagnostics exceeded {} byte limit", spec.max_output),
+                "input" => "tool did not consume its bounded input".into(),
+                "spawn" => "cannot start owned external tool".into(),
+                "cancelled" => "runtime caller cancelled or disconnected".into(),
+                _ => "owned runtime operation failed".into(),
+            }))
+        } else {
+            Ok(())
+        }
+    };
+    super::super::with_cleanup(primary, owner.finish())?;
+    let response = owner
+        .response
+        .take()
+        .context("runtime completion missing")?;
+    Ok(CommandOutput {
+        code: response.code.context("runtime child exit missing")?,
+        stdout: response.stdout,
+        stderr: response.stderr,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,60 +464,4 @@ mod tests {
         assert!(decode(&bytes[..bytes.len() - 1], true).is_err());
         assert!(decode(&[], true).is_err());
     }
-}
-
-pub fn run(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
-    let mut owner = Interactive::start(spec, input, false)?;
-    while owner.response.is_none() {
-        owner.poll()?;
-        ensure!(
-            Instant::now() < owner.deadline,
-            "runtime companion response deadline exceeded"
-        );
-        thread::sleep(Duration::from_millis(5));
-    }
-    let primary = {
-        let response = owner
-            .response
-            .as_ref()
-            .context("runtime completion missing")?;
-        if let Some(idle) = response.deadline_idle {
-            Err(DeadlineExceeded {
-                idle,
-                limit: if idle {
-                    owner.spec.idle_timeout.unwrap_or(spec.timeout)
-                } else {
-                    spec.timeout
-                },
-            }
-            .into())
-        } else if response.error.as_deref() == Some("not-found") {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "owned external tool is missing",
-            )
-            .into())
-        } else if let Some(category) = &response.error {
-            Err(anyhow::anyhow!(match category.as_str() {
-                "output-limit" =>
-                    format!("tool diagnostics exceeded {} byte limit", spec.max_output),
-                "input" => "tool did not consume its bounded input".into(),
-                "spawn" => "cannot start owned external tool".into(),
-                "cancelled" => "runtime caller cancelled or disconnected".into(),
-                _ => "owned runtime operation failed".into(),
-            }))
-        } else {
-            Ok(())
-        }
-    };
-    super::super::with_cleanup(primary, owner.finish())?;
-    let response = owner
-        .response
-        .take()
-        .context("runtime completion missing")?;
-    Ok(CommandOutput {
-        code: response.code.context("runtime child exit missing")?,
-        stdout: response.stdout,
-        stderr: response.stderr,
-    })
 }

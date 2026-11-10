@@ -66,7 +66,7 @@ fn ace_layout(bytes: &[u8]) -> Result<()> {
 fn entries(bytes: &[u8]) -> Result<Vec<&[u8]>> {
     ensure!(
         (8..=65535).contains(&bytes.len())
-            && bytes.len() % 4 == 0
+            && bytes.len().is_multiple_of(4)
             && matches!(bytes[0], 2 | 4)
             && bytes[1] == 0
             && usize::from(word(bytes, 2)?) == bytes.len()
@@ -116,7 +116,7 @@ pub fn token_default_acl(
     let offset = (pointer - start) as usize;
     let length = u16::from_le_bytes(bytes[offset + 2..offset + 4].try_into().unwrap()) as usize;
     if length < 8
-        || length % 4 != 0
+        || !length.is_multiple_of(4)
         || !within(start, bytes.len() as u64, pointer, length as u64, 4)
     {
         return Err("acl-length");

@@ -595,7 +595,7 @@ fn test_sample_staging_cannot_consume_unplanned_or_outside_files() -> Result<()>
     let unplanned = f.private.join("unplanned.png");
     png(&unplanned)?;
     let unplanned_before = fs::read(&unplanned)?;
-    assert!(BuildGuard::publish_previews(&f.record, &[unplanned.clone()]).is_err());
+    assert!(BuildGuard::publish_previews(&f.record, std::slice::from_ref(&unplanned)).is_err());
     assert_eq!(fs::read(&unplanned)?, unplanned_before);
     Ok(())
 }

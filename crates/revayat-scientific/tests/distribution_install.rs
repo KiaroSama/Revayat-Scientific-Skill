@@ -148,7 +148,15 @@ fn test_backup_directory_link_does_not_move_the_old_install_outside() {
     let old = d::snapshot(&f.first).unwrap();
     let outside = f.root.join("outside");
     fs::create_dir(&outside).unwrap();
-    link(&outside, &f.first.parent().unwrap().parent().unwrap().join("skill-backups"));
+    link(
+        &outside,
+        &f.first
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("skill-backups"),
+    );
     assert!(f.install(std::slice::from_ref(&f.first), true).is_err());
     assert_eq!(d::snapshot(&f.first).unwrap(), old);
     assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
@@ -166,7 +174,11 @@ fn test_case_colliding_destination_is_refused() {
 fn test_source_overlap_is_refused_without_changes() {
     let f = Fixture::new();
     let old = d::snapshot(&f.source).unwrap();
-    for path in [f.source.clone(), f.source.join("child"), f.source.parent().unwrap().to_owned()] {
+    for path in [
+        f.source.clone(),
+        f.source.join("child"),
+        f.source.parent().unwrap().to_owned(),
+    ] {
         assert!(f.install(&[path], true).is_err());
     }
     assert_eq!(d::snapshot(&f.source).unwrap(), old);
@@ -176,7 +188,10 @@ fn test_late_existing_target_preflight_does_not_install_first() {
     let f = Fixture::new();
     f.old(&f.second, "owner");
     let old = d::snapshot(&f.second).unwrap();
-    assert!(f.install(&[f.first.clone(), f.second.clone()], false).is_err());
+    assert!(
+        f.install(&[f.first.clone(), f.second.clone()], false)
+            .is_err()
+    );
     assert!(!f.first.exists());
     assert_eq!(d::snapshot(&f.second).unwrap(), old);
 }
@@ -185,7 +200,10 @@ fn test_late_invalid_target_preflight_does_not_install_first() {
     let f = Fixture::new();
     fs::create_dir_all(f.second.parent().unwrap()).unwrap();
     fs::write(&f.second, "ordinary file").unwrap();
-    assert!(f.install(&[f.first.clone(), f.second.clone()], true).is_err());
+    assert!(
+        f.install(&[f.first.clone(), f.second.clone()], true)
+            .is_err()
+    );
     assert!(!f.first.exists());
     assert_eq!(fs::read(&f.second).unwrap(), b"ordinary file");
 }
@@ -194,7 +212,13 @@ fn test_payload_enumerated_once_for_the_entire_batch() -> Result<()> {
     let f = Fixture::new();
     // Payload is already a frozen typed input; install_targets never invokes a payload factory.
     let payload = f.payload();
-    d::install_targets(&[f.first.clone(), f.second.clone()], false, &f.source, &f.repo, &payload)?;
+    d::install_targets(
+        &[f.first.clone(), f.second.clone()],
+        false,
+        &f.source,
+        &f.repo,
+        &payload,
+    )?;
     assert_payload(&f, &f.first);
     assert_payload(&f, &f.second);
     Ok(())
@@ -229,7 +253,10 @@ fn test_existing_install_with_nested_link_is_not_followed() {
             .map(|e| e.unwrap().file_name())
             .collect::<Vec<_>>();
         entries.sort();
-        assert_eq!(entries, ["SKILL.md", "linked", "retained"].map(std::ffi::OsString::from));
+        assert_eq!(
+            entries,
+            ["SKILL.md", "linked", "retained"].map(std::ffi::OsString::from)
+        );
         assert!(revayat_scientific::identity::is_link(&f.first.join("linked")).unwrap());
         if file {
             assert_eq!(fs::read(outside).unwrap(), b"retain private outside data");
@@ -268,26 +295,45 @@ fn test_payload_limit_refuses_before_any_target_mutation() {
     let file = fs::File::create(f.source.join("assets.bin")).unwrap();
     file.set_len(d::MAX_PAYLOAD_BYTES + 1).unwrap();
     fs::create_dir(f.source.join("assets")).unwrap();
-    fs::rename(f.source.join("assets.bin"), f.source.join("assets/large.bin")).unwrap();
+    fs::rename(
+        f.source.join("assets.bin"),
+        f.source.join("assets/large.bin"),
+    )
+    .unwrap();
     assert!(Payload::collect(&f.source, None).is_err());
     assert_eq!(d::snapshot(&f.first).unwrap(), old);
 }
 #[test]
 fn test_nested_target_plan_is_rejected_without_changes() {
     let f = Fixture::new();
-    assert!(f.install(&[f.first.clone(), f.first.join("nested")], true).is_err());
+    assert!(
+        f.install(&[f.first.clone(), f.first.join("nested")], true)
+            .is_err()
+    );
     assert!(!f.first.exists());
 }
 #[test]
 fn test_duplicate_case_target_plan_is_rejected_without_changes() {
     let f = Fixture::new();
-    assert!(f.install(&[f.first.clone(), f.first.with_file_name("Revayat-Scientific")], true).is_err());
+    assert!(
+        f.install(
+            &[
+                f.first.clone(),
+                f.first.with_file_name("Revayat-Scientific")
+            ],
+            true
+        )
+        .is_err()
+    );
     assert!(!f.first.exists());
 }
 #[test]
 fn test_shared_agent_path_is_deduplicated_before_publication() {
     let paths: std::collections::HashSet<_> = d::AGENTS.iter().map(|a| a.2).collect();
-    assert_eq!(d::AGENTS.iter().filter(|a| a.2 == ".agents/skills").count(), 2);
+    assert_eq!(
+        d::AGENTS.iter().filter(|a| a.2 == ".agents/skills").count(),
+        2
+    );
     assert_eq!(paths.len(), 7);
     let f = Fixture::new();
     fs::create_dir(f.root.join(".agents")).unwrap();
@@ -298,7 +344,11 @@ fn test_shared_agent_path_is_deduplicated_before_publication() {
         .arg(&f.root)
         .output()
         .unwrap();
-    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
     let payload = Payload::collect(
         &f.source,
         Some(Path::new(env!("CARGO_BIN_EXE_revayat-scientific"))),
@@ -333,7 +383,10 @@ fn test_success_messages_are_not_printed_for_a_failed_batch() {
 #[test]
 fn test_valid_bom_source_identity_is_supported() -> Result<()> {
     let f = Fixture::new();
-    fs::write(f.source.join("SKILL.md"), format!("\u{feff}{HEADER}candidate"))?;
+    fs::write(
+        f.source.join("SKILL.md"),
+        format!("\u{feff}{HEADER}candidate"),
+    )?;
     f.install(std::slice::from_ref(&f.first), false)?;
     assert_payload(&f, &f.first);
     Ok(())
@@ -354,7 +407,10 @@ fn test_public_cli_refuses_a_foreign_target_without_mutation() {
     assert!(!String::from_utf8_lossy(&output.stdout).contains("Installed revayat-scientific:"));
     assert!(!String::from_utf8_lossy(&output.stdout).contains("private user data"));
     assert!(!String::from_utf8_lossy(&output.stderr).contains("private user data"));
-    assert_eq!(fs::read(f.first.join("note")).unwrap(), b"private user data");
+    assert_eq!(
+        fs::read(f.first.join("note")).unwrap(),
+        b"private user data"
+    );
 }
 #[test]
 fn test_retained_backup_is_not_reinterpreted_as_an_install_target() -> Result<()> {

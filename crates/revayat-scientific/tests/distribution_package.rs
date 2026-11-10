@@ -229,11 +229,16 @@ fn test_valid_output_does_not_require_mutating_repository_metadata() -> Result<(
     let f = Fixture::new();
     let index = fs::read(f.repo.join(".git/index"))?;
     let head = f.git(&["rev-parse", "HEAD"]);
-    for target in [f.repo.join("dist/bundle.skill"), f.root.join("outside.skill")] {
+    for target in [
+        f.repo.join("dist/bundle.skill"),
+        f.root.join("outside.skill"),
+    ] {
         f.package(&target)?;
         let mut archive = zip::ZipArchive::new(fs::File::open(target)?)?;
         let mut bytes = Vec::new();
-        archive.by_name(&format!("{NAME}/SKILL.md"))?.read_to_end(&mut bytes)?;
+        archive
+            .by_name(&format!("{NAME}/SKILL.md"))?
+            .read_to_end(&mut bytes)?;
         assert_eq!(bytes, fs::read(f.source.join("SKILL.md"))?);
     }
     assert_eq!(fs::read(f.repo.join(".git/index"))?, index);
@@ -253,7 +258,11 @@ fn test_exported_source_with_no_git_metadata_remains_packagable() -> Result<()> 
 #[test]
 fn test_dotgithub_and_similarly_named_outputs_are_not_metadata() -> Result<()> {
     let f = Fixture::new();
-    for target in [f.repo.join(".github/bundle.skill"), f.repo.join("not.git/bundle.skill"), f.root.join(".git-notes.skill")] {
+    for target in [
+        f.repo.join(".github/bundle.skill"),
+        f.repo.join("not.git/bundle.skill"),
+        f.root.join(".git-notes.skill"),
+    ] {
         f.package(&target)?;
         assert!(zip::ZipArchive::new(fs::File::open(target)?).is_ok());
     }
@@ -283,7 +292,12 @@ fn test_vendored_source_uses_the_parent_repository_admin_directory() {
     fs::create_dir_all(&nested_source).unwrap();
     fs::write(nested_source.join("SKILL.md"), HEADER).unwrap();
     let external = f.root.join("external metadata");
-    f.git(&["init", "--quiet", "--separate-git-dir", external.to_str().unwrap()]);
+    f.git(&[
+        "init",
+        "--quiet",
+        "--separate-git-dir",
+        external.to_str().unwrap(),
+    ]);
     let index = external.join("index");
     let before = fs::read(&index).unwrap();
     assert!(d::package(&nested_source, &vendored, &index, None).is_err());
@@ -292,7 +306,11 @@ fn test_vendored_source_uses_the_parent_repository_admin_directory() {
     d::package(&nested_source, &vendored, &valid, None).unwrap();
     let mut archive = zip::ZipArchive::new(fs::File::open(valid).unwrap()).unwrap();
     let mut bytes = Vec::new();
-    archive.by_name(&format!("{NAME}/SKILL.md")).unwrap().read_to_end(&mut bytes).unwrap();
+    archive
+        .by_name(&format!("{NAME}/SKILL.md"))
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
     assert_eq!(bytes, fs::read(nested_source.join("SKILL.md")).unwrap());
     f.git_at(&vendored, &["status", "--porcelain"]);
 }
@@ -302,10 +320,20 @@ fn test_redirected_object_database_is_protected() {
     let objects = f.root.join("redirected-objects");
     fs::create_dir(&objects).unwrap();
     for existing in [false, true] {
-        let target = objects.join(if existing { "existing-object" } else { "new.skill" });
-        if existing { fs::write(&target, b"untouched object sentinel").unwrap(); }
+        let target = objects.join(if existing {
+            "existing-object"
+        } else {
+            "new.skill"
+        });
+        if existing {
+            fs::write(&target, b"untouched object sentinel").unwrap();
+        }
         let before = fs::read(&target).ok();
-        assert!(!f.child(&target, &[("GIT_OBJECT_DIRECTORY", &objects)]).status.success());
+        assert!(
+            !f.child(&target, &[("GIT_OBJECT_DIRECTORY", &objects)])
+                .status
+                .success()
+        );
         assert_eq!(fs::read(target).ok(), before);
     }
 }
@@ -356,8 +384,18 @@ fn test_ambiguous_admin_paths_fail_without_publishing() {
     let absolute = f.repo.join(".git").to_str().unwrap().to_owned();
     let valid = format!("{0}\n{0}\n{0}\n{0}\n{0}\n", absolute);
     assert_eq!(parse_git_paths(valid.as_bytes()).unwrap().len(), 5);
-    assert_eq!(parse_git_paths(format!("{valid}\n").as_bytes()).unwrap().len(), 5);
-    assert_eq!(parse_git_paths(format!("{valid}{absolute}\n").as_bytes()).unwrap().len(), 6);
+    assert_eq!(
+        parse_git_paths(format!("{valid}\n").as_bytes())
+            .unwrap()
+            .len(),
+        5
+    );
+    assert_eq!(
+        parse_git_paths(format!("{valid}{absolute}\n").as_bytes())
+            .unwrap()
+            .len(),
+        6
+    );
     let malformed = [
         format!("relative\n{0}\n{0}\n{0}\n{0}\n", absolute).into_bytes(),
         format!("\n{0}\n{0}\n{0}\n{0}\n", absolute).into_bytes(),
@@ -378,8 +416,11 @@ fn test_index_relocation_during_staging_is_rechecked() {
     let before = fs::read(&selected).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_revayat-test-tool"))
         .arg("package-relocated-index")
-        .arg(&f.source).arg(&f.repo).arg(&selected)
-        .output().unwrap();
+        .arg(&f.source)
+        .arg(&f.repo)
+        .arg(&selected)
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stdout).contains("staged=true"));
     assert_eq!(fs::read(&selected).unwrap(), before);
@@ -408,12 +449,18 @@ fn test_external_index_shared_storage_and_hardlink_remain_unchanged() {
     assert_eq!(fs::read(&index).unwrap(), before);
     assert_eq!(fs::read(alias).unwrap(), before);
     let output = Command::new("git")
-        .args(["update-index", "--split-index"]).current_dir(&f.repo)
-        .env("GIT_INDEX_FILE", &index).output().unwrap();
+        .args(["update-index", "--split-index"])
+        .current_dir(&f.repo)
+        .env("GIT_INDEX_FILE", &index)
+        .output()
+        .unwrap();
     assert!(output.status.success());
     let output = Command::new("git")
         .args(["rev-parse", "--path-format=absolute", "--shared-index-path"])
-        .current_dir(&f.repo).env("GIT_INDEX_FILE", &index).output().unwrap();
+        .current_dir(&f.repo)
+        .env("GIT_INDEX_FILE", &index)
+        .output()
+        .unwrap();
     assert!(output.status.success());
     let shared = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim());
     assert!(shared.is_file());
@@ -486,7 +533,10 @@ fn test_case_variant_and_directory_destinations_fail_without_side_effects() {
 fn test_valid_archive_and_repeat_build_preserve_payload() -> Result<()> {
     let f = Fixture::new();
     let target = f.repo.join("bundle.skill");
-    for newline in [b"retained reference\n".as_slice(), b"retained reference\r\n".as_slice()] {
+    for newline in [
+        b"retained reference\n".as_slice(),
+        b"retained reference\r\n".as_slice(),
+    ] {
         fs::write(f.source.join("references/contract.md"), newline)?;
         for _ in 0..2 {
             f.package(&target)?;
@@ -555,19 +605,31 @@ fn test_missing_skill_and_late_archive_failure_keep_previous_output() {
                     let replacement = f.root.join("foreign entry");
                     let original = fs::metadata(source)?.modified()?;
                     fs::write(&replacement, fs::read(source)?)?;
-                    fs::File::options().write(true).open(&replacement)?
+                    fs::File::options()
+                        .write(true)
+                        .open(&replacement)?
                         .set_times(fs::FileTimes::new().set_modified(original))?;
-                    assert_ne!(revayat_scientific::identity::path_object_id(source)?,
-                        revayat_scientific::identity::path_object_id(&replacement)?);
+                    assert_ne!(
+                        revayat_scientific::identity::path_object_id(source)?,
+                        revayat_scientific::identity::path_object_id(&replacement)?
+                    );
                     fs::rename(replacement, source)?;
                 } else {
-                    fs::OpenOptions::new().append(true).open(source)?.write_all(b" growth")?;
+                    fs::OpenOptions::new()
+                        .append(true)
+                        .open(source)?
+                        .write_all(b" growth")?;
                 }
             }
             Ok(())
-        }).unwrap_err();
+        })
+        .unwrap_err();
         assert!(reached);
-        assert!(error.to_string().contains("payload changed before archive write"));
+        assert!(
+            error
+                .to_string()
+                .contains("payload changed before archive write")
+        );
         assert_eq!(fs::read(&path).unwrap(), b"approved");
     }
     let mut entry_reached = false;
@@ -577,13 +639,21 @@ fn test_missing_skill_and_late_archive_failure_keep_previous_output() {
             fs::remove_file(source)?;
         }
         Ok(())
-    }).unwrap_err();
+    })
+    .unwrap_err();
     assert!(entry_reached);
     // The callback succeeds; the subsequent actual entry File::open fails.
-    assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(
+        error.downcast_ref::<std::io::Error>().unwrap().kind(),
+        std::io::ErrorKind::NotFound
+    );
     assert_eq!(fs::read(&path).unwrap(), b"approved");
     assert!(!fs::read_dir(&f.repo).unwrap().any(|entry| {
-        entry.unwrap().file_name().to_string_lossy().starts_with(".revayat-package-")
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".revayat-package-")
     }));
 }
 #[test]
@@ -613,9 +683,15 @@ fn test_publication_failure_keeps_approved_archive() {
                 reached = true;
                 assert_eq!(path, target);
                 if native_failure {
-                    let stage = fs::read_dir(&f.repo)?.map(|e| e.unwrap().path())
-                        .find(|p| p.file_name().unwrap().to_string_lossy()
-                            .starts_with(".revayat-package-")).unwrap();
+                    let stage = fs::read_dir(&f.repo)?
+                        .map(|e| e.unwrap().path())
+                        .find(|p| {
+                            p.file_name()
+                                .unwrap()
+                                .to_string_lossy()
+                                .starts_with(".revayat-package-")
+                        })
+                        .unwrap();
                     fs::remove_file(stage)?;
                 } else {
                     assert!(zip::ZipArchive::new(fs::File::open(path)?).is_ok());
@@ -623,14 +699,21 @@ fn test_publication_failure_keeps_approved_archive() {
                 }
             }
             Ok(())
-        }).unwrap_err();
+        })
+        .unwrap_err();
         assert!(reached);
         if native_failure {
             // Callback succeeds; the actual rename then fails on the missing stage.
-            assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(),
-                std::io::ErrorKind::NotFound);
+            assert_eq!(
+                error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                std::io::ErrorKind::NotFound
+            );
         } else {
-            assert!(error.to_string().contains("inside actual archive publisher"));
+            assert!(
+                error
+                    .to_string()
+                    .contains("inside actual archive publisher")
+            );
         }
         assert_eq!(fs::read(&target).unwrap(), b"approved");
     }

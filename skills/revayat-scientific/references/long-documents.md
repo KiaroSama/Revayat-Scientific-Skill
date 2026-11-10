@@ -96,6 +96,15 @@ revisions in `progress.md`; changed revisions invalidate affected approvals.
 Check for missing/duplicate IDs, empty targets and mismatched source locations
 before assembly. A split or merged segment needs a new explicit mapping and review.
 
+For Markdown/MyST inputs, inventory front matter, notebook kernel metadata,
+pre-title material and code fences before drafting. Keep executable metadata
+and code byte-exact; translate only the selected prose. A response wrapped in
+an extra code fence is not ready for publication. Compare the source and target
+fence structure and restore only verified original metadata before reviewing
+the resulting document again. A missing closing fence or duplicated metadata
+blocks completion. These are source-preservation review steps; the Rust CLI's
+TeX/HTML lint does not validate Markdown or MyST.
+
 ## Progress ledger
 
 `progress.md`, updated as each part changes state, because a fresh agent

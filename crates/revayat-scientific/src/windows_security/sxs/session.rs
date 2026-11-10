@@ -23,7 +23,9 @@ fn text(bytes: &[u8], offset: usize) -> Result<String> {
         .find(|&i| bytes[i] == 0 && bytes[i + 1] == 0);
     check(end.is_some(), "session-terminator")?;
     let mut units = bytes[offset..end.unwrap()]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect::<Vec<_>>();
     let result =

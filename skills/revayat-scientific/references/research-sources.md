@@ -1,5 +1,28 @@
 # Research evidence and adoption boundaries
 
+## Rust migration review — 2026-11-11
+
+[Upstream revisions](upstream-revisions.json) records the latest default-branch
+commit metadata observed for the 33 referenced repositories. That inventory is
+discovery evidence, not a claim that every repository's complete history was
+reviewed. The following current documents were also read:
+
+| Inspected source | Finding adopted or retained |
+| --- | --- |
+| [QuantEcon glossary](https://github.com/QuantEcon/action-translation/blob/80d4ae6a8eececa5395067dc1647b4f9594c52ef/docs/user/glossary.md) and [changelog](https://github.com/QuantEcon/action-translation/blob/80d4ae6a8eececa5395067dc1647b4f9594c52ef/CHANGELOG.md) | A loaded glossary can still be omitted from actual translation requests when language labels replace language codes. Review applicable rows in the actual drafting context. New whole-document fixes preserve front matter and detect damaged fences; these inform the explicit Markdown/MyST review in [long documents](long-documents.md), not an unsupported CLI parser claim. |
+| [K-Dense scientific writing](https://github.com/K-Dense-AI/scientific-agent-skills/blob/2d2065fb4520fa3f3f2bcf61cff26ec8b7eba4b5/skills/scientific-writing/SKILL.md) and [peer review](https://github.com/K-Dense-AI/scientific-agent-skills/blob/2d2065fb4520fa3f3f2bcf61cff26ec8b7eba4b5/skills/peer-review/SKILL.md) | Preserve claim/evidence provenance and distinguish reporting completeness from scientific validity. Their local Python tools and venue-submission workflow remain external; no additional interpreter is added to Revayat. |
+| [Persian skill](https://github.com/Mojtaba-Alehosseini/persian-skill/blob/4264f6ef03f7568bc15b14287a3db09bc815fc31/README.md), [paper engineering](https://github.com/Hongyuan-Lu/academic-paper-engineering/blob/84ac7bc820afa094b567de5a6e04fa000a0d232e/README.md), [PARME](https://github.com/DOLMA-NLP/PARME/blob/6df9269acc75377ed6be3bf2f7966c8e238a62bd/readme.md) and [translation-agent](https://github.com/andrewyng/translation-agent/blob/e0fc605acbb5d78cb7a58a98bc8bd8f0056df49c/README.md) | Current README content retains the earlier scope distinctions: literary style examples do not authorize changing scientific meaning; paper engineering has an intermediate representation; PARME's Zazaki alignment differs; reflection metrics are not proof of document fidelity. No copied banks, corpora or runtime code. |
+| [Hazm](https://github.com/roshan-research/hazm/blob/a399c8293c5165544aaef76ead78bda9f4275888/README.md) and [DadmaTools](https://github.com/Dadmatech/DadmaTools/blob/8e779244b980672be90f032c1e7a3a5360aa77c4/README.md) | Normalization and full cleaning can change source characters, numbers and links. Keep them outside the native runtime and preserve quoted/technical spans. |
+| [BabelDOC](https://github.com/funstory-ai/BabelDOC/blob/dd9adc352b957533d05b8cb94e88a7589cc56a35/README.md) and [PDFMathTranslate-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next/blob/07022b4d8585330c6b8413dd2cea9d203d1efb36/README.md) | Independent PDF translation products retain their own installation, language and licensing constraints. No runtime is vendored or represented as Rust migration work. Actual Persian shaping and layout still require the selected renderer's checks. |
+
+Verified tool releases: [cargo-audit 0.23.0](https://github.com/rustsec/rustsec/releases/tag/cargo-audit%2Fv0.23.0)
+(updated pin), [zizmor 1.32.0](https://github.com/zizmorcore/zizmor/releases/tag/v1.32.0),
+[actionlint 1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12),
+[Windows Poppler 26.09.0-0](https://github.com/oschwartz10612/poppler-windows/releases/tag/v26.09.0-0)
+and [Vazirmatn 33.003](https://github.com/rastikerdar/vazirmatn/releases/tag/v33.003).
+The last four already match this branch's pins. The CodeQL 4.39.3 update
+from dependency PR #32 is already present in the Rust reference branch.
+
 ## Further skill review — 2026-09-24
 
 The following public repositories were inspected for reusable procedures. Their

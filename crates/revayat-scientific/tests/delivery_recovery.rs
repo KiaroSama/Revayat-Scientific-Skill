@@ -78,7 +78,10 @@ fn test_corrupt_publication_backup_refuses_before_any_replacement() {
     assert!(corrupted);
     assert!(result.is_err());
     for ((s, d), label) in entries.iter().zip(["A", "B"]) {
-        assert_eq!(fs::read(s).unwrap(), format!("candidate {label}").as_bytes());
+        assert_eq!(
+            fs::read(s).unwrap(),
+            format!("candidate {label}").as_bytes()
+        );
         assert_eq!(fs::read(d).unwrap(), format!("approved {label}").as_bytes());
     }
     assert!(artifacts(root.as_path()).is_empty());

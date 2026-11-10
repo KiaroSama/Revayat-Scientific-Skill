@@ -29,7 +29,7 @@ Revayat is an agent skill and a native Rust executable. The host agent performs 
 
 [فارسی](README.fa.md)
 
-**Rust rewrite status:** these instructions describe `rewrite/rust-native`, not the current `main` implementation. The rewrite is undergoing behavioral-parity and hosted CI verification; registration of a test name is not proof its original assertions or native controls passed. The badges above report `main` and do not certify this branch or its latest commit. Use a matching reviewed CI run for artifacts; do not treat an intermediate archive as a signed final release.
+**Rust rewrite status:** these instructions describe `rewrite/rust-complete`, not the current `main` implementation. The rewrite is undergoing behavioral-parity and hosted CI verification; registration of a test name is not proof its original assertions or native controls passed. The badges above report `main` and do not certify this branch or its latest commit. Use a matching reviewed CI run for artifacts; do not treat an intermediate archive as a signed final release.
 
 ## What it does that a generic translator does not
 
@@ -48,7 +48,7 @@ Revayat is an agent skill and a native Rust executable. The host agent performs 
 Install the [pinned Rust toolchain](https://rustup.rs/) to build from source:
 
 ```console
-git clone --branch rewrite/rust-native https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+git clone --branch rewrite/rust-complete https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
@@ -119,6 +119,8 @@ Mechanical checks do not certify scientific accuracy, every PDF viewer, arbitrar
 - [DOCX](skills/revayat-scientific/references/docx.md) and [PDF operations](skills/revayat-scientific/references/pdf-processing.md)
 
 ## Development
+
+CI runs automatically on every push and pull request, and also supports manual dispatch. The Rust reference branch is `rewrite/rust-native`; this PR continues it on `rewrite/rust-complete`. See [development and migration verification](docs/development.md) for local commands and outstanding acceptance gates.
 
 ```console
 cargo fmt --all -- --check

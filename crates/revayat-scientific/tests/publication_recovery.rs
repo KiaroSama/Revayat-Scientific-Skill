@@ -1,7 +1,9 @@
 use anyhow::bail;
 use revayat_scientific::{
     identity::path_object_id,
-    publication::{Boundary, Cancellation, RecoveryFailures, RetainedPrimary, publish_files, publish_observed},
+    publication::{
+        Boundary, Cancellation, RecoveryFailures, RetainedPrimary, publish_files, publish_observed,
+    },
 };
 use std::{
     fs,
@@ -98,14 +100,26 @@ fn test_interrupted_rollback_retains_previous_bytes() {
                 assert!(interrupted);
                 assert_eq!(error.downcast_ref::<Cancellation>(), Some(&cancellation));
                 let primary = error.downcast_ref::<RetainedPrimary>().unwrap();
-                assert!(primary.0.to_string().contains("controlled second activation failure"));
+                assert!(
+                    primary
+                        .0
+                        .to_string()
+                        .contains("controlled second activation failure")
+                );
                 let failures = &error.downcast_ref::<RecoveryFailures>().unwrap().0;
                 assert_eq!(failures.len(), if earlier_failure { 2 } else { 1 });
                 if earlier_failure {
-                    assert!(failures[0].to_string().contains("earlier ordinary restore diagnostic"));
+                    assert!(
+                        failures[0]
+                            .to_string()
+                            .contains("earlier ordinary restore diagnostic")
+                    );
                     assert!(!format!("{error:#}").contains("earlier ordinary restore diagnostic"));
                 }
-                assert_eq!(failures.last().unwrap().downcast_ref::<Cancellation>(), Some(&cancellation));
+                assert_eq!(
+                    failures.last().unwrap().downcast_ref::<Cancellation>(),
+                    Some(&cancellation)
+                );
                 assert!(!format!("{error:#}").contains("controlled second activation failure"));
                 assert!(format!("{error:#}").contains("recovery"));
                 assert!(!format!("{error:#}").contains(root.to_str().unwrap()));
@@ -121,10 +135,17 @@ fn test_interrupted_rollback_retains_previous_bytes() {
                     Path::new(record["backup"].as_str().unwrap())
                 };
                 let label = ["A", "B"][interrupted_index];
-                assert_eq!(fs::read(previous).unwrap(), format!("approved {label}").as_bytes());
+                assert_eq!(
+                    fs::read(previous).unwrap(),
+                    format!("approved {label}").as_bytes()
+                );
                 assert_eq!(
                     fs::read(destination).unwrap(),
-                    format!("{} {label}", if completed { "approved" } else { "candidate" }).as_bytes()
+                    format!(
+                        "{} {label}",
+                        if completed { "approved" } else { "candidate" }
+                    )
+                    .as_bytes()
                 );
                 if interrupted_index == 0 {
                     assert_eq!(fs::read(&entries[1].1).unwrap(), b"approved B");
@@ -151,9 +172,19 @@ fn test_completed_file_restoration_error_preserves_previous_bytes_and_cleans() {
     })
     .unwrap_err();
     assert!(restored);
-    assert!(error.to_string().contains("rollback completed with secondary diagnostics"));
-    assert!(error.downcast_ref::<RetainedPrimary>().unwrap().0.to_string()
-        .contains("controlled publication failure"));
+    assert!(
+        error
+            .to_string()
+            .contains("rollback completed with secondary diagnostics")
+    );
+    assert!(
+        error
+            .downcast_ref::<RetainedPrimary>()
+            .unwrap()
+            .0
+            .to_string()
+            .contains("controlled publication failure")
+    );
     assert_eq!(error.downcast_ref::<RecoveryFailures>().unwrap().0.len(), 1);
     assert!(!format!("{error:#}").contains("controlled publication failure"));
     assert!(!error.to_string().contains("needs recovery"));
@@ -179,12 +210,26 @@ fn test_later_restore_failure_keeps_whole_batch_and_foreign_destination() {
         })
         .unwrap_err();
         assert!(error.to_string().contains("needs recovery"));
-        assert!(error.downcast_ref::<RetainedPrimary>().unwrap().0.to_string().contains("controlled failure"));
-        assert_eq!(error.downcast_ref::<RecoveryFailures>().unwrap().0.len(), if failed_second_restore { 2 } else { 1 });
+        assert!(
+            error
+                .downcast_ref::<RetainedPrimary>()
+                .unwrap()
+                .0
+                .to_string()
+                .contains("controlled failure")
+        );
+        assert_eq!(
+            error.downcast_ref::<RecoveryFailures>().unwrap().0.len(),
+            if failed_second_restore { 2 } else { 1 }
+        );
         assert_eq!(fs::read(&entries[0].1).unwrap(), b"foreign revision");
         assert_eq!(
             fs::read(&entries[1].1).unwrap(),
-            if failed_second_restore { b"candidate B".as_slice() } else { b"approved B" }
+            if failed_second_restore {
+                b"candidate B".as_slice()
+            } else {
+                b"approved B"
+            }
         );
         let records = retained(&root, 2);
         if failed_second_restore {
@@ -227,7 +272,10 @@ fn test_unchanged_publication_cleans_only_owned_paths() {
     })
     .unwrap_err();
     assert!(error.to_string().contains("cleanup needs recovery"));
-    assert_eq!(fs::read(changed.unwrap().join("sentinel")).unwrap(), b"foreign data");
+    assert_eq!(
+        fs::read(changed.unwrap().join("sentinel")).unwrap(),
+        b"foreign data"
+    );
     assert!(displaced.join("recovery.json").is_file());
     assert!(displaced.join("previous").is_file());
 }
@@ -252,9 +300,19 @@ fn test_absent_destination_completed_rollback_unlink_is_reconciled() {
     assert!(restored);
     assert!(!entries[0].1.exists());
     assert_eq!(fs::read(&entries[1].1).unwrap(), b"approved B");
-    assert!(error.to_string().contains("rollback completed with secondary diagnostics"));
-    assert!(error.downcast_ref::<RetainedPrimary>().unwrap().0.to_string()
-        .contains("controlled publication failure"));
+    assert!(
+        error
+            .to_string()
+            .contains("rollback completed with secondary diagnostics")
+    );
+    assert!(
+        error
+            .downcast_ref::<RetainedPrimary>()
+            .unwrap()
+            .0
+            .to_string()
+            .contains("controlled publication failure")
+    );
     assert_eq!(error.downcast_ref::<RecoveryFailures>().unwrap().0.len(), 1);
     assert!(!format!("{error:#}").contains("controlled publication failure"));
     assert!(!error.to_string().contains("needs recovery"));
@@ -279,8 +337,9 @@ fn test_publication_cleanup_cancellation_retains_journal_and_owned_lock() {
                 }
                 if event == boundary && visits == skip + 1 && !cancelled {
                     cancelled = true;
-                    return Err(anyhow::Error::new(cancellation)
-                        .context("controlled cleanup interruption"));
+                    return Err(
+                        anyhow::Error::new(cancellation).context("controlled cleanup interruption")
+                    );
                 }
                 Ok(())
             })
@@ -289,12 +348,19 @@ fn test_publication_cleanup_cancellation_retains_journal_and_owned_lock() {
             assert_eq!(error.downcast_ref::<Cancellation>(), Some(&cancellation));
             let records = retained(&root, 2);
             for record in &records {
-                let label = if record["destination"] == entries[0].1.to_str().unwrap() { "A" } else { "B" };
+                let label = if record["destination"] == entries[0].1.to_str().unwrap() {
+                    "A"
+                } else {
+                    "B"
+                };
                 let backup = Path::new(record["backup"].as_str().unwrap());
                 if boundary == Boundary::BeforeBackupDisposal && skip == 1 && label == "A" {
                     assert!(!backup.exists(), "earlier disposal already completed");
                 } else {
-                    assert_eq!(fs::read(backup).unwrap(), format!("approved {label}").as_bytes());
+                    assert_eq!(
+                        fs::read(backup).unwrap(),
+                        format!("approved {label}").as_bytes()
+                    );
                 }
             }
             assert_eq!(fs::read(&entries[0].1).unwrap(), b"candidate A");
@@ -307,14 +373,17 @@ fn test_publication_cleanup_cancellation_retains_journal_and_owned_lock() {
         let error = publish_observed(&entries, &[], None, |event, dest| {
             if event == Boundary::BeforeCommit && dest == entries[1].1 {
                 interrupted = true;
-                return Err(anyhow::Error::new(cancellation).context("private primary cancellation"));
+                return Err(
+                    anyhow::Error::new(cancellation).context("private primary cancellation")
+                );
             }
             if event == Boundary::BeforeCleanup {
                 cleanup_failed = true;
                 bail!("private ordinary cleanup failure");
             }
             Ok(())
-        }).unwrap_err();
+        })
+        .unwrap_err();
         assert!(interrupted && cleanup_failed);
         assert!(revayat_scientific::publication::cancelled(&error));
         assert_eq!(error.downcast_ref::<Cancellation>(), Some(&cancellation));

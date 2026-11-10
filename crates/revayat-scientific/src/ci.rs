@@ -178,7 +178,8 @@ fn validate_run(api: &mut impl GitHubApi, id: &ReportingIdentity<'_>) -> Result<
             && value["head_sha"] == id.sha
             && value["run_attempt"].as_u64() == Some(id.attempt)
             // The root run keeps its initiating event even for reusable child jobs.
-            && value["event"] == "workflow_dispatch"
+            && value["event"].as_str().is_some_and(|event|
+                ["workflow_dispatch", "push", "pull_request"].contains(&event))
             && value["path"] == ".github/workflows/ci.yml"
             && value["repository"]["full_name"]
                 .as_str()

@@ -1,7 +1,8 @@
 //! Native file publication and exact-byte identity regressions.
 use anyhow::{Result, bail};
 use revayat_scientific::identity::{
-    ReadBoundary, file_identity, file_identity_observed, file_identity_opened, object_id, path_object_id,
+    ReadBoundary, file_identity, file_identity_observed, file_identity_opened, object_id,
+    path_object_id,
 };
 use revayat_scientific::publication::{
     Boundary, publish_files, publish_observed, publish_with_identity, validate_destination,
@@ -47,7 +48,11 @@ fn test_late_replace_failure_restores_previous_outputs() {
         let pairs = fixture(&root);
         let mut reached = false;
         let error = publish_observed(&pairs, &[], None, |event, dest| {
-            let boundary = if native { Boundary::BeforeReplace } else { Boundary::BeforeCommit };
+            let boundary = if native {
+                Boundary::BeforeReplace
+            } else {
+                Boundary::BeforeCommit
+            };
             if event == boundary && dest == pairs[1].1 {
                 reached = true;
                 if native {
@@ -57,10 +62,14 @@ fn test_late_replace_failure_restores_previous_outputs() {
                 }
             }
             Ok(())
-        }).unwrap_err();
+        })
+        .unwrap_err();
         assert!(reached);
         if native {
-            assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::NotFound);
+            assert_eq!(
+                error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                std::io::ErrorKind::NotFound
+            );
         } else {
             assert!(error.to_string().contains("controlled activation failure"));
         }
@@ -80,7 +89,10 @@ fn test_casefold_collision_is_rejected_before_mutation() {
     fs::write(&b, b"B").unwrap();
     assert!(
         publish_files(
-            &[(a.clone(), root.join("Output")), (b.clone(), root.join("output"))],
+            &[
+                (a.clone(), root.join("Output")),
+                (b.clone(), root.join("output"))
+            ],
             &[],
             None
         )
@@ -132,16 +144,26 @@ fn test_publication_rejects_growth_and_revisions_during_a_counted_read() {
                             changed = true;
                             let modified = fs::metadata(path)?.modified()?;
                             if mode == "growth" {
-                                OpenOptions::new().append(true).open(path)?.write_all(b" growth")?;
+                                OpenOptions::new()
+                                    .append(true)
+                                    .open(path)?
+                                    .write_all(b" growth")?;
                             } else {
                                 fs::write(
                                     path,
-                                    if mode == "rewrite" { b"changed!".as_slice() } else { b"cut" },
+                                    if mode == "rewrite" {
+                                        b"changed!".as_slice()
+                                    } else {
+                                        b"cut"
+                                    },
                                 )?;
                             }
-                            File::options().write(true).open(path)?.set_times(
-                                FileTimes::new().set_modified(modified + std::time::Duration::from_millis(10)),
-                            )?;
+                            File::options()
+                                .write(true)
+                                .open(path)?
+                                .set_times(FileTimes::new().set_modified(
+                                    modified + std::time::Duration::from_millis(10),
+                                ))?;
                         }
                     }
                     Ok(())
@@ -149,7 +171,10 @@ fn test_publication_rejects_growth_and_revisions_during_a_counted_read() {
             },
         );
         let error = result.unwrap_err().to_string();
-        assert!(error.contains("grew") || error.contains("changed"), "{mode}: {error}");
+        assert!(
+            error.contains("grew") || error.contains("changed"),
+            "{mode}: {error}"
+        );
         assert_eq!(fs::read(stage).unwrap(), b"candidate");
         assert!(leftovers(&root).is_empty());
         assert!(changed);
@@ -180,16 +205,32 @@ fn test_unchanged_publication_accepts_copied_file_timestamps() {
         .write(true)
         .open(&stage)
         .unwrap()
-        .set_times(FileTimes::new().set_modified(fs::metadata(&original).unwrap().modified().unwrap()))
+        .set_times(
+            FileTimes::new().set_modified(fs::metadata(&original).unwrap().modified().unwrap()),
+        )
         .unwrap();
-    assert_ne!(path_object_id(&original).unwrap(), path_object_id(&stage).unwrap());
-    assert_eq!(fs::metadata(&stage).unwrap().modified().unwrap(), fs::metadata(&original).unwrap().modified().unwrap());
+    assert_ne!(
+        path_object_id(&original).unwrap(),
+        path_object_id(&stage).unwrap()
+    );
+    assert_eq!(
+        fs::metadata(&stage).unwrap().modified().unwrap(),
+        fs::metadata(&original).unwrap().modified().unwrap()
+    );
     let before = fs::metadata(&dest).unwrap();
     let handle = File::open(&dest).unwrap();
     let opened = handle.metadata().unwrap();
     assert_eq!(
-        (path_object_id(&dest).unwrap(), before.len(), before.modified().unwrap()),
-        (object_id(&handle).unwrap(), opened.len(), opened.modified().unwrap()),
+        (
+            path_object_id(&dest).unwrap(),
+            before.len(),
+            before.modified().unwrap()
+        ),
+        (
+            object_id(&handle).unwrap(),
+            opened.len(),
+            opened.modified().unwrap()
+        ),
     );
     drop(handle);
     publish_files(&[(stage, dest.clone())], &[], None).unwrap();
@@ -210,8 +251,12 @@ fn test_opened_descriptor_substitution_is_refused_before_any_replacement() {
         fs::write(&path, b"approved").unwrap();
         fs::write(&foreign, b"foreign!").unwrap();
         let modified = fs::metadata(&path).unwrap().modified().unwrap();
-        File::options().write(true).open(&foreign).unwrap()
-            .set_times(FileTimes::new().set_modified(modified)).unwrap();
+        File::options()
+            .write(true)
+            .open(&foreign)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(modified))
+            .unwrap();
         let mut substituted = false;
         let result = publish_with_identity(
             &[(stage.clone(), path.clone())],
@@ -222,19 +267,31 @@ fn test_opened_descriptor_substitution_is_refused_before_any_replacement() {
                 if observed != path {
                     return file_identity(observed, limit);
                 }
-                file_identity_opened(observed, limit, |_, _| Ok(()), |original| {
-                    substituted = true;
-                    if replace_path {
-                        fs::rename(&foreign, original)?;
-                    }
-                    Ok(File::open(if replace_path { original } else { &foreign })?)
-                })
+                file_identity_opened(
+                    observed,
+                    limit,
+                    |_, _| Ok(()),
+                    |original| {
+                        substituted = true;
+                        if replace_path {
+                            fs::rename(&foreign, original)?;
+                        }
+                        Ok(File::open(if replace_path { original } else { &foreign })?)
+                    },
+                )
             },
         );
         assert!(substituted);
         let error = result.unwrap_err().to_string();
         assert!(error.contains("changed"), "{error}");
-        assert_eq!(fs::read(path).unwrap(), if replace_path { b"foreign!" } else { b"approved" });
+        assert_eq!(
+            fs::read(path).unwrap(),
+            if replace_path {
+                b"foreign!"
+            } else {
+                b"approved"
+            }
+        );
         if !replace_path {
             assert_eq!(fs::read(foreign).unwrap(), b"foreign!");
         }
@@ -254,8 +311,12 @@ fn test_replaced_path_after_descriptor_close_is_refused() {
     fs::write(&path, b"approved").unwrap();
     fs::write(&foreign, b"foreign!").unwrap();
     let modified = fs::metadata(&path).unwrap().modified().unwrap();
-    File::options().write(true).open(&foreign).unwrap()
-        .set_times(FileTimes::new().set_modified(modified)).unwrap();
+    File::options()
+        .write(true)
+        .open(&foreign)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(modified))
+        .unwrap();
     let mut replaced = false;
     let result = publish_with_identity(
         &[(stage.clone(), path.clone())],
@@ -360,10 +421,17 @@ fn test_foreign_destination_revision_is_preserved_with_recovery_evidence() {
     });
     assert!(result.unwrap_err().to_string().contains("needs recovery"));
     assert!(modified);
-    assert_eq!(fs::read(&pairs[0].1).unwrap(), b"concurrent foreign revision");
+    assert_eq!(
+        fs::read(&pairs[0].1).unwrap(),
+        b"concurrent foreign revision"
+    );
     let evidence = leftovers(&root);
     assert!(evidence.iter().any(|p| p.join("recovery.json").is_file()));
-    assert!(evidence.iter().any(|p| p.extension().is_some_and(|e| e == "lock")));
+    assert!(
+        evidence
+            .iter()
+            .any(|p| p.extension().is_some_and(|e| e == "lock"))
+    );
 }
 
 #[test]

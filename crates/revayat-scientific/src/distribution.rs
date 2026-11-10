@@ -165,14 +165,22 @@ impl Payload {
         }
         if let Some(binary) = binary {
             let executables = [
-                (binary.to_owned(), if cfg!(windows) {
-                    "revayat-scientific.exe"
-                } else {
-                    "revayat-scientific"
-                }),
+                (
+                    binary.to_owned(),
+                    if cfg!(windows) {
+                        "revayat-scientific.exe"
+                    } else {
+                        "revayat-scientific"
+                    },
+                ),
                 #[cfg(unix)]
-                (binary.parent().context("distribution executable lacks parent")?
-                    .join("revayat-process-owner"), "revayat-process-owner"),
+                (
+                    binary
+                        .parent()
+                        .context("distribution executable lacks parent")?
+                        .join("revayat-process-owner"),
+                    "revayat-process-owner",
+                ),
             ];
             for (path, name) in executables {
                 ensure!(
@@ -519,6 +527,7 @@ pub fn install_observed(
             observe(InstallBoundary::AfterActivate(index), &target.destination)?;
         }
         observe(InstallBoundary::BeforeCleanup, &targets[0].destination)?;
+        recovery.as_ref().unwrap().verify()?;
         for target in &targets {
             ensure!(
                 path_object_id(&target.lock)? == target.lock_identity,

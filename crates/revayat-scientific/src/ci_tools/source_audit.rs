@@ -16,7 +16,9 @@ pub fn classify_source(filename: &str, bytes: &[u8]) -> Result<&'static str> {
     let category = match extension {
         "rs" => "rust",
         "md" | "txt" => "documentation",
-        "toml" | "lock" | "json" | "yaml" | "yml" | "docx-defaults" | "dockerignore" => "configuration",
+        "toml" | "lock" | "json" | "yaml" | "yml" | "docx-defaults" | "dockerignore" => {
+            "configuration"
+        }
         "tex" if name == "Dockerfile.tex" => {
             super::validate_docker_invocations(std::str::from_utf8(bytes)?)?;
             "configuration"
@@ -32,7 +34,10 @@ pub fn classify_source(filename: &str, bytes: &[u8]) -> Result<&'static str> {
             ".cbmignore",
             ".graphifyignore",
         ]
-        .contains(&name) => "configuration",
+        .contains(&name) =>
+        {
+            "configuration"
+        }
         _ => anyhow::bail!("unclassified tracked file: {filename}"),
     };
     if category == "rust" {
@@ -68,7 +73,9 @@ fn audit(root: &Path, mut git: impl FnMut(&[&str]) -> Result<String>) -> Result<
     let listing = git(&["ls-tree", "-r", "--name-only", BASELINE])?;
     let mut previous = 0;
     for filename in listing.lines().filter(|s| s.ends_with(".rs")) {
-        previous += git(&["show", &format!("{BASELINE}:{filename}")])?.lines().count();
+        previous += git(&["show", &format!("{BASELINE}:{filename}")])?
+            .lines()
+            .count();
     }
     ensure!(previous > 0, "baseline Rust source listing failed");
     // LOC remains comparable evidence, not proof that dead or duplicate logic was removed.
@@ -103,7 +110,9 @@ mod tests {
         match args {
             ["ls-files", "-z"] => Ok(format!("{filename}\0README.md\0")),
             ["ls-tree", "-r", "--name-only", BASELINE] => Ok("before.rs\nREADME.md\n".into()),
-            ["show", revision] if *revision == format!("{BASELINE}:before.rs") => Ok(baseline.into()),
+            ["show", revision] if *revision == format!("{BASELINE}:before.rs") => {
+                Ok(baseline.into())
+            }
             _ => anyhow::bail!("unexpected fixture Git query"),
         }
     }
@@ -121,13 +130,16 @@ mod tests {
             let report = audit(root.path(), |args| {
                 fixture_git(args, "source.rs", "fn original() {}\n// baseline\n")
             })?;
-            assert_eq!(report, serde_json::json!({
-                "schema":1,"baseline_commit":BASELINE,
-                "categories":{"rust":1,"documentation":1},
-                "rust_source_lines_before":2,"rust_source_lines_after":after,
-                "rust_source_line_delta":delta,
-                "measurement":"all tracked Rust source/test lines; excludes notices/docs/generated runtime output"
-            }));
+            assert_eq!(
+                report,
+                serde_json::json!({
+                    "schema":1,"baseline_commit":BASELINE,
+                    "categories":{"rust":1,"documentation":1},
+                    "rust_source_lines_before":2,"rust_source_lines_after":after,
+                    "rust_source_line_delta":delta,
+                    "measurement":"all tracked Rust source/test lines; excludes notices/docs/generated runtime output"
+                })
+            );
         }
         Ok(())
     }
@@ -136,19 +148,36 @@ mod tests {
     fn audit_keeps_classification_utf8_shebang_and_per_file_limits() -> Result<()> {
         let root = tempfile::tempdir()?;
         for (filename, bytes, expected) in [
-            ("helper.py", b"print(1)".to_vec(), "unclassified tracked file"),
+            (
+                "helper.py",
+                b"print(1)".to_vec(),
+                "unclassified tracked file",
+            ),
             ("source.rs", vec![255], "Rust source is not UTF-8"),
             ("source.rs", b"#!/bin/sh\n".to_vec(), "script shebang"),
-            ("source.rs", "\n".repeat(800).into_bytes(), "exceeds 799 lines"),
+            (
+                "source.rs",
+                "\n".repeat(800).into_bytes(),
+                "exceeds 799 lines",
+            ),
         ] {
             std::fs::write(root.path().join(filename), bytes)?;
-            let error = audit(root.path(), |args| fixture_git(args, filename, "fn old() {}\n"))
-                .unwrap_err();
+            let error = audit(root.path(), |args| {
+                fixture_git(args, filename, "fn old() {}\n")
+            })
+            .unwrap_err();
             assert!(error.to_string().contains(expected), "{error:#}");
         }
         std::fs::write(root.path().join("source.rs"), "\n".repeat(799))?;
         std::fs::write(root.path().join("README.md"), "retained documentation")?;
-        assert!(audit(root.path(), |args| fixture_git(args, "source.rs", "fn old() {}\n")).is_ok());
+        assert!(
+            audit(root.path(), |args| fixture_git(
+                args,
+                "source.rs",
+                "fn old() {}\n"
+            ))
+            .is_ok()
+        );
         Ok(())
     }
 
@@ -161,15 +190,26 @@ mod tests {
             let error = audit(root.path(), |args| {
                 anyhow::ensure!(args[0] != failing, "fixture Git failure at {failing}");
                 fixture_git(args, "source.rs", "fn old() {}\n")
-            }).unwrap_err();
-            assert!(error.to_string().contains("fixture Git failure"), "{error:#}");
+            })
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("fixture Git failure"),
+                "{error:#}"
+            );
         }
         for empty in ["ls-files", "ls-tree", "show"] {
             let error = audit(root.path(), |args| {
-                if args[0] == empty { Ok(String::new()) }
-                else { fixture_git(args, "source.rs", "fn old() {}\n") }
-            }).unwrap_err();
-            assert!(error.to_string().contains("source listing failed"), "{error:#}");
+                if args[0] == empty {
+                    Ok(String::new())
+                } else {
+                    fixture_git(args, "source.rs", "fn old() {}\n")
+                }
+            })
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("source listing failed"),
+                "{error:#}"
+            );
         }
         Ok(())
     }
@@ -179,9 +219,14 @@ mod tests {
     fn audit_refuses_linked_tracked_source() -> Result<()> {
         let root = tempfile::tempdir()?;
         std::fs::write(root.path().join("original.rs"), "fn original() {}\n")?;
-        std::os::unix::fs::symlink(root.path().join("original.rs"), root.path().join("source.rs"))?;
-        let error = audit(root.path(), |args| fixture_git(args, "source.rs", "fn old() {}\n"))
-            .unwrap_err();
+        std::os::unix::fs::symlink(
+            root.path().join("original.rs"),
+            root.path().join("source.rs"),
+        )?;
+        let error = audit(root.path(), |args| {
+            fixture_git(args, "source.rs", "fn old() {}\n")
+        })
+        .unwrap_err();
         assert!(error.to_string().contains("linked tracked file refused"));
         Ok(())
     }

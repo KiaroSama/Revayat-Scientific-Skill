@@ -1,4 +1,7 @@
-use revayat_scientific::{ci_tools as c, render, runtime::{self, CommandSpec}};
+use revayat_scientific::{
+    ci_tools as c, render,
+    runtime::{self, CommandSpec},
+};
 use std::{fs, path::Path, time::Duration};
 
 fn root() -> &'static Path {
@@ -74,12 +77,15 @@ fn test_windows_browser_selection_uses_paired_managed_binary() {
         spec.cwd = Some(directory.clone());
         spec.timeout = Duration::from_secs(30);
         spec.max_output = 1024 * 1024;
-        spec.env.insert("REVAYAT_BROWSER".into(), selected.as_os_str().to_owned());
-        spec.env.insert("GITHUB_ENV".into(), environment.as_os_str().to_owned());
-        spec.env.insert("RUNNER_TEMP".into(), directory.as_os_str().to_owned());
+        spec.env
+            .insert("REVAYAT_BROWSER".into(), selected.as_os_str().to_owned());
+        spec.env
+            .insert("GITHUB_ENV".into(), environment.as_os_str().to_owned());
+        spec.env
+            .insert("RUNNER_TEMP".into(), directory.as_os_str().to_owned());
         fs::write(&environment, b"previous=value\n").unwrap();
         let result = runtime::run(&spec).unwrap();
-        assert_eq!(result.success(), exists);
+        assert_eq!(result.success(), exists, "{}", result.stderr_text());
         let expected = if exists {
             format!("previous=value\nREVAYAT_BROWSER={}\n", present.display())
         } else {
@@ -89,7 +95,7 @@ fn test_windows_browser_selection_uses_paired_managed_binary() {
     }
     let source = fs::read_to_string(root().join(".github/workflows/ci.yml")).unwrap();
     assert!(source.contains("windows-latest"));
-    assert!(source.contains("--include-ignored"));
+    assert!(source.contains("--tier scientific --profile debug --ignored"));
     assert!(!source.contains("playwright"));
 }
 #[test]
@@ -111,9 +117,11 @@ fn test_actual_callee_contract_still_rejects_missing_input() {
 #[ignore = "requires actual actionlint; equipped CI runs this missing-input proof"]
 fn equipped_actionlint_rejects_missing_callee_input() {
     let source = fs::read_to_string(root().join(".github/workflows/ci.yml")).unwrap();
-    let altered = source.lines()
+    let altered = source
+        .lines()
         .filter(|line| !line.trim_start().starts_with("base_ref: ${{"))
-        .collect::<Vec<_>>().join("\n");
+        .collect::<Vec<_>>()
+        .join("\n");
     let output = c::lint_one(root(), ".github/workflows/ci.yml", &altered).unwrap();
     assert!(!output.success());
     assert!(
@@ -124,30 +132,44 @@ fn equipped_actionlint_rejects_missing_callee_input() {
 #[test]
 #[ignore = "requires the actual pinned actionlint binary; scientific and quality CI execute this regression"]
 fn test_original_filename_and_failed_linter_exit_are_preserved() {
-    let result = c::lint_one_with(root(), ".github/workflows/ci.yml", &legacy(), |spec, input| {
-        assert_eq!(spec.program, "actionlint");
-        assert_eq!(
-            spec.args,
-            ["-stdin-filename", ".github/workflows/ci.yml", "-"].map(std::ffi::OsString::from)
-        );
-        assert_eq!(spec.cwd.as_deref(), Some(root()));
-        assert_eq!(spec.timeout, Duration::from_secs(30));
-        assert!(
-            std::str::from_utf8(input).unwrap()
-                .contains("uses: ./.github/workflows/security-ci.yml")
-        );
-        Ok(runtime::CommandOutput { code: 7, stdout: vec![], stderr: vec![] })
-    }).unwrap();
+    let result = c::lint_one_with(
+        root(),
+        ".github/workflows/ci.yml",
+        &legacy(),
+        |spec, input| {
+            assert_eq!(spec.program, "actionlint");
+            assert_eq!(
+                spec.args,
+                ["-stdin-filename", ".github/workflows/ci.yml", "-"].map(std::ffi::OsString::from)
+            );
+            assert_eq!(spec.cwd.as_deref(), Some(root()));
+            assert_eq!(spec.timeout, Duration::from_secs(30));
+            assert!(
+                std::str::from_utf8(input)
+                    .unwrap()
+                    .contains("uses: ./.github/workflows/security-ci.yml")
+            );
+            Ok(runtime::CommandOutput {
+                code: 7,
+                stdout: vec![],
+                stderr: vec![],
+            })
+        },
+    )
+    .unwrap();
     assert_eq!(result.code, 7);
     let fixture = tempfile::tempdir().unwrap();
     fs::create_dir_all(fixture.path().join(".github/workflows")).unwrap();
     fs::write(fixture.path().join(".github/workflows/broken.yml"),"name: broken\non: workflow_dispatch\njobs:\n  fail:\n    runs-on: nonexistent-runner\n    steps:\n      - run: cargo --version\n").unwrap();
-    let mut spec = CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args(["check-workflows"]);
+    let mut spec =
+        CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args(["check-workflows"]);
     spec.cwd = Some(fixture.path().to_owned());
     spec.timeout = Duration::from_secs(45);
     spec.max_output = 1024 * 1024;
-    spec.env.insert("REVAYAT_REPOSITORY".into(), fixture.path().as_os_str().to_owned());
+    spec.env.insert(
+        "REVAYAT_REPOSITORY".into(),
+        fixture.path().as_os_str().to_owned(),
+    );
     let output = runtime::run(&spec).expect("actual pinned actionlint is required");
     assert_eq!(output.code, 1);
     assert!(String::from_utf8_lossy(&output.stdout).contains(".github/workflows/broken.yml"));

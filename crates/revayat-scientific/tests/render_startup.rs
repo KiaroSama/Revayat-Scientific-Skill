@@ -195,7 +195,7 @@ fn readiness_requires_live_protocol_identity_not_only_endpoint_file() -> Result<
         let executable = root.join(format!("browser-{mode}{extension}"));
         fs::copy(env!("CARGO_BIN_EXE_revayat-test-tool"), &executable)?;
         let result = revayat_scientific::render::preflight_browser(&executable, &root);
-        assert_eq!(result.is_ok(), mode == "protocol");
+        assert_eq!(result.is_ok(), mode == "protocol", "{mode}: {result:?}");
         if let Err(error) = result {
             let text = format!("{error:#}");
             assert!(!text.contains("PRIVATE_BROWSER_CANARY"));

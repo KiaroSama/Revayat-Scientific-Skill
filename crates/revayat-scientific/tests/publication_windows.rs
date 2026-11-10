@@ -329,12 +329,23 @@ fn test_inherited_preparation_refuses_substituted_foreign_temporary_files() -> R
         assert_eq!(fs::read(&path)?, b"candidate");
         assert_eq!(fs::read(&stage)?, b"candidate");
         assert_eq!(fs::read(&destination)?, b"approved");
-        assert!(error.downcast_ref::<RetainedPrimary>().unwrap().0.to_string()
-            .contains("private preparation failure"));
+        assert!(
+            error
+                .downcast_ref::<RetainedPrimary>()
+                .unwrap()
+                .0
+                .to_string()
+                .contains("private preparation failure")
+        );
         let secondary = &error.downcast_ref::<RecoveryFailures>().unwrap().0;
         assert_eq!(secondary.len(), 1);
-        assert_eq!(secondary[0].downcast_ref::<std::io::Error>().unwrap().kind(),
-            std::io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            secondary[0]
+                .downcast_ref::<std::io::Error>()
+                .unwrap()
+                .kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
         let displayed = format!("{error:#}");
         assert!(displayed.contains("cleanup needs recovery"));
         assert!(!displayed.contains("private preparation failure"));

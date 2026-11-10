@@ -314,31 +314,31 @@ fn accounting_server(listener: UnixListener, token: String, stop: Arc<AtomicBool
                             peer.stream.write_all(b"R")?;
                         }
                     }
-                    if let Some(id) = &peer.id {
-                        if !peer.bytes.is_empty() {
-                            match peer.bytes.as_slice() {
-                                b"S" => {
-                                    accounting.stopped(id)?;
-                                    peer.stopped = true;
-                                }
-                                b"D" if peer.may_clean => {
-                                    ensure!(
-                                        accounting
-                                            .cleanup_deadline(id)?
-                                            .is_some_and(|deadline| Instant::now() < deadline),
-                                        "ancestor cleanup budget exhausted; completion refused"
-                                    );
-                                    accounting.done(id)?;
-                                    peer.done = true;
-                                }
-                                b"F" => {
-                                    accounting.failed();
-                                    peer.done = true;
-                                }
-                                _ => bail!("invalid ownership completion"),
+                    if let Some(id) = &peer.id
+                        && !peer.bytes.is_empty()
+                    {
+                        match peer.bytes.as_slice() {
+                            b"S" => {
+                                accounting.stopped(id)?;
+                                peer.stopped = true;
                             }
-                            peer.bytes.clear();
+                            b"D" if peer.may_clean => {
+                                ensure!(
+                                    accounting
+                                        .cleanup_deadline(id)?
+                                        .is_some_and(|deadline| Instant::now() < deadline),
+                                    "ancestor cleanup budget exhausted; completion refused"
+                                );
+                                accounting.done(id)?;
+                                peer.done = true;
+                            }
+                            b"F" => {
+                                accounting.failed();
+                                peer.done = true;
+                            }
+                            _ => bail!("invalid ownership completion"),
                         }
+                        peer.bytes.clear();
                     }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => (),

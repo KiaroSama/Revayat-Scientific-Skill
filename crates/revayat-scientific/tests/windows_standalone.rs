@@ -125,7 +125,9 @@ fn opc_command(path: &Path) -> Result<CommandSpec> {
         .into_iter()
         .map(Into::into)
         .collect();
-    command.env.insert(OPC_CHILD.into(), path.as_os_str().into());
+    command
+        .env
+        .insert(OPC_CHILD.into(), path.as_os_str().into());
     command.env_remove.push(OPC_HANG.into());
     command.timeout = Duration::from_secs(10);
     command.max_output = 65536;

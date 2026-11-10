@@ -47,7 +47,23 @@ fn browser_protocol(args: &[String]) {
     .unwrap();
     let mut socket = tungstenite::accept(listener.accept().unwrap().0).unwrap();
     loop {
-        let message = socket.read().unwrap();
+        let message = match socket.read() {
+            Ok(message) => message,
+            Err(
+                tungstenite::Error::ConnectionClosed
+                | tungstenite::Error::AlreadyClosed
+                | tungstenite::Error::Protocol(
+                    tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+                ),
+            ) => {
+                // Closing a DevTools session does not exit the real browser.
+                // Stay alive until the process owner completes its termination proof.
+                loop {
+                    thread::park();
+                }
+            }
+            Err(error) => panic!("fixture protocol failed: {error}"),
+        };
         let tungstenite::Message::Text(text) = message else {
             continue;
         };

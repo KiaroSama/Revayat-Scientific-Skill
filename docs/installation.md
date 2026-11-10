@@ -1,9 +1,9 @@
 # Installation
 
-These native instructions apply to `rewrite/rust-native`; the default `main` checkout is not yet the completed Rust rewrite. Use the exact reviewed rewrite revision and matching successful hosted CI artifacts for your operating system. Current rewrite package/install acceptance is still being verified; historical or partial CI results do not certify a new revision. CI artifacts are intermediate build outputs, not automatically published or signed final releases.
+These native instructions apply to `rewrite/rust-complete`; the default `main` checkout is not yet the completed Rust rewrite. Use the exact reviewed rewrite revision and matching successful hosted CI artifacts for your operating system. Current rewrite package/install acceptance is still being verified; historical or partial CI results do not certify a new revision. CI artifacts are intermediate build outputs, not automatically published or signed final releases.
 
 ```console
-git clone --branch rewrite/rust-native https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+git clone --branch rewrite/rust-complete https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex

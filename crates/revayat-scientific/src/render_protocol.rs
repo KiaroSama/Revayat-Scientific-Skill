@@ -88,10 +88,7 @@ impl<'a> DevTools<'a> {
         match self.socket.write(message) {
             Ok(()) => (),
             Err(tungstenite::Error::Io(error))
-                if error.kind() == std::io::ErrorKind::WouldBlock =>
-            {
-                ()
-            }
+                if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => return Err(error.into()),
         }
         let deadline = Instant::now() + Duration::from_secs(5);

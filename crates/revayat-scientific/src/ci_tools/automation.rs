@@ -276,7 +276,7 @@ fn install_scanners() -> Result<()> {
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| std::path::PathBuf::from(p).join(".cargo")))
         .context("Cargo home is required")?;
-    for (binary, version) in [("cargo-audit", "0.22.2"), ("zizmor", "1.32.0")] {
+    for (binary, version) in [("cargo-audit", "0.23.0"), ("zizmor", "1.32.0")] {
         let executable = home.join("bin").join(binary);
         let wanted = format!("{binary} {version}");
         let matches = || -> Result<bool> {

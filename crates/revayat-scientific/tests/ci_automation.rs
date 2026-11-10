@@ -61,17 +61,28 @@ fn root_is_manual_only_and_children_are_reusable_only() {
         let filename = format!(".github/workflows/{name}.yml");
         let source = fs::read_to_string(root().join(&filename)).unwrap();
         c::validate_workflow_contract(root(), &filename, &source).unwrap();
-        let expected = if name == "ci" {
-            "workflow_dispatch"
+        let expected: &[&str] = if name == "ci" {
+            &["push", "pull_request", "workflow_dispatch"]
         } else {
-            "workflow_call"
+            &["workflow_call"]
         };
-        for forbidden in ["push", "pull_request", "schedule", "workflow_run"] {
+        for forbidden in [
+            "push",
+            "pull_request",
+            "schedule",
+            "workflow_run",
+            "pull_request_target",
+        ] {
+            if expected.contains(&forbidden) {
+                continue;
+            }
             let changed = source.replacen("on:\n", &format!("on:\n  {forbidden}:\n"), 1);
             assert_ne!(changed, source);
             assert!(c::validate_workflow_contract(root(), &filename, &changed).is_err());
         }
-        assert!(source.contains(&format!("  {expected}:")));
+        for trigger in expected {
+            assert!(source.contains(&format!("  {trigger}:")));
+        }
     }
 }
 
@@ -199,7 +210,9 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
     assert_eq!(joined.matches("--event-report ").count(), 6);
     for platform in ["ubuntu", "macos", "windows"] {
         for profile in ["debug", "release"] {
-            assert!(joined.contains(&format!("--event-report execution-input/execution-{platform}-latest/oracle-{profile}.json")));
+            assert!(joined.contains(&format!(
+                "--event-report execution-input/execution-{platform}-latest/oracle-{profile}.json"
+            )));
         }
     }
     assert!(joined.contains("execution-macos-latest/scientific-debug.json"));

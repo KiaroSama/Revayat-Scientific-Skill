@@ -55,13 +55,21 @@ fn test_incomplete_existing_delivery_is_not_success() {
     assert!(fonts::fetch_with_cache(&d, "999.999", true, &t.path().join("cache/999.999")).is_err());
     assert_eq!(fs::read_dir(&d).unwrap().count(), 2);
     let before = files(&d);
-    let mut command = revayat_scientific::runtime::CommandSpec::new(
-        env!("CARGO_BIN_EXE_revayat-scientific"),
-    ).args(["font-fetch", d.to_str().unwrap(), "--offline", "--version", "999.999"]);
+    let mut command =
+        revayat_scientific::runtime::CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific"))
+            .args([
+                "font-fetch",
+                d.to_str().unwrap(),
+                "--offline",
+                "--version",
+                "999.999",
+            ]);
     command.timeout = std::time::Duration::from_secs(20);
     command.max_output = 64 * 1024;
     for name in ["XDG_CACHE_HOME", "LOCALAPPDATA"] {
-        command.env.insert(name.into(), t.path().join("private cache").into_os_string());
+        command
+            .env
+            .insert(name.into(), t.path().join("private cache").into_os_string());
     }
     let output = revayat_scientific::runtime::run(&command).unwrap();
     assert!(!output.success());
@@ -244,12 +252,10 @@ fn test_installed_pair_requires_both_real_weights_and_license() {
     bundle(t.path());
     fonts::validate_bundle(t.path(), "33.003", false).unwrap();
     let delivered = tempfile::tempdir_in(t.path()).unwrap();
-    assert!(fonts::installed_from_candidates(
-        delivered.path(),
-        "33.003",
-        &[t.path().to_owned()]
-    )
-    .unwrap());
+    assert!(
+        fonts::installed_from_candidates(delivered.path(), "33.003", &[t.path().to_owned()])
+            .unwrap()
+    );
     for name in ["Vazirmatn-Regular.ttf", "Vazirmatn-Bold.ttf", "OFL.txt"] {
         assert_eq!(
             fs::read(delivered.path().join(name)).unwrap(),
@@ -259,7 +265,9 @@ fn test_installed_pair_requires_both_real_weights_and_license() {
     fs::remove_file(t.path().join("OFL.txt")).unwrap();
     assert!(fonts::validate_bundle(t.path(), "33.003", false).is_err());
     let empty = tempfile::tempdir_in(t.path()).unwrap();
-    assert!(!fonts::installed_from_candidates(empty.path(), "33.003", &[t.path().to_owned()]).unwrap());
+    assert!(
+        !fonts::installed_from_candidates(empty.path(), "33.003", &[t.path().to_owned()]).unwrap()
+    );
     assert!(files(empty.path()).is_empty());
     bundle(t.path());
     fs::copy(

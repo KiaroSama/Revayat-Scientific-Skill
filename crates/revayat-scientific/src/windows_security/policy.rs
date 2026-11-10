@@ -23,7 +23,7 @@ fn dword(bytes: &[u8], offset: usize) -> Result<u32> {
 }
 pub fn within(start: u64, length: u64, address: u64, bytes: u64, alignment: u64) -> bool {
     alignment != 0
-        && address % alignment == 0
+        && address.is_multiple_of(alignment)
         && address >= start
         && address - start <= length
         && bytes <= length - (address - start)
@@ -88,7 +88,7 @@ impl<'a> Acl<'a> {
     pub fn parse(bytes: &'a [u8]) -> Result<Self> {
         ensure!(
             (8..=65535).contains(&bytes.len())
-                && bytes.len() % 4 == 0
+                && bytes.len().is_multiple_of(4)
                 && matches!(bytes[0], 2 | 4)
                 && bytes[1] == 0
                 && usize::from(word(bytes, 2)?) == bytes.len()
@@ -265,7 +265,7 @@ impl<'a> Descriptor<'a> {
                 return Ok(None);
             }
             ensure!(
-                offset >= 20 && offset % 4 == 0 && offset < bytes.len(),
+                offset >= 20 && offset.is_multiple_of(4) && offset < bytes.len(),
                 "invalid descriptor component offset"
             );
             let tail = &bytes[offset..];

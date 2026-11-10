@@ -31,7 +31,7 @@
 
 [English](README.md)
 
-**وضعیت بازنویسی Rust:** این راهنما شاخهٔ `rewrite/rust-native` را توصیف می‌کند، نه پیاده‌سازی فعلی `main`. برابری رفتاری تست‌ها و CI میزبانی‌شده هنوز در حال بررسی است؛ ثبت نام تست اثبات اجرای assertionهای اصلی یا موفقیت کنترل بومی نیست. نشان‌های بالا وضعیت `main` هستند و این شاخه یا آخرین commit آن را تأیید نمی‌کنند. آرشیو را از اجرای CI بازبینی‌شدهٔ همان نسخه بگیرید؛ بستهٔ میانی را release نهایی امضاشده معرفی نکنید.
+**وضعیت بازنویسی Rust:** این راهنما شاخهٔ `rewrite/rust-complete` را توصیف می‌کند، نه پیاده‌سازی فعلی `main`. برابری رفتاری تست‌ها و CI میزبانی‌شده هنوز در حال بررسی است؛ ثبت نام تست اثبات اجرای assertionهای اصلی یا موفقیت کنترل بومی نیست. نشان‌های بالا وضعیت `main` هستند و این شاخه یا آخرین commit آن را تأیید نمی‌کنند. آرشیو را از اجرای CI بازبینی‌شدهٔ همان نسخه بگیرید؛ بستهٔ میانی را release نهایی امضاشده معرفی نکنید.
 
 ## تفاوت با ترجمهٔ عمومی
 
@@ -52,7 +52,7 @@
 <div dir="ltr">
 
 ```console
-git clone --branch rewrite/rust-native https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+git clone --branch rewrite/rust-complete https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
@@ -131,6 +131,8 @@ revayat-scientific pdf --help
 - [DOCX](skills/revayat-scientific/references/docx.md) و [پردازش PDF](skills/revayat-scientific/references/pdf-processing.md)
 
 ## توسعه
+
+CI در هر push و pull request خودکار اجرا می‌شود و اجرای دستی هم دارد. شاخهٔ مرجع `rewrite/rust-native` است و ادامهٔ آن در `rewrite/rust-complete` انجام می‌شود. [راهنمای توسعه و راستی‌آزمایی مهاجرت](docs/development.md) فرمان‌های محلی و شرط‌های پذیرش باقی‌مانده را توضیح می‌دهد.
 
 <div dir="ltr">
 

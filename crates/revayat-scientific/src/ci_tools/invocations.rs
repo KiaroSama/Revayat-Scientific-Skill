@@ -109,17 +109,18 @@ pub(super) fn workflow(filename: &str, value: &Value) -> Result<()> {
             | ".github/workflows/codeql.yml"
             | ".github/workflows/dependency-review.yml"
     ) {
-        let trigger = if filename == ".github/workflows/ci.yml" {
-            "workflow_dispatch"
+        let triggers: &[&str] = if filename == ".github/workflows/ci.yml" {
+            &["push", "pull_request", "workflow_dispatch"]
         } else {
-            "workflow_call"
+            &["workflow_call"]
         };
         let events = value["on"]
             .as_object()
             .context("workflow trigger mapping missing")?;
         ensure!(
-            events.len() == 1 && events.contains_key(trigger),
-            "CI root must be manual and children reusable only"
+            events.len() == triggers.len()
+                && triggers.iter().all(|trigger| events.contains_key(*trigger)),
+            "CI root must run on pushes, pull requests and manual dispatch; children must be reusable only"
         );
     }
     for job in value["jobs"]

@@ -132,11 +132,12 @@ pub fn run_interactive(
         let mut progress = started;
         loop {
             let observed_status = status_without_reaping(pid)?;
-            if let Some(status) = observed_status {
-                if interactive && !observed {
-                    natural_exit(status)?;
-                    observed = true;
-                }
+            if let Some(status) = observed_status
+                && interactive
+                && !observed
+            {
+                natural_exit(status)?;
+                observed = true;
             }
             ensure!(!cancelled(), "runtime caller cancelled or disconnected");
             if started.elapsed() >= spec.timeout {
@@ -146,10 +147,10 @@ pub fn run_interactive(
                 }
                 .into());
             }
-            if let Some(limit) = spec.idle_timeout {
-                if progress.elapsed() >= limit {
-                    return Err(DeadlineExceeded { idle: true, limit }.into());
-                }
+            if let Some(limit) = spec.idle_timeout
+                && progress.elapsed() >= limit
+            {
+                return Err(DeadlineExceeded { idle: true, limit }.into());
             }
             if let Some(pipe) = &mut stdin {
                 let bytes = input.unwrap_or_default();

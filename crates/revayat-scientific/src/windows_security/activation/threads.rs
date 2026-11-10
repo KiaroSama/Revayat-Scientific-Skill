@@ -539,14 +539,14 @@ impl<I: ContextIo> ResourceThreads<I> {
             let baseline = self.generations[index].baseline.as_ref().unwrap();
             desired = before.clone();
             let mut control = u64_at(baseline, 112);
-            for i in 0..4 {
+            for (i, site) in sites.into_iter().chain([0; 2]).enumerate() {
                 let address = if restore || i >= 2 {
                     u64_at(baseline, 72 + i * 8)
                 } else {
-                    sites[i]
+                    site
                 };
                 put(&mut desired, 72 + i * 8, address);
-                if !restore && i < 2 && sites[i] != 0 {
+                if !restore && i < 2 && site != 0 {
                     control |= 1 << (i * 2);
                 }
             }

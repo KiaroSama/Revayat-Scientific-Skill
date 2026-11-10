@@ -53,7 +53,7 @@ fn select(identity: &str) -> Result<&'static Profile> {
 fn decode(text: &str) -> Result<Vec<u8>> {
     ensure!(
         !text.is_empty()
-            && text.len() % 2 == 0
+            && text.len().is_multiple_of(2)
             && text.len() <= 30
             && text.bytes().all(|byte| byte.is_ascii_hexdigit()),
         "invalid fixed activation encoding"

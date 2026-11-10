@@ -44,7 +44,10 @@ impl Fixture {
         spec.max_output = 1024 * 1024;
         for (key, value) in [
             ("GIT_CONFIG_NOSYSTEM", "1"),
-            ("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" }),
+            (
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            ),
             ("GIT_CONFIG_COUNT", "0"),
             ("GIT_AUTHOR_NAME", self.author_name.as_str()),
             ("GIT_COMMITTER_NAME", self.committer_name.as_str()),
@@ -54,11 +57,7 @@ impl Fixture {
             spec.env.insert(key.into(), value.into());
         }
         let out = runtime::run(&spec).unwrap();
-        assert!(
-            out.success(),
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+        assert!(out.success(), "{}", String::from_utf8_lossy(&out.stderr));
         String::from_utf8(out.stdout).unwrap().trim().to_owned()
     }
     fn commit(&self, author: &str, committer: &str) -> String {
@@ -287,13 +286,15 @@ fn test_environment_selected_grafts_are_rejected_without_removal() {
     let head = f.commit(OWNER, OWNER);
     let grafts = f.root.join("custom-grafts");
     fs::write(&grafts, format!("{head}\n")).unwrap();
-    let mut spec = CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific"))
-        .args(["check-commit-identity"]);
+    let mut spec =
+        CommandSpec::new(env!("CARGO_BIN_EXE_revayat-scientific")).args(["check-commit-identity"]);
     spec.cwd = Some(f.root.clone());
     spec.timeout = Duration::from_secs(30);
     spec.max_output = 1024 * 1024;
-    spec.env.insert("REVAYAT_REPOSITORY".into(), f.root.as_os_str().to_owned());
-    spec.env.insert("GIT_GRAFT_FILE".into(), grafts.as_os_str().to_owned());
+    spec.env
+        .insert("REVAYAT_REPOSITORY".into(), f.root.as_os_str().to_owned());
+    spec.env
+        .insert("GIT_GRAFT_FILE".into(), grafts.as_os_str().to_owned());
     let output = runtime::run(&spec).unwrap();
     assert!(!output.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("grafts"));

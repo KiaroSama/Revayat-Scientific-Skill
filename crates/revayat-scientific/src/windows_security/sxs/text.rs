@@ -22,9 +22,11 @@ pub fn decode_lines(bytes: &[u8]) -> Result<Vec<String>> {
         "evidence-length-input-shape",
     )?;
     let text = if bytes.starts_with(&[255, 254]) {
-        check(bytes.len() % 2 == 0, "evidence-length-utf16-shape")?;
+        check(bytes.len().is_multiple_of(2), "evidence-length-utf16-shape")?;
         let mut units = bytes[2..]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
             .collect::<Vec<_>>();
         let decoded = String::from_utf16(&units).map_err(|e| safe(e.into(), "evidence-utf16"));

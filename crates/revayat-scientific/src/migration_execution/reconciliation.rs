@@ -208,14 +208,16 @@ fn parsed_args(args: &[String]) -> Result<Args> {
     let args = Args::try_parse_from(
         std::iter::once("revayat-test-runner".to_owned()).chain(args.iter().cloned()),
     )?;
+    ensure!(
+        args.event_report.is_empty() || (args.aggregate && args.census == "public"),
+        "operation reports belong to the complete public aggregate"
+    );
     if args.aggregate || args.reconcile {
         ensure!(
             args.tier.is_none() && args.output.is_none() && !args.ignored,
             "reconciliation cannot execute tests"
         );
         if args.aggregate {
-            ensure!(args.event_report.is_empty() || args.census == "public",
-                "operation reports belong to the complete public aggregate");
             ensure!(
                 args.profile.is_none(),
                 "aggregate selects its fixed profile matrix"
@@ -256,8 +258,14 @@ pub fn cli(args: &[String]) -> Result<()> {
         "runner started; raw test diagnostics are not published",
     );
     let result = if args.aggregate {
-        super::aggregate::aggregate(&root, &args.ledger, &args.report, &args.census, &args.event_report)
-            .map(|count| println!("reconciled_obligations={count} final_parity_verified=false"))
+        super::aggregate::aggregate(
+            &root,
+            &args.ledger,
+            &args.report,
+            &args.census,
+            &args.event_report,
+        )
+        .map(|count| println!("reconciled_obligations={count} final_parity_verified=false"))
     } else if args.reconcile {
         ensure!(
             args.tier.is_none() && args.output.is_none() && !args.ignored,

@@ -240,7 +240,7 @@ fn session_decoder_and_capture_limits_require_exact_owned_identity() {
     assert!(SessionSnapshot::decode(&[]).is_err());
     assert!(select_session(&[], &original.path).unwrap().is_none());
     assert_eq!(
-        select_session(&[original.clone()], &original.path)
+        select_session(std::slice::from_ref(&original), &original.path)
             .unwrap()
             .unwrap()
             .handle,
@@ -264,7 +264,7 @@ fn trace_storage_lifecycle_latches_attempts_before_failing_callbacks() {
     for failure in -1..3 {
         let mut state = StorageLifecycle::default();
         let order = RefCell::new(Vec::new());
-        let mut step = |phase| {
+        let step = |phase| {
             order.borrow_mut().push(phase);
             if phase == failure {
                 anyhow::bail!("private");

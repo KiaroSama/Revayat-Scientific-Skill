@@ -218,10 +218,10 @@ pub fn execute_trace(
 ) -> Result<()> {
     let retained = match trace() {
         Ok(()) => None,
-        Err(error) => match error.downcast::<QualifiedFailure>() {
-            Ok(failure) => Some(failure.original),
-            Err(error) => return Err(error),
-        },
+        Err(error) => {
+            let failure = error.downcast::<QualifiedFailure>()?;
+            Some(failure.original)
+        }
     };
     if let Err(later) = undebugged() {
         return Err(append(retained, later));

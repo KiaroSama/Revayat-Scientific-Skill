@@ -40,23 +40,23 @@ pub(super) fn parse_filtered_execution(
                 );
             }
         }
-        if let Some(line) = line.strip_prefix("test ") {
-            if let Some((name, result)) = line.split_once(" ... ") {
-                // libtest decorates should-panic cases, but --list does not.
-                let name = name.strip_suffix(" - should panic").unwrap_or(name);
-                ensure!(expected.contains(name), "unregistered test result");
-                let outcome = match result {
-                    "ok" => CaseOutcome::Passed,
-                    "FAILED" => CaseOutcome::Failed,
-                    "ignored" => CaseOutcome::Skipped,
-                    value if value.starts_with("ignored, ") => CaseOutcome::Skipped,
-                    _ => bail!("unsupported test result"),
-                };
-                ensure!(
-                    cases.insert(name.to_owned(), outcome).is_none(),
-                    "duplicate test result"
-                );
-            }
+        if let Some(line) = line.strip_prefix("test ")
+            && let Some((name, result)) = line.split_once(" ... ")
+        {
+            // libtest decorates should-panic cases, but --list does not.
+            let name = name.strip_suffix(" - should panic").unwrap_or(name);
+            ensure!(expected.contains(name), "unregistered test result");
+            let outcome = match result {
+                "ok" => CaseOutcome::Passed,
+                "FAILED" => CaseOutcome::Failed,
+                "ignored" => CaseOutcome::Skipped,
+                value if value.starts_with("ignored, ") => CaseOutcome::Skipped,
+                _ => bail!("unsupported test result"),
+            };
+            ensure!(
+                cases.insert(name.to_owned(), outcome).is_none(),
+                "duplicate test result"
+            );
         }
         if let Some(line) = line.strip_prefix("test result: ") {
             let (status, counts) = line.split_once(". ").context("invalid test summary")?;

@@ -367,7 +367,7 @@ fn diagnostic_other_ace_kinds_require_their_actual_layout_and_never_supply_grant
         vec![255, 0, 8, 0, 0xde, 0xad, 0xbe, 0xef],
     ]);
     for entry in variants {
-        let bytes = acl(&[entry.clone()], 0);
+        let bytes = acl(std::slice::from_ref(&entry), 0);
         let summary = default_acl_summary(Some(&bytes), &user, &package).unwrap();
         assert_eq!(
             (
