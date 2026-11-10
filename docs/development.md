@@ -41,6 +41,8 @@ and every release binary on Linux, macOS and Windows. It retains separate debug
 and release execution reports and native executable/skill artifacts. Scientific,
 Linux/Windows security, Rust CodeQL, dependency review and quality jobs remain
 required. Report aggregation must refuse missing, failed or contradictory evidence.
+The obsolete artifact-only dispatch mode is removed, so manual runs also execute
+the three-platform build matrix, execution reports and final statuses.
 
 For pull requests, execution reports describe the checked-out GitHub merge
 revision, while commit statuses target the PR head revision reported by the

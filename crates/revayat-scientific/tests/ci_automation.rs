@@ -254,80 +254,31 @@ fn artifact_preparation_is_opt_in_and_never_substitutes_for_validation() {
     let source = fs::read_to_string(root().join(".github/workflows/ci.yml")).unwrap();
     let workflow: serde_json::Value = serde_saphyr::from_str(&source).unwrap();
     let input = &workflow["on"]["workflow_dispatch"]["inputs"]["prepare_artifacts"];
-    assert_eq!(input["type"], "boolean");
-    assert_eq!(input["default"], false);
+    // Retain this regression identity while removing the obsolete bypass mode.
+    assert!(input.is_null());
     let jobs = workflow["jobs"].as_object().unwrap();
+    assert!(!jobs.contains_key("prepare-artifacts"));
     for (name, job) in jobs {
         assert_eq!(
             job["if"].as_str(),
-            Some(match name.as_str() {
-                "prepare-artifacts" => "${{ inputs.prepare_artifacts }}",
-                "behavior-aggregate" | "status-final" =>
-                    "${{ always() && !cancelled() && !inputs.prepare_artifacts }}",
-                _ => "${{ !inputs.prepare_artifacts }}",
-            }),
+            match name.as_str() {
+                "behavior-aggregate" | "status-final" => Some("${{ always() && !cancelled() }}"),
+                _ => None,
+            },
             "{name}"
         );
     }
-    let prepare = &jobs["prepare-artifacts"];
-    assert_eq!(prepare["runs-on"], "ubuntu-latest");
-    assert!(
-        prepare["timeout-minutes"]
-            .as_u64()
-            .is_some_and(|minutes| minutes <= 60)
-    );
-    let steps = prepare["steps"].as_array().unwrap();
-    assert!(
-        steps
-            .iter()
-            .any(|step| step["with"]["toolchain"] == "1.99.1"
-                && step["with"]["components"] == "rust-docs"
-                && step["with"]["cache"] == false)
-    );
-    let commands: Vec<_> = steps
-        .iter()
-        .filter_map(|step| step["run"].as_str())
-        .collect();
-    assert_eq!(
-        commands,
-        [
-            "cargo update --workspace",
-            "cargo update --workspace --locked",
-            "cargo fetch --locked",
-            "cargo build --locked -p revayat-scientific --bin license-notices --bin revayat-process-owner",
-            "target/debug/license-notices --root .",
-            "target/debug/license-notices --root . --check",
-            "cargo update --workspace --locked",
-        ]
-    );
-    for step in steps.iter().filter(|step| step["run"].is_string()) {
-        assert!(
-            step["timeout-minutes"]
-                .as_u64()
-                .is_some_and(|minutes| minutes <= 20)
-        );
-    }
-    let artifacts: Vec<_> = steps
-        .iter()
-        .filter(|step| {
-            step["uses"]
-                .as_str()
-                .is_some_and(|name| name.starts_with("actions/upload-artifact@"))
-        })
-        .collect();
-    assert_eq!(artifacts.len(), 1);
-    assert_eq!(
-        artifacts[0]["with"]["path"],
-        "Cargo.lock\nskills/revayat-scientific/references/third-party-licenses.txt\n"
-    );
-    assert_eq!(artifacts[0]["with"]["if-no-files-found"], "error");
-    assert_eq!(
-        artifacts[0]["with"]["name"],
-        "prepared-lock-notices-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}"
-    );
-    assert!(artifacts[0].get("if").is_none()); // Only successful checked generation is published.
     assert_eq!(workflow["permissions"]["contents"], "read");
-    assert!(prepare.get("permissions").is_none());
+    for required in [
+        "portable",
+        "scientific",
+        "security",
+        "codeql",
+        "dependency-review",
+        "quality",
+    ] {
+        assert!(jobs.contains_key(required));
+    }
     assert!(
         jobs["quality"]["steps"]
             .as_array()

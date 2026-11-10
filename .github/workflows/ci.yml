@@ -8,11 +8,6 @@ on:
         description: Full base commit SHA for manual dependency and identity review
         required: true
         type: string
-      prepare_artifacts:
-        description: Generate lockfile and notices only; does not validate or accept the migration
-        required: false
-        default: false
-        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -22,50 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: '0'
 jobs:
-  prepare-artifacts:
-    if: ${{ inputs.prepare_artifacts }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
-        with:
-          toolchain: '1.99.1'
-          components: rust-docs
-          cache: false
-      - name: Resolve workspace member changes while retaining existing dependency locks
-        timeout-minutes: 5
-        run: cargo update --workspace
-      - name: Require the generated lockfile to be stable
-        timeout-minutes: 5
-        run: cargo update --workspace --locked
-      - name: Fetch the exact complete locked dependency graph
-        timeout-minutes: 10
-        run: cargo fetch --locked
-      - name: Build only the notice generator and its owned process companion
-        timeout-minutes: 20
-        run: cargo build --locked -p revayat-scientific --bin license-notices --bin revayat-process-owner
-      - name: Generate complete notices from the resolved exact graph
-        timeout-minutes: 5
-        run: target/debug/license-notices --root .
-      - name: Require byte-exact deterministic notices
-        timeout-minutes: 5
-        run: target/debug/license-notices --root . --check
-      - name: Require unchanged resolution after notice generation
-        timeout-minutes: 5
-        run: cargo update --workspace --locked
-      - name: Preserve only generated lockfile and complete notices
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: prepared-lock-notices-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          if-no-files-found: error
-          path: |
-            Cargo.lock
-            skills/revayat-scientific/references/third-party-licenses.txt
   status-pending:
-    if: ${{ !inputs.prepare_artifacts }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -85,21 +37,17 @@ jobs:
           CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: target/debug/revayat-scientific ci-status pending
   security:
-    if: ${{ !inputs.prepare_artifacts }}
     uses: $/.github/workflows/security-ci.yml
   codeql:
-    if: ${{ !inputs.prepare_artifacts }}
     uses: $/.github/workflows/codeql.yml
     permissions:
       contents: read
       security-events: write
   dependency-review:
-    if: ${{ !inputs.prepare_artifacts }}
     uses: $/.github/workflows/dependency-review.yml
     with:
       base_ref: ${{ inputs.base_ref || github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
   portable:
-    if: ${{ !inputs.prepare_artifacts }}
     name: portable (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -181,7 +129,6 @@ jobs:
             target/release/registry-authority.exe
             dist/revayat-scientific.skill
   scientific:
-    if: ${{ !inputs.prepare_artifacts }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -246,7 +193,6 @@ jobs:
             .scratch/scientific-*
             logs/ci-*.log
   quality:
-    if: ${{ !inputs.prepare_artifacts }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -307,7 +253,7 @@ jobs:
             logs/ci-*.log
             logs/license-notices_*.log
   behavior-aggregate:
-    if: ${{ always() && !cancelled() && !inputs.prepare_artifacts }}
+    if: ${{ always() && !cancelled() }}
     needs: [portable, scientific, security]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -337,7 +283,7 @@ jobs:
         if: ${{ always() }}
         run: target/debug/revayat-test-runner --aggregate --census security --ledger tests/behavior/security.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
   status-final:
-    if: ${{ always() && !cancelled() && !inputs.prepare_artifacts }}
+    if: ${{ always() && !cancelled() }}
     needs: [status-pending, security, codeql, dependency-review, portable, scientific, quality, behavior-aggregate]
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -105,10 +105,9 @@ pub fn kill_owned_group(id: u32) -> Result<()> {
     let result = unsafe { libc::kill(-(id as i32), libc::SIGKILL) };
     if result != 0 {
         let error = std::io::Error::last_os_error();
-        ensure!(
-            error.raw_os_error() == Some(libc::ESRCH),
-            "owned process group cleanup failed: {error}"
-        );
+        if error.raw_os_error() != Some(libc::ESRCH) {
+            return Err(error).context("owned process group cleanup failed");
+        }
     }
     Ok(())
 }

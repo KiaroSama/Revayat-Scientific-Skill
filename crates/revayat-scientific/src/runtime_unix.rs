@@ -8,6 +8,25 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(target_os = "macos")]
+#[path = "runtime_darwin.rs"]
+mod darwin;
+
+fn kill_group(pid: u32) -> Result<()> {
+    let result = super::kill_owned_group(pid);
+    #[cfg(target_os = "macos")]
+    if result
+        .as_ref()
+        .err()
+        .and_then(|error| error.downcast_ref::<std::io::Error>())
+        .and_then(std::io::Error::raw_os_error)
+        == Some(libc::EPERM)
+        && darwin::stopped_group(pid)?
+    {
+        return Ok(());
+    }
+    result
+}
 
 pub struct OwnedResult {
     pub result: Result<CommandOutput>,
@@ -209,7 +228,7 @@ pub fn run_interactive(
     // Never try_wait before this point: a recycled leader PID could invalidate
     // negative-PGID signaling. The unreaped direct child anchors this exact group.
     let cleanup = (|| -> Result<std::process::ExitStatus> {
-        super::kill_owned_group(pid).context("owned-group-cleanup")?;
+        kill_group(pid).context("owned-group-cleanup")?;
         let deadline = Instant::now() + Duration::from_secs(2);
         while status_without_reaping(pid)?.is_none() {
             ensure!(
