@@ -360,6 +360,8 @@ pub fn run(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
                 "input" => "tool did not consume its bounded input".into(),
                 "spawn" => "cannot start owned external tool".into(),
                 "cancelled" => "runtime caller cancelled or disconnected".into(),
+                label if valid_operation_label(label) =>
+                    format!("owned runtime operation failed ({label})"),
                 _ => "owned runtime operation failed".into(),
             }))
         } else {
@@ -376,6 +378,24 @@ pub fn run(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
         stdout: response.stdout,
         stderr: response.stderr,
     })
+}
+
+fn valid_operation_label(label: &str) -> bool {
+    ["status-query", "group-cleanup", "child-reap", "unknown"]
+        .iter()
+        .any(|stage| {
+            let prefix = format!("operation-{stage}");
+            label == prefix
+                || label
+                    .strip_prefix(&format!("{prefix}-os-"))
+                    .and_then(|number| {
+                        number
+                            .parse::<i32>()
+                            .ok()
+                            .map(|value| value.to_string() == number)
+                    })
+                    == Some(true)
+        })
 }
 
 #[cfg(test)]
@@ -398,6 +418,10 @@ mod tests {
     }
     #[test]
     fn late_natural_failure_cannot_be_reclassified_as_deliberate_cancellation() {
+        assert!(valid_operation_label("operation-status-query-os-10"));
+        assert!(valid_operation_label("operation-child-reap"));
+        assert!(!valid_operation_label("operation-unknown-os-private-path"));
+        assert!(!valid_operation_label("operation-private-command"));
         let mut pending = Vec::new();
         assert!(
             decode_events(&mut pending).unwrap().is_empty(),

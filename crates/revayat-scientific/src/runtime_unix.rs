@@ -41,7 +41,7 @@ fn status_without_reaping(pid: u32) -> Result<Option<i32>> {
         )
     };
     if result != 0 {
-        return Err(std::io::Error::last_os_error().into());
+        return Err(std::io::Error::last_os_error()).context("owned-status-query");
     }
     // SAFETY: successful waitid initialized the documented child PID field.
     if unsafe { info.si_pid() } == 0 {
@@ -209,7 +209,7 @@ pub fn run_interactive(
     // Never try_wait before this point: a recycled leader PID could invalidate
     // negative-PGID signaling. The unreaped direct child anchors this exact group.
     let cleanup = (|| -> Result<std::process::ExitStatus> {
-        super::kill_owned_group(pid)?;
+        super::kill_owned_group(pid).context("owned-group-cleanup")?;
         let deadline = Instant::now() + Duration::from_secs(2);
         while status_without_reaping(pid)?.is_none() {
             ensure!(
@@ -218,7 +218,7 @@ pub fn run_interactive(
             );
             thread::sleep(Duration::from_millis(5));
         }
-        Ok(child.wait()?)
+        child.wait().context("owned-child-reap")
     })();
     let cleanup_complete = cleanup.is_ok();
     use std::os::unix::process::ExitStatusExt;

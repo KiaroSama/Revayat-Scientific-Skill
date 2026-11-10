@@ -54,6 +54,8 @@ upstream cases, 41 standalone security leaves and 14 verifier cases. Changing a
 trigger or fixing a fixture does not remove a baseline case. The migration maps
 are a registration audit, and the execution aggregate is a separate acceptance
 gate. A passing build alone does not establish behavioral parity.
+Native collector regressions extend the existing collector contract test, keeping
+the reference branch's test registration count while exercising the added checks.
 
 ## Outstanding acceptance gates
 

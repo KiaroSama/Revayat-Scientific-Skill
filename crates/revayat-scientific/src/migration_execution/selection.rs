@@ -49,6 +49,52 @@ pub(super) fn required_outcomes(report: &CollectedExecution) -> Result<()> {
 const EQUIPPED: &[(&str, &[&str])] = &[
     ("crop_native", CROPS),
     (
+        "pdf_admission",
+        &[
+            "test_valid_contiguous_range_keeps_geometry_pixels_and_shared_resources",
+            "test_shared_resource_identity_and_full_page_boxes_survive",
+        ],
+    ),
+    (
+        "pdf_buttons",
+        &["test_unrelated_prose_and_unselected_render_stay_intact"],
+    ),
+    (
+        "pdf_image_formats",
+        &[
+            "cmyk_samples_export_as_four_channel_tiff_without_rgb_conversion",
+            "named_color_spaces_and_icc_profile_streams_retain_source_identity",
+            "hard_stencil_and_four_bit_soft_masks_are_exported_as_independent_images",
+            "jpeg2000_codestream_is_byte_preserved_and_decoded_preview_is_verified",
+            "jbig2_segments_and_global_dictionary_are_retained_with_viewable_bitmap",
+            "ccitt_group_four_bitstream_and_decode_parameters_are_retained",
+            "unknown_filter_fails_closed_and_leaves_entire_existing_delivery_untouched",
+            "indexed_cmyk_palette_gets_color_managed_rgb_copy_without_composing_soft_mask",
+        ],
+    ),
+    (
+        "pdf_operations",
+        &[
+            "test_ocr_preflight_and_overlay_preserve_visible_page",
+            "test_real_tesseract_searchable_derivative",
+            "persian_form_appearance_is_shaped_embedded_and_logical",
+        ],
+    ),
+    (
+        "pdf_outlines",
+        &["test_rotations_crop_offsets_and_page_pixels_are_unchanged"],
+    ),
+    (
+        "render_startup",
+        &["silent_browser_timeout_preserves_output_and_reaps_owner"],
+    ),
+    (
+        "resource_preflight",
+        &[
+            "native_browser_admits_image_data_and_preserves_source_but_refuses_unsupported_data_before_launch",
+        ],
+    ),
+    (
         "runtime_build_integration",
         &[
             "test_css_only_preview_resource_is_preserved_and_cannot_replace_working_pdf",
@@ -297,6 +343,10 @@ mod tests {
 
     #[test]
     fn removal_of_each_entire_known_suite_preserves_a_failure_report_before_launch() {
+        // Extend the existing collector contract case without changing the test census.
+        native::tests::native_selection_requires_actual_nonignored_harnesses();
+        native::tests::worker_outcomes_require_real_qualification_and_each_exact_case();
+        crate::sandbox::worker_summary_never_replaces_complete_unique_case_outcomes();
         let mut artifacts: Vec<_> = EQUIPPED
             .iter()
             .map(|(name, _)| Artifact {

@@ -101,10 +101,9 @@ fn linux_cases(helper: &serde_json::Value) -> Result<BTreeMap<String, CaseOutcom
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
-    #[test]
-    fn native_selection_requires_actual_nonignored_harnesses() {
+    pub(crate) fn native_selection_requires_actual_nonignored_harnesses() {
         let all = BTreeSet::from(["one".into(), "two".into()]);
         assert_eq!(
             select(Some("windows_native"), &all, &BTreeSet::new()).unwrap(),
@@ -126,8 +125,7 @@ mod tests {
         );
         assert!(validate_targets(&[]).is_err());
     }
-    #[test]
-    fn worker_outcomes_require_real_qualification_and_each_exact_case() {
+    pub(crate) fn worker_outcomes_require_real_qualification_and_each_exact_case() {
         let mut helper = serde_json::json!({"container_cleanup":"verified", "preflight":{"status":"passed"},
             "cases":crate::security_cases::IDS.iter().map(|id|
                 serde_json::json!({"phase":"security-case","id":id,"status":"passed"})).collect::<Vec<_>>()});

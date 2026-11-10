@@ -10,27 +10,13 @@ use revayat_scientific::{
 use std::{
     fs,
     io::Write,
-    os::windows::{ffi::OsStrExt, fs::MetadataExt},
+    os::windows::fs::MetadataExt,
     path::{Path, PathBuf},
     time::Duration,
 };
-use windows::{
-    Win32::{
-        Storage::{
-            FileSystem::FILE_ATTRIBUTE_NORMAL,
-            Packaging::Opc::{
-                IOpcFactory, OPC_READ_DEFAULT, OPC_STREAM_IO_READ, OPC_URI_TARGET_MODE_INTERNAL,
-                OpcFactory,
-            },
-        },
-        System::Com::{
-            CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
-            CoTaskMemFree, CoUninitialize,
-        },
-    },
-    core::{PCWSTR, PWSTR, w},
-};
 use zip::{ZipWriter, write::SimpleFileOptions};
+#[path = "../src/bin/test_tool/opc.rs"]
+mod opc;
 #[path = "support/windows_junction.rs"]
 mod windows_junction;
 
@@ -175,11 +161,10 @@ fn native_opc_consumer_recognizes_case_variant_relationship_part() -> Result<()>
             child.wait()?;
             anyhow::bail!("nonreturning OPC fixture unexpectedly exited");
         }
-        consume_opc(Path::new(&path))?;
+        opc::consume(Path::new(&path))?;
         // Suppress libtest's result trailer only after the real COM consumer
         // returned and dropped every apartment/interface/string owner.
         let mut stdout = std::io::stdout().lock();
-        stdout.write_all(b"OPC_CASE_RELATIONSHIP_RECOGNIZED\n")?;
         stdout.flush()?;
         std::process::exit(0);
     }
@@ -187,7 +172,7 @@ fn native_opc_consumer_recognizes_case_variant_relationship_part() -> Result<()>
     let path = temp.path().join("case-variant.docx");
     authored_case_package(&path)?;
     let before = file_identity(&path, None)?;
-    let output = runtime::run(&opc_command(&path))?;
+    let output = runtime::run(&opc_command(&path)?)?;
     ensure!(
         output.success()
             && output.stdout == b"OPC_CASE_RELATIONSHIP_RECOGNIZED\n"

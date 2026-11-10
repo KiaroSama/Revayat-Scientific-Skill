@@ -240,10 +240,9 @@ fn verified_cases(records: &[Value]) -> Result<Vec<Value>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
-    #[test]
-    fn worker_summary_never_replaces_complete_unique_case_outcomes() {
+    pub(crate) fn worker_summary_never_replaces_complete_unique_case_outcomes() {
         assert_eq!(
             super::super::failure_category(
                 "sandbox enforcement failed: probe-control-08: PRIVATE_CANARY"

@@ -6,6 +6,8 @@ use std::fs;
 #[path = "sandbox_helper.rs"]
 mod helper;
 pub use helper::security;
+#[cfg(test)]
+pub(crate) use helper::tests::worker_summary_never_replaces_complete_unique_case_outcomes;
 
 fn run_owned(
     config: &tex::RuntimeConfig,

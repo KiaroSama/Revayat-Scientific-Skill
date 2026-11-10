@@ -417,6 +417,29 @@ struct Response {
     error: Option<String>,
 }
 
+// Only authored stage labels and OS error numbers cross the privacy boundary.
+// Child diagnostics, paths, arguments and environment never become error labels.
+fn operation_category(error: &anyhow::Error) -> String {
+    let error = error
+        .downcast_ref::<super::CleanupFailure>()
+        .map_or(error, |cleanup| &cleanup.0);
+    let stage = ["status-query", "group-cleanup", "child-reap"]
+        .into_iter()
+        .find(|stage| {
+            error
+                .chain()
+                .any(|cause| cause.to_string() == format!("owned-{stage}"))
+        })
+        .unwrap_or("unknown");
+    let errno = error
+        .downcast_ref::<std::io::Error>()
+        .and_then(std::io::Error::raw_os_error);
+    match errno {
+        Some(errno) => format!("operation-{stage}-os-{errno}"),
+        None => format!("operation-{stage}"),
+    }
+}
+
 pub fn companion() -> Result<PathBuf> {
     let candidate = if let Some(path) = std::env::var_os(OWNER) {
         PathBuf::from(path)
@@ -648,20 +671,20 @@ pub fn cli() -> Result<()> {
         Err(error) => {
             let text = error.to_string();
             let category = if text.starts_with("tool diagnostics exceeded") {
-                "output-limit"
+                "output-limit".into()
             } else if text.starts_with("tool did not consume") {
-                "input"
+                "input".into()
             } else if error
                 .downcast_ref::<std::io::Error>()
                 .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
             {
-                "not-found"
+                "not-found".into()
             } else if text.starts_with("cannot start owned") {
-                "spawn"
+                "spawn".into()
             } else if text.starts_with("runtime caller cancelled") {
-                "cancelled"
+                "cancelled".into()
             } else {
-                "operation"
+                operation_category(&error)
             };
             Response {
                 code: None,
@@ -672,7 +695,7 @@ pub fn cli() -> Result<()> {
                     .map(|value| value.idle),
                 termination_signal,
                 cleanup_complete,
-                error: Some(category.into()),
+                error: Some(category),
             }
         }
     };
