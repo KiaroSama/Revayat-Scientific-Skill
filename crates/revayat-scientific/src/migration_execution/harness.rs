@@ -1,6 +1,32 @@
 //! Existing libtest harness execution and owned optional nested observation capture.
 use super::*;
 
+fn failure_diagnostics(artifact: &Artifact, executed: &runtime::CommandOutput) {
+    // Only the owned development harness's failing-test section reaches the
+    // workflow console. Machine-readable evidence continues to exclude raw
+    // compiler/child diagnostics. Prefix every line to prevent workflow commands.
+    let text = String::from_utf8_lossy(&executed.stdout);
+    let Some((_, failures)) = text.split_once("\nfailures:\n") else {
+        return;
+    };
+    eprintln!("test-diagnostic: harness={}", artifact.target);
+    let mut remaining = 32 * 1024;
+    for line in failures.lines().take(200) {
+        let mut safe = String::new();
+        for c in line.chars().filter(|c| !c.is_control()).take(1024) {
+            if c.len_utf8() > remaining {
+                break;
+            }
+            safe.push(c);
+            remaining -= c.len_utf8();
+        }
+        eprintln!("test-diagnostic: {safe}");
+        if remaining == 0 {
+            break;
+        }
+    }
+}
+
 pub(super) fn execute(
     artifact: &Artifact,
     identity: &CollectedExecution,
@@ -99,6 +125,14 @@ pub(super) fn execute(
             &expected,
             if tier == "portable" { 0 } else { all.len() - 1 },
         );
+        if result.error.is_none()
+            && result
+                .cases
+                .values()
+                .any(|outcome| *outcome == CaseOutcome::Failed)
+        {
+            failure_diagnostics(artifact, &executed);
+        }
         if let Some(previous) = &mut combined {
             previous.cases.append(&mut result.cases);
             if previous.exit == Some(0) {

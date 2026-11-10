@@ -112,12 +112,12 @@ impl NativeRunOwner {
         let package = authority::assigned_package(&name)?;
         let scratch = root.join(".scratch");
         if !scratch.try_exists()? {
-            create_private(&scratch, &host)?;
+            create_private(&scratch, &host).context("create private native scratch root")?;
         }
         plain_path(&scratch)?;
         let state = scratch.join(format!("security-windows-{run}"));
         let ancestors = anchors(&state)?;
-        create_private(&state, &host)?;
+        create_private(&state, &host).context("create private native run directory")?;
         let pin = Pin::open(&state, true)?;
         private(pin.file.as_ref().unwrap(), &host, true)?;
         let manifest = Manifest {

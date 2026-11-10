@@ -158,11 +158,12 @@ fn actual_creation_calls_capture_before_any_followup_statement() {
         assert_ne!(changed, source);
         assert!(!immediate_capture(&changed, call, status, operation));
     }
-    let body = source.split_once("let execution = (|| {").unwrap().1;
-    assert!(body.contains("restricted = restricted_primary()?;"));
+    let compact = source.split_whitespace().collect::<String>();
+    let body = compact.split_once("letexecution=(||{").unwrap().1;
+    assert!(body.contains("restricted=restricted_primary()?;"));
     assert!(body.find("creation?;").unwrap() < body.find("AssignProcessToJobObject(").unwrap());
     assert!(body.find("creation?;").unwrap() < body.find("NtResumeProcess(").unwrap());
-    assert!(body.contains("retain_cleanup(execution, cleanup.len())"));
+    assert!(body.contains("retain_cleanup(execution,cleanup.len())"));
     assert!(
         body.find("observer.before_create()?").unwrap()
             < body.find("CreateProcessAsUserW(").unwrap()
@@ -170,7 +171,7 @@ fn actual_creation_calls_capture_before_any_followup_statement() {
     assert!(
         body.find("job.finish()").unwrap()
             < body
-                .find("observer.after_reap(process_reaped && job_reaped)")
+                .find("observer.after_reap(process_reaped&&job_reaped)")
                 .unwrap()
     );
     assert!(
@@ -178,8 +179,8 @@ fn actual_creation_calls_capture_before_any_followup_statement() {
     );
     assert!(body.find("observer.before_resume(").unwrap() < body.find("NtResumeProcess(").unwrap());
     assert!(
-        source.find("profile.sid_text()?").unwrap()
-            < source.find("observer.prepare(&sid)").unwrap()
+        compact.find("profile.sid_text()").unwrap()
+            < compact.find("observer.prepare(&sid)").unwrap()
     );
 }
 
