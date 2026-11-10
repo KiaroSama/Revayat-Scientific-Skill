@@ -44,7 +44,18 @@ pub fn security() -> Result<Value> {
         "native helper gate requires Docker"
     );
     let executable = worker()?;
+    let companion = executable
+        .parent()
+        .context("worker has no parent")?
+        .join("revayat-process-owner");
+    for ancestor in companion.ancestors() {
+        ensure!(
+            !is_link(ancestor)?,
+            "native helper companion path contains a link"
+        );
+    }
     let original = file_identity(&executable, Some(64 * 1024 * 1024))?;
+    let companion_original = file_identity(&companion, Some(64 * 1024 * 1024))?;
     let stage = tempfile::Builder::new()
         .prefix(".revayat-tex-helper-")
         .tempdir()?;
@@ -53,11 +64,19 @@ pub fn security() -> Result<Value> {
     fs::create_dir(&public)?;
     fs::create_dir(&empty)?;
     let pinned = public.join("security-worker");
+    let pinned_companion = public.join("revayat-process-owner");
     fs::copy(&executable, &pinned)?;
+    fs::copy(&companion, &pinned_companion)?;
     ensure!(
         file_identity(&executable, Some(64 * 1024 * 1024))? == original
             && file_identity(&pinned, Some(64 * 1024 * 1024))?.same_bytes(&original),
         "native worker changed while preparing checked public view"
+    );
+    ensure!(
+        file_identity(&companion, Some(64 * 1024 * 1024))? == companion_original
+            && file_identity(&pinned_companion, Some(64 * 1024 * 1024))?
+                .same_bytes(&companion_original),
+        "native companion changed while preparing checked public view"
     );
     let coverage = include_bytes!("../../../tests/security/coverage.json");
     let _: Value = serde_json::from_slice(coverage)?;
@@ -69,6 +88,7 @@ pub fn security() -> Result<Value> {
             fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
         }
         fs::set_permissions(&pinned, fs::Permissions::from_mode(0o555))?;
+        fs::set_permissions(&pinned_companion, fs::Permissions::from_mode(0o555))?;
         fs::set_permissions(
             public.join("coverage.json"),
             fs::Permissions::from_mode(0o444),
@@ -139,6 +159,15 @@ pub fn security() -> Result<Value> {
             )?
             .same_bytes(&original),
         "native checked worker changed during containment"
+    );
+    ensure!(
+        file_identity(&companion, Some(64 * 1024 * 1024))? == companion_original
+            && file_identity(
+                &stage.path().join("public/revayat-process-owner"),
+                Some(64 * 1024 * 1024)
+            )?
+            .same_bytes(&companion_original),
+        "native checked companion changed during containment"
     );
     let records = text
         .lines()
