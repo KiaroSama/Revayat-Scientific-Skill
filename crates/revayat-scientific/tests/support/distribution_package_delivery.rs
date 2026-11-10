@@ -86,7 +86,8 @@ fn test_install_launchers_replacement_and_logs() -> Result<()> {
         assert!(help.success());
         assert!(String::from_utf8_lossy(&help.stdout).contains("--output-dir"));
     }
-    let logs = target.join("logs");
+    // The native CLI records operations in the caller's working directory.
+    let logs = f.root.join("logs");
     let entries = fs::read_dir(&logs)?.collect::<std::io::Result<Vec<_>>>()?;
     let mut help_logs = 0;
     for entry in entries {

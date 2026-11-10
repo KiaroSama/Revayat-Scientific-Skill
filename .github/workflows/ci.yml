@@ -86,16 +86,16 @@ jobs:
         run: cargo run --locked --bin revayat-scientific -- ci-status pending
   security:
     if: ${{ !inputs.prepare_artifacts }}
-    uses: ./.github/workflows/security-ci.yml
+    uses: $/.github/workflows/security-ci.yml
   codeql:
     if: ${{ !inputs.prepare_artifacts }}
-    uses: ./.github/workflows/codeql.yml
+    uses: $/.github/workflows/codeql.yml
     permissions:
       contents: read
       security-events: write
   dependency-review:
     if: ${{ !inputs.prepare_artifacts }}
-    uses: ./.github/workflows/dependency-review.yml
+    uses: $/.github/workflows/dependency-review.yml
     with:
       base_ref: ${{ inputs.base_ref || github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
   portable:
@@ -262,7 +262,7 @@ jobs:
       - name: Check introduced commit identities
         env:
           IDENTITY_BASE: ${{ inputs.base_ref || github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
-          HEAD_REF: ${{ github.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: cargo run --locked --bin revayat-scientific -- check-commit-identity --ci-base
       - name: Audit tracked Rust-only sources and comparable size
@@ -307,7 +307,7 @@ jobs:
             logs/ci-*.log
             logs/license-notices_*.log
   behavior-aggregate:
-    if: ${{ always() && !inputs.prepare_artifacts }}
+    if: ${{ always() && !cancelled() && !inputs.prepare_artifacts }}
     needs: [portable, scientific, security]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -337,7 +337,7 @@ jobs:
         if: ${{ always() }}
         run: cargo run --locked --bin revayat-test-runner -- --aggregate --census security --ledger tests/behavior/security.json --report execution-input/execution-ubuntu-latest/portable-debug.json --report execution-input/execution-ubuntu-latest/portable-release.json --report execution-input/execution-macos-latest/portable-debug.json --report execution-input/execution-macos-latest/portable-release.json --report execution-input/execution-windows-latest/portable-debug.json --report execution-input/execution-windows-latest/portable-release.json --report execution-input/execution-scientific-linux/scientific-debug.json --report execution-input/execution-macos-latest/scientific-debug.json --report execution-input/execution-windows-latest/scientific-debug.json --report execution-input/execution-native-linux/native-debug.json --report execution-input/execution-native-windows/native-debug.json
   status-final:
-    if: ${{ always() && !inputs.prepare_artifacts }}
+    if: ${{ always() && !cancelled() && !inputs.prepare_artifacts }}
     needs: [status-pending, security, codeql, dependency-review, portable, scientific, quality, behavior-aggregate]
     runs-on: ubuntu-latest
     timeout-minutes: 20

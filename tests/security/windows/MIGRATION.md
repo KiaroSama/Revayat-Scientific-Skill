@@ -47,12 +47,19 @@ environment-variable fixture file.
 
 The removed infrastructure tested CPython/.NET loader initialization, Python
 activation contexts, CSR callbacks, debugger loader snaps and ETW/SxS causality.
-Those interpreters are absent from the native product. The VHD quota, volume
-attachment experiments and machine-wide SideBySide policy lease are retired.
+Those interpreters are absent from the native product, but removing them does
+not by itself complete the original test obligations. Native counterparts,
+their operation relationships and actual execution evidence remain required by
+the migration censuses. VHD quota, volume attachment and machine-wide SideBySide
+diagnostics are not currently established by the narrow owned-fixture gate.
 The former machine-registry diagnostic remains the verifier's explicit default
 mode; it is not the required owned-fixture gate and receives no automatic host
 ACL grants. Owned-fixture success makes no claim about machine SideBySide
 access, VHD disk quotas, ETW traces, or interpreter activation.
+
+The native-stage collector and several census contracts remain unfinished; see
+the [outstanding acceptance gates](../../../docs/development.md#outstanding-acceptance-gates).
+Passing the six native gate cases is not a complete Windows migration result.
 
 Normal document tools use a job to own their process trees. This lifetime
 ownership does not itself provide an LPAC file or network sandbox. The required

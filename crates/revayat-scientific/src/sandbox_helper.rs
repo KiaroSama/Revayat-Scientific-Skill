@@ -170,7 +170,87 @@ pub fn security() -> Result<Value> {
         summaries.len() == 1 && *summaries[0] == expected && records.last() == Some(&expected),
         "native helper scenarios failed, missing or incomplete"
     );
+    let cases = verified_cases(&records)?;
     Ok(
-        json!({"preflight":proofs[0],"scenarios":summaries[0],"run_id":run,"worker_sha256":original.sha256,"container_cleanup":"verified"}),
+        json!({"preflight":proofs[0],"scenarios":summaries[0],"cases":cases,"run_id":run,"worker_sha256":original.sha256,"container_cleanup":"verified"}),
     )
+}
+
+/// A summary cannot substitute for each actual isolated worker outcome.
+fn verified_cases(records: &[Value]) -> Result<Vec<Value>> {
+    use std::collections::BTreeSet;
+    let cases = records
+        .iter()
+        .filter(|row| row["phase"] == "security-case")
+        .cloned()
+        .collect::<Vec<_>>();
+    let expected = crate::security_cases::IDS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let mut actual = BTreeSet::new();
+    ensure!(
+        records.len() == cases.len() + 2,
+        "unexpected isolated worker record"
+    );
+    for (index, row) in cases.iter().enumerate() {
+        let id = row["id"].as_str().context("security case ID missing")?;
+        ensure!(
+            row == &json!({"phase":"security-case","id":id,"status":"passed"})
+                && actual.insert(id)
+                && expected.contains(id)
+                && crate::security_cases::IDS.get(index) == Some(&id),
+            "invalid or duplicate isolated security case outcome"
+        );
+    }
+    ensure!(
+        actual == expected,
+        "isolated security case outcomes incomplete"
+    );
+    Ok(cases)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn worker_summary_never_replaces_complete_unique_case_outcomes() {
+        assert_eq!(
+            super::super::failure_category(
+                "sandbox enforcement failed: probe-control-08: PRIVATE_CANARY"
+            ),
+            "control=08"
+        );
+        for text in [
+            "PRIVATE_CANARY",
+            "sandbox enforcement failed: probe-control-PRIVATE: secret",
+            "sandbox enforcement failed: probe-control-99: secret",
+        ] {
+            assert_eq!(
+                super::super::failure_category(text),
+                "diagnostic=unclassified"
+            );
+        }
+        let rows = crate::security_cases::IDS
+            .iter()
+            .map(|id| json!({"phase":"security-case","id":id,"status":"passed"}))
+            .collect::<Vec<_>>();
+        let qualified = |rows: &[Value]| {
+            let mut qualified = vec![json!({"phase":"helper-preflight"})];
+            qualified.extend_from_slice(rows);
+            qualified.push(json!({"phase":"security-scenarios"}));
+            qualified
+        };
+        assert_eq!(verified_cases(&qualified(&rows)).unwrap(), rows);
+        for altered in [
+            rows[..35].to_vec(),
+            vec![rows[0].clone(); 36],
+            vec![json!({"phase":"security-scenarios","status":"passed"})],
+        ] {
+            assert!(verified_cases(&qualified(&altered)).is_err());
+        }
+        let mut failed = rows;
+        failed[0]["status"] = json!("failed");
+        assert!(verified_cases(&qualified(&failed)).is_err());
+    }
 }

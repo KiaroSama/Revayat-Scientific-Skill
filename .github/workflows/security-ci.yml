@@ -20,10 +20,10 @@ jobs:
         run: docker build -f skills/revayat-scientific/assets/Dockerfile.tex -t revayat-scientific-tex:1 .
       - name: Prove production Linux containment and publication contracts
         run: cargo run --locked --bin revayat-scientific -- security-linux
-      - name: Require actual native stage execution adapter
+      - name: Collect actual isolated Linux security case outcomes
         if: ${{ always() && !cancelled() }}
         run: cargo run --locked --bin revayat-test-runner -- --tier native --profile debug --ignored --output execution/native-debug.json --timeout 1200
-      - name: Preserve native Linux report including adapter failure
+      - name: Preserve native Linux outcomes including containment failures
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -50,13 +50,13 @@ jobs:
         run: cargo build --locked --workspace --all-targets
       - name: Prove native containment before Windows junction and OPC scenarios
         run: cargo run --locked --bin revayat-scientific -- security-windows --authority-image target/debug/registry-authority.exe
-      - name: Require actual native stage execution adapter
+      - name: Collect actual native Windows harness outcomes
         if: ${{ always() && !cancelled() }}
         run: cargo run --locked --bin revayat-test-runner -- --tier native --profile debug --ignored --output execution/native-debug.json --timeout 1200
-      - name: Retain independent Rust registry and native contracts until stage adapter exists
+      - name: Retain independent Rust registry and native contracts
         if: ${{ always() && !cancelled() }}
         run: cargo test --locked --workspace --all-targets -- --test-threads=1
-      - name: Preserve native Windows report including adapter failure
+      - name: Preserve native Windows outcomes including case failures
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:

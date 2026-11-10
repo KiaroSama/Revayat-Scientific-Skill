@@ -22,6 +22,8 @@ use std::{
 mod libtest;
 use libtest::parse_filtered_execution;
 pub use libtest::{CaseOutcome, parse_test_execution};
+#[path = "migration_execution/native.rs"]
+mod native;
 #[path = "migration_execution/selection.rs"]
 mod selection;
 pub use selection::select_equipped_cases;
@@ -55,6 +57,8 @@ pub struct CollectedExecution {
     pub tier: String,
     /// Cargo profile of the actual discovered and executed harness artifacts.
     pub profile: String,
+    /// Legacy equipped-mode flag: scientific uses ignored libtest cases;
+    /// native executes its explicit, nonignored harnesses or isolated worker.
     pub ignored_only: bool,
     pub binaries: Vec<BinaryExecution>,
     /// Fixed category only; raw compiler or child diagnostics are never serialized.
@@ -433,16 +437,19 @@ pub fn collect(
         discovery_exit: None,
         final_parity_verified: false,
     };
-    if (tier == "portable") == ignored_only || tier == "native" {
-        report.error = Some(
-            if tier == "native" {
-                "native instrumented execution adapter unavailable"
-            } else {
-                "execution tier and ignored selection contradict"
-            }
-            .into(),
-        );
+    if (tier == "portable") == ignored_only {
+        report.error = Some("execution tier and ignored selection contradict".into());
         return write_execution_report(output, &report);
+    }
+    if tier == "native" {
+        if profile != "debug" || !["linux", "windows"].contains(&std::env::consts::OS) {
+            report.error = Some("native execution requires a supported debug scope".into());
+            return write_execution_report(output, &report);
+        }
+        if cfg!(target_os = "linux") {
+            report.binaries.push(native::linux(timeout));
+            return write_execution_report(output, &report);
+        }
     }
     let artifacts = match timeout
         .checked_sub(started.elapsed())
@@ -459,6 +466,10 @@ pub fn collect(
         }
     };
     selection::validate_collection_targets(&artifacts, &mut report, output)?;
+    if tier == "native" && native::validate_targets(&artifacts).is_err() {
+        report.error = Some("required native Windows harness missing".into());
+        return write_execution_report(output, &report);
+    }
     let mut interrupted = false;
     let mut operations = Vec::new();
     for artifact in artifacts {

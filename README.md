@@ -135,7 +135,7 @@ cargo run --locked --bin revayat-scientific -- validate
 cargo run --locked --release --bin revayat-scientific -- package
 ```
 
-The runner commands require hosted GitHub Actions provenance and matching checked-out SHA; they are source-authored CI commands, not a local acceptance recipe. Equipped cases and the eleven-scope aggregate contract are described in [security testing](docs/security-testing.md). The native instrumented collector currently fails explicitly because its adapter is unavailable; no complete execution report is claimed.
+The runner commands require hosted GitHub Actions provenance and matching checked-out SHA; they are source-authored CI commands, not a local acceptance recipe. Equipped cases and the eleven-scope aggregate contract are described in [security testing](docs/security-testing.md). Native collection now runs actual Windows harnesses and qualified isolated Linux worker cases. Bootstrap and other nonflat census evidence remains incomplete; no complete parity report is claimed.
 
 The migration map retains 583 original public test IDs; separate inventories record 37 upstream checks and 41 standalone security cases. These counts and registered Rust counterparts do **not** establish assertion-level parity or execution. Windows bootstrap stages, overlapping check/helper declarations and separate registry-oracle cases require their own behavioral and native evidence; their restoration is not waived because the original implementation used another language.
 

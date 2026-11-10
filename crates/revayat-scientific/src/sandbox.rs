@@ -19,7 +19,11 @@ fn run_owned(
     let receipt = tex_supervisor::register(config, directory, run)?;
     let outcome =
         tex::call_with_environment(args, timeout, environment).and_then(|(code, text)| {
-            ensure!(code == 0, "native sandbox failed (exit {code})");
+            ensure!(
+                code == 0,
+                "native sandbox failed (exit {code}; {})",
+                failure_category(&text)
+            );
             Ok(text)
         });
     let cleanup = tex::cleanup(config, directory, run, false);
@@ -31,6 +35,39 @@ fn run_owned(
         || tex_supervisor::acknowledge(receipt.as_deref()),
         tex::finalize::recovery,
     )
+}
+
+/// Fixed probe/control and authored case identities only; never echo child text.
+fn failure_category(text: &str) -> String {
+    for line in text.lines() {
+        if let Some((code, _)) = line
+            .strip_prefix("sandbox enforcement failed: probe-control-")
+            .and_then(|value| value.split_once(':'))
+            && code.len() == 2
+            && code.bytes().all(|value| value.is_ascii_digit())
+            && code
+                .parse::<u8>()
+                .is_ok_and(|value| (1..=39).contains(&value))
+        {
+            return format!("control={code}");
+        }
+    }
+    let mut failed = std::collections::BTreeSet::new();
+    for line in text.lines() {
+        if let Ok(row) = serde_json::from_str::<Value>(line)
+            && row["phase"] == "security-case"
+            && row["status"] == "failed"
+            && let Some(id) = row["id"].as_str()
+            && crate::security_cases::IDS.contains(&id)
+        {
+            failed.insert(id.to_owned());
+        }
+    }
+    if failed.is_empty() {
+        "diagnostic=unclassified".into()
+    } else {
+        format!("cases={}", failed.into_iter().collect::<Vec<_>>().join(","))
+    }
 }
 
 pub fn probe() -> Result<Value> {

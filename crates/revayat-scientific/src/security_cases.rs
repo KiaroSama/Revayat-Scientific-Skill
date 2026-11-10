@@ -18,6 +18,9 @@ use std::{
     time::Duration,
 };
 use zip::{ZipWriter, write::SimpleFileOptions};
+#[path = "security_case_names.rs"]
+mod names;
+pub use names::CASE_NAMES;
 pub const IDS: &[&str] = &[
     "docx/restricted-rels-_rels",
     "docx/restricted-RELS-_rels",
@@ -129,7 +132,9 @@ impl Cases {
                     .as_array()
                     .context("missing text inventory")?
                     .iter()
-                    .any(|node| node["part"] == "word/document.xml" && node["text"] == "changed"),
+                    .any(|node| node["part"] == "word/document.xml"
+                        && node["index"] == 0
+                        && node["text"] == "changed"),
                 "ordinary relationship edit was not retained"
             );
         }

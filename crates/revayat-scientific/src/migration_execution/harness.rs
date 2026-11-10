@@ -33,6 +33,8 @@ pub(super) fn execute(
     );
     let selected = if tier == "portable" {
         all.clone()
+    } else if tier == "native" {
+        super::native::select(artifact.mapping_target.as_deref(), &all, &ignored)?
     } else {
         select_equipped_cases(
             tier,
@@ -61,11 +63,11 @@ pub(super) fn execute(
             .map(Into::into)
             .collect();
         if tier != "portable" {
-            spec.args.extend([
-                "--ignored".into(),
-                "--exact".into(),
-                expected.first().unwrap().as_str().into(),
-            ]);
+            if tier == "scientific" {
+                spec.args.push("--ignored".into());
+            }
+            spec.args
+                .extend(["--exact".into(), expected.first().unwrap().as_str().into()]);
         }
         // A returned output includes direct wait, capture joins and owned tree/container finalization.
         let executed = match runtime::run_supervised(&spec) {

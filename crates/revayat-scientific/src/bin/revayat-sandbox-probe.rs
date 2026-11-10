@@ -14,7 +14,10 @@ struct Probe {
 impl Probe {
     fn require(&mut self, condition: bool, message: &str) -> io::Result<()> {
         if !condition {
-            return Err(io::Error::other(message));
+            return Err(io::Error::other(format!(
+                "probe-control-{:02}: {message}",
+                self.checks + 1
+            )));
         }
         self.checks += 1;
         Ok(())

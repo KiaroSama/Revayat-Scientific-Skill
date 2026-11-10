@@ -51,9 +51,14 @@ gate. A passing build alone does not establish behavioral parity.
 
 ## Outstanding acceptance gates
 
-The inherited native collector explicitly refuses execution with `native
-instrumented execution adapter unavailable`. The native-stage, runtime-preparation,
-engine and coverage censuses also contain unresolved source/evidence contracts.
+The native collector executes the Windows native and standalone harnesses with
+exact, nonignored case selection. On Linux it runs the production containment
+probe and isolated worker, then records every actual worker outcome only after
+the fixed preflight and owned cleanup succeed. Missing, duplicate, reordered or
+failed case results cannot be replaced by a successful summary. These are flat
+case reports, not fabricated bootstrap markers. The native-stage,
+runtime-preparation, engine and coverage censuses still contain unresolved
+source/evidence contracts.
 Those gaps must be implemented and actually run before claiming complete parity
 or an all-green migration. The aggregate is kept blocking; it is not replaced by
 registration counts or fabricated successful events.

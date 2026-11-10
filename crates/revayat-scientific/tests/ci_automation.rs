@@ -263,7 +263,7 @@ fn artifact_preparation_is_opt_in_and_never_substitutes_for_validation() {
             Some(match name.as_str() {
                 "prepare-artifacts" => "${{ inputs.prepare_artifacts }}",
                 "behavior-aggregate" | "status-final" =>
-                    "${{ always() && !inputs.prepare_artifacts }}",
+                    "${{ always() && !cancelled() && !inputs.prepare_artifacts }}",
                 _ => "${{ !inputs.prepare_artifacts }}",
             }),
             "{name}"

@@ -149,8 +149,8 @@ pub fn cli_commit_identity(args: &[String]) -> Result<i32> {
     );
     Ok(i32::from(!failures.is_empty()))
 }
-/// Retain the narrow old self-reference compatibility contract without
-/// suppressing any linter diagnostics. New workflows use standard ./ syntax.
+/// Translate GitHub's dedicated self-repository syntax for actionlint 1.7.12.
+/// Only the three reviewed calls change in memory; all diagnostics stay active.
 pub fn actionlint_source(filename: &str, source: &str) -> Result<String> {
     if !source.contains("$/") {
         return Ok(source.to_owned());
