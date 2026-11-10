@@ -24,6 +24,16 @@ Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientifi
 
 `--agent all` is the default and installs only into detected host configuration roots; explicit `--agent` may create its directory. A Codex `.codex` configuration also counts as detection. Shared destinations are deduplicated. Project scope requires `--path`. `--dest` names the final skill directory, not its parent. Installation does not edit host configuration or install system dependencies.
 
+## Unix companion and preparation limits
+
+Linux/macOS tool invocations require regular executable `revayat-process-owner` beside the caller, from the same revision/profile. Build both with `cargo build --locked --release --workspace --bins`; a selected `cargo run --bin` does not rebuild all siblings. Missing companions fail rather than use unowned spawning. Windows does not require this Unix companion. Its private protocol is not a document-processing command.
+
+Companion-aware distribution changes are not in this preparation snapshot. Existing install/archive commands must not be treated as producing a complete Unix runtime payload until that integration and installed execution are verified. Use the source build layout for preparation. No signed version handshake or successful install/document check is claimed.
+
+Manual CI input `prepare_artifacts` defaults to `false`. The approved `true` run requires full `base_ref`, uses Rust1.99.1 plus `rust-docs`, generates/checks lock and notices, and uploads exactly `Cargo.lock` plus `skills/revayat-scientific/references/third-party-licenses.txt` in a revision/run/attempt-named artifact. Inspect both members and provenance before import. Ordinary validation/status jobs are skipped in this mode; complete locked final verification remains required. Preparation does not produce a release or prove native parity.
+
+The notice generator admits logical retained occurrence material against256MiB before retention; unique shared bodies and rendered output each have64MiB bounds, not allocator/RSS guarantees. It preserves exact legal bytes and occurrence attribution, deduplicates only identical bodies, and refuses overflow without omitting notices or replacing the previous bundle. Actual generation/runtime remain subject to hosted verification.
+
 Existing destinations are refused without `--force`. Force replacement requires an empty directory or a simple, unambiguous `name: revayat-scientific` frontmatter identity. Duplicate keys, ambiguous continuations, foreign contents, linked trees and reserved recovery/backup locations are refused. Every target is staged and checked before activation. Old editions remain in `skill-backups` outside ordinary skill discovery. See [installation integrity](installation-integrity.md).
 
 ## Plugin hosts

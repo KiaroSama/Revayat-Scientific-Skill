@@ -41,6 +41,14 @@ Revayat is an agent skill and a native Rust executable. The host agent performs 
 | Verified delivery | Run source lint, font/page checks, text-order checks and real raster/render comparisons. |
 | Recoverable publication | Stage all outputs or installations, retain exact previous editions and preserve recovery evidence on unresolved failure. |
 
+## Preparation snapshot status
+
+This `rewrite/rust-native` snapshot adds hosted lock/notices preparation, not a completed migration or verified release. The badges describe `main`, not this revision. Full native parity and final exact-head CI remain unverified.
+
+Linux/macOS tool invocations require `revayat-process-owner` beside the executable, from the same build/revision. Build all binaries with `cargo build --locked --release --workspace --bins`; `cargo run --bin revayat-scientific` alone does not rebuild its sibling. Windows retains native Job ownership. Companion-aware package/install changes are not included in this preparation snapshot; do not assume its `.skill` archive is a complete Unix runtime payload. External document engines remain separate.
+
+For approved hosted preparation, select the existing CI workflow on the reviewed rewrite revision, provide full `base_ref` and set `prepare_artifacts=true` (default `false`). Artifact `prepared-lock-notices-<sha>-<run_id>-<attempt>` contains only `Cargo.lock` and `skills/revayat-scientific/references/third-party-licenses.txt`. Verify exact membership and run/revision/attempt before import. Ordinary validation/status jobs do not run in this mode; preparation success is not full CI or migration acceptance. See [installation](docs/installation.md).
+
 ## Install
 
 Install the [pinned Rust toolchain](https://rustup.rs/) to build from source:

@@ -43,6 +43,14 @@
 | تحویل قابل بررسی | بررسی منبع، فونت، صفحه، ترتیب استخراج متن و خروجی واقعی رندر. |
 | بازیابی تغییرات | آماده‌سازی همهٔ مقصدها، نگهداری نسخهٔ قبلی و حفظ شواهد بازیابی در شکست حل‌نشده. |
 
+## وضعیت snapshot آماده‌سازی
+
+این snapshot شاخهٔ `rewrite/rust-native` آماده‌سازی hosted محدود lock/notices است، نه مهاجرت کامل یا release تأییدشده. نشان‌ها مربوط به `main` هستند؛ برابری کامل native و CI نهایی همان SHA هنوز تأیید نشده‌اند.
+
+در Linux/macOS، فراخوانی ابزار به `revayat-process-owner` کنار برنامه و از همان build/revision نیاز دارد. همهٔ binaryها را با `cargo build --locked --release --workspace --bins` بسازید؛ `cargo run --bin revayat-scientific` sibling را دوباره نمی‌سازد. Windows از Job بومی استفاده می‌کند. تغییرات package/install همراه companion هنوز در این snapshot نیست؛ آرشیو `.skill` را payload کامل یونیکس فرض نکنید. موتورهای سند جدا هستند.
+
+برای آماده‌سازی hosted تأییدشده، workflow موجود CI را روی revision بازبینی‌شده انتخاب کنید، SHA کامل `base_ref` را بدهید و `prepare_artifacts=true` بگذارید؛ پیش‌فرض `false` است. artifact با نام `prepared-lock-notices-<sha>-<run_id>-<attempt>` فقط `Cargo.lock` و `skills/revayat-scientific/references/third-party-licenses.txt` دارد. عضویت دقیق و revision/run/attempt را پیش از import بررسی کنید. jobهای عادی و status publisherها در این حالت اجرا نمی‌شوند؛ موفقیت آماده‌سازی، پذیرش مهاجرت یا CI کامل نیست. [جزئیات نصب](docs/installation.md).
+
 ## نصب
 
 برای ساخت از منبع، [Rust](https://rustup.rs/) را نصب کنید؛ نسخهٔ دقیق در `rust-toolchain.toml` ثبت شده است.

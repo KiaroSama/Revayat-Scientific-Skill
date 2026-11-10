@@ -36,6 +36,12 @@ Source revisions, expected outputs and resource decisions are checked across des
 The distributable skill contains `SKILL.md`, references, assets, agent metadata, GPL notices and a native executable in `bin/`. Packaging and installation share the same bounded payload. They refuse linked source entries, implementation/source overlap, Git administration, case collisions and known hardlink aliases. Whole-target installations stage every selected host before activation and retain previous editions outside skill discovery.
 
 Original documents, terms, inventories, figure manifests, translation logs and deliverables belong to a job directory outside the installed skill. Translation logging remains required even when no helper command runs.
+## Preparation runtime and notice bounds
+
+Source-built Unix tools require adjacent same-build `revayat-process-owner` and private lifeline/accounting for cooperative nested cleanup; Windows retains native Job ownership. Generic ownership records use private temporary storage rather than requiring writable CWD. Descendants deliberately escaping into new sessions are outside this cooperative process-group contract. Companion-aware package/install integration is outside this preparation snapshot and remains unverified.
+
+Explicit approved manual preparation defaults off and generates/checks only lock/notices inputs, publishing exactly two files with revision/run/attempt artifact provenance. Ordinary validation/status jobs are excluded, never replaced with fabricated green results; complete locked final verification remains mandatory. Notice processing bounds logical occurrence material at256MiB, unique shared bodies at64MiB and rendered output at64MiB before admitted growth/retention, not allocator RSS. Exact legal bytes/provenance survive deduplication; overflow fails without partial bundle publication.
+
 
 ## Verification
 
