@@ -168,7 +168,7 @@ fn binaries(root: &Path, profile: &str, timeout: Duration) -> Result<Vec<Artifac
         .into_iter()
         .map(Into::into)
         .collect();
-    let metadata = runtime::run(&spec)?;
+    let metadata = runtime::run(&spec).context("bounded Cargo metadata failed")?;
     if !metadata.success() {
         return Err(TestExecutionFailure {
             exit: Some(metadata.code),
@@ -176,11 +176,80 @@ fn binaries(root: &Path, profile: &str, timeout: Duration) -> Result<Vec<Artifac
         }
         .into());
     }
-    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout)?;
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&metadata.stdout).context("Cargo metadata JSON is invalid")?;
     let target = metadata["target_directory"]
         .as_str()
         .context("Cargo target directory missing")?;
     parse_test_artifacts(root, Path::new(target), &output.stdout, profile)
+        .context("Cargo artifact selection failed")
+}
+
+/// Authored discovery stages and numeric OS errors only; never child diagnostics or paths.
+pub fn discovery_failure_summary(error: &anyhow::Error) -> String {
+    let stages = [
+        (
+            "test artifact has an unsupported Cargo layout",
+            "artifact-layout",
+        ),
+        (
+            "test artifact leaves Cargo target directory",
+            "artifact-root",
+        ),
+        (
+            "test artifact does not belong to the requested Cargo profile",
+            "artifact-profile",
+        ),
+        (
+            "test artifact is outside the workspace",
+            "artifact-workspace",
+        ),
+        ("invalid test artifact count", "artifact-count"),
+        ("Cargo target directory missing", "target-directory"),
+        ("test package manifest missing", "manifest"),
+        ("Cargo metadata JSON is invalid", "metadata-json"),
+        ("Cargo artifact JSON is invalid", "artifact-json"),
+        ("bounded Cargo metadata failed", "metadata-run"),
+        ("Cargo artifact selection failed", "artifact-selection"),
+        ("bounded test artifact discovery failed", "cargo-run"),
+        ("Cargo discovery deadline exceeded", "deadline"),
+        ("discovery deadline exceeded", "deadline"),
+    ];
+    let stage = stages
+        .iter()
+        .find_map(|(message, label)| {
+            error
+                .chain()
+                .any(|cause| cause.to_string() == *message)
+                .then_some(*label)
+        })
+        .unwrap_or("unknown");
+    let mut result = format!("stage={stage}");
+    for cause in error.chain() {
+        let message = cause.to_string();
+        for operation in ["status-query", "group-cleanup", "child-reap", "unknown"] {
+            let prefix = format!("owned runtime operation failed (operation-{operation}");
+            if message == format!("{prefix})") {
+                result.push_str(&format!(" runtime={operation}"));
+            } else if let Some(number) = message
+                .strip_prefix(&format!("{prefix}-os-"))
+                .and_then(|value| value.strip_suffix(')'))
+                .and_then(|value| value.parse::<i32>().ok())
+            {
+                result.push_str(&format!(" runtime={operation} os_error={number}"));
+            }
+        }
+    }
+    if let Some(number) = error
+        .downcast_ref::<std::io::Error>()
+        .and_then(std::io::Error::raw_os_error)
+    {
+        result.push_str(&format!(" os_error={number}"));
+    }
+    if error.downcast_ref::<runtime::CleanupFailure>().is_some() {
+        result.push_str(" cleanup_uncertain=true");
+    }
+    result
 }
 
 /// Cargo compiler-artifact messages, not human stderr or executable filename guesses.
@@ -208,7 +277,8 @@ pub fn parse_test_artifacts(
         .split(|value| *value == b'\n')
         .filter(|line| !line.is_empty())
     {
-        let value: serde_json::Value = serde_json::from_slice(line)?;
+        let value: serde_json::Value =
+            serde_json::from_slice(line).context("Cargo artifact JSON is invalid")?;
         if value["reason"] != "compiler-artifact" || value["profile"]["test"] != true {
             continue;
         }
@@ -459,7 +529,12 @@ pub fn collect(
             report.discovery_exit = error
                 .downcast_ref::<TestExecutionFailure>()
                 .and_then(|failure| failure.exit);
-            report.error = Some("Cargo discovery, deadline or owned cleanup incomplete".into());
+            let summary = discovery_failure_summary(&error);
+            eprintln!("test-discovery: {summary}");
+            report.error = Some(format!(
+                "Cargo discovery, deadline or owned cleanup incomplete: {}",
+                summary
+            ));
             return write_execution_report(output, &report);
         }
     };

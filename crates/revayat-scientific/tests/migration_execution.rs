@@ -222,6 +222,34 @@ fn foreign_incomplete_and_wrong_tier_reports_cannot_be_reconciled() {
 
 #[test]
 fn failed_execution_report_retains_cases_and_exit_even_if_publication_fails() {
+    use revayat_scientific::migration::execution::discovery_failure_summary;
+    let private = anyhow::anyhow!("private /manuscript/path secret payload")
+        .context("Cargo artifact selection failed");
+    assert_eq!(
+        discovery_failure_summary(&private),
+        "stage=artifact-selection"
+    );
+    for (cause, expected) in [
+        (
+            "owned runtime operation failed (operation-group-cleanup-os-1)",
+            "stage=cargo-run runtime=group-cleanup os_error=1",
+        ),
+        (
+            "owned runtime operation failed (operation-unknown)",
+            "stage=cargo-run runtime=unknown",
+        ),
+        (
+            "owned runtime operation failed (operation-group-cleanup-os-private)",
+            "stage=cargo-run",
+        ),
+    ] {
+        assert_eq!(
+            discovery_failure_summary(
+                &anyhow::anyhow!(cause).context("bounded test artifact discovery failed")
+            ),
+            expected
+        );
+    }
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("results.json");
     let mut failed = report();

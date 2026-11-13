@@ -241,6 +241,12 @@ impl Drop for Capture {
 /// Lexical relative paths are checked before any filesystem operation.
 pub fn relative_leaf(value: &Path) -> Result<()> {
     ensure!(!value.as_os_str().is_empty(), "empty child path");
+    // The wire grammar uses forward slashes. Windows components otherwise
+    // consume backslashes before the per-component check can reject them.
+    ensure!(
+        !value.as_os_str().to_string_lossy().contains('\\'),
+        "unsafe Windows child separator"
+    );
     for component in value.components() {
         let Component::Normal(name) = component else {
             bail!("child path is not relative");

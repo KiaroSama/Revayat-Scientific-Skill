@@ -346,8 +346,10 @@ fn test_inherited_preparation_refuses_substituted_foreign_temporary_files() -> R
             secondary[0]
                 .downcast_ref::<std::io::Error>()
                 .unwrap()
-                .kind(),
-            std::io::ErrorKind::PermissionDenied
+                .raw_os_error(),
+            // DeleteFileW must preserve the actual no-delete-sharing refusal;
+            // Rust's ErrorKind mapping for this Windows error can change.
+            Some(32)
         );
         let displayed = format!("{error:#}");
         assert!(displayed.contains("cleanup needs recovery"));
