@@ -304,7 +304,10 @@ fn run_profile(
         let errors = err.finish(ERROR_LIMIT)?;
         ensure!(
             code == 0 && errors.is_empty(),
-            "native authority refused containment exit={code:08X}"
+            "native authority refused containment exit={code:08X} diagnostic={}",
+            registry_authority::protocol::failure_summary(errors)
+                .as_deref()
+                .unwrap_or("unqualified")
         );
         let lines = output.split_inclusive('\n').collect::<Vec<_>>();
         ensure!(

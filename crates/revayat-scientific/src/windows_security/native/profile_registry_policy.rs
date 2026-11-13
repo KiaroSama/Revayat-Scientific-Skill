@@ -1,8 +1,6 @@
 //! Exact profile-registry six-rule DACLs; no owner/group/integrity mutation or setter fallback.
 use super::*;
-use crate::windows_security::policy::{
-    Acl, Descriptor as RelativeDescriptor, validate_registry_seal,
-};
+use crate::windows_security::policy::validate_registry_seal;
 #[link(name = "advapi32")]
 unsafe extern "system" {
     fn GetSecurityDescriptorLength(descriptor: Handle) -> u32;
@@ -85,27 +83,7 @@ pub(super) fn bytes(descriptor: &Descriptor) -> Result<Vec<u8>> {
     Ok(unsafe { std::slice::from_raw_parts(descriptor.0.cast::<u8>(), length as usize) }.to_vec())
 }
 pub(super) fn matches_access(expected: &[u8], actual: &[u8]) -> Result<bool> {
-    let (expected, actual) = (
-        RelativeDescriptor::parse(expected)?,
-        RelativeDescriptor::parse(actual)?,
-    );
-    if expected.control & !0x400 != actual.control & !0x400
-        || expected.control & 0x1000 == 0
-        || actual.control & 0x1000 == 0
-    {
-        return Ok(false);
-    }
-    let (Some(expected), Some(actual)) = (expected.dacl, actual.dacl) else {
-        return Ok(false);
-    };
-    let (expected, actual) = (Acl::parse(expected)?, Acl::parse(actual)?);
-    Ok(expected.revision == actual.revision
-        && expected.aces.len() == actual.aces.len()
-        && expected
-            .aces
-            .iter()
-            .zip(actual.aces.iter())
-            .all(|(a, b)| a.bytes == b.bytes))
+    crate::windows_security::policy::access_matches(expected, actual)
 }
 fn read_access(key: Handle) -> Result<Vec<u8>> {
     let (mut owner, mut group, mut dacl, mut sacl, mut descriptor) =

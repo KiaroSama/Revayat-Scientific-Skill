@@ -1,8 +1,7 @@
 //! Exact actual-token identity and scoped disposable default-owner impersonation.
-use crate::windows_security::{
-    activation::{Failures, native::require_host},
-    policy::within,
-};
+#[cfg(test)]
+use crate::windows_security::activation::Failures;
+use crate::windows_security::{activation::native::require_host, policy::within};
 use anyhow::{Result, ensure};
 use registry_authority::native::{
     GetCurrentProcess, GetTokenInformation, NtQuerySecurityAttributesToken, OpenProcessToken,
@@ -33,14 +32,8 @@ unsafe extern "system" {
     fn CloseHandle(handle: Raw) -> i32;
     fn LocalFree(memory: Raw) -> Raw;
 }
-pub(super) fn finish<T>(result: Result<T>, mut errors: Vec<anyhow::Error>) -> Result<T> {
-    if errors.is_empty() {
-        return result;
-    }
-    if let Err(primary) = result {
-        errors.insert(0, primary);
-    }
-    Err(Failures { errors }.into())
+pub(super) fn finish<T>(result: Result<T>, errors: Vec<anyhow::Error>) -> Result<T> {
+    crate::windows_security::policy::token_validation::finish(result, errors)
 }
 pub(super) struct Handle(pub Raw);
 impl Handle {
@@ -220,51 +213,14 @@ fn lpac(token: Raw) -> Result<()> {
     require_lpac(&data, &name)
 }
 fn require_lpac(data: &Query, name: &[u16]) -> Result<()> {
-    let bytes = data.bytes();
-    let base = data.words.as_ptr() as u64;
+    use crate::windows_security::policy::profile_validation::registry_context;
     ensure!(
-        (16..=512).contains(&bytes.len()) && bytes[..4] == [1, 0, 0, 0] && data.dword(4)? == 1,
-        "SxS LPAC attribute header differs"
+        name.iter()
+            .copied()
+            .eq(registry_context::LPAC_NAME.encode_utf16()),
+        "SxS LPAC fixed query name differs"
     );
-    let pointer = u64::from_le_bytes(bytes[8..16].try_into()?);
-    ensure!(
-        within(base, bytes.len() as u64, pointer, 40, 8),
-        "SxS LPAC entry span differs"
-    );
-    let at = (pointer - base) as usize;
-    let entry = &bytes[at..at + 40];
-    let length = u16::from_le_bytes(entry[..2].try_into()?) as usize;
-    let maximum = u16::from_le_bytes(entry[2..4].try_into()?) as usize;
-    ensure!(
-        length == name.len() * 2
-            && maximum >= length
-            && maximum.is_multiple_of(2)
-            && entry[16..20] == [2, 0, 0, 0]
-            && u32::from_le_bytes(entry[20..24].try_into()?) & 0x10 == 0
-            && entry[24..28] == [1, 0, 0, 0],
-        "SxS LPAC attribute fields differ"
-    );
-    let text = u64::from_le_bytes(entry[8..16].try_into()?);
-    let value = u64::from_le_bytes(entry[32..40].try_into()?);
-    ensure!(
-        within(base, bytes.len() as u64, text, maximum as u64, 2)
-            && within(base, bytes.len() as u64, value, 8, 8),
-        "SxS LPAC name/value span differs"
-    );
-    let actual = &bytes[(text - base) as usize..(text - base) as usize + length];
-    ensure!(
-        actual
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|b| u16::from_le_bytes([b[0], b[1]]))
-            .eq(name.iter().copied())
-            && u64::from_le_bytes(
-                bytes[(value - base) as usize..(value - base) as usize + 8].try_into()?
-            ) == 1,
-        "SxS LPAC name/value differs"
-    );
-    Ok(())
+    registry_context::require_lpac(data.bytes(), data.words.as_ptr() as u64)
 }
 #[derive(Clone)]
 struct Snapshot {
@@ -294,13 +250,21 @@ impl Snapshot {
         })
     }
     fn require_same(&self, actual: &Self) -> Result<()> {
-        ensure!(
-            self.user == actual.user
-                && self.package == actual.package
-                && self.restricted == actual.restricted,
-            "SxS authority token identity changed"
-        );
-        Ok(())
+        use crate::windows_security::policy::profile_validation::registry_context::{
+            Identity, require_equal,
+        };
+        require_equal(
+            Identity {
+                user: &self.user,
+                package: &self.package,
+                restricted: &self.restricted,
+            },
+            Identity {
+                user: &actual.user,
+                package: &actual.package,
+                restricted: &actual.restricted,
+            },
+        )
     }
 }
 fn open(process: Raw) -> Result<Handle> {

@@ -402,11 +402,23 @@ fn test_partial_write_failure_leaves_aggregate_error_and_propagates() {
     assert_eq!(f.published[0]["state"], "pending");
 }
 struct HttpServer {
-    thread: Option<std::thread::JoinHandle<Vec<u8>>>,
+    thread: Option<std::thread::JoinHandle<HttpExchange>>,
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
+#[derive(Default, Debug)]
+struct HttpExchange {
+    request: Vec<u8>,
+    body_bytes: usize,
+    write_error: Option<std::io::ErrorKind>,
+}
+#[derive(Clone, Copy, Debug)]
+enum HttpFraming {
+    Length(usize),
+    Close,
+    Chunked,
+}
 impl HttpServer {
-    fn join(mut self) -> std::thread::Result<Vec<u8>> {
+    fn join(mut self) -> std::thread::Result<HttpExchange> {
         self.thread.take().unwrap().join()
     }
 }
@@ -421,20 +433,22 @@ impl Drop for HttpServer {
 }
 fn http_fixture(code: &str, extra: &str, body: Vec<u8>) -> (String, HttpServer) {
     let length = body.len();
-    http_fixture_framed(code, extra, body, Some(length))
+    http_fixture_framed(code, extra, body, HttpFraming::Length(length))
 }
 fn http_fixture_framed(
     code: &str,
     extra: &str,
     body: Vec<u8>,
-    declared_length: Option<usize>,
+    framing: HttpFraming,
 ) -> (String, HttpServer) {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/", listener.local_addr().unwrap());
-    let length = declared_length
-        .map(|length| format!("Content-Length: {length}\r\n"))
-        .unwrap_or_default();
+    let length = match framing {
+        HttpFraming::Length(length) => format!("Content-Length: {length}\r\n"),
+        HttpFraming::Close => String::new(),
+        HttpFraming::Chunked => "Transfer-Encoding: chunked\r\n".into(),
+    };
     let header = format!("HTTP/1.1 {code}\r\n{length}Connection: close\r\n{extra}\r\n");
     listener.set_nonblocking(true).unwrap();
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -444,7 +458,7 @@ fn http_fixture_framed(
             std::time::Instant::now() + std::time::Duration::from_secs(ci::HTTP_TIMEOUT_SECONDS);
         let mut connection = loop {
             if cancellation.load(std::sync::atomic::Ordering::Relaxed) {
-                return Vec::new();
+                return HttpExchange::default();
             }
             assert!(
                 std::time::Instant::now() < deadline,
@@ -458,6 +472,9 @@ fn http_fixture_framed(
                 Err(error) => panic!("HTTP fixture accept failed: {error}"),
             }
         };
+        // accept inherits nonblocking mode on macOS/Windows; Linux differs.
+        // The listener polls for cancellation, but request/body I/O must block.
+        connection.set_nonblocking(false).unwrap();
         connection
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .unwrap();
@@ -484,10 +501,18 @@ fn http_fixture_framed(
             assert!(request.len() <= 8192);
         }
         connection.write_all(header.as_bytes()).unwrap();
-        for chunk in body.chunks(64 * 1024) {
+        if matches!(framing, HttpFraming::Chunked) {
+            write!(connection, "{:X}\r\n", body.len()).unwrap();
+        }
+        let mut exchange = HttpExchange {
+            request,
+            ..HttpExchange::default()
+        };
+        while exchange.body_bytes < body.len() {
             if cancellation.load(std::sync::atomic::Ordering::Relaxed)
                 || std::time::Instant::now() >= deadline
             {
+                exchange.write_error = Some(std::io::ErrorKind::TimedOut);
                 break;
             }
             connection
@@ -495,12 +520,26 @@ fn http_fixture_framed(
                     deadline.saturating_duration_since(std::time::Instant::now()),
                 ))
                 .unwrap();
-            if connection.write_all(chunk).is_err() {
-                break;
+            let end = (exchange.body_bytes + 64 * 1024).min(body.len());
+            match connection.write(&body[exchange.body_bytes..end]) {
+                Ok(0) => {
+                    exchange.write_error = Some(std::io::ErrorKind::WriteZero);
+                    break;
+                }
+                Ok(bytes) => exchange.body_bytes += bytes,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => {
+                    exchange.write_error = Some(error.kind());
+                    break;
+                }
             }
         }
+        if matches!(framing, HttpFraming::Chunked) && exchange.body_bytes == body.len() {
+            // The cap reader may close immediately after the final payload byte.
+            let _ = connection.write_all(b"\r\n0\r\n\r\n");
+        }
         let _ = connection.shutdown(std::net::Shutdown::Write);
-        request
+        exchange
     });
     (
         url,
@@ -541,7 +580,11 @@ fn test_http_timeout_cap_utf8_and_secret_safe_errors() {
         let (url, server) = http_fixture(code, "", body);
         let response = ci::status_client().unwrap().get(url).send().unwrap();
         let result = ci::decode_response(response);
-        server.join().unwrap();
+        let exchange = server.join().unwrap();
+        if body_bytes <= ci::HTTP_RESPONSE_MAX_BYTES && code == "200 OK" {
+            assert_eq!(exchange.body_bytes, body_bytes, "{exchange:?}");
+            assert_eq!(exchange.write_error, None);
+        }
         if let Some(expected) = expected {
             let error = result.unwrap_err().to_string();
             assert!(
@@ -556,21 +599,42 @@ fn test_http_timeout_cap_utf8_and_secret_safe_errors() {
     }
     // Declared oversize must win even if the peer sends a short/truncated body;
     // an absent Content-Length must still exercise the actual streaming bound.
-    for (body, declared_length) in [
-        (b"{\"ok\":true}".to_vec(), Some(8 * 1024 * 1024 + 1)),
-        (vec![b'x'; 8 * 1024 * 1024 + 1], None),
+    for (body, framing) in [
+        (
+            b"{\"ok\":true}".to_vec(),
+            HttpFraming::Length(ci::HTTP_RESPONSE_MAX_BYTES + 1),
+        ),
+        (
+            vec![b'x'; ci::HTTP_RESPONSE_MAX_BYTES + 1],
+            HttpFraming::Close,
+        ),
+        (
+            vec![b'x'; ci::HTTP_RESPONSE_MAX_BYTES + 1],
+            HttpFraming::Chunked,
+        ),
     ] {
-        let (url, server) = http_fixture_framed("200 OK", "", body, declared_length);
+        let (url, server) = http_fixture_framed("200 OK", "", body, framing);
         let response = ci::status_client().unwrap().get(url).send().unwrap();
         assert_eq!(
             response.content_length(),
-            declared_length.map(|length| length as u64)
+            match framing {
+                HttpFraming::Length(length) => Some(length as u64),
+                HttpFraming::Close | HttpFraming::Chunked => None,
+            }
         );
         let error = ci::decode_response(response).unwrap_err().to_string();
-        server.join().unwrap();
+        let exchange = server.join().unwrap();
+        if !matches!(framing, HttpFraming::Length(_)) {
+            assert_eq!(
+                exchange.body_bytes,
+                ci::HTTP_RESPONSE_MAX_BYTES + 1,
+                "framing={framing:?}: {exchange:?}"
+            );
+            assert_eq!(exchange.write_error, None, "framing={framing:?}");
+        }
         assert!(
             error.contains("exceeded 8 MiB"),
-            "framing={declared_length:?}: {error}"
+            "framing={framing:?}: {error}"
         );
         assert!(!error.contains("private-test-token") && !error.contains("secret response"));
     }
@@ -600,7 +664,7 @@ fn test_redirects_never_forward_credentials() {
         .unwrap();
     assert_eq!(response.status().as_u16(), 302);
     assert!(ci::decode_response(response).is_err());
-    let request = String::from_utf8(server.join().unwrap()).unwrap();
+    let request = String::from_utf8(server.join().unwrap().request).unwrap();
     assert!(
         request
             .to_lowercase()

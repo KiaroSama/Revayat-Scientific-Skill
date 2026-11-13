@@ -65,20 +65,12 @@ pub(super) fn startup_outcome(
     handle: Raw,
     error: u32,
 ) -> Result<String> {
-    let valid = !handle.is_null() && handle as usize != usize::MAX;
-    ensure!(
-        matches!(label, "host" | "lpac")
-            && if opened {
-                valid && error == 0
-            } else {
-                handle.is_null() && error != 0
-            },
-        "token-query result/context/handle is inconsistent"
-    );
-    Ok(format!(
-        "WINDOWS_STARTUP_TOKEN context={label} desired_access=0x00000008 opened={} win32_error={error} cause_claimed=False child_equivalence_claimed=False",
-        if opened { "True" } else { "False" }
-    ))
+    crate::windows_security::policy::token_validation::startup_outcome(
+        label,
+        opened,
+        handle as usize,
+        error,
+    )
 }
 pub(super) fn startup_query(
     process: Raw,

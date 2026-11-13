@@ -426,6 +426,73 @@ fn debug_artifacts_and_reports_cannot_be_reused_as_release_evidence() {
     };
     let debug = message("debug");
     let release = message("release");
+    // Cargo 1.100 moves test executables while profile-level binaries stay put.
+    for profile in ["debug", "release"] {
+        let executable = root.join(format!(
+            "target/{profile}/build/revayat-scientific/0123456789abcdef/out/harness-0123456789abcdef"
+        ));
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"fixture, never executed").unwrap();
+        assert_eq!(
+            revayat_scientific::executable_paths::binary_directory(&executable).unwrap(),
+            root.join(format!("target/{profile}"))
+        );
+        let bytes = json!({"reason":"compiler-artifact","profile":{"test":true},
+            "manifest_path":root.join("Cargo.toml"),"target":{"name":"suite","kind":["test"]},
+            "executable":executable})
+        .to_string()
+        .into_bytes();
+        assert!(parse_test_artifacts(&root, &root.join("target"), &bytes, profile).is_ok());
+        let other = if profile == "debug" {
+            "release"
+        } else {
+            "debug"
+        };
+        assert!(parse_test_artifacts(&root, &root.join("target"), &bytes, other).is_err());
+    }
+    // A fixed shape is required: arbitrary deeper descendants and malformed hashes
+    // never become evidence for this profile or a route to its companion binaries.
+    for relative in [
+        "debug/build/pkg/not-a-cargo-hash/out/harness",
+        "debug/build/pkg/0123456789ABCDEF/out/harness",
+        "debug/build/pkg/0123456789abcdef/other/harness",
+        "nested/extra/debug/build/pkg/0123456789abcdef/out/harness",
+        "debug/arbitrary/harness",
+    ] {
+        let executable = root.join("target").join(relative);
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"fixture, never executed").unwrap();
+        let bytes = json!({"reason":"compiler-artifact","profile":{"test":true},
+            "manifest_path":root.join("Cargo.toml"),"target":{"name":"suite","kind":["test"]},
+            "executable":executable})
+        .to_string()
+        .into_bytes();
+        assert!(parse_test_artifacts(&root, &root.join("target"), &bytes, "debug").is_err());
+    }
+    let installed = root.join("installed/out/revayat-scientific");
+    assert_eq!(
+        revayat_scientific::executable_paths::binary_directory(&installed).unwrap(),
+        installed.parent().unwrap()
+    );
+    for binary in [
+        "revayat-scientific",
+        "revayat-process-owner",
+        "registry-authority.exe",
+    ] {
+        let installed = root
+            .join("installed/debug/build/pkg/0123456789abcdef/out")
+            .join(binary);
+        assert_eq!(
+            revayat_scientific::executable_paths::binary_directory(&installed).unwrap(),
+            installed.parent().unwrap()
+        );
+    }
+    assert!(
+        revayat_scientific::executable_paths::binary_directory(std::path::Path::new(
+            "relative/tool"
+        ))
+        .is_err()
+    );
     for (bytes, profile) in [(&debug, "debug"), (&release, "release")] {
         assert!(parse_test_artifacts(&root, &root.join("target"), bytes, profile).is_ok());
     }

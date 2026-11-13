@@ -46,6 +46,7 @@ fn package() -> Vec<u8> {
 
 #[test]
 fn profile_comparison_ignores_only_observed_dacl_bookkeeping() {
+    profile_validation::check_seal_comparison().unwrap();
     let owner = sid(3, &[4]);
     let dacl = acl(
         &[
@@ -93,6 +94,7 @@ fn profile_comparison_ignores_only_observed_dacl_bookkeeping() {
 
 #[test]
 fn default_acl_summary_distinguishes_null_empty_padding_and_conditional_aces() {
+    token_validation::check_default_metadata_validation().unwrap();
     let user = sid(5, &[21, 1, 2, 3, 500]);
     let package = package();
     let entries = [
@@ -178,6 +180,7 @@ fn default_acl_summary_distinguishes_null_empty_padding_and_conditional_aces() {
 
 #[test]
 fn token_metadata_returned_pointers_are_bounded_before_any_acl_or_sid_decode() {
+    token_validation::check_startup_token_validation().unwrap();
     let start = 0x1000u64;
     let dacl = acl(&[ace(0, 0, 8, &sid(5, &[21, 1, 2, 3, 500]))], 4);
     let mut buffer = vec![0; 8];
@@ -500,6 +503,7 @@ fn child_acl_insertion_preserves_aces_and_event_mapping_matches_original_vectors
 
 #[test]
 fn registry_seal_requires_six_canonical_access_only_aces() {
+    profile_validation::check_registry_masks().unwrap();
     let entries = (0..6)
         .map(|id| ace(0, 2, 0x20019, &sid(5, &[id])))
         .collect::<Vec<_>>();
@@ -563,6 +567,7 @@ fn registry_dacl_persistence_preserves_owner_group_integrity_and_unrelated_contr
 
 #[test]
 fn exact_trial_receipt_binding_and_foreign_restore_are_fail_closed() {
+    registry_lease::check_validation().unwrap();
     let before = descriptor(&acl(&[ace(0, 0, 0x20019, &sid(5, &[18]))], 0));
     let package = package();
     let trial = descriptor_trial(&before, &package, REGISTRY_READ).unwrap();

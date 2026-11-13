@@ -13,10 +13,7 @@ mod windows_junction;
 
 fn authority_image() -> PathBuf {
     let executable = std::env::current_exe().unwrap();
-    let target = executable
-        .parent()
-        .unwrap()
-        .parent()
+    let target = revayat_scientific::executable_paths::binary_directory(&executable)
         .unwrap()
         .join("registry-authority.exe");
     assert!(

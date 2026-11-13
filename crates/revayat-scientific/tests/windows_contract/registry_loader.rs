@@ -1,6 +1,10 @@
 use super::*;
 #[test]
 fn reusable_policy_helpers_do_not_launch_children() {
+    policy::registry_comparison::check_startup_validation().unwrap();
+    policy::registry_comparison::check_causal_validation().unwrap();
+    policy::registry_comparison::check_authority_validation().unwrap();
+    policy::registry_comparison::check_supported_validation().unwrap();
     let source = registry_authority::oracle::generate();
     assert_eq!(source.lines().count(), 41);
     assert_eq!(

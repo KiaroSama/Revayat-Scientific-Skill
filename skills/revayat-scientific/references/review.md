@@ -14,6 +14,14 @@ If the original is absent, assess Persian fluency/presentation only and disclose
 that fidelity cannot be verified. A translation PDF alone cannot prove the source
 was preserved. Record reviewer identity/mode and exactly which parts were read.
 
+Describe readiness observations narrowly: an executable/version response, a
+successful connection, or advertised chat support does not establish structured
+output, vision support, correct Persian shaping or scientific fidelity. Check
+the capability needed by the actual job and inspect its delivered artifact;
+missing capability metadata remains unknown. Discovery probes must not transmit
+the manuscript merely to guess a model's capabilities. See the
+[November 13 readiness review](upstream-review-2026-11-13.md#readiness-and-export).
+
 ## L0 — Mechanical checks
 
 Run strict lint with the job's explicit level, terms and scoped figure manifest.
@@ -139,3 +147,13 @@ Lead the report with usability and scope, then actionable findings, policy-corre
 borderline cases and unperformed/engine-limited checks. Record corrections and
 their reasons throughout the translation log. A final fluent paragraph is not a
 substitute for a traceable source comparison.
+
+When the audit includes owned staging or recovery cleanup, distinguish a checked
+pathname or stored file ID from authority retained over the original directory
+object. A race-resistance claim needs native evidence that validation,
+enumeration and removal stay anchored to that object, with deterministic handle
+closure and bounded traversal resources on success and failure. Portable link
+checks alone do not verify Windows junction or handle-sharing behavior; preflight
+is not a transaction and partial cleanup must remain visible. This is the
+[retained-handle review criterion](upstream-review-2026-11-13.md#cleanup-authority),
+not a claim that every current Revayat cleanup path already implements it.

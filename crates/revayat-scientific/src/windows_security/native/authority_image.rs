@@ -97,9 +97,7 @@ mod tests {
     use super::*;
     fn image() -> std::path::PathBuf {
         let exe = std::env::current_exe().unwrap();
-        exe.parent()
-            .unwrap()
-            .parent()
+        crate::executable_paths::binary_directory(&exe)
             .unwrap()
             .join("registry-authority.exe")
     }

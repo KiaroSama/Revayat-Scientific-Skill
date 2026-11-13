@@ -290,7 +290,8 @@ fn test_selected_browser_survives_the_source_directory_change() -> Result<()> {
         marker.as_os_str().into(),
     );
     assert_eq!(runtime::run(&spec)?.code, 42);
-    assert_eq!(fs::read_to_string(marker)?, source_dir.to_string_lossy());
+    let actual = std::path::PathBuf::from(fs::read_to_string(marker)?);
+    assert_eq!(actual.canonicalize()?, source_dir.canonicalize()?);
     Ok(())
 }
 #[test]

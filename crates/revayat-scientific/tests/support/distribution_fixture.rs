@@ -36,8 +36,8 @@ impl Fixture {
         fs::write(source.join("references/helper.md"), "retained reference").unwrap();
         Self {
             _temp: temp,
-            first: root.join("project/.a/skills").join(NAME),
-            second: root.join("project/.b/skills").join(NAME),
+            first: root.join("project").join(".a").join("skills").join(NAME),
+            second: root.join("project").join(".b").join("skills").join(NAME),
             root,
             repo,
             source,

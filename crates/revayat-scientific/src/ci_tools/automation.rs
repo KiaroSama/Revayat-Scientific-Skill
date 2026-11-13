@@ -380,6 +380,10 @@ pub(super) fn cli(args: &[String]) -> Result<Option<i32>> {
     let Some(mode) = args.first().map(String::as_str) else {
         return Ok(None);
     };
+    if mode == "gitleaks" {
+        ensure!(args.len() == 1, "Gitleaks mode accepts no extra arguments");
+        return super::gitleaks::run().map(Some);
+    }
     ensure!(
         args.len() == 1,
         "CI prerequisite mode accepts no extra arguments"

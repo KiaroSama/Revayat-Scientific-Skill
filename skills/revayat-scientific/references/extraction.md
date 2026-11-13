@@ -57,6 +57,28 @@ and a mixed native-text/scanned page can be only partly covered. Track translate
 OCRed, reviewed and skipped source objects separately; appearance, output page
 count and successful file creation do not close the coverage ledger.
 
+## Structured-source preservation
+
+When extracting structured documents, inventory relationships and location as well
+as text. In DOCX, preserve a hyperlink's address and separately stored anchor;
+resolve note/header/footer links against the relationships of their owning part.
+A paragraph's direct outline level can identify a heading without a heading
+style, including a numbered heading. Keep nested tables inside their containing
+cell, in order among that cell's paragraphs, and keep a following table distinct
+from a preceding list. Check secondary stories alongside the main body.
+
+Valid OMML math may omit optional property elements. Preserve the expression and
+verify the applicable defaults rather than dropping it because a property node
+is absent. In JATS or other structured sources, retain both heading labels and
+titles, code indentation and line breaks, note links, and each caption's figure
+association. Record an unsupported or unreadable object as unresolved rather
+than treating empty output as successful extraction.
+
+These are source-review checks informed by the
+[November 13 examples](upstream-review-2026-11-13.md#structured-content).
+They do not expand the Rust CLI's admitted OOXML subset or establish that its
+package-preserving edits have the upstream converter's defects.
+
 ## Extracting figures
 
 The destination PDF must show the **same pixels the reader sees on the
@@ -121,6 +143,12 @@ revayat-scientific figures figures/artwork --check
 
 The checker fails (`full-page-figure`) if the translation still references
 `srcpage-N.png` or `page-N.png`.
+
+A self-contained export can still change its images. Embedding compressed JPEG
+or converting 16-bit samples to 8-bit RGB creates a derivative; retain the
+original asset and record any conversion before comparing the actual figure.
+Portability, a readable preview and larger pixel dimensions do not establish
+preserved scientific image information.
 
 ## Structure inventory
 

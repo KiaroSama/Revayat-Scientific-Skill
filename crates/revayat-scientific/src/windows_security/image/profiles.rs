@@ -113,7 +113,7 @@ fn imports(image: &PeImage<'_>, import: &Import) -> Result<()> {
             && u32_at(image.bytes, at + 16)? == import.address
             && u32_at(image.bytes, at + 4)? == 0
             && u32_at(image.bytes, at + 8)? == 0
-            && image.text(u32_at(image.bytes, at + 12)?, 128, false)? == import.owner,
+            && image.text(u32_at(image.bytes, at + 12)?, 64, false)? == import.owner,
         "activation import descriptor differs"
     );
     ensure!(
@@ -138,27 +138,26 @@ fn imports(image: &PeImage<'_>, import: &Import) -> Result<()> {
                 && u64_at(image.bytes, image.map(import.lookup + item.index * 8, 8)?)?
                     == u64::from(item.record)
                 && u16_at(image.bytes, image.map(item.record, 2)?)? == item.hint
-                && image.text(item.record + 2, 129, false)? == item.name,
+                && image.text(item.record + 2, 64, false)? == item.name,
             "activation import symbol/hint differs"
         );
     }
     Ok(())
 }
 fn structural(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
+    activation_boundary_bytes(image, profile)?;
+    callback_bytes(image, profile)?;
+    require_worker(image, profile)
+}
+fn activation_boundary_bytes(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
     ensure!(
         profile.code.len() == 65
             && profile.bytes.len() == 65
             && profile.edges.len() == 22
-            && profile.callback.len() == 72
-            && profile.callback_bytes.len() == 72
-            && profile.callback_edges.len() == 7
-            && profile.short_edges.len() == 11
-            && profile.code[10] == profile.worker
-            && image.entry == profile.entry,
-        "activation profile entry/shape differs"
+            && profile.code[10] == profile.worker,
+        "activation boundary profile shape differs"
     );
     literal(image, profile.code, profile.bytes)?;
-    literal(image, profile.callback, profile.callback_bytes)?;
     for ((record, offset), expected) in [
         0, 7, 4, 12, 14, 17, 21, 22, 25, 27, 31, 32, 36, 38, 40, 45, 46, 52, 53, 58, 60, 64,
     ]
@@ -181,6 +180,18 @@ fn structural(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
         "activation target is not executable"
     );
     image.map(profile.target, 1)?;
+    Ok(())
+}
+fn callback_bytes(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
+    ensure!(
+        image.entry == profile.entry
+            && profile.callback.len() == 72
+            && profile.callback_bytes.len() == 72
+            && profile.callback_edges.len() == 7
+            && profile.short_edges.len() == 11,
+        "activation callback profile entry/shape differs"
+    );
+    literal(image, profile.callback, profile.callback_bytes)?;
     for ((record, offset), expected) in [0, 1, 2, 3, 25, 38, 62]
         .into_iter()
         .zip([3, 3, 3, 3, 1, 3, 3])
@@ -213,11 +224,22 @@ fn structural(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
     for import in profile.imports {
         imports(image, import)?;
     }
+    Ok(())
+}
+fn require_worker(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
     ensure!(
         image.activation_worker_slice()?.rva == profile.worker,
         "activation worker export differs"
     );
     Ok(())
+}
+// Original RequireModuleCallbackProfile order: identity is selected by the
+// caller, then worker export, activation boundary, and callback. CSR dispatch
+// predicates belong exclusively to dispatch_sites and are not a prerequisite.
+fn module_callback_profile(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
+    require_worker(image, profile)?;
+    activation_boundary_bytes(image, profile)?;
+    callback_bytes(image, profile)
 }
 fn dispatch_sites(image: &PeImage<'_>, profile: &Profile) -> Result<[u32; 3]> {
     structural(image, profile)?;
@@ -295,6 +317,12 @@ impl PeImage<'_> {
             csr_iat: iat,
         })
     }
+    /// Full cached-file identity and original worker/boundary/callback profile.
+    /// This does not qualify the separate CSR-dispatch observation role.
+    pub fn require_module_callback_profile(&self) -> Result<()> {
+        let profile = select(&self.kernel32_identity()?)?;
+        module_callback_profile(self, profile)
+    }
     pub fn csr_dispatch_export(&self) -> Result<u64> {
         let (rva, size) = self.directory(0)?;
         ensure!(
@@ -348,6 +376,15 @@ impl PeImage<'_> {
             "CSR export alias/forwarder/non-code target refused"
         );
         Ok(self.base + u64::from(target))
+    }
+}
+impl KernelImage<'_> {
+    /// Subject-bound original RequireModuleCallbackProfile. Call this on the
+    /// same held image used by the owner; successful byte qualification alone
+    /// does not attest that Windows loaded it or bind a later load event.
+    pub fn require_module_callback_profile(&self) -> Result<()> {
+        let profile = select(&self.kernel32_identity()?)?;
+        module_callback_profile(&self.pe, profile)
     }
 }
 #[cfg(test)]

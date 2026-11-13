@@ -30,6 +30,8 @@ mod state;
 pub(crate) use authority::{AuthorityObserver, run_observed, run_sxs_tool};
 pub use recovery::recover_profile;
 pub use state::{NativeRunOwner, NativeRunView};
+#[path = "native/registry_machine.rs"]
+pub mod registry_machine;
 const KILL_ON_CLOSE: u32 = 0x2000;
 const REQUIRED_LIMITS: u32 = KILL_ON_CLOSE | 0x200 | 0x100 | 8 | 4;
 

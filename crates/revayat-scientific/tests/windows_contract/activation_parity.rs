@@ -8,6 +8,7 @@ fn actctx_x64_layout_and_fixed_roles_do_not_alias() {
     check_startup_activation_validation().unwrap();
     check_fixed_dll_validation().unwrap();
     check_policy_result_validation().unwrap();
+    check_manual_activation_validation().unwrap();
     if size_of::<usize>() == 8 {
         assert_eq!(size_of::<ActCtx>(), 56);
         assert_eq!(
@@ -424,13 +425,10 @@ fn actual_host_activation_context_and_collector_negative_control_release_owned_h
         host,
         "WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=True win32_error=0x00000000"
     );
-    let fixture = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("startup-explicit-id2.exe");
+    let fixture =
+        revayat_scientific::executable_paths::binary_directory(&std::env::current_exe().unwrap())
+            .unwrap()
+            .join("startup-explicit-id2.exe");
     let python = root.path().join("python.exe");
     std::fs::create_dir(root.path().join("DLLs")).unwrap();
     std::fs::copy(&fixture, &python).unwrap();

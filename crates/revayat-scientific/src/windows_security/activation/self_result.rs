@@ -173,12 +173,14 @@ pub fn condition(condition: &str, result: Option<&str>, role: SelfRole) -> Resul
         role.label()
     ))
 }
-pub fn policy_result(
+/// Caller-controlled emission shares every production policy/result validation branch.
+pub fn policy_result_with(
     exit: u32,
     text: &str,
     errors: &str,
     role: SelfRole,
     readable: bool,
+    emit: impl FnMut(&str) -> Result<()>,
 ) -> Result<String> {
     ensure!(
         matches!(role, SelfRole::Original | SelfRole::ExplicitId2),
@@ -191,16 +193,27 @@ pub fn policy_result(
         );
         return Ok("completed_wire=False exit=0xC0000022".into());
     }
-    let value = result(exit, Some(text), Some(errors), role, |line| {
+    let value = result(exit, Some(text), Some(errors), role, emit)?;
+    require_host(&value, role)?;
+    Ok(value)
+}
+/// Production console adapter. Validation fixtures use policy_result_with to own emitted bytes.
+pub fn policy_result(
+    exit: u32,
+    text: &str,
+    errors: &str,
+    role: SelfRole,
+    readable: bool,
+) -> Result<String> {
+    policy_result_with(exit, text, errors, role, readable, |line| {
         use std::io::Write;
         let mut output = std::io::stdout().lock();
         writeln!(output, "{line}")?;
         output.flush()?;
         Ok(())
-    })?;
-    require_host(&value, role)?;
-    Ok(value)
+    })
 }
+
 pub fn complete_host(
     role: SelfRole,
     run: impl FnOnce() -> Result<String>,
@@ -220,7 +233,15 @@ pub fn complete_host(
 }
 /// Original SelfActivationFixture.CheckPolicyResultValidation, running the same production parser.
 pub fn check_policy_result_validation() -> Result<()> {
+    use std::cell::{Cell, RefCell};
     for role in [SelfRole::Original, SelfRole::ExplicitId2] {
+        let emitted = RefCell::new(Vec::<Vec<u8>>::new());
+        let call = |exit, text: &str, errors: &str, readable| {
+            policy_result_with(exit, text, errors, role, readable, |line| {
+                emitted.borrow_mut().push(line.as_bytes().to_vec());
+                Ok(())
+            })
+        };
         let success = role.success() + "\n";
         let wire = if role == SelfRole::ExplicitId2 {
             PRE_CALL_RECEIPT.to_owned() + &success
@@ -228,36 +249,84 @@ pub fn check_policy_result_validation() -> Result<()> {
             success.clone()
         };
         ensure!(
-            policy_result(0xc0000022, "", "", role, false)?
-                == "completed_wire=False exit=0xC0000022"
-                && policy_result(0, &wire, "", role, true)? == success.trim_end_matches('\n'),
-            "self activation policy result differs"
+            call(0xc0000022, "", "", false)? == "completed_wire=False exit=0xC0000022"
+                && call(0, &wire, "", true)? == success.trim_end_matches('\n')
+                && emitted.borrow().is_empty(),
+            "self activation policy result or positive emission differs"
         );
         for code in [0, 1, 0xc0150002, u32::MAX] {
             ensure!(
-                policy_result(code, "", "", role, false).is_err(),
+                call(code, "", "", false).is_err(),
                 "unreadable policy result accepted a different exit"
             );
         }
         ensure!(
-            policy_result(0xc0000022, PRE_CALL_RECEIPT, "", role, false).is_err()
-                && policy_result(0xc0000022, "", "private-sentinel", role, false).is_err()
-                && policy_result(0xc0000022, "", "", role, true).is_err()
-                && policy_result(
+            call(0xc0000022, PRE_CALL_RECEIPT, "", false).is_err()
+                && call(0xc0000022, "", "private-sentinel", false).is_err()
+                && emitted.borrow().is_empty(),
+            "unreadable policy refusal emitted metadata or accepted capture"
+        );
+        ensure!(
+            call(0xc0000022, "", "", true).is_err()
+                && call(
                     0,
                     &wire
                         .replace("created=True", "created=False")
                         .replace("00000000", "00000005"),
                     "",
-                    role,
                     true
                 )
                 .is_err(),
             "self activation policy transport/result refusal differs"
         );
+        let expected = if role == SelfRole::Original {
+            "WINDOWS_SELF_ACTIVATION_REFUSAL stage=transport raw_process_exit=0xC0000022 stdout_chars=0 stderr_present=False"
+        } else {
+            "WINDOWS_EXPLICIT_ID2_ACTIVATION_REFUSAL stage=transport raw_process_exit=0xC0000022 stdout_chars=0 stderr_present=False pre_call_receipt_observed=False"
+        };
+        ensure!(
+            emitted.borrow().as_slice() == [expected.as_bytes().to_vec()],
+            "policy refusal emission bytes or count differ"
+        );
+        let reporting_calls = Cell::new(0);
+        let failure = policy_result_with(
+            0xc0000022,
+            "private-sentinel",
+            "private-sentinel",
+            role,
+            true,
+            |line| {
+                reporting_calls.set(reporting_calls.get() + 1);
+                ensure!(
+                    !line.contains("private-sentinel")
+                        && line.contains("stdout_chars=16 stderr_present=True"),
+                    "policy refusal emitted private capture"
+                );
+                Err(std::io::Error::other("fixed policy reporting failure").into())
+            },
+        )
+        .err()
+        .ok_or_else(|| anyhow::anyhow!("policy reporting failure was suppressed"))?;
+        let group = failure
+            .downcast_ref::<Failures>()
+            .ok_or_else(|| anyhow::anyhow!("policy refusal/reporting group missing"))?;
+        ensure!(
+            reporting_calls.get() == 1
+                && group.errors.len() == 2
+                && group.errors[0].to_string() == "fixed self activation contract failed"
+                && group.errors[1].is::<std::io::Error>()
+                && group.errors[1].to_string() == "fixed policy reporting failure",
+            "policy reporting failure count, type or primary-first order differs"
+        );
     }
+    let effects = Cell::new(0);
     ensure!(
-        policy_result(0, "", "", SelfRole::Manual, false).is_err(),
+        policy_result_with(0, "", "", SelfRole::Manual, false, |_| {
+            effects.set(effects.get() + 1);
+            Ok(())
+        })
+        .is_err()
+            && effects.get() == 0,
         "manual role entered separate self-policy comparison"
     );
     Ok(())

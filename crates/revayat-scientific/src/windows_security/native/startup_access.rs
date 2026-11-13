@@ -491,12 +491,14 @@ mod tests {
             );
         }
         let order = RefCell::new(Vec::new());
+        let original = anyhow::Error::new(std::io::Error::other("fixed revert"));
+        let original_address = original.downcast_ref::<std::io::Error>().unwrap() as *const _;
         let error = finalize_comparison(
             None,
             true,
             || {
                 order.borrow_mut().push("revert");
-                anyhow::bail!("fixed revert");
+                Err(original)
             },
             || order.borrow_mut().push("fatal"),
             vec![Box::new(|| {
@@ -510,7 +512,10 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(*order.borrow(), ["revert", "fatal"]);
-        assert!(error.downcast_ref::<Failures>().is_some());
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap() as *const _,
+            original_address
+        );
         // This models only finalization. The real shared scoped owner must abort on failed restore.
         let identity = include_str!("../sxs/native_identity.rs");
         let restoration = identity

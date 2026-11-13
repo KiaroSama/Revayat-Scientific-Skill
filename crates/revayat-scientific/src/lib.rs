@@ -21,6 +21,7 @@ pub mod crop;
 pub mod distribution;
 pub mod distribution_paths;
 pub mod engine_discovery;
+pub mod executable_paths;
 pub mod fonts;
 pub mod html;
 pub mod html_scopes;

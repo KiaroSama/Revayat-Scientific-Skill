@@ -100,6 +100,18 @@ fn test_windows_browser_selection_uses_paired_managed_binary() {
 }
 #[test]
 fn test_actual_callee_contract_still_rejects_missing_input() {
+    let filename = ".github/workflows/gitleaks.yml";
+    let gitleaks = fs::read_to_string(root().join(filename)).unwrap();
+    c::validate_workflow_contract(root(), filename, &gitleaks).unwrap();
+    let gitleaks: serde_json::Value = serde_saphyr::from_str(&gitleaks).unwrap();
+    for trigger in ["push", "pull_request", "workflow_dispatch", "schedule"] {
+        assert!(gitleaks["on"].get(trigger).is_some());
+    }
+    assert_eq!(gitleaks["on"]["schedule"][0]["cron"], "56 4 * * 2");
+    let steps = gitleaks["jobs"]["gitleaks"]["steps"].as_array().unwrap();
+    assert_eq!(steps[0]["if"], "runner.debug == '1'");
+    assert_eq!(steps[0]["run"], "/usr/bin/test 1 = 0");
+    assert_eq!(steps[1]["with"]["fetch-depth"], 0);
     let source = fs::read_to_string(root().join(".github/workflows/ci.yml")).unwrap();
     c::validate_workflow_contract(root(), ".github/workflows/ci.yml", &source).unwrap();
     let altered = source

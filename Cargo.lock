@@ -1912,6 +1912,7 @@ dependencies = [
  "clap",
  "cssparser 0.35.0",
  "csv",
+ "flate2",
  "getrandom 0.3.4",
  "gif 0.13.3",
  "harfrust",

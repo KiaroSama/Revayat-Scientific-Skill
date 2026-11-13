@@ -15,6 +15,23 @@ pub mod policy;
 #[path = "scratch_policy_checks.rs"]
 mod policy_checks;
 pub use policy_checks::{check_attachment_validation, check_volume_policy_validation};
+#[path = "scratch_access.rs"]
+pub mod access;
+#[path = "scratch_access_checks.rs"]
+mod access_checks;
+pub use access_checks::{check_access_validation, check_supported_validation};
+#[path = "scratch_file.rs"]
+pub mod file;
+#[path = "scratch_file_checks.rs"]
+mod file_checks;
+pub use file_checks::check_file_creation_validation;
+#[path = "scratch_volume.rs"]
+pub mod volume;
+#[path = "scratch_volume_checks.rs"]
+mod volume_checks;
+#[path = "scratch_volume_faults.rs"]
+mod volume_faults;
+pub use volume_checks::check_volume_access_validation;
 
 pub(super) fn truth(value: bool) -> &'static str {
     if value { "True" } else { "False" }

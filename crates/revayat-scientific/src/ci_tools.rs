@@ -7,9 +7,14 @@ use std::{
     time::Duration,
 };
 mod automation;
+mod gitleaks;
 mod invocations;
 mod poppler;
 mod source_audit;
+pub use gitleaks::{
+    gitleaks_git_main, gitleaks_locations, gitleaks_log_options, gitleaks_summary,
+    verify_gitleaks_history,
+};
 pub use invocations::docker as validate_docker_invocations;
 pub use source_audit::classify_source;
 

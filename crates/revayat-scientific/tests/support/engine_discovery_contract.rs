@@ -145,14 +145,33 @@ pub(super) fn run() -> Result<()> {
     assert!(
         engine_discovery::probe_executable(Path::new("relative-probe"), ["--version"]).is_err()
     );
-    let selection = build::select_source(
-        &f.source,
-        Some("chromium"),
-        Some(env!("CARGO_BIN_EXE_revayat-test-tool")),
-    )?;
+    let browser = f
+        .root
+        .join(format!("browser-protocol{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(tool, &browser)?;
+    let selection =
+        build::select_source(&f.source, Some("chromium"), Some(browser.to_str().unwrap()))?;
     assert_eq!(selection.engine, "chromium");
     assert!(selection.container.is_none());
     assert!(selection.browser.unwrap().is_absolute());
+    #[cfg(windows)]
+    for mode in ["early", "ready-private"] {
+        let browser = f
+            .root
+            .join(format!("browser-{mode}{}", std::env::consts::EXE_SUFFIX));
+        fs::copy(tool, &browser)?;
+        // Each fixture exits zero for --version. Discovery must nevertheless
+        // reject an exited browser or a stale endpoint without live identity.
+        assert!(engine_discovery::probe_executable(&browser, ["--version"])?);
+        let error =
+            build::select_source(&f.source, Some("chromium"), Some(browser.to_str().unwrap()))
+                .unwrap_err();
+        let text = format!("{error:#}");
+        assert!(text.contains("cleanup_complete=true"), "{text}");
+        assert!(!text.contains("PRIVATE_BROWSER_CANARY"));
+        assert!(!text.contains("private-token"));
+    }
+    f.unchanged()?;
     if let Some(directory) = std::env::var_os("REVAYAT_ENGINE_EVENT_DIR") {
         use std::io::Write;
         let directory = std::path::PathBuf::from(directory);

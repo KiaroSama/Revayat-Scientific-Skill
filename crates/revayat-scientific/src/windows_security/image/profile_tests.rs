@@ -95,10 +95,21 @@ fn fixture(p: &Profile) -> Vec<u8> {
 }
 #[test]
 fn both_reviewed_profiles_bind_all_literal_bytes_edges_imports_and_separate_sites() {
+    super::super::validation::check_validation().unwrap();
+    super::super::validation::check_checkpoint_validation().unwrap();
     for p in PROFILES {
         let b = fixture(p);
         let image = PeImage::parse(&b, 1).unwrap();
         structural(&image, p).unwrap();
+        module_callback_profile(&image, p).unwrap();
+        let mut wrong_worker = b.clone();
+        put(&mut wrong_worker, 0xc2040, p.worker + 1);
+        assert_eq!(
+            module_callback_profile(&PeImage::parse(&wrong_worker, 1).unwrap(), p)
+                .unwrap_err()
+                .to_string(),
+            "activation worker export differs"
+        );
         let sites = dispatch_sites(&image, p).unwrap();
         assert_eq!(
             sites,
@@ -110,13 +121,30 @@ fn both_reviewed_profiles_bind_all_literal_bytes_edges_imports_and_separate_site
         );
         assert_eq!(image.activation_worker_slice().unwrap().rva, p.worker);
         assert!(image.require_activation_profile().is_err());
+        assert!(image.require_module_callback_profile().is_err());
+        assert!(
+            KernelImage::from_activation_worker(&b)
+                .unwrap()
+                .require_module_callback_profile()
+                .is_err()
+        );
+        let wrong_subject = KernelImage::from_static(&b)
+            .unwrap()
+            .require_module_callback_profile()
+            .unwrap_err();
+        assert_eq!(
+            wrong_subject.to_string(),
+            "wrong activation-worker identity subject"
+        );
         for rva in p.code.iter().chain(p.callback) {
             let mut bad = b.clone();
             bad[raw(*rva)] ^= 1;
             assert!(structural(&PeImage::parse(&bad, 1).unwrap(), p).is_err());
+            assert!(module_callback_profile(&PeImage::parse(&bad, 1).unwrap(), p).is_err());
         }
         let other = &PROFILES[usize::from(p.entry == 0x2e1d0)];
         assert!(structural(&image, other).is_err());
+        assert!(module_callback_profile(&image, other).is_err());
         for import in p.imports {
             for at in [
                 import.descriptor,
@@ -128,6 +156,7 @@ fn both_reviewed_profiles_bind_all_literal_bytes_edges_imports_and_separate_site
                 let mut bad = b.clone();
                 bad[raw(at)] ^= 1;
                 assert!(structural(&PeImage::parse(&bad, 1).unwrap(), p).is_err());
+                assert!(module_callback_profile(&PeImage::parse(&bad, 1).unwrap(), p).is_err());
             }
         }
         for at in [p.imports[0].lookup + 162 * 8, sites[2]] {
@@ -135,10 +164,28 @@ fn both_reviewed_profiles_bind_all_literal_bytes_edges_imports_and_separate_site
             bad[raw(at)] ^= 1;
             assert!(dispatch_sites(&PeImage::parse(&bad, 1).unwrap(), p).is_err());
         }
+        if p.entry == 0x2e1d0 {
+            // Original CallbackBytes did not bind the additional CSR symbol
+            // at thunk162. Keep lookup/IAT equal and otherwise valid: the
+            // genuine callback body must still pass while CSR qualification
+            // independently refuses the changed target. The public full-hash
+            // gate continues to refuse all such synthetic images.
+            let import = &p.imports[0];
+            let mut callback_only = b.clone();
+            for table in [import.lookup, import.address] {
+                callback_only[raw(table + 162 * 8)..raw(table + 162 * 8) + 8]
+                    .copy_from_slice(&0xc0000u64.to_le_bytes());
+            }
+            let callback_only = PeImage::parse(&callback_only, 1).unwrap();
+            module_callback_profile(&callback_only, p).unwrap();
+            assert!(dispatch_sites(&callback_only, p).is_err());
+            assert!(callback_only.require_module_callback_profile().is_err());
+        }
     }
 }
 #[test]
 fn csr_export_rejects_forwarder_alias_ordinal_and_non_executable_target() {
+    super::super::validation::check_activation_worker_validation().unwrap();
     let mut bytes = fixture(&PROFILES[0]);
     bytes[0xc2080..0xc2101].fill(0);
     bytes[0xc2080..0xc2094].copy_from_slice(b"CsrClientCallServer\0");

@@ -2,6 +2,20 @@
 //! Portable validation never attests an actual debug event, token or image-section open.
 use super::activation;
 use anyhow::{Result, ensure};
+#[path = "diagnostic_validation/capture.rs"]
+pub mod capture;
+#[path = "diagnostic_validation/hardware.rs"]
+pub mod hardware;
+#[path = "diagnostic_validation/loader_snaps.rs"]
+pub mod loader_snaps;
+#[path = "diagnostic_validation/static_kernel.rs"]
+pub mod static_kernel;
+#[path = "diagnostic_validation/trusted_setup.rs"]
+pub mod trusted_setup;
+pub use hardware::check_hardware_trace_validation;
+pub use loader_snaps::check_loader_snaps_validation;
+pub use static_kernel::check_static_kernel_inspection_validation;
+pub use trusted_setup::check_trusted_setup_validation;
 
 #[path = "diagnostic_validation/debug_control.rs"]
 mod debug_control;

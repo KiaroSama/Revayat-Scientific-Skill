@@ -45,6 +45,11 @@ impl<'a> KernelImage<'a> {
         );
         self.pe.static_slice(self.pe.entry)
     }
+    pub fn contains_executable(&self, address: u64) -> bool {
+        address >= self.pe.base
+            && address - self.pe.base < u64::from(self.pe.image_size)
+            && self.pe.executable((address - self.pe.base) as u32, 1)
+    }
     pub fn activation_worker_slice(&self) -> Result<StaticSlice> {
         ensure!(
             self.subject == "kernel32.dll",

@@ -229,17 +229,14 @@ pub fn parse_test_artifacts(
             "unsupported Cargo target kind"
         );
         let executable = Path::new(executable).canonicalize()?;
-        let relative = executable
+        let directory = crate::executable_paths::test_profile_directory(&executable)
+            .context("test artifact has an unsupported Cargo layout")?;
+        let relative = directory
             .strip_prefix(&target_root)
             .context("test artifact leaves Cargo target directory")?;
-        let components = relative.iter().collect::<Vec<_>>();
         ensure!(
-            matches!(components.len(), 3 | 4)
-                && components[components.len() - 3] == std::ffi::OsStr::new(profile)
-                && ["deps", "examples"]
-                    .iter()
-                    .any(|directory| components[components.len() - 2]
-                        == std::ffi::OsStr::new(directory)),
+            matches!(relative.components().count(), 1 | 2)
+                && directory.file_name() == Some(std::ffi::OsStr::new(profile)),
             "test artifact does not belong to the requested Cargo profile"
         );
         let manifest = Path::new(

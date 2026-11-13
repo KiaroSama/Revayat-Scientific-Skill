@@ -58,6 +58,15 @@ fn real_private_state_exists_before_worker_and_refuses_tampered_locator_or_recei
 
     let root = tempfile::tempdir().unwrap();
     let mut owner = NativeRunOwner::create(root.path()).unwrap();
+    let scratch = owner.state_path().parent().unwrap().to_owned();
+    let mut scratch_pin = Pin::open(&scratch, true).unwrap();
+    private(
+        scratch_pin.file.as_ref().unwrap(),
+        &owner.manifest.host,
+        true,
+    )
+    .unwrap();
+    scratch_pin.close().unwrap();
     assert_eq!(owner.run_id().len(), 32);
     assert_eq!(owner.recovery_binding().len(), 64);
     assert_eq!(
@@ -92,6 +101,7 @@ fn real_private_state_exists_before_worker_and_refuses_tampered_locator_or_recei
     assert!(fs::OpenOptions::new().write(true).open(&receipt).is_err());
     assert!(fs::remove_file(&receipt).is_err());
     for path in [
+        scratch,
         owner.state_path().to_owned(),
         owner.state_path().join("owner.json"),
         receipt,
@@ -203,6 +213,8 @@ fn private_state_ownership_never_delegates_to_package_or_inherited_acl() {
     let user = "S-1-5-21-1-2-3-500";
     let text = private_sddl(user, true).unwrap();
     assert!(text.starts_with(&format!("O:{user}D:P")));
+    assert!(text.contains("(D;;0x000C0000;;;S-1-3-4)"));
+    assert!(!text.contains("(D;OICI;"));
     assert!(text.contains("(A;OICI;0x001F01FF;;;S-1-5-18)"));
     assert!(text.contains(&format!("(A;OICI;0x001F01FF;;;{user})")));
     assert!(!text.contains("S-1-15-") && !text.contains(";;;WD)") && !text.contains(";;;BA)"));
@@ -228,7 +240,9 @@ fn private_state_ownership_never_delegates_to_package_or_inherited_acl() {
             && during.is_ok()
             && native.is_ok()
             && after.is_ok()
-            && assignment.is_ok(),
+            && assignment
+                .as_ref()
+                .is_ok_and(|matrix| matrix.private_lineage_qualified),
         "private child creation parent_policy={} before={} during={} native={} after={}\nassignment={}",
         compact_status(&policy),
         compact_status(&before),

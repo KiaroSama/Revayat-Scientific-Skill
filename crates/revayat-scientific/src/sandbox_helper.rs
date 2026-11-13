@@ -9,16 +9,7 @@ use std::{fs, path::PathBuf};
 
 fn worker() -> Result<PathBuf> {
     let executable = std::env::current_exe()?;
-    let parent = executable
-        .parent()
-        .context("native executable has no parent")?;
-    let parent = if parent.file_name().is_some_and(|name| name == "deps") {
-        parent
-            .parent()
-            .context("test binary has no release parent")?
-    } else {
-        parent
-    };
+    let parent = crate::executable_paths::binary_directory(&executable)?;
     let path = parent.join("revayat-security-worker");
     for ancestor in path.ancestors() {
         ensure!(

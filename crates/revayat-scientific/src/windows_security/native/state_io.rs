@@ -55,8 +55,10 @@ pub(super) fn private_sddl(user: &str, directory: bool) -> Result<String> {
     } else {
         format!("(A;{flags};0x001F01FF;;;S-1-5-18)")
     };
+    // Windows rejects protected child creation under an inheritable OWNER_RIGHTS deny.
+    // Apply this same effective denial explicitly to every state directory and record.
     Ok(format!(
-        "O:{user}D:P(D;{flags};0x000C0000;;;S-1-3-4){system}(A;{flags};0x001F01FF;;;{user})"
+        "O:{user}D:P(D;;0x000C0000;;;S-1-3-4){system}(A;{flags};0x001F01FF;;;{user})"
     ))
 }
 fn read_security(file: &File) -> Result<Vec<u8>> {

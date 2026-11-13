@@ -1,4 +1,7 @@
 use std::cell::Cell;
+#[path = "protocol_failure.rs"]
+mod failure_frame;
+pub use failure_frame::failure_summary;
 
 pub const KEY: &str = r"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide";
 pub const DENIED: u32 = 0xC0000022;
@@ -490,12 +493,32 @@ mod tests {
             assert!(token_need(true, kind).is_ok());
             let error = token_need(false, kind).expect_err("predicate refused");
             assert_eq!(error.events, vec![("token", kind)]);
+            assert_eq!(
+                failure_summary(&error.wire("primary")),
+                Some(format!("events=token:{kind} child_exit=none"))
+            );
             assert!(
                 error
                     .wire("primary")
                     .ends_with(&format!("errors=token:{kind}\n"))
             );
         }
+        for frame in [
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:private-sentinel\n",
+            "REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=token:control\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=root:control private-path\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=root:control\nextra\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:control-create-process native_error=private!\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=root:control native_error=00000005\n",
+        ] {
+            assert!(failure_summary(frame).is_none());
+        }
+        let mut refusal = Failure::new("descendant", "control-create-process");
+        refusal.native_error = Some(5);
+        refusal.child_exit = Some(0xc0000022);
+        assert_eq!(failure_summary(&refusal.wire("primary")), Some(
+            "events=descendant:control-create-process child_exit=C0000022 native_error=00000005".into()
+        ));
         for value in [true, false] {
             let error = token_need(value, "private-sentinel").expect_err("unknown stage");
             assert_eq!(error.events, vec![("token", "control")]);

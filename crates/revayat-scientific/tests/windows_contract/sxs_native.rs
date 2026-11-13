@@ -6,10 +6,7 @@ use revayat_scientific::windows_security::sxs::native::{
 use std::path::PathBuf;
 fn inputs() -> (PathBuf, PathBuf) {
     let executable = std::env::current_exe().unwrap();
-    let authority = executable
-        .parent()
-        .unwrap()
-        .parent()
+    let authority = revayat_scientific::executable_paths::binary_directory(&executable)
         .unwrap()
         .join("registry-authority.exe");
     let text = executable.to_str().unwrap();

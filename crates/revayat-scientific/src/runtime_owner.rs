@@ -445,16 +445,7 @@ pub fn companion() -> Result<PathBuf> {
         PathBuf::from(path)
     } else {
         let executable = std::env::current_exe()?;
-        let parent = executable
-            .parent()
-            .context("runtime executable parent missing")?;
-        let directory = if parent.file_name() == Some(OsStr::new("deps")) {
-            parent
-                .parent()
-                .context("Cargo test artifact directory missing")?
-        } else {
-            parent
-        };
+        let directory = crate::executable_paths::binary_directory(&executable)?;
         directory.join("revayat-process-owner")
     };
     ensure!(

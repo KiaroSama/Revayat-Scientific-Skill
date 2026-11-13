@@ -1,6 +1,6 @@
 //! Real bounded adapters for the ordered backend discovery controller.
 use crate::{
-    engine_discovery::{Available, Probes, available_engines, probe_executable},
+    engine_discovery::{Available, Probes, available_engines},
     tex_container::RuntimeConfig,
 };
 use anyhow::Result;
@@ -9,6 +9,7 @@ use std::path::PathBuf;
 struct Production<'a> {
     browser: Option<&'a str>,
     requested: Option<&'a str>,
+    readiness: bool,
     container_checked: bool,
     container: Option<RuntimeConfig>,
 }
@@ -56,10 +57,37 @@ impl Probes for Production<'_> {
         }
     }
     fn chromium(&mut self, browser: &Self::Browser) -> Result<bool> {
-        probe_executable(browser, ["--version"])
+        if !self.readiness {
+            return Ok(true);
+        }
+        #[cfg(windows)]
+        {
+            // Windows GUI Chrome may keep running for --version. Qualify the
+            // same owned headless endpoint used to render, rather than waiting
+            // for that unrelated GUI invocation to exit.
+            let scratch = tempfile::Builder::new()
+                .prefix("revayat-engine-browser-")
+                .tempdir()?;
+            let ready = scratch
+                .path()
+                .canonicalize()
+                .map_err(Into::into)
+                .and_then(|parent| {
+                    crate::render::preflight_browser(browser, &parent).map(|()| true)
+                });
+            crate::runtime::with_cleanup(ready, scratch.close().map_err(Into::into))
+        }
+        #[cfg(not(windows))]
+        {
+            crate::engine_discovery::probe_executable(browser, ["--version"])
+        }
     }
     fn weasyprint(&mut self) -> Result<Option<Self::Weasyprint>> {
-        match self.container()? {
+        let config = self.container()?;
+        if !self.readiness {
+            return Ok(config);
+        }
+        match config {
             Some(config) => crate::weasyprint_container::available(config),
             None => Ok(None),
         }
@@ -69,11 +97,30 @@ pub(super) fn discover(
     requested: Option<&str>,
     browser: Option<&str>,
 ) -> Result<Available<RuntimeConfig, PathBuf, RuntimeConfig>> {
+    inventory(requested, browser, true)
+}
+
+/// Resolve executable and immutable container configuration only. A build must
+/// admit destinations and lint source before launching a renderer; the selected
+/// renderer then performs its real readiness operation under that build guard.
+pub(super) fn resolve(
+    requested: Option<&str>,
+    browser: Option<&str>,
+) -> Result<Available<RuntimeConfig, PathBuf, RuntimeConfig>> {
+    inventory(requested, browser, false)
+}
+
+fn inventory(
+    requested: Option<&str>,
+    browser: Option<&str>,
+    readiness: bool,
+) -> Result<Available<RuntimeConfig, PathBuf, RuntimeConfig>> {
     available_engines(
         requested,
         &mut Production {
             browser,
             requested,
+            readiness,
             container_checked: false,
             container: None,
         },

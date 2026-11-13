@@ -1,238 +1,378 @@
 {
   "schema": 1,
-  "reviewed_on": "2026-11-10",
-  "scope": "Latest default-branch commit metadata for repositories cited in research-sources.md. Metadata discovery alone is not a code or release review; specific inspected documents and adoption decisions are recorded in research-sources.md.",
+  "reviewed_on": "2026-11-13",
+  "head_checked_utc": {
+    "started_at": "2026-11-13T20:22:44Z",
+    "completed_at": "2026-11-13T20:22:49Z"
+  },
+  "selected_diff_rechecked_utc": {
+    "started_at": "2026-11-13T20:23:14Z",
+    "completed_at": "2026-11-13T20:24:05Z"
+  },
+  "scope": "Latest default-branch commit metadata for the 33 repositories cited in research-sources.md. Per-row times bound each metadata read batch. Metadata discovery alone is not a code or release review; upstream-review-2026-11-13.md records the five changed comparisons, actual selected-source reads, adoption decisions and limits. The 2026-11-10 selected-source record remains historical.",
   "repositories": [
     {
       "repository": "Mojtaba-Alehosseini/persian-skill",
       "commit": "4264f6ef03f7568bc15b14287a3db09bc815fc31",
       "committed_at": "2026-09-09T16:46:10Z",
       "subject": "Add with/without-skill benchmark, and the provenance section",
-      "commit_url": "https://github.com/Mojtaba-Alehosseini/persian-skill/commit/4264f6ef03f7568bc15b14287a3db09bc815fc31"
+      "commit_url": "https://github.com/Mojtaba-Alehosseini/persian-skill/commit/4264f6ef03f7568bc15b14287a3db09bc815fc31",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:44Z"
+      }
     },
     {
       "repository": "K-Dense-AI/scientific-agent-skills",
       "commit": "2d2065fb4520fa3f3f2bcf61cff26ec8b7eba4b5",
       "committed_at": "2026-11-09T09:17:47Z",
       "subject": "chore: update security scan report [skip ci]",
-      "commit_url": "https://github.com/K-Dense-AI/scientific-agent-skills/commit/2d2065fb4520fa3f3f2bcf61cff26ec8b7eba4b5"
+      "commit_url": "https://github.com/K-Dense-AI/scientific-agent-skills/commit/2d2065fb4520fa3f3f2bcf61cff26ec8b7eba4b5",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:44Z"
+      }
     },
     {
       "repository": "Hongyuan-Lu/academic-paper-engineering",
       "commit": "84ac7bc820afa094b567de5a6e04fa000a0d232e",
       "committed_at": "2026-09-03T02:00:36Z",
       "subject": "refactor: move examples/ and tests/ outside skill directory for package slimming",
-      "commit_url": "https://github.com/Hongyuan-Lu/academic-paper-engineering/commit/84ac7bc820afa094b567de5a6e04fa000a0d232e"
+      "commit_url": "https://github.com/Hongyuan-Lu/academic-paper-engineering/commit/84ac7bc820afa094b567de5a6e04fa000a0d232e",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:44Z"
+      }
     },
     {
       "repository": "DOLMA-NLP/PARME",
       "commit": "6df9269acc75377ed6be3bf2f7966c8e238a62bd",
       "committed_at": "2025-07-08T09:37:28Z",
       "subject": "links corrected",
-      "commit_url": "https://github.com/DOLMA-NLP/PARME/commit/6df9269acc75377ed6be3bf2f7966c8e238a62bd"
+      "commit_url": "https://github.com/DOLMA-NLP/PARME/commit/6df9269acc75377ed6be3bf2f7966c8e238a62bd",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:44Z"
+      }
     },
     {
       "repository": "QuantEcon/action-translation",
-      "commit": "80d4ae6a8eececa5395067dc1647b4f9594c52ef",
-      "committed_at": "2026-11-05T05:17:37Z",
-      "subject": "dev: log + STATE.md — the French redraw, what draw 8 was, five merges (#429)",
-      "commit_url": "https://github.com/QuantEcon/action-translation/commit/80d4ae6a8eececa5395067dc1647b4f9594c52ef"
+      "commit": "805dc1146a64ed71b3a1b93231a8e877daf01998",
+      "committed_at": "2026-11-12T01:43:59Z",
+      "subject": "sync: check update mode's premise (#420); failure issues recover with the CLI (#281); retry a dropped stream (#436)",
+      "commit_url": "https://github.com/QuantEcon/action-translation/commit/805dc1146a64ed71b3a1b93231a8e877daf01998",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:44Z"
+      }
     },
     {
       "repository": "andrewyng/translation-agent",
       "commit": "e0fc605acbb5d78cb7a58a98bc8bd8f0056df49c",
       "committed_at": "2024-07-08T21:12:33Z",
       "subject": "remove redundant line (#8)",
-      "commit_url": "https://github.com/andrewyng/translation-agent/commit/e0fc605acbb5d78cb7a58a98bc8bd8f0056df49c"
+      "commit_url": "https://github.com/andrewyng/translation-agent/commit/e0fc605acbb5d78cb7a58a98bc8bd8f0056df49c",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:45Z"
+      }
     },
     {
       "repository": "roshan-research/hazm",
       "commit": "a399c8293c5165544aaef76ead78bda9f4275888",
       "committed_at": "2026-04-01T18:55:05Z",
       "subject": "Bump version from 0.12.0 to 0.12.1",
-      "commit_url": "https://github.com/roshan-research/hazm/commit/a399c8293c5165544aaef76ead78bda9f4275888"
+      "commit_url": "https://github.com/roshan-research/hazm/commit/a399c8293c5165544aaef76ead78bda9f4275888",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:45Z"
+      }
     },
     {
       "repository": "Dadmatech/DadmaTools",
       "commit": "8e779244b980672be90f032c1e7a3a5360aa77c4",
       "committed_at": "2025-08-14T08:33:10Z",
       "subject": "Update setup.py",
-      "commit_url": "https://github.com/Dadmatech/DadmaTools/commit/8e779244b980672be90f032c1e7a3a5360aa77c4"
+      "commit_url": "https://github.com/Dadmatech/DadmaTools/commit/8e779244b980672be90f032c1e7a3a5360aa77c4",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:45Z"
+      }
     },
     {
       "repository": "funstory-ai/BabelDOC",
       "commit": "dd9adc352b957533d05b8cb94e88a7589cc56a35",
       "committed_at": "2026-11-07T23:16:00Z",
       "subject": "docs(release): one line per paragraph in v0.7.0 and v0.7.1 notes",
-      "commit_url": "https://github.com/funstory-ai/BabelDOC/commit/dd9adc352b957533d05b8cb94e88a7589cc56a35"
+      "commit_url": "https://github.com/funstory-ai/BabelDOC/commit/dd9adc352b957533d05b8cb94e88a7589cc56a35",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:45Z"
+      }
     },
     {
       "repository": "PDFMathTranslate/PDFMathTranslate-next",
       "commit": "07022b4d8585330c6b8413dd2cea9d203d1efb36",
       "committed_at": "2026-11-07T22:21:43Z",
       "subject": "ci(release): bump pypi-publish action to v1.14.3 for metadata 2.5; release 2.10.2",
-      "commit_url": "https://github.com/PDFMathTranslate/PDFMathTranslate-next/commit/07022b4d8585330c6b8413dd2cea9d203d1efb36"
+      "commit_url": "https://github.com/PDFMathTranslate/PDFMathTranslate-next/commit/07022b4d8585330c6b8413dd2cea9d203d1efb36",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:44Z",
+        "completed_at": "2026-11-13T20:22:45Z"
+      }
     },
     {
       "repository": "ali2000hos/persian-writing",
       "commit": "75fcdf313fab65d6d205500ca50f9cb52db25783",
       "committed_at": "2026-10-04T11:12:11Z",
       "subject": "README: new banner and sponsor acknowledgement",
-      "commit_url": "https://github.com/ali2000hos/persian-writing/commit/75fcdf313fab65d6d205500ca50f9cb52db25783"
+      "commit_url": "https://github.com/ali2000hos/persian-writing/commit/75fcdf313fab65d6d205500ca50f9cb52db25783",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:45Z",
+        "completed_at": "2026-11-13T20:22:46Z"
+      }
     },
     {
       "repository": "erfannoury/persian-ml-glossary",
       "commit": "f15e09cf875256ca551e49a2a5f71b78990412a7",
       "committed_at": "2019-02-18T06:35:26Z",
       "subject": "Update entry for attention",
-      "commit_url": "https://github.com/erfannoury/persian-ml-glossary/commit/f15e09cf875256ca551e49a2a5f71b78990412a7"
+      "commit_url": "https://github.com/erfannoury/persian-ml-glossary/commit/f15e09cf875256ca551e49a2a5f71b78990412a7",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:45Z",
+        "completed_at": "2026-11-13T20:22:46Z"
+      }
     },
     {
       "repository": "2077DevWave/cp-algorithms-fa",
       "commit": "e80a5e46c818c8165f97dfcf76dc05a3090d4498",
       "committed_at": "2026-01-06T17:04:36Z",
       "subject": "Merge pull request #9 from 2077DevWave/Review",
-      "commit_url": "https://github.com/2077DevWave/cp-algorithms-fa/commit/e80a5e46c818c8165f97dfcf76dc05a3090d4498"
+      "commit_url": "https://github.com/2077DevWave/cp-algorithms-fa/commit/e80a5e46c818c8165f97dfcf76dc05a3090d4498",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:45Z",
+        "completed_at": "2026-11-13T20:22:46Z"
+      }
     },
     {
       "repository": "Mohammad-Hasan-Kaman/kaman-ai-translator",
-      "commit": "2b9967fb422790304d1daffaa71a513b6ca899ff",
-      "committed_at": "2026-11-10T17:48:06Z",
-      "subject": "README: screenshots of the redesigned UI",
-      "commit_url": "https://github.com/Mohammad-Hasan-Kaman/kaman-ai-translator/commit/2b9967fb422790304d1daffaa71a513b6ca899ff"
+      "commit": "8ce6dd03f0d5335a2cac60ceb4e21d699da8ab1b",
+      "committed_at": "2026-11-12T10:14:49Z",
+      "subject": "docs: align the Quick start and Settings model wording with the shipped discovery policy",
+      "commit_url": "https://github.com/Mohammad-Hasan-Kaman/kaman-ai-translator/commit/8ce6dd03f0d5335a2cac60ceb4e21d699da8ab1b",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:45Z",
+        "completed_at": "2026-11-13T20:22:46Z"
+      }
     },
     {
       "repository": "Helsinki-NLP/Tatoeba-Challenge",
       "commit": "5509af44a74016748c26f41ab164b64f48445f3f",
       "committed_at": "2026-09-30T11:43:43Z",
       "subject": "fix config names",
-      "commit_url": "https://github.com/Helsinki-NLP/Tatoeba-Challenge/commit/5509af44a74016748c26f41ab164b64f48445f3f"
+      "commit_url": "https://github.com/Helsinki-NLP/Tatoeba-Challenge/commit/5509af44a74016748c26f41ab164b64f48445f3f",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:45Z",
+        "completed_at": "2026-11-13T20:22:46Z"
+      }
     },
     {
       "repository": "facebookresearch/flores",
       "commit": "a6c830c6e1051fb4ac1a44b32358f00463f332bd",
       "committed_at": "2023-11-20T21:03:52Z",
       "subject": "Merge pull request #68 from jeanm/archive",
-      "commit_url": "https://github.com/facebookresearch/flores/commit/a6c830c6e1051fb4ac1a44b32358f00463f332bd"
+      "commit_url": "https://github.com/facebookresearch/flores/commit/a6c830c6e1051fb4ac1a44b32358f00463f332bd",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:46Z",
+        "completed_at": "2026-11-13T20:22:47Z"
+      }
     },
     {
       "repository": "allenai/natural-instructions",
       "commit": "55a365637381ce7f3748fa2eac7aef1a113bbb82",
       "committed_at": "2023-03-22T15:55:47Z",
       "subject": "Update README.md (#779)",
-      "commit_url": "https://github.com/allenai/natural-instructions/commit/55a365637381ce7f3748fa2eac7aef1a113bbb82"
+      "commit_url": "https://github.com/allenai/natural-instructions/commit/55a365637381ce7f3748fa2eac7aef1a113bbb82",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:46Z",
+        "completed_at": "2026-11-13T20:22:47Z"
+      }
     },
     {
       "repository": "arasheslamii/biomed-mt-arabic-script",
       "commit": "b05b4ad2ba5c690d7e52ce197fff34c13bcd5932",
       "committed_at": "2026-07-31T08:53:51Z",
       "subject": "Correct Pashto/Sorani score threshold, fix contact formatting, add repository URL to model cards",
-      "commit_url": "https://github.com/arasheslamii/biomed-mt-arabic-script/commit/b05b4ad2ba5c690d7e52ce197fff34c13bcd5932"
+      "commit_url": "https://github.com/arasheslamii/biomed-mt-arabic-script/commit/b05b4ad2ba5c690d7e52ce197fff34c13bcd5932",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:46Z",
+        "completed_at": "2026-11-13T20:22:47Z"
+      }
     },
     {
       "repository": "sinaahmadi/PersoArabicLID",
       "commit": "79a3ee702c699452574e6a24c4835a3729edd2d1",
       "committed_at": "2023-07-11T14:28:27Z",
       "subject": "corpora added",
-      "commit_url": "https://github.com/sinaahmadi/PersoArabicLID/commit/79a3ee702c699452574e6a24c4835a3729edd2d1"
+      "commit_url": "https://github.com/sinaahmadi/PersoArabicLID/commit/79a3ee702c699452574e6a24c4835a3729edd2d1",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:46Z",
+        "completed_at": "2026-11-13T20:22:47Z"
+      }
     },
     {
       "repository": "sinaahmadi/ScriptNormalization",
       "commit": "9d8b627d2a681e5ce4cc5cd421301e03d731f2de",
       "committed_at": "2023-07-09T00:21:35Z",
       "subject": "README updated",
-      "commit_url": "https://github.com/sinaahmadi/ScriptNormalization/commit/9d8b627d2a681e5ce4cc5cd421301e03d731f2de"
+      "commit_url": "https://github.com/sinaahmadi/ScriptNormalization/commit/9d8b627d2a681e5ce4cc5cd421301e03d731f2de",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:46Z",
+        "completed_at": "2026-11-13T20:22:47Z"
+      }
     },
     {
       "repository": "deusyu/translate-book",
       "commit": "cf3862d46e79dc89abe3de13f3839039f1d8a637",
       "committed_at": "2026-11-07T09:11:30Z",
       "subject": "docs(skill): offer --cleanup only once the user is done (#60)",
-      "commit_url": "https://github.com/deusyu/translate-book/commit/cf3862d46e79dc89abe3de13f3839039f1d8a637"
+      "commit_url": "https://github.com/deusyu/translate-book/commit/cf3862d46e79dc89abe3de13f3839039f1d8a637",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:47Z",
+        "completed_at": "2026-11-13T20:22:48Z"
+      }
     },
     {
       "repository": "Chael-Chael/zotero-translate-skill",
       "commit": "a8fea9737edd857e9c7dcd715e3f7804edde6482",
       "committed_at": "2026-06-29T07:26:56Z",
       "subject": "Automate Zotero bridge installation",
-      "commit_url": "https://github.com/Chael-Chael/zotero-translate-skill/commit/a8fea9737edd857e9c7dcd715e3f7804edde6482"
+      "commit_url": "https://github.com/Chael-Chael/zotero-translate-skill/commit/a8fea9737edd857e9c7dcd715e3f7804edde6482",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:47Z",
+        "completed_at": "2026-11-13T20:22:48Z"
+      }
     },
     {
       "repository": "Azure/co-op-translator",
       "commit": "ae61ab7918ba6654352b45fad35cea2d42370e3b",
       "committed_at": "2026-11-08T14:28:40Z",
       "subject": "Build: Bump version to 0.24.0 (#584)",
-      "commit_url": "https://github.com/Azure/co-op-translator/commit/ae61ab7918ba6654352b45fad35cea2d42370e3b"
+      "commit_url": "https://github.com/Azure/co-op-translator/commit/ae61ab7918ba6654352b45fad35cea2d42370e3b",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:47Z",
+        "completed_at": "2026-11-13T20:22:48Z"
+      }
     },
     {
       "repository": "google/wmt-mqm-human-evaluation",
       "commit": "29acd6999aaea3586378c9dcb58d8cc4820cede3",
       "committed_at": "2026-07-29T21:53:49Z",
       "subject": "Merge pull request #18 from prkriley/main",
-      "commit_url": "https://github.com/google/wmt-mqm-human-evaluation/commit/29acd6999aaea3586378c9dcb58d8cc4820cede3"
+      "commit_url": "https://github.com/google/wmt-mqm-human-evaluation/commit/29acd6999aaea3586378c9dcb58d8cc4820cede3",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:47Z",
+        "completed_at": "2026-11-13T20:22:48Z"
+      }
     },
     {
       "repository": "segment-any-text/wtpsplit",
       "commit": "3ef928c8e163d11dc6f6336ad610bff2ffe0bda4",
       "committed_at": "2026-09-25T15:27:48Z",
       "subject": "add new inference providers (#178)",
-      "commit_url": "https://github.com/segment-any-text/wtpsplit/commit/3ef928c8e163d11dc6f6336ad610bff2ffe0bda4"
+      "commit_url": "https://github.com/segment-any-text/wtpsplit/commit/3ef928c8e163d11dc6f6336ad610bff2ffe0bda4",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:47Z",
+        "completed_at": "2026-11-13T20:22:48Z"
+      }
     },
     {
       "repository": "PDFMathTranslate/PDFMathTranslate",
-      "commit": "38401fb95858b02918846837bbb61ca6e9eb4d41",
-      "committed_at": "2026-11-10T23:18:23Z",
+      "commit": "9ec3d0a5d2ce22cfb588738f669ddb278d13e696",
+      "committed_at": "2026-11-13T18:01:28Z",
       "subject": "chore: update star history [skip ci]",
-      "commit_url": "https://github.com/PDFMathTranslate/PDFMathTranslate/commit/38401fb95858b02918846837bbb61ca6e9eb4d41"
+      "commit_url": "https://github.com/PDFMathTranslate/PDFMathTranslate/commit/9ec3d0a5d2ce22cfb588738f669ddb278d13e696",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:48Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     },
     {
       "repository": "ocrmypdf/OCRmyPDF",
       "commit": "3343116ba204c99c9fee762d538dc1b668711bfb",
       "committed_at": "2026-11-09T21:18:39Z",
       "subject": "Bump version: v17.14.1",
-      "commit_url": "https://github.com/ocrmypdf/OCRmyPDF/commit/3343116ba204c99c9fee762d538dc1b668711bfb"
+      "commit_url": "https://github.com/ocrmypdf/OCRmyPDF/commit/3343116ba204c99c9fee762d538dc1b668711bfb",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:48Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     },
     {
       "repository": "dotnet/Open-XML-SDK",
       "commit": "431ab05cf160248cc3885a4a766026d4f8243792",
       "committed_at": "2026-08-18T17:11:23Z",
       "subject": "avoid ChildElements enumeration in OpenXmlElement.CopyChildren (#2115)",
-      "commit_url": "https://github.com/dotnet/Open-XML-SDK/commit/431ab05cf160248cc3885a4a766026d4f8243792"
+      "commit_url": "https://github.com/dotnet/Open-XML-SDK/commit/431ab05cf160248cc3885a4a766026d4f8243792",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:48Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     },
     {
       "repository": "python-openxml/python-docx",
       "commit": "e45454602b53e8e572b179ccf1c91093ec9f4ed7",
       "committed_at": "2025-06-16T21:24:39Z",
       "subject": "release: prepare v1.2.0 release",
-      "commit_url": "https://github.com/python-openxml/python-docx/commit/e45454602b53e8e572b179ccf1c91093ec9f4ed7"
+      "commit_url": "https://github.com/python-openxml/python-docx/commit/e45454602b53e8e572b179ccf1c91093ec9f4ed7",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:48Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     },
     {
       "repository": "HypothesisWorks/hypothesis",
       "commit": "9ab0be61aaaa27396fc1bbf4b34e7925cc68d1e2",
       "committed_at": "2026-11-06T09:52:49Z",
       "subject": "Bump hypothesis version to 6.170.15 and update changelog",
-      "commit_url": "https://github.com/HypothesisWorks/hypothesis/commit/9ab0be61aaaa27396fc1bbf4b34e7925cc68d1e2"
+      "commit_url": "https://github.com/HypothesisWorks/hypothesis/commit/9ab0be61aaaa27396fc1bbf4b34e7925cc68d1e2",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:48Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     },
     {
       "repository": "github/spec-kit",
-      "commit": "f29319d550d1f05404f7184b92e995600ca2293f",
-      "committed_at": "2026-11-10T23:14:56Z",
-      "subject": "[extension] Add A·I·DID·IT — Agile Expansion Pack extension to community catalog (#5375)",
-      "commit_url": "https://github.com/github/spec-kit/commit/f29319d550d1f05404f7184b92e995600ca2293f"
+      "commit": "2ee2b1e8005905db05f5717300a469b3068b908f",
+      "committed_at": "2026-11-12T16:30:46Z",
+      "subject": "fix(powershell): treat bracketed project paths literally in create-new-feature (#5399)",
+      "commit_url": "https://github.com/github/spec-kit/commit/2ee2b1e8005905db05f5717300a469b3068b908f",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:49Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     },
     {
       "repository": "docling-project/docling",
-      "commit": "1ae470a1f4580881ed73853f64e0bf178f623c5e",
-      "committed_at": "2026-11-10T17:59:27Z",
-      "subject": "fix(epub): drop query and fragment from image src (#4636)",
-      "commit_url": "https://github.com/docling-project/docling/commit/1ae470a1f4580881ed73853f64e0bf178f623c5e"
+      "commit": "31d14a74b7bddc850541ab8363b8585085845313",
+      "committed_at": "2026-11-13T15:22:45Z",
+      "subject": "fix(docx): detect headings from paragraph-level w:outlineLvl (#3312) (#4129)",
+      "commit_url": "https://github.com/docling-project/docling/commit/31d14a74b7bddc850541ab8363b8585085845313",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:49Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     },
     {
       "repository": "phfaist/pylatexenc",
       "commit": "316f9c00814da019ec24d3b06e9866f3be94258d",
       "committed_at": "2026-10-19T19:06:05Z",
       "subject": "patch in transcrypt/js libs",
-      "commit_url": "https://github.com/phfaist/pylatexenc/commit/316f9c00814da019ec24d3b06e9866f3be94258d"
+      "commit_url": "https://github.com/phfaist/pylatexenc/commit/316f9c00814da019ec24d3b06e9866f3be94258d",
+      "head_checked_utc": {
+        "started_at": "2026-11-13T20:22:49Z",
+        "completed_at": "2026-11-13T20:22:49Z"
+      }
     }
   ]
 }

@@ -49,13 +49,13 @@ pub(super) fn code(profile: &ObservationProfile) -> Result<Code> {
 }
 impl KernelImage<'_> {
     pub fn require_observation_profile(&self) -> Result<u32> {
-        self.observation_bytes(&select_observation(&self.kernelbase_identity()?)?)
+        self.observation_bytes(&select_optional(Some(&self.kernelbase_identity()?))?)
     }
     pub fn require_observation_static(&self, view: &StaticView) -> Result<()> {
         let profile = std::cell::RefCell::new(None);
         qualify_observation(
             || {
-                *profile.borrow_mut() = Some(select_observation(&self.kernelbase_identity()?)?);
+                *profile.borrow_mut() = Some(select_optional(Some(&self.kernelbase_identity()?))?);
                 Ok(())
             },
             || {
@@ -79,7 +79,7 @@ impl KernelImage<'_> {
         )
     }
     pub fn require_checkpoint_address(&self) -> Result<u64> {
-        let profile = select_observation(&self.kernelbase_identity()?)?;
+        let profile = select_optional(Some(&self.kernelbase_identity()?))?;
         self.observation_bytes(&profile)?;
         checkpoint_address(
             &self.pe.sections,
@@ -156,6 +156,9 @@ impl KernelImage<'_> {
                 .count()
                 == 1
     }
+}
+pub(super) fn select_optional(identity: Option<&str>) -> Result<ObservationProfile> {
+    select_observation(identity.ok_or_else(|| anyhow::anyhow!("unsupported fixed image identity"))?)
 }
 pub(super) fn require_records(view: &StaticView, profile: &ObservationProfile) -> Result<()> {
     let c = code(profile)?;

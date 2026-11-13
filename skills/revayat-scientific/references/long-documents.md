@@ -131,6 +131,23 @@ the editable part, because reconstruction can overwrite edits made only in an
 assembled derivative. These durable job files are separate from temporary sandbox
 staging, whose verified cleanup remains mandatory.
 
+Before carrying a later source edit into a reviewed part, compare the accepted
+source snapshot with the old source that edit assumes. Distinguish a missing
+change, a target already ahead of that change, and an earlier pending update;
+unknown revision state does not establish alignment. Missing or corrupt
+bookkeeping never authorizes overwriting an existing translation, and a ledger
+entry without its target file does not establish completion. Recover the actual
+source/target relationship first, then update the affected editable spans and
+review them. A preview must select the same parts as the eventual operation.
+
+Rerunning an old whole-document job can restore an obsolete source snapshot over
+later edits. Check every affected source part before choosing that recovery route;
+carry changes into accepted text when regeneration would discard reviewed work.
+For a rename, verify both old and new paths belong to the intended source scope
+before moving or deleting anything. This is revision-recovery guidance from the
+[November 13 source review](upstream-review-2026-11-13.md#revision-recovery),
+not an additional automatic CLI sync feature.
+
 ## Ambiguity queue
 
 Stopping to ask forty times does not work at this length, and guessing

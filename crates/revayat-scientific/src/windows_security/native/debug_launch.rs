@@ -24,14 +24,7 @@ fn observe_fixed(
         "debug x64 ABI differs"
     );
     let executable = std::env::current_exe()?;
-    let parent = executable
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("debug current image directory missing"))?;
-    let parent = if parent.file_name().is_some_and(|name| name == "deps") {
-        parent.parent().unwrap()
-    } else {
-        parent
-    };
+    let parent = crate::executable_paths::binary_directory(&executable)?;
     let expected = parent.join(if dispatch {
         "startup-explicit-id2.exe"
     } else {

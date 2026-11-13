@@ -156,7 +156,26 @@ pub fn select_source(
     engine: Option<&str>,
     browser: Option<&str>,
 ) -> Result<Selection> {
-    let discovered = engines::discover(engine, browser)?;
+    selection_from_discovery(source, engine, engines::discover(engine, browser)?)
+}
+
+fn select_source_for_build(
+    source: &Path,
+    engine: Option<&str>,
+    browser: Option<&str>,
+) -> Result<Selection> {
+    selection_from_discovery(source, engine, engines::resolve(engine, browser)?)
+}
+
+fn selection_from_discovery(
+    source: &Path,
+    engine: Option<&str>,
+    discovered: crate::engine_discovery::Available<
+        crate::tex_container::RuntimeConfig,
+        PathBuf,
+        crate::tex_container::RuntimeConfig,
+    >,
+) -> Result<Selection> {
     let available = discovered
         .engines
         .iter()
@@ -205,7 +224,7 @@ struct BuildArgs {
 pub fn cli_build(args: &[String]) -> Result<i32> {
     cli_build_with(
         args,
-        select_source,
+        select_source_for_build,
         |selection, working, record| {
             if selection.engine == "tex" {
                 crate::tex_container::compile_document(

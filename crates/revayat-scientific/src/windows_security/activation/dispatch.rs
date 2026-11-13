@@ -167,6 +167,11 @@ impl QualifiedFailure {
     pub fn into_original(self) -> anyhow::Error {
         self.original
     }
+    pub(crate) fn map_original(self, map: impl FnOnce(anyhow::Error) -> anyhow::Error) -> Self {
+        Self {
+            original: map(self.original),
+        }
+    }
 }
 impl fmt::Display for QualifiedFailure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

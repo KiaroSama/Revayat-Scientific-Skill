@@ -1,4 +1,4 @@
-FROM rust:1.99.1-slim-trixie AS entry-build
+FROM rust:1.100.0-slim-trixie AS entry-build
 COPY crates/revayat-scientific/src/bin/revayat-tex-entry.rs /build/entry.rs
 COPY crates/revayat-scientific/src/bin/revayat-sandbox-probe.rs /build/probe.rs
 COPY crates/revayat-scientific/src/bin/security_helper /build/security_helper

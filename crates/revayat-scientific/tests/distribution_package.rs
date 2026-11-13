@@ -2,6 +2,7 @@ use anyhow::{Result, bail};
 use revayat_scientific::{
     distribution::{self as d, NAME},
     distribution_package::{PackageBoundary as B, package_observed},
+    distribution_paths::git_path,
 };
 use std::{
     fs,
@@ -67,9 +68,13 @@ impl Fixture {
         self.git_at(&self.repo, args)
     }
     fn git_at(&self, cwd: &Path, args: &[&str]) -> String {
+        let args: Vec<_> = args
+            .iter()
+            .map(|arg| git_path(Path::new(arg)).unwrap())
+            .collect();
         let output = Command::new("git")
-            .args(args)
-            .current_dir(cwd)
+            .args(&args)
+            .current_dir(git_path(cwd).unwrap())
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env(
                 "GIT_CONFIG_GLOBAL",
@@ -450,15 +455,15 @@ fn test_external_index_shared_storage_and_hardlink_remain_unchanged() {
     assert_eq!(fs::read(alias).unwrap(), before);
     let output = Command::new("git")
         .args(["update-index", "--split-index"])
-        .current_dir(&f.repo)
-        .env("GIT_INDEX_FILE", &index)
+        .current_dir(git_path(&f.repo).unwrap())
+        .env("GIT_INDEX_FILE", git_path(&index).unwrap())
         .output()
         .unwrap();
     assert!(output.status.success());
     let output = Command::new("git")
         .args(["rev-parse", "--path-format=absolute", "--shared-index-path"])
-        .current_dir(&f.repo)
-        .env("GIT_INDEX_FILE", &index)
+        .current_dir(git_path(&f.repo).unwrap())
+        .env("GIT_INDEX_FILE", git_path(&index).unwrap())
         .output()
         .unwrap();
     assert!(output.status.success());

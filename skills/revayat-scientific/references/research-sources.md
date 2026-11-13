@@ -1,5 +1,24 @@
 # Research evidence and adoption boundaries
 
+## Upstream delta review — 2026-11-13 (UTC)
+
+The [current inventory](upstream-revisions.json) refreshes all 33 repository
+HEADs, with exact UTC observation bounds for each batch. The
+[November 13 selected-source record](upstream-review-2026-11-13.md) names actual
+immutable documents and diffs read for the five changed repositories; the other
+28 retain their November 10 selected-source review. Four deltas inform guidance:
+revision-aware recovery and corrupt bookkeeping in [long documents](long-documents.md),
+link/story/nesting/math/code and image preservation in [extraction](extraction.md),
+and retained cleanup authority plus narrowly scoped readiness in [review](review.md).
+PDFMathTranslate's changes are generated star-history assets only.
+
+These are review methods and preservation criteria. They do not establish the
+same implementation defects in Revayat, add automatic sync or provider discovery,
+or import external runtimes, models or test data. The dated source record also
+separates new Rust/dependency release observations from actual implementation
+and native verification. The historical review below and the
+[November 10 record](upstream-review-2026-11-10.md) remain available.
+
 ## Rust migration review — 2026-11-10 (UTC)
 
 [Upstream revisions](upstream-revisions.json) records the latest default-branch

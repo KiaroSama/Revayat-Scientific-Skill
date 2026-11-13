@@ -306,16 +306,7 @@ pub fn observe_explicit_host_fixture() -> Result<String> {
     let operation = (|| {
         require_host()?;
         let executable = std::env::current_exe()?;
-        let parent = executable
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("fixed host controller parent missing"))?;
-        let folder = if parent.file_name().is_some_and(|name| name == "deps") {
-            parent
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("fixed host fixture parent missing"))?
-        } else {
-            parent
-        };
+        let folder = crate::executable_paths::binary_directory(&executable)?;
         let path = folder.join("startup-explicit-id2.exe");
         no_overrides(&path)?;
         let file = open(&path)?;

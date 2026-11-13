@@ -3,6 +3,10 @@ use revayat_scientific::windows_security::preparation;
 use std::{cell::Cell, sync::Arc};
 #[test]
 fn controller_markers_preserve_validation_order() {
+    revayat_scientific::windows_security::diagnostic_validation::check_loader_snaps_validation()
+        .unwrap();
+    revayat_scientific::windows_security::diagnostic_validation::check_trusted_setup_validation()
+        .unwrap();
     let mut state = Lifecycle::Prepared;
     for next in [
         Lifecycle::Suspended,
@@ -169,6 +173,8 @@ fn controller_markers_preserve_validation_order() {
 }
 #[test]
 fn timeout_keeps_capture_after_reader_cleanup() {
+    revayat_scientific::windows_security::diagnostic_validation::check_hardware_trace_validation()
+        .unwrap();
     let value = complete();
     let receipt = frame();
     assert_eq!(value.finish(OUTPUT_LIMIT).unwrap(), "fixed\n");
@@ -179,6 +185,8 @@ fn timeout_keeps_capture_after_reader_cleanup() {
 }
 #[test]
 fn primary_and_recovery_failures_remain_ordered() {
+    revayat_scientific::windows_security::diagnostic_validation::check_static_kernel_inspection_validation()
+        .unwrap();
     let mut value = frame();
     value.retain(Phase::Restore, Fault::Cleanup);
     value.retain(Phase::Close, Fault::Cleanup);

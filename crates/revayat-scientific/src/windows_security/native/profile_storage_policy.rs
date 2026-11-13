@@ -96,25 +96,7 @@ pub(super) fn bytes(descriptor: &Descriptor) -> Result<Vec<u8>> {
     raw_bytes(descriptor.0)
 }
 pub(super) fn matches_access(expected: &[u8], actual: &[u8]) -> Result<bool> {
-    let (left, right) = (Relative::parse(expected)?, Relative::parse(actual)?);
-    if left.control & !0x400 != right.control & !0x400
-        || left.control & 0x1000 == 0
-        || right.control & 0x1000 == 0
-    {
-        return Ok(false);
-    }
-    let (Some(left), Some(right)) = (left.dacl, right.dacl) else {
-        return Ok(false);
-    };
-    let (left, right) = (Acl::parse(left)?, Acl::parse(right)?);
-    // RawAcl serialization omits unused final allocation padding. The shared byte comparator does not.
-    Ok(left.revision == right.revision
-        && left.aces.len() == right.aces.len()
-        && left
-            .aces
-            .iter()
-            .zip(&right.aces)
-            .all(|(a, b)| a.bytes == b.bytes))
+    crate::windows_security::policy::access_matches(expected, actual)
 }
 fn read(object: Handle, information: u32) -> Result<Vec<u8>> {
     let (mut owner, mut group, mut dacl, mut sacl, mut raw) =

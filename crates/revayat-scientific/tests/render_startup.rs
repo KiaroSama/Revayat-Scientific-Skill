@@ -217,6 +217,16 @@ fn silent_browser_timeout_preserves_output_and_reaps_owner() -> Result<()> {
     fs::write(&source, "<html>source</html>")?;
     let started = Instant::now();
     let error = render_html(&source, &root.join("output.pdf"), &executable, None).unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<revayat_scientific::runtime::DeadlineExceeded>()
+            .is_some()
+    );
+    assert!(
+        error
+            .downcast_ref::<revayat_scientific::runtime::CleanupFailure>()
+            .is_none()
+    );
     assert!(started.elapsed() >= Duration::from_secs(30));
     assert!(started.elapsed() < Duration::from_secs(38));
     assert!(format!("{error:#}").contains("phase=startup"));

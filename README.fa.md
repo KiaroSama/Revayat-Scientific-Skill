@@ -10,7 +10,7 @@
 [![Plugin version 2.0.0](https://img.shields.io/badge/Plugin-2.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
 <br>
 [![Rust migration CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=rewrite%2Frust-complete)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions?query=branch%3Arewrite%2Frust-complete)
-[![Rust 1.99.1](https://img.shields.io/badge/Rust-1.99.1-dea584?style=flat-square&logo=rust)](rust-toolchain.toml)
+[![Rust 1.100.0](https://img.shields.io/badge/Rust-1.100.0-dea584?style=flat-square&logo=rust)](rust-toolchain.toml)
 [![Windows, macOS and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
 [![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.md)
 [![Agent Skills format](https://img.shields.io/badge/Format-Agent%20Skills-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)

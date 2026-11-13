@@ -20,6 +20,16 @@ fn root() -> &'static Path {
 
 #[test]
 fn workflows_reject_shell_programs_and_ignored_required_failures() {
+    gitleaks_contract_and_actual_git_child();
+    let filename = ".github/workflows/gitleaks.yml";
+    let gitleaks = fs::read_to_string(root().join(filename)).unwrap();
+    c::validate_workflow_contract(root(), filename, &gitleaks).unwrap();
+    assert!(!gitleaks.contains("python"));
+    assert!(gitleaks.contains("runner.debug == '1'"));
+    assert!(gitleaks.contains("/usr/bin/test 1 = 0"));
+    assert!(gitleaks.contains("check-workflows gitleaks"));
+    assert!(gitleaks.contains("fetch-depth: 0"));
+    assert!(gitleaks.contains("persist-credentials: false"));
     for program in [
         "echo ignored || true",
         "cargo test && echo done",
@@ -52,6 +62,145 @@ fn workflows_reject_shell_programs_and_ignored_required_failures() {
             "name: invalid\non: workflow_dispatch\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - {property}\n        run: cargo test\n"
         );
         assert!(c::validate_workflow_contract(root(), "broken.yml", &source).is_err());
+    }
+}
+
+fn gitleaks_contract_and_actual_git_child() {
+    use sha2::{Digest, Sha256};
+    let event = serde_json::json!({"pull_request":{"base":{"sha":"a".repeat(40)},"head":{"sha":"b".repeat(40)}}});
+    let (options, scope, revisions) =
+        c::gitleaks_log_options("pull_request", Some(&event)).unwrap();
+    assert!(options.ends_with(&format!(" {}..{}", "a".repeat(40), "b".repeat(40))));
+    assert!(!options.contains("--all"));
+    assert_eq!(revisions.len(), 2);
+    for event in ["push", "schedule", "workflow_dispatch"] {
+        let (options, _, revisions) = c::gitleaks_log_options(event, None).unwrap();
+        assert!(
+            options.ends_with(" --all")
+                && options.contains("--no-ext-diff --no-textconv --ignore-submodules=all -m")
+        );
+        assert!(revisions.is_empty());
+    }
+    assert!(c::gitleaks_log_options("pull_request", None).is_err());
+    assert!(c::gitleaks_log_options("workflow_run", None).is_err());
+    let report = serde_json::to_vec(&serde_json::json!([{"RuleID":"generic-api-key","File":"a|<b>\nfile.txt","StartLine":2,"Commit":"a".repeat(40),"Secret":"PRIVATE_SCAN_CANARY","Match":"PRIVATE_SCAN_CANARY","Message":"PRIVATE_SCAN_CANARY"}])).unwrap();
+    let locations = c::gitleaks_locations(2, b"", b"", &report).unwrap();
+    let summary = c::gitleaks_summary(&locations, scope).unwrap();
+    assert!(summary.contains("a&#124;&lt;b&gt; file.txt"));
+    assert!(!summary.contains("PRIVATE_SCAN_CANARY"));
+    assert!(
+        summary.contains(
+            "full history describes revision coverage"
+                .replacen('f', "F", 1)
+                .as_str()
+        )
+    );
+    assert!(
+        c::gitleaks_locations(0, b"", b"", b"[]")
+            .unwrap()
+            .is_empty()
+    );
+    for (code, stdout, stderr, bytes) in [
+        (0, b"".as_slice(), b"".as_slice(), report.as_slice()),
+        (2, b"".as_slice(), b"".as_slice(), b"[]".as_slice()),
+        (1, b"".as_slice(), b"".as_slice(), b"[]".as_slice()),
+        (
+            0,
+            b"PRIVATE_SCAN_CANARY".as_slice(),
+            b"".as_slice(),
+            b"[]".as_slice(),
+        ),
+        (
+            0,
+            b"".as_slice(),
+            b"PRIVATE_SCAN_CANARY".as_slice(),
+            b"[]".as_slice(),
+        ),
+        (
+            0,
+            b"".as_slice(),
+            b"".as_slice(),
+            b"PRIVATE_SCAN_CANARY".as_slice(),
+        ),
+        (0, b"".as_slice(), b"".as_slice(), b"null".as_slice()),
+    ] {
+        let error = c::gitleaks_locations(code, stdout, stderr, bytes).unwrap_err();
+        assert!(!format!("{error:#}").contains("PRIVATE_SCAN_CANARY"));
+    }
+    let root = tempfile::tempdir().unwrap();
+    let repository = root.path().join("repository");
+    fs::create_dir(&repository).unwrap();
+    let git = runtime::executable("git").unwrap();
+    let mut init = CommandSpec::new(git.as_os_str()).args(["init", "--quiet"]);
+    init.cwd = Some(repository.clone());
+    assert!(bounded(init).success());
+    let mut commit = CommandSpec::new(git.as_os_str()).args([
+        "-c",
+        "user.name=Native fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "--allow-empty",
+        "--no-gpg-sign",
+        "--quiet",
+        "-m",
+        "Public native receipt fixture",
+    ]);
+    commit.cwd = Some(repository.clone());
+    assert!(bounded(commit).success());
+    let nonce = "a".repeat(32);
+    for failure in [false, true] {
+        let directory = root
+            .path()
+            .join(if failure { "failure" } else { "success" });
+        fs::create_dir(&directory).unwrap();
+        let wrapper = directory.join(format!("git{}", std::env::consts::EXE_SUFFIX));
+        fs::copy(env!("CARGO_BIN_EXE_revayat-gitleaks-git"), &wrapper).unwrap();
+        let args = vec![
+            "-C".to_owned(),
+            repository.to_str().unwrap().to_owned(),
+            "log".into(),
+            if failure {
+                "--PRIVATE_GIT_OPTION_CANARY"
+            } else {
+                "--format=%H"
+            }
+            .into(),
+        ];
+        let mut hash = Sha256::new();
+        for argument in &args {
+            hash.update((argument.len() as u64).to_be_bytes());
+            hash.update(argument.as_bytes());
+        }
+        let digest = format!("{:x}", hash.finalize());
+        fs::write(directory.join("git-binding.json"), serde_json::to_vec(&serde_json::json!({"schema":1,"nonce":nonce,"real_git":git,"real_git_sha256":revayat_scientific::build::file_hash(&git).unwrap(),"history_sha256":digest})).unwrap()).unwrap();
+        let output = bounded(CommandSpec::new(wrapper.as_os_str()).args(&args));
+        assert_eq!(output.success(), !failure);
+        assert_eq!(
+            c::verify_gitleaks_history(&directory, &nonce, &digest).is_ok(),
+            !failure
+        );
+        let receipt = fs::read_dir(&directory)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("git-history-")
+            })
+            .unwrap();
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&receipt).unwrap()).unwrap();
+        assert_eq!(record["completed"], true);
+        assert_eq!(record["exit_code"].as_i64(), Some(i64::from(output.code)));
+        assert!(c::verify_gitleaks_history(&directory, &"b".repeat(32), &digest).is_err());
+        assert!(c::verify_gitleaks_history(&directory, &nonce, &"c".repeat(64)).is_err());
+        fs::copy(&receipt, directory.join("git-history-contradictory.json")).unwrap();
+        assert!(c::verify_gitleaks_history(&directory, &nonce, &digest).is_err());
+        fs::remove_file(receipt).unwrap();
+        fs::remove_file(directory.join("git-history-contradictory.json")).unwrap();
+        assert!(c::verify_gitleaks_history(&directory, &nonce, &digest).is_err());
     }
 }
 

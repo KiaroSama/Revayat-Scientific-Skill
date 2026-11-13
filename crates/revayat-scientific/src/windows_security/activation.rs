@@ -61,10 +61,14 @@ pub fn require_absent_thread_token(opened: bool, error: u32, token: usize) -> Re
     Ok(())
 }
 pub mod assembly;
+pub mod capture;
 pub mod control;
 pub mod dispatch;
 pub mod dll;
+pub mod dll_request;
+pub mod sweep;
 pub use dll::check_fixed_dll_validation;
+pub use sweep::check_manual_activation_validation;
 pub mod loader;
 pub mod self_result;
 pub mod threads;

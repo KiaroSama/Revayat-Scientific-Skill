@@ -283,9 +283,12 @@ fn test_inherited_preparation_refuses_substituted_foreign_temporary_files() -> R
             },
         )
         .unwrap_err();
+        let primary = error
+            .downcast_ref::<RetainedPrimary>()
+            .map_or(&error, |retained| &retained.0);
         ensure!(
-            error.to_string().contains("ownership"),
-            "expected ownership refusal, got {error}"
+            primary.to_string().contains("ownership"),
+            "expected retained ownership refusal, got {primary}"
         );
         let (path, original_id, foreign_id, contents) =
             changed.context("actual inherited preparation seam did not execute")?;

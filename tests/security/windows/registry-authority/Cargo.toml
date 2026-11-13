@@ -2,7 +2,7 @@
 name = "registry-authority"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.99.1"
+rust-version.workspace = true
 publish = false
 license.workspace = true
 

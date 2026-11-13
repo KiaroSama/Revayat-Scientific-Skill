@@ -6,6 +6,15 @@ use sha2::{Digest, Sha256};
 #[path = "policy/default_control.rs"]
 pub mod default_control;
 
+#[path = "policy/profile_validation.rs"]
+pub mod profile_validation;
+#[path = "policy/registry_comparison.rs"]
+pub mod registry_comparison;
+#[path = "policy/registry_lease.rs"]
+pub mod registry_lease;
+#[path = "policy/token_validation.rs"]
+pub mod token_validation;
+
 pub const REGISTRY_READ: u32 = 0x20019;
 pub const REGISTRY_DENY: u32 = 2 | 4 | 0x10000 | 0x40000 | 0x80000;
 pub const SCRATCH_MASKS: [u32; 9] = [0, 0x20, 0x100000, 0x100020, 1, 2, 0x20000, 0x40000, 0x80000];
@@ -331,13 +340,29 @@ impl<'a> Descriptor<'a> {
         Ok(())
     }
 }
+/// RawAcl.BinaryLength/GetBinaryForm serializes revision and ordered ACEs, excluding
+/// unused final allocation padding. This comparison does not relax ACL admission.
+/// See dotnet/runtime@50a0c6423336dfa9f887e9aac74686070cfe6775 ACL.cs:184-205,309-351.
+pub fn serialized_acl_equal(first: Option<&[u8]>, second: Option<&[u8]>) -> Result<bool> {
+    let (Some(first), Some(second)) = (first, second) else {
+        return Ok(first.is_none() && second.is_none());
+    };
+    let (first, second) = (Acl::parse(first)?, Acl::parse(second)?);
+    Ok(first.revision == second.revision
+        && first.aces.len() == second.aces.len()
+        && first
+            .aces
+            .iter()
+            .zip(&second.aces)
+            .all(|(a, b)| a.bytes == b.bytes))
+}
 pub fn access_matches(first: &[u8], second: &[u8]) -> Result<bool> {
     let (a, b) = (Descriptor::parse(first)?, Descriptor::parse(second)?);
     Ok(a.control & !0x400 == b.control & !0x400
         && a.control & 0x1000 != 0
         && b.control & 0x1000 != 0
         && a.dacl.is_some()
-        && a.dacl == b.dacl)
+        && serialized_acl_equal(a.dacl, b.dacl)?)
 }
 /// DACL persistence must leave owner, group, MIC/SACL and non-DACL control untouched.
 /// This is RegistrySeal.RequirePreserved, not Profile's access-only comparison.
@@ -351,7 +376,7 @@ pub fn require_registry_preserved(before: &[u8], after: &[u8]) -> Result<()> {
             && before.owner == after.owner
             && before.group == after.group
             && before.control & !0x150c == after.control & !0x150c
-            && before.sacl == after.sacl,
+            && serialized_acl_equal(before.sacl, after.sacl)?,
         "registry DACL persistence changed owner/group/integrity or unrelated control"
     );
     Ok(())

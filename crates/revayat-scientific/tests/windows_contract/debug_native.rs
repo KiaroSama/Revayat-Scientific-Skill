@@ -6,10 +6,7 @@ use revayat_scientific::windows_security::native::{
 #[test]
 fn actual_owned_authority_entry_debug_state_is_restored_before_natural_exit() {
     let executable = std::env::current_exe().unwrap();
-    let authority = executable
-        .parent()
-        .unwrap()
-        .parent()
+    let authority = revayat_scientific::executable_paths::binary_directory(&executable)
         .unwrap()
         .join("registry-authority.exe");
     let proof = observe_authority_entry(&authority).unwrap();
@@ -26,10 +23,7 @@ fn actual_owned_authority_entry_debug_state_is_restored_before_natural_exit() {
 #[test]
 fn actual_fixed_explicit_id2_pairs_csr_only_with_real_os_profile_and_restoration() {
     let executable = std::env::current_exe().unwrap();
-    let fixture = executable
-        .parent()
-        .unwrap()
-        .parent()
+    let fixture = revayat_scientific::executable_paths::binary_directory(&executable)
         .unwrap()
         .join("startup-explicit-id2.exe");
     let proof =
@@ -48,10 +42,7 @@ fn actual_fixed_explicit_id2_pairs_csr_only_with_real_os_profile_and_restoration
 #[test]
 fn actual_exit_wait_failure_still_retires_generation_handles_once() {
     let executable = std::env::current_exe().unwrap();
-    let authority = executable
-        .parent()
-        .unwrap()
-        .parent()
+    let authority = revayat_scientific::executable_paths::binary_directory(&executable)
         .unwrap()
         .join("registry-authority.exe");
     let mut order = Vec::new();

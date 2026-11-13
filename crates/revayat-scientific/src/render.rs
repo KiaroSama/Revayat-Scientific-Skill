@@ -96,7 +96,8 @@ impl Browser {
     }
 
     fn wait_ready(&mut self) -> Result<(u16, String)> {
-        let deadline = Instant::now() + Duration::from_secs(30);
+        let limit = Duration::from_secs(30);
+        let deadline = Instant::now() + limit;
         loop {
             ensure!(
                 self.child.try_wait()?.is_none(),
@@ -126,19 +127,26 @@ impl Browser {
                 );
                 return Ok((port, endpoint));
             }
-            ensure!(
-                Instant::now() < deadline,
-                "Chromium startup exceeded its deadline"
-            );
+            if Instant::now() >= deadline {
+                return Err(runtime::DeadlineExceeded { idle: false, limit })
+                    .context("Chromium startup exceeded its deadline");
+            }
             thread::sleep(Duration::from_millis(20));
         }
     }
 
     fn initialization_failure(&mut self, error: anyhow::Error) -> anyhow::Error {
         let clean = self.stop();
-        error.context(format!(
+        let error = error.context(format!(
             "phase=startup diagnostic_init=false cleanup_complete={clean}"
-        ))
+        ));
+        if clean {
+            error
+        } else {
+            error.context(runtime::CleanupFailure(anyhow::anyhow!(
+                "browser owned process cleanup could not be verified"
+            )))
+        }
     }
 
     fn stop(&mut self) -> bool {
@@ -209,7 +217,7 @@ impl Browser {
         #[cfg(windows)]
         let scope = "owned-job";
         let cleanup = format!("cleanup_complete={clean} cleanup_scope={scope}");
-        match result {
+        let result = match result {
             Err(error) => Err(error.context(format!("browser {report} {cleanup}"))),
             Ok(value)
                 if clean
@@ -220,8 +228,20 @@ impl Browser {
             {
                 Ok(value)
             }
-            Ok(_) => bail!("browser verification failed {report} {cleanup}"),
-        }
+            Ok(_) => Err(anyhow::anyhow!(
+                "browser verification failed {report} {cleanup}"
+            )),
+        };
+        runtime::with_cleanup(
+            result,
+            if clean {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!(
+                    "browser owned process cleanup could not be verified"
+                ))
+            },
+        )
     }
 }
 impl Drop for Browser {

@@ -10,6 +10,38 @@ pub use static_checks::{check_identity_validation, check_static_validation};
 #[path = "import_checks.rs"]
 mod import_checks;
 pub use import_checks::check_import_validation;
+#[path = "observation_checks.rs"]
+mod observation_checks;
+pub use observation_checks::{check_checkpoint_validation, check_observation_validation};
+#[path = "worker_checks.rs"]
+mod worker_checks;
+pub use worker_checks::check_activation_worker_validation;
+
+/// Original managed stage8 root, including all reachable pure assertion helpers.
+pub fn check_validation() -> Result<()> {
+    check_identity_validation()?;
+    check_static_validation()?;
+    check_observation_validation()?;
+    let bytes = base();
+    let image = KernelImage::with_subject(&bytes, 0x10000000, "ntdll.dll")?;
+    ensure!(
+        image.pe.entry == 0x1000 && image.contains_executable(0x10001000),
+        "hardware image positive parser fixture differs"
+    );
+    refuse(
+        &bytes,
+        &[
+            Word(0x3c, u32::MAX),
+            Short(0x86, 65),
+            Word(0xa8, 0x3000),
+            Word(0x1ac, 0x40000040),
+            Word(0x19c, u32::MAX),
+            Word(0x194, u32::MAX),
+            Group(vec![Short(0x86, 2), Copy(0x188, 0x1b0, 40)]),
+        ],
+        |bad| KernelImage::with_subject(bad, 0x10000000, "ntdll.dll").map(|_| ()),
+    )
+}
 pub fn static_validation_fixture() -> Vec<u8> {
     static_image()
 }

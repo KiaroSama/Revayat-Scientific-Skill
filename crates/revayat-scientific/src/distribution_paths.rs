@@ -53,9 +53,108 @@ pub fn directory_path(path: &Path) -> Result<PathBuf> {
     }
     Ok(path)
 }
+/// Translate a native Windows path only at the external Git boundary. Git for
+/// Windows does not accept Rust's canonical `\\?\` drive/UNC spelling. Keep all
+/// admission/protection paths native, and require the ordinary spelling to name
+/// the same existing object (or nearest existing ancestor for a new path).
+pub fn git_path(path: &Path) -> Result<PathBuf> {
+    #[cfg(windows)]
+    {
+        use std::{ffi::OsString, path::Prefix};
+        let mut parts = path.components();
+        let Some(Component::Prefix(prefix)) = parts.next() else {
+            return Ok(path.to_owned());
+        };
+        let mut result = match prefix.kind() {
+            Prefix::VerbatimDisk(drive) => PathBuf::from(format!("{}:\\", char::from(drive))),
+            Prefix::VerbatimUNC(server, share) => {
+                let mut value = OsString::from("\\\\");
+                value.push(server);
+                value.push("\\");
+                value.push(share);
+                value.push("\\");
+                PathBuf::from(value)
+            }
+            Prefix::Verbatim(_) | Prefix::DeviceNS(_) => {
+                anyhow::bail!("unsupported native namespace for Git")
+            }
+            _ => return Ok(path.to_owned()),
+        };
+        ensure!(
+            parts.next() == Some(Component::RootDir),
+            "Git native path must be absolute"
+        );
+        for part in parts {
+            let Component::Normal(name) = part else {
+                anyhow::bail!("Git native path contains ambiguous components")
+            };
+            let text = name.to_string_lossy();
+            let stem = text.split('.').next().unwrap_or("").trim_end_matches(' ');
+            let stem = stem.to_uppercase();
+            let device = matches!(
+                stem.as_str(),
+                "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+            ) || ["COM", "LPT"].iter().any(|prefix| {
+                stem.strip_prefix(*prefix).is_some_and(|suffix| {
+                    matches!(
+                        suffix,
+                        "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                    )
+                })
+            });
+            ensure!(
+                !text.ends_with(['.', ' ']) && !text.contains([':', '/', '\0']) && !device,
+                "Git native path cannot be represented without changing its meaning"
+            );
+            result.push(name);
+        }
+        let (mut native, mut ordinary) = (path, result.as_path());
+        loop {
+            let exists = native.try_exists()?;
+            ensure!(
+                exists == ordinary.try_exists()?,
+                "Git path spelling changes object existence"
+            );
+            if exists {
+                ensure!(
+                    path_object_id(native)? == path_object_id(ordinary)?,
+                    "Git path spelling changes object identity"
+                );
+                break;
+            }
+            native = native
+                .parent()
+                .context("Git native path has no existing ancestor")?;
+            ordinary = ordinary
+                .parent()
+                .context("Git path has no existing ancestor")?;
+        }
+        Ok(result)
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(path.to_owned())
+    }
+}
 pub(crate) fn git_result(anchor: &Path, args: &[&str]) -> Result<crate::runtime::CommandOutput> {
-    let mut spec = crate::runtime::CommandSpec::new("git").args(args.iter().copied());
-    spec.cwd = Some(anchor.to_owned());
+    let args = args
+        .iter()
+        .map(|arg| git_path(Path::new(arg)).map(PathBuf::into_os_string))
+        .collect::<Result<Vec<_>>>()?;
+    let mut spec = crate::runtime::CommandSpec::new("git").args(args);
+    spec.cwd = Some(git_path(anchor)?);
+    for name in [
+        "GIT_DIR",
+        "GIT_COMMON_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            spec.env
+                .insert(name.into(), git_path(Path::new(&value))?.into_os_string());
+        }
+    }
     spec.timeout = Duration::from_secs(20);
     spec.max_output = 8 * 1024 * 1024;
     crate::runtime::run(&spec)
@@ -169,7 +268,8 @@ pub fn git_paths(anchor: &Path) -> Result<Vec<PathBuf>> {
     };
     if let Some(expected) = expected {
         ensure!(
-            fs::canonicalize(expected)? == fs::canonicalize(&paths[0])?,
+            path_object_id(&fs::canonicalize(expected)?)?
+                == path_object_id(&fs::canonicalize(&paths[0])?)?,
             "Git administration discovery escaped the detected repository"
         );
     }

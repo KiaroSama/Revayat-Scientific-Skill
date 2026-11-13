@@ -20,9 +20,11 @@ pub use imports::qualify_registry_authority;
 #[path = "image/validation.rs"]
 mod validation;
 pub use validation::{
-    activation_worker_validation_fixture, check_default_activation_validation,
-    check_identity_validation, check_import_validation, check_manifest_validation,
-    check_module_activation_validation, check_static_validation, static_validation_fixture,
+    activation_worker_validation_fixture, check_activation_worker_validation,
+    check_checkpoint_validation, check_default_activation_validation, check_identity_validation,
+    check_import_validation, check_manifest_validation, check_module_activation_validation,
+    check_observation_validation, check_static_validation, check_validation,
+    static_validation_fixture,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

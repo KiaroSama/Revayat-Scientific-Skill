@@ -170,25 +170,29 @@ pub fn require_exit(
     anyhow::bail!("Windows {phase} failed exit={code} {errors} {output}")
 }
 #[derive(Debug)]
-pub struct OwnedCleanupFailure {
-    pub errors: Vec<SharedError>,
+pub struct OwnedCleanupFailure<E = SharedError> {
+    pub errors: Vec<E>,
 }
-impl fmt::Display for OwnedCleanupFailure {
+impl<E> fmt::Display for OwnedCleanupFailure<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("owned Windows operation/cleanup failed")
     }
 }
-impl Error for OwnedCleanupFailure {}
-#[derive(Debug)]
-pub struct QualifiedModuleCallbackFailure {
-    pub original: SharedError,
+impl<E: fmt::Debug> Error for OwnedCleanupFailure<E> {}
+pub struct QualifiedModuleCallbackFailure<E = SharedError> {
+    pub original: E,
 }
-impl fmt::Display for QualifiedModuleCallbackFailure {
+impl<E> fmt::Display for QualifiedModuleCallbackFailure<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("fixed module callback failed after qualified cleanup")
     }
 }
-impl Error for QualifiedModuleCallbackFailure {}
+impl<E> fmt::Debug for QualifiedModuleCallbackFailure<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+impl<E> Error for QualifiedModuleCallbackFailure<E> {}
 pub fn cleanup_failure(primary: Option<SharedError>, cleanup: Vec<SharedError>) -> SharedError {
     let mut errors = Vec::new();
     if let Some(error) = primary {

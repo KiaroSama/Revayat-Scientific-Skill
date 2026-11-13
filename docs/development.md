@@ -36,6 +36,20 @@ Release harnesses use ordinary optimized linking without per-harness LTO. This
 keeps compilation of the complete frozen inventory inside the collection deadline;
 the release binaries and release tests still use the same release profile.
 
+The pinned Rust 1.100 toolchain places test harnesses under
+`target/<profile>/build/<package>/<hash>/out`. Discovery uses Cargo's actual
+compiler-artifact JSON and verifies the requested profile and workspace manifest.
+The legacy `deps`/`examples` layout remains recognized explicitly. Final executable
+paths stay at `target/<profile>`; fixed companions resolve to that same profile,
+without searching arbitrary ancestors. Separate custom intermediate build roots
+are refused by this collector rather than admitted as unrelated target artifacts.
+
+The Gitleaks workflow added on main is retained with a Rust controller and native
+Git adapter. It verifies the pinned scanner archive, captures scanner output
+privately, checks the actual Git history child's completion receipt, and publishes
+location-only findings. PR ranges and complete fetched history remain distinct;
+missing receipts, scanner errors and inconsistent reports cannot become clean scans.
+
 ## Hosted checks
 
 CI runs for pushes, pull requests and manual dispatch. No path filter exempts

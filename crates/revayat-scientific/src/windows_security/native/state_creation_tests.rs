@@ -65,9 +65,14 @@ pub(super) fn compact_status<T>(result: &Result<T>) -> String {
     )
 }
 
-pub(super) fn compact_assignment_rows(result: &Result<Vec<String>>) -> String {
+pub(super) struct AssignmentMatrix {
+    rows: Vec<String>,
+    pub(super) private_lineage_qualified: bool,
+}
+
+pub(super) fn compact_assignment_rows(result: &Result<AssignmentMatrix>) -> String {
     match result {
-        Ok(rows) => rows.join("\n"),
+        Ok(matrix) => matrix.rows.join("\n"),
         Err(_) => compact_status(result),
     }
 }
@@ -147,14 +152,26 @@ fn state_creation_variant(path: &Path, sddl: Option<&str>) -> Result<()> {
     )
 }
 
-pub(super) fn state_creation_assignment_matrix(root: &Path, host: &str) -> Result<Vec<String>> {
-    let original = private_sddl(host, true)?;
+pub(super) fn state_creation_assignment_matrix(
+    root: &Path,
+    host: &str,
+) -> Result<AssignmentMatrix> {
+    let noninheritable = private_sddl(host, true)?;
+    ensure!(
+        noninheritable.contains("(D;;0x000C0000;;;S-1-3-4)"),
+        "private state owner denial is absent or inheritable"
+    );
+    // Keep the measured failing policy independent of the corrected production builder.
+    let original = noninheritable.replacen(
+        "(D;;0x000C0000;;;S-1-3-4)",
+        "(D;OICI;0x000C0000;;;S-1-3-4)",
+        1,
+    );
     let ownerless = original
         .strip_prefix(&format!("O:{host}"))
         .context("private assignment owner section absent")?;
     let grouped = original.replacen("D:", &format!("G:{host}D:"), 1);
-    let noninheritable = original.replace("(D;OICI;", "(D;;");
-    let grouped_noninheritable = grouped.replace("(D;OICI;", "(D;;");
+    let grouped_noninheritable = noninheritable.replacen("D:", &format!("G:{host}D:"), 1);
     let policies = [
         ("original", &original),
         ("noninheritable", &noninheritable),
@@ -162,6 +179,8 @@ pub(super) fn state_creation_assignment_matrix(root: &Path, host: &str) -> Resul
         ("grouped_noninheritable", &grouped_noninheritable),
     ];
     let mut observations = Vec::new();
+    let mut private_lineage_qualified = false;
+    let mut cleanup_complete = true;
     for (index, (parent_label, parent_sddl)) in policies.iter().enumerate() {
         let parent = root.join(format!("assignment-parent-{index}"));
         let parent_result = state_creation_variant(&parent, Some(parent_sddl));
@@ -179,6 +198,13 @@ pub(super) fn state_creation_assignment_matrix(root: &Path, host: &str) -> Resul
                     "unqualified candidate prevents record creation"
                 ))
             };
+            if *parent_label == "noninheritable" && child_label == "noninheritable" {
+                private_lineage_qualified = parent_result.is_ok()
+                    && parent_policy.is_ok()
+                    && creation.is_ok()
+                    && policy.is_ok()
+                    && record.is_ok();
+            }
             children.push(format!(
                 "parent={index} child={child_label} creation={} policy_and_denial={} durable_record={}",
                 compact_status(&creation), compact_status(&policy), compact_status(&record)
@@ -188,6 +214,7 @@ pub(super) fn state_creation_assignment_matrix(root: &Path, host: &str) -> Resul
         let ownerless = state_creation_variant(&parent.join("ownerless-child"), Some(ownerless));
         // Every create/readback/control is collected before this parent's explicit cleanup.
         let cleanup = fs::remove_dir_all(&parent).map_err(anyhow::Error::from);
+        cleanup_complete &= cleanup.is_ok();
         observations.push(format!(
             "parent={index} kind={parent_label} creation={} policy_and_denial={}",
             compact_status(&parent_result),
@@ -201,7 +228,10 @@ pub(super) fn state_creation_assignment_matrix(root: &Path, host: &str) -> Resul
             compact_status(&cleanup)
         ));
     }
-    Ok(observations)
+    Ok(AssignmentMatrix {
+        rows: observations,
+        private_lineage_qualified: private_lineage_qualified && cleanup_complete,
+    })
 }
 
 fn exact_assignment_policy(path: &Path, sddl: &str) -> Result<()> {

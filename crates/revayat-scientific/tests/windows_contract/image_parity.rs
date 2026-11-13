@@ -213,10 +213,7 @@ fn rust_authority_console_role_checks_real_import_structure_without_legacy_dll_a
 #[test]
 fn actual_current_profile_authority_headers_satisfy_bounded_rust_admission() {
     let executable = std::env::current_exe().unwrap();
-    let path = executable
-        .parent()
-        .unwrap()
-        .parent()
+    let path = revayat_scientific::executable_paths::binary_directory(&executable)
         .unwrap()
         .join("registry-authority.exe");
     let bytes =
@@ -445,10 +442,7 @@ fn cached_codeview_identity_binds_guid_age_name_and_entire_image_hash() {
 #[test]
 fn actual_current_profile_explicit_id2_image_has_exact_nonautomatic_manifest() {
     let executable = std::env::current_exe().unwrap();
-    let path = executable
-        .parent()
-        .unwrap()
-        .parent()
+    let path = revayat_scientific::executable_paths::binary_directory(&executable)
         .unwrap()
         .join("startup-explicit-id2.exe");
     let bytes = std::fs::read(&path).unwrap();

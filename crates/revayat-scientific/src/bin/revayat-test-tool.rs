@@ -260,7 +260,16 @@ fn main() {
                 .unwrap();
             }
             let mode = Path::new(&args[0]).file_stem().unwrap().to_string_lossy();
-            match mode.strip_prefix("browser-").unwrap_or("early") {
+            let default = if args[1] == "--headless"
+                && args
+                    .iter()
+                    .any(|argument| argument.starts_with("--user-data-dir="))
+            {
+                "protocol"
+            } else {
+                "early"
+            };
+            match mode.strip_prefix("browser-").unwrap_or(default) {
                 "protocol" => browser_protocol(&args),
                 "silent" => loop {
                     thread::sleep(Duration::from_secs(60));
