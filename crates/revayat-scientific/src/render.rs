@@ -424,10 +424,11 @@ pub fn discover_browser(explicit: Option<&str>) -> Result<PathBuf> {
 pub fn cli_render(args: &[String]) -> Result<i32> {
     ensure!(
         args.len() >= 2,
-        "render-html SOURCE OUTPUT [--browser EXECUTABLE] [--build-guard PATH]"
+        "render-html SOURCE OUTPUT [--engine auto|chromium|weasyprint] [--browser EXECUTABLE] [--build-guard PATH]"
     );
     let mut browser = None;
     let mut guard = None;
+    let mut engine = None;
     let mut index = 2;
     while index < args.len() {
         match args[index].as_str() {
@@ -441,21 +442,37 @@ pub fn cli_render(args: &[String]) -> Result<i32> {
             }
             "--engine" => {
                 index += 1;
+                engine = Some(args.get(index).context("engine value missing")?.as_str());
                 ensure!(
-                    args.get(index).map(String::as_str) == Some("chromium"),
-                    "native HTML engine must be chromium"
+                    [Some("auto"), Some("chromium"), Some("weasyprint")].contains(&engine),
+                    "HTML engine must be auto, chromium or weasyprint"
                 );
             }
             other => bail!("unknown render argument: {other}"),
         };
         index += 1;
     }
-    render_html(
-        Path::new(&args[0]),
-        Path::new(&args[1]),
-        &discover_browser(browser)?,
-        guard,
-    )?;
+    let selected = crate::build::select_source(Path::new(&args[0]), engine, browser)?;
+    match selected.engine.as_str() {
+        "chromium" => render_html(
+            &selected.source,
+            Path::new(&args[1]),
+            selected
+                .browser
+                .as_deref()
+                .context("selected browser unavailable")?,
+            guard,
+        )?,
+        "weasyprint" => crate::weasyprint_container::render_html(
+            &selected.source,
+            Path::new(&args[1]),
+            selected
+                .container
+                .context("selected WeasyPrint container unavailable")?,
+            guard,
+        )?,
+        _ => bail!("HTML rendering requires an HTML backend"),
+    }
     Ok(0)
 }
 

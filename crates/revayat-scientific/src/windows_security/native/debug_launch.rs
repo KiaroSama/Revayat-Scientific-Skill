@@ -152,6 +152,7 @@ fn observe_fixed(
         exited: false,
         exit_seen: false,
         retirement_attempted: false,
+        termination_requested: false,
         event_file_released: false,
         initial: false,
         entry,

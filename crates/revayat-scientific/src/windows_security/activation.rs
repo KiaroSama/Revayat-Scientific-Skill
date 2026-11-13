@@ -61,9 +61,19 @@ pub fn require_absent_thread_token(opened: bool, error: u32, token: usize) -> Re
     Ok(())
 }
 pub mod assembly;
+pub mod control;
 pub mod dispatch;
+pub mod dll;
+pub use dll::check_fixed_dll_validation;
 pub mod loader;
+pub mod self_result;
 pub mod threads;
+pub use self_result::check_policy_result_validation;
+#[path = "activation/validation.rs"]
+mod validation;
+pub use validation::{
+    FixedPathCall, check_startup_activation_validation, finalize_checked, report, startup_outcome,
+};
 
 pub fn creation_outcome(
     handle: usize,
@@ -118,25 +128,19 @@ pub fn finalize_comparison<'a>(
     cleanup: Vec<Box<dyn FnMut() -> Result<()> + 'a>>,
     emit: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
-    let mut errors: Vec<_> = primary.into_iter().collect();
-    if impersonating && let Err(error) = revert() {
-        errors.push(error);
-        fatal(); // Native callers must terminate, not return to cleanup under the wrong identity.
-        errors.push(anyhow::anyhow!(
-            "activation identity restoration did not terminate"
-        ));
-        return finish(errors);
-    }
-    for mut action in cleanup {
-        if let Err(error) = action() {
-            errors.push(error);
-        }
-    }
-    if let Err(error) = emit() {
-        errors.push(error);
-    }
-    finish(errors)
+    finalize_checked(
+        primary,
+        impersonating,
+        || revert().map(|()| true),
+        || {
+            fatal();
+            Ok(())
+        },
+        cleanup,
+        emit,
+    )
 }
+
 pub fn bounded_report(lines: &[String], newline: &str) -> Result<String> {
     ensure!(
         matches!(newline, "\n" | "\r\n") && lines.len() <= 15,
@@ -224,8 +228,12 @@ pub fn owned_trap_site(
 pub fn trap_qualifiers(status: u64) -> String {
     format!(
         "raw_dr6=0x{status:016X} rtm_bit_set={} bld_bit_set={} transaction_context=unknown",
-        status & 0x10000 != 0,
-        status & 0x800 != 0
+        if status & 0x10000 != 0 {
+            "True"
+        } else {
+            "False"
+        },
+        if status & 0x800 != 0 { "True" } else { "False" }
     )
 }
 #[derive(Default)]

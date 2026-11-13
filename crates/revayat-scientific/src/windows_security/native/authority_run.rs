@@ -1,5 +1,51 @@
 //! Fixed LPAC execution and exhaustive post-launch owned cleanup.
 use super::*;
+use crate::windows_security::preparation::{self, SourceEntry};
+
+fn validate_authority_source(image: &Path) -> Result<()> {
+    preparation::runtime_progress("leaf-check", "before", 0)?;
+    preparation::assert_source_path(image).map_err(preparation::controller_error)?;
+    ensure!(image.is_file(), "authority image is missing");
+    preparation::runtime_progress("leaf-check", "after", 1)
+}
+
+/// Reporting can fail before any authority child exists. Explicitly finalize the
+/// already acquired preparation owners instead of hiding close failures in Drop.
+fn reporting_cleanup_before_launch(
+    primary: anyhow::Error,
+    observer: &mut impl AuthorityObserver,
+    profile: &mut Profile,
+    registry: &mut super::super::fixture::RegistryFixture,
+    prepared: tempfile::TempDir,
+    foreign: tempfile::TempDir,
+    input: Option<&mut authority_image::AuthorityImage>,
+) -> Result<String> {
+    let mut errors = vec![primary];
+    // No child has been created, so no authority process can retain these resources.
+    let observed = observer.after_reap(true);
+    let uncertain = observed.is_err();
+    for result in [
+        observed,
+        input.map_or(Ok(()), |input| input.close()),
+        registry.close(),
+        prepared.close().map_err(Into::into),
+        foreign.close().map_err(Into::into),
+        if uncertain {
+            profile.retain()
+        } else {
+            profile.close()
+        },
+    ] {
+        if let Err(error) = result {
+            errors.push(error);
+        }
+    }
+    if errors.len() == 1 {
+        Err(errors.remove(0))
+    } else {
+        Err(crate::windows_security::activation::Failures { errors }.into())
+    }
+}
 
 /// Run only the fixed native verifier. A host launch cannot satisfy this API.
 /// Success requires the primary AND descendant's actual token/registry proofs.
@@ -7,8 +53,7 @@ pub fn run_registry_authority(image: &Path) -> Result<String> {
     run_observed(image, &mut NoObserver)
 }
 pub(crate) fn run_observed(image: &Path, observer: &mut impl AuthorityObserver) -> Result<String> {
-    plain_path(image)?;
-    ensure!(image.is_file(), "authority image is missing");
+    validate_authority_source(image)?;
     let profile = Profile::new()?;
     run_profile(image, observer, profile)
 }
@@ -17,8 +62,7 @@ pub fn run_owned_registry_authority(
     view: &super::super::state::NativeRunView,
 ) -> Result<String> {
     view.require()?;
-    plain_path(image)?;
-    ensure!(image.is_file(), "authority image is missing");
+    validate_authority_source(image)?;
     let profile = Profile::new_owned(view)?;
     run_profile(image, &mut NoObserver, profile)
 }
@@ -49,6 +93,17 @@ fn run_profile(
         .tempdir()?;
     protect_scratch(prepared.path(), &sid)?;
     let target = prepared.path().join("registry-authority.exe");
+    if let Err(primary) = preparation::runtime_progress("copy-authority", "before", 0) {
+        return reporting_cleanup_before_launch(
+            primary,
+            observer,
+            &mut profile,
+            &mut registry,
+            prepared,
+            foreign,
+            None,
+        );
+    }
     let source = crate::identity::file_identity(image, Some(8 * 1024 * 1024))?;
     let mut output = std::fs::OpenOptions::new()
         .create_new(true)
@@ -65,6 +120,28 @@ fn run_profile(
             && crate::identity::file_identity(image, Some(8 * 1024 * 1024))? == source,
         "authority image changed during preparation"
     );
+    // A value is produced only after the held source copy, flush, sync and both
+    // fingerprint checks succeeded. This is completion evidence, not the copy plan.
+    let reporting = preparation::measure_runtime_copy(
+        "copy-authority",
+        std::iter::once(Ok(SourceEntry {
+            path: target.clone(),
+            is_directory: false,
+            is_reparse_point: false,
+        })),
+        preparation::runtime_progress,
+    );
+    if let Err(primary) = reporting {
+        return reporting_cleanup_before_launch(
+            primary,
+            observer,
+            &mut profile,
+            &mut registry,
+            prepared,
+            foreign,
+            Some(&mut input),
+        );
+    }
     protect_image(&target, &sid)?;
     let mut target_image = authority_image::AuthorityImage::open(&target, &copied)?;
     let (mut stdout, mut stdout_writer) = pipe()?;
@@ -109,16 +186,13 @@ fn run_profile(
     let mut command = wide(format!("\"{}\"", target.display()));
     let cwd = wide(prepared.path());
     let root = std::env::var_os("SystemRoot").context("SystemRoot is required")?;
-    let mut environment = wide(format!(
-        "REVAYAT_AUTHORITY_FIXTURE={}\0REVAYAT_AUTHORITY_FOREIGN={}\0REVAYAT_AUTHORITY_NETWORK={}\0SystemRoot={}\0TEMP={}\0TMP={}\0WINDIR={}\0",
-        registry.name,
-        foreign_file.display(),
-        network.ports,
-        root.to_string_lossy(),
-        prepared.path().display(),
-        prepared.path().display(),
-        root.to_string_lossy()
-    ));
+    let mut environment = super::creation::authority_environment(
+        &root,
+        prepared.path(),
+        &registry.name,
+        &foreign_file,
+        &network.ports,
+    )?;
     let mut info = ProcessInfo::default();
     let mut job = WindowsJob::create(JobLimits::default())?;
     let mut restricted = Owned(null_mut());

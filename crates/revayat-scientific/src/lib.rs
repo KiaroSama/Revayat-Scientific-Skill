@@ -20,6 +20,7 @@ pub mod ci_tools;
 pub mod crop;
 pub mod distribution;
 pub mod distribution_paths;
+pub mod engine_discovery;
 pub mod fonts;
 pub mod html;
 pub mod html_scopes;
@@ -36,6 +37,7 @@ pub mod resource;
 pub mod terms;
 pub mod text_order;
 pub mod validation;
+pub mod weasyprint_container;
 pub mod windows_security;
 
 pub mod distribution_package;

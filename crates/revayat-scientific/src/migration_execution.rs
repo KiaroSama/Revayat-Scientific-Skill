@@ -24,6 +24,7 @@ use libtest::parse_filtered_execution;
 pub use libtest::{CaseOutcome, parse_test_execution};
 #[path = "migration_execution/native.rs"]
 mod native;
+pub use native::observe_linux_coverage;
 #[path = "migration_execution/selection.rs"]
 mod selection;
 pub use selection::select_equipped_cases;
@@ -82,6 +83,10 @@ fn command(root: &Path, program: impl Into<std::ffi::OsString>, timeout: Duratio
     spec.max_output = 16 * 1024 * 1024;
     // Discovery and unrelated subprocesses must never inherit a journal destination.
     spec.env_remove.push("REVAYAT_ORACLE_EVENT_DIR".into());
+    spec.env_remove.push("REVAYAT_ENGINE_EVENT_DIR".into());
+    spec.env_remove
+        .push("REVAYAT_RUNTIME_PREPARATION_EVENT_DIR".into());
+    spec.env_remove.push("REVAYAT_COVERAGE_EVENT_DIR".into());
     spec
 }
 
@@ -441,15 +446,11 @@ pub fn collect(
         report.error = Some("execution tier and ignored selection contradict".into());
         return write_execution_report(output, &report);
     }
-    if tier == "native" {
-        if profile != "debug" || !["linux", "windows"].contains(&std::env::consts::OS) {
-            report.error = Some("native execution requires a supported debug scope".into());
-            return write_execution_report(output, &report);
-        }
-        if cfg!(target_os = "linux") {
-            report.binaries.push(native::linux(timeout));
-            return write_execution_report(output, &report);
-        }
+    if tier == "native"
+        && (profile != "debug" || !["linux", "windows"].contains(&std::env::consts::OS))
+    {
+        report.error = Some("native execution requires a supported debug scope".into());
+        return write_execution_report(output, &report);
     }
     let artifacts = match timeout
         .checked_sub(started.elapsed())
@@ -466,6 +467,9 @@ pub fn collect(
         }
     };
     selection::validate_collection_targets(&artifacts, &mut report, output)?;
+    if tier == "native" && cfg!(target_os = "linux") {
+        return native::collect_linux(root, output, report, &artifacts, started, timeout);
+    }
     if tier == "native" && native::validate_targets(&artifacts).is_err() {
         report.error = Some("required native Windows harness missing".into());
         return write_execution_report(output, &report);
@@ -499,8 +503,10 @@ pub fn collect(
             }
         });
     }
-    if tier == "portable" && oracle_capture::publish(root, output, &report, &operations).is_err() {
-        report.error = Some("oracle operation evidence or publication incomplete".into());
+    if tier == "portable"
+        && oracle_capture::publish_all(root, output, &report, &operations).is_err()
+    {
+        report.error = Some("operation evidence or publication incomplete".into());
     }
     write_execution_report(output, &report)
 }

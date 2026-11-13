@@ -9,6 +9,8 @@ use revayat_scientific::{
 use std::{fs, path::Path, time::Duration};
 #[path = "support/runtime_cancellation.rs"]
 mod cancellation;
+#[path = "support/engine_discovery_contract.rs"]
+mod engine_discovery_contract;
 #[path = "support/runtime_build_fixture.rs"]
 mod fixture;
 mod runtime_support;
@@ -199,18 +201,7 @@ fn test_late_raster_failure_preserves_entire_previous_preview_batch() -> Result<
 }
 #[test]
 fn test_explicit_engine_discovery_does_not_probe_other_backends() -> Result<()> {
-    let f = Fixture::new()?;
-    for engine in ["chromium", "weasyprint"] {
-        let selection = build::select_source(
-            &f.source,
-            Some(engine),
-            Some(env!("CARGO_BIN_EXE_revayat-test-tool")),
-        )?;
-        assert_eq!(selection.engine, "chromium");
-        assert!(selection.container.is_none());
-        assert!(selection.browser.unwrap().is_absolute());
-    }
-    Ok(())
+    engine_discovery_contract::run()
 }
 #[test]
 fn test_both_native_shells_preserve_colliding_source_inputs() -> Result<()> {
@@ -506,7 +497,8 @@ fn test_windows_build_preserves_destination_on_failure() -> Result<()> {
 #[ignore = "requires prepared local Docker image and effective cgroup controls"]
 fn test_production_launch_enforces_isolation_and_cleans_owned_container() -> Result<()> {
     scientific::probe_output_integrity()?;
-    let proof = revayat_scientific::sandbox::probe()?;
+    let observation = revayat_scientific::migration::execution::observe_linux_coverage()?;
+    let proof = &observation["production"];
     assert_eq!(proof["verified"], true);
     assert_eq!(proof["checks"], 29);
     assert_eq!(proof["container_cleanup"], "verified");
@@ -572,20 +564,44 @@ fn test_surviving_owner_reaps_container_after_controller_is_killed() -> Result<(
     cancellation::surviving_owner_reaps_container()
 }
 #[test]
-#[ignore = "requires sandboxed native Chromium resource interception"]
+#[ignore = "requires isolated optional WeasyPrint and Poppler; preserves the original backend's physical-page contract"]
 fn test_native_html_resource_denial_preserves_previous_output() -> Result<()> {
     let f = Fixture::new()?;
     f.fonts()?;
-    let browser = render::discover_browser(None)?;
+    let config = tex::runtime_config()?;
     fs::write(
         &f.source,
         "<html lang=\"fa\" dir=\"rtl\"><style>@page{size:160mm 240mm}</style><p>این متن علمی برای بررسی است.</p></html>",
     )?;
-    render::render_html(&f.source, &f.output, &browser, None)?;
+    revayat_scientific::weasyprint_container::render_html(
+        &f.source,
+        &f.output,
+        config.clone(),
+        None,
+    )?;
+    let preview = f.root.join("weasyprint-first.png");
+    revayat_scientific::pdf::render_page(&f.output, 1, 110, &preview)?;
+    if let Some(evidence) = std::env::var_os("SCIENTIFIC_EVIDENCE_DIR") {
+        fs::create_dir_all(&evidence)?;
+        let destination = Path::new(&evidence).join("native-resource-denial.pdf");
+        anyhow::ensure!(
+            !revayat_scientific::identity::is_link(&destination)?,
+            "linked evidence output refused"
+        );
+        fs::copy(&f.output, destination)?;
+        fs::copy(&f.output, Path::new(&evidence).join("weasyprint.pdf"))?;
+        fs::copy(&preview, Path::new(&evidence).join("weasyprint-first.png"))?;
+    }
     let document = revayat_scientific::pdf::open_pdf(&f.output, false)?;
     let page = &revayat_scientific::pdf::geometry(&document)?[0];
-    assert!((page.rect[2] - 160.0 * 72.0 / 25.4).abs() < 0.5);
-    assert!((page.rect[3] - 240.0 * 72.0 / 25.4).abs() < 0.5);
+    assert!(
+        (page.rect[2] - 160.0 * 72.0 / 25.4).abs() < 0.5,
+        "native @page 160mm 240mm geometry: {page:?}"
+    );
+    assert!(
+        (page.rect[3] - 240.0 * 72.0 / 25.4).abs() < 0.5,
+        "native @page 160mm 240mm geometry: {page:?}"
+    );
     let approved = fs::read(&f.output)?;
     let outside_owner = tempfile::tempdir()?;
     let outside = outside_owner.path().join("outside.css");
@@ -595,7 +611,10 @@ fn test_native_html_resource_denial_preserves_previous_output() -> Result<()> {
         &f.source,
         format!("<html><style>@import url('{url}');</style><p>متن علمی</p></html>"),
     )?;
-    assert!(render::render_html(&f.source, &f.output, &browser, None).is_err());
+    assert!(
+        revayat_scientific::weasyprint_container::render_html(&f.source, &f.output, config, None)
+            .is_err()
+    );
     assert_eq!(fs::read(&f.output)?, approved);
     fs::remove_file(outside)?;
     f.clean()

@@ -3,32 +3,769 @@
   "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
   "source": "tests/security/windows/Check-RuntimePreparation.ps1",
   "kind": "requirement-site",
-  "original_helpers": ["Assert-SourcePath", "Assert-SourceTree", "Write-PreparationProgress", "Measure-RuntimeCopy", "Write-BootstrapProgress", "Invoke-BootstrapStage", "Invoke-BootstrapRecovery"],
+  "original_helpers": [
+    "Assert-SourcePath",
+    "Assert-SourceTree",
+    "Write-PreparationProgress",
+    "Measure-RuntimeCopy",
+    "Write-BootstrapProgress",
+    "Invoke-BootstrapStage",
+    "Invoke-BootstrapRecovery"
+  ],
   "helper_source": "tests/security/windows/Run-WindowsSecurity.ps1",
   "shared_prerequisites": "Original L5-L17 extracts exactly one actual production definition of every helper. Tests never launch the security entry point. Require sites inside loops remain sites, not inflated independent test counts.",
   "execution_status": "not-run",
-  "execution_contract": null,
-  "required_evidence": {"binding":["tested_sha","run_id","run_attempt","job","platform","tier","profile","baseline_commit","census_sha256"],"site_fields":["case_id","parent_id","obligation_ids","source","outcome","exit","cleanup_complete"],"success":"Every exact Require-site id is witnessed under the actual equivalent controller-helper test execution after all its original loop variants and preservation/order assertions. Parent identifies that real owning test. Expected failure variants pass only when original intended branch and retained primary/reporting failures are observed. Actual execution/passed/exit0/cleanup required; missing/duplicate/unknown site or wrong parent/scope/digest fails.","producer_status":"absent","consumer_rule":"Fail closed until actual production-helper counterparts and instrumented site evidence exist. Lifecycle/Receipt models and list/count metadata cannot synthesize site outcomes."},
-  "missing_evidence": "Existing windows_contract/bootstrap.rs and runtime_preparation.rs exercise Lifecycle, Receipt, Capture and plain_path, not all original actual production marker/recovery/copy helpers or their injected-failure products. Candidate names below are related partial evidence only; no equivalent Passed obligation is claimed.",
+  "execution_contract": {
+    "entries": [
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L26"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L27"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L32"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L33"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::write_bootstrap_progress"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L37"
+        ],
+        "variant_ids": [
+          "private-phase",
+          "private-state",
+          "negative-index",
+          "index-65"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L68"
+        ],
+        "variant_ids": [
+          "operation-0/marker--1",
+          "operation-0/marker-0",
+          "operation-0/marker-1",
+          "operation-0/marker-2",
+          "operation-0/marker-3",
+          "operation-1/marker--1",
+          "operation-1/marker-0",
+          "operation-1/marker-1",
+          "operation-1/marker-2",
+          "operation-1/marker-3",
+          "operation-2/marker--1",
+          "operation-2/marker-0",
+          "operation-2/marker-1",
+          "operation-2/marker-2",
+          "operation-2/marker-3"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L69"
+        ],
+        "variant_ids": [
+          "operation-0/marker--1",
+          "operation-0/marker-0",
+          "operation-0/marker-1",
+          "operation-0/marker-2",
+          "operation-0/marker-3",
+          "operation-1/marker--1",
+          "operation-1/marker-0",
+          "operation-1/marker-1",
+          "operation-1/marker-2",
+          "operation-1/marker-3",
+          "operation-2/marker--1",
+          "operation-2/marker-0",
+          "operation-2/marker-1",
+          "operation-2/marker-2",
+          "operation-2/marker-3"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L72"
+        ],
+        "variant_ids": [
+          "operation-0/marker--1",
+          "operation-0/marker-0",
+          "operation-0/marker-1",
+          "operation-0/marker-2",
+          "operation-0/marker-3",
+          "operation-1/marker--1",
+          "operation-1/marker-0",
+          "operation-1/marker-1",
+          "operation-1/marker-2",
+          "operation-1/marker-3",
+          "operation-2/marker--1",
+          "operation-2/marker-0",
+          "operation-2/marker-1",
+          "operation-2/marker-2",
+          "operation-2/marker-3"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L74"
+        ],
+        "variant_ids": [
+          "operation-0/marker-0",
+          "operation-0/marker-1",
+          "operation-0/marker-2",
+          "operation-0/marker-3",
+          "operation-1/marker--1",
+          "operation-1/marker-0",
+          "operation-1/marker-1",
+          "operation-1/marker-2",
+          "operation-1/marker-3",
+          "operation-2/marker--1",
+          "operation-2/marker-0",
+          "operation-2/marker-1",
+          "operation-2/marker-2",
+          "operation-2/marker-3"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L75"
+        ],
+        "variant_ids": [
+          "operation-1/marker--1",
+          "operation-1/marker-0",
+          "operation-1/marker-1",
+          "operation-1/marker-2",
+          "operation-1/marker-3",
+          "operation-2/marker--1",
+          "operation-2/marker-0",
+          "operation-2/marker-1",
+          "operation-2/marker-2",
+          "operation-2/marker-3"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L76"
+        ],
+        "variant_ids": [
+          "operation-0/marker-0",
+          "operation-0/marker-1",
+          "operation-0/marker-2",
+          "operation-0/marker-3",
+          "operation-1/marker-0",
+          "operation-2/marker-0",
+          "operation-2/marker-1",
+          "operation-2/marker-2"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::assert_source_tree"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L89"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::copy_runtime_tree"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L94"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::copy_runtime_tree"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L95"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::copy_runtime_tree"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L96"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::measure_runtime_copy"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L100"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::write_preparation_progress"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L105"
+        ],
+        "variant_ids": [
+          "private-phase",
+          "private-state",
+          "negative-count"
+        ],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::assert_source_tree_stream"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L115"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@119",
+        "parent_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/windows_security/preparation.rs::assert_source_tree_stream"
+        ],
+        "obligation_ids": [
+          "RUNTIME-PREPARATION-L119"
+        ],
+        "variant_ids": [],
+        "checks": []
+      }
+    ],
+    "scopes": [
+      {
+        "scope": {
+          "platform": "linux",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "entry_ids": [
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "linux",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "entry_ids": [
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "macos",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "entry_ids": [
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "macos",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "entry_ids": [
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "windows",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "entry_ids": [
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "windows",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+        "entry_ids": [
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
+        ]
+      }
+    ]
+  },
+  "required_evidence": {
+    "binding": [
+      "tested_sha",
+      "run_id",
+      "run_attempt",
+      "job",
+      "platform",
+      "tier",
+      "profile",
+      "baseline_commit",
+      "census_sha256"
+    ],
+    "site_fields": [
+      "case_id",
+      "parent_id",
+      "obligation_ids",
+      "source",
+      "outcome",
+      "exit",
+      "cleanup_complete"
+    ],
+    "success": "Every exact Require-site id is witnessed under the actual equivalent controller-helper test execution after all its original loop variants and preservation/order assertions. Parent identifies that real owning test. Expected failure variants pass only when original intended branch and retained primary/reporting failures are observed. Actual execution/passed/exit0/cleanup required; missing/duplicate/unknown site or wrong parent/scope/digest fails.",
+    "producer_status": "source-authored-unexecuted",
+    "consumer_rule": "Require the instrumented nineteen-site journal emitted only after actual production-helper assertions and fixture cleanup. Only the outer owned runner can finalize process cleanup; registration, inventory, Lifecycle and Receipt metadata cannot create outcomes."
+  },
   "sites": [
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@26","source_lines":"L25-L26","assertion":"Actual Invoke-BootstrapStage managed/index7 returns exact fixed-result operation value unchanged.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@27","source_lines":"L25-L27","assertion":"Exactly before then after WINDOWS_BOOTSTRAP managed index7 lines with platform newline.","candidate_rust_tests":["windows_contract::bootstrap::controller_markers_preserve_validation_order"],"status":"partial-state-model-not-marker-operation"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@32","source_lines":"L28-L32","assertion":"Thrown operation failure is the original exception object, not replaced by reporting.","candidate_rust_tests":["windows_contract::bootstrap::primary_and_recovery_failures_remain_ordered"],"status":"partial-receipt-not-operation-identity"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@33","source_lines":"L28-L33","assertion":"Failed managed/index8 stage emits only before, never after/completion.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@37","source_lines":"L34-L37","assertion":"Bootstrap marker refuses private/path phase, private state, index-1 and65; four negative variants at one site.","candidate_rust_tests":["windows_contract::bootstrap::failure_categories_are_closed_and_bounded"],"status":"partial-different-transport"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@68","source_lines":"L48-L68","assertion":"Actual recovery marker order equals exact reached prefix for operationFailure0/1/2 and failedMarker-1..3 products.","candidate_rust_tests":["windows_contract::bootstrap::recovery_requires_reaping"],"status":"partial-lifecycle-not-recovery-callback-product"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@69","source_lines":"L48-L69","assertion":"Compile called exactly once; recover called iff compile did not fail, regardless of marker-report failure.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@72","source_lines":"L70-L72","assertion":"Caught error exists iff operation or reached marker reporting failed; reporting failure cannot be hidden.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@74","source_lines":"L70-L74","assertion":"Aggregate failure contains exactly operationFailure-present plus reached-markerFailure-present count.","candidate_rust_tests":["windows_contract::bootstrap::timeout_and_cleanup_failure_are_both_preserved"],"status":"partial-unrelated-timeout-receipt"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@75","source_lines":"L73-L75","assertion":"Original compile/recovery operation exception object is first aggregate member.","candidate_rust_tests":["windows_contract::bootstrap::primary_and_recovery_failures_remain_ordered"],"status":"partial-receipt-only"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@76","source_lines":"L73-L76","assertion":"Original marker exception object retained as last aggregate member when reached reporting fails.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@89","source_lines":"L82-L89","assertion":"Actual streamed source-tree validator includes nested directory, empty directory, hidden file and Unicode/bracket filename; final python-lib after count4.","candidate_rust_tests":["windows_contract::runtime_preparation::streaming_copy_refuses_reparse_source"],"status":"partial-only-link-check"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@94","source_lines":"L90-L94","assertion":"Actual copy completion count counts two files, not directories, with copy-python-trees after count2.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@95","source_lines":"L82-L95","assertion":"Copied nested a[1].txt exact UTF8 fixture Persian bytes and source/destination layout preserved.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@96","source_lines":"L82-L96","assertion":"Empty source subdirectory exists as destination container after actual copy.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@100","source_lines":"L97-L101","assertion":"257 completed FileInfo pipeline values produce exactly copied count256 then after count257, no extra events or progress before completed thresholds.","candidate_rust_tests":[],"status":"missing"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@105","source_lines":"L102-L105","assertion":"Preparation marker rejects private/path phase, secret state and negative count; three variants one site.","candidate_rust_tests":["windows_contract::runtime_preparation::reported_metadata_is_closed"],"status":"partial-different-receipt"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@115","source_lines":"L107-L115","assertion":"Actual production source-tree validator rejects first reparse item with exact intended category before requesting next producer item that throws.","candidate_rust_tests":["windows_contract::runtime_preparation::streaming_copy_refuses_reparse_source"],"status":"partial-no-stream-producer-short-circuit"},
-    {"id":"tests/security/windows/Check-RuntimePreparation.ps1::Require@119","source_lines":"L116-L119","assertion":"Actual source-tree enumeration failure propagates unchanged instead of being swallowed.","candidate_rust_tests":[],"status":"missing"}
-  ]
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
+      "source_lines": "L25-L26",
+      "assertion": "Actual Invoke-BootstrapStage managed/index7 returns exact fixed-result operation value unchanged.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
+      "source_lines": "L25-L27",
+      "assertion": "Exactly before then after WINDOWS_BOOTSTRAP managed index7 lines with platform newline.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
+      "source_lines": "L28-L32",
+      "assertion": "Thrown operation failure is the original exception object, not replaced by reporting.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
+      "source_lines": "L28-L33",
+      "assertion": "Failed managed/index8 stage emits only before, never after/completion.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_stage",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
+      "source_lines": "L34-L37",
+      "assertion": "Bootstrap marker refuses private/path phase, private state, index-1 and65; four negative variants at one site.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::write_bootstrap_progress",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
+      "source_lines": "L48-L68",
+      "assertion": "Actual recovery marker order equals exact reached prefix for operationFailure0/1/2 and failedMarker-1..3 products.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
+      "source_lines": "L48-L69",
+      "assertion": "Compile called exactly once; recover called iff compile did not fail, regardless of marker-report failure.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
+      "source_lines": "L70-L72",
+      "assertion": "Caught error exists iff operation or reached marker reporting failed; reporting failure cannot be hidden.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
+      "source_lines": "L70-L74",
+      "assertion": "Aggregate failure contains exactly operationFailure-present plus reached-markerFailure-present count.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
+      "source_lines": "L73-L75",
+      "assertion": "Original compile/recovery operation exception object is first aggregate member.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
+      "source_lines": "L73-L76",
+      "assertion": "Original marker exception object retained as last aggregate member when reached reporting fails.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::invoke_bootstrap_recovery",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/bootstrap.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
+      "source_lines": "L82-L89",
+      "assertion": "Actual streamed source-tree validator includes nested directory, empty directory, hidden file and Unicode/bracket filename; final python-lib after count4.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::assert_source_tree",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
+      "source_lines": "L90-L94",
+      "assertion": "Actual copy completion count counts two files, not directories, with copy-python-trees after count2.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::copy_runtime_tree",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
+      "source_lines": "L82-L95",
+      "assertion": "Copied nested a[1].txt exact UTF8 fixture Persian bytes and source/destination layout preserved.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::copy_runtime_tree",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
+      "source_lines": "L82-L96",
+      "assertion": "Empty source subdirectory exists as destination container after actual copy.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::copy_runtime_tree",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
+      "source_lines": "L97-L101",
+      "assertion": "257 completed FileInfo pipeline values produce exactly copied count256 then after count257, no extra events or progress before completed thresholds.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::measure_runtime_copy",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
+      "source_lines": "L102-L105",
+      "assertion": "Preparation marker rejects private/path phase, secret state and negative count; three variants one site.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::write_preparation_progress",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
+      "source_lines": "L107-L115",
+      "assertion": "Actual production source-tree validator rejects first reparse item with exact intended category before requesting next producer item that throws.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::assert_source_tree_stream",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    },
+    {
+      "id": "tests/security/windows/Check-RuntimePreparation.ps1::Require@119",
+      "source_lines": "L116-L119",
+      "assertion": "Actual source-tree enumeration failure propagates unchanged instead of being swallowed.",
+      "candidate_rust_tests": [
+        "windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "status": "source-authored-unexecuted",
+      "rust_helper": "crates/revayat-scientific/src/windows_security/preparation.rs::assert_source_tree_stream",
+      "rust_assertions": "crates/revayat-scientific/tests/windows_contract/runtime_preparation.rs"
+    }
+  ],
+  "rust_helper_source": "crates/revayat-scientific/src/windows_security/preparation.rs",
+  "carrier_test": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
+  "required_witness": "instrumented-site-after-assertions",
+  "execution_contract_source": "Actual existing bootstrap::controller_markers_preserve_validation_order carrier invokes the seven production Rust helpers and runtime_preparation::assert_original_preparation_contract. SiteJournal.observe executes after each reached original assertion; recovery variant lists are accumulated after their own assertions across the complete operationFailure0..2 x failedMarker-1..3 product, retaining conditional reachability for L74-L76. The single journal is emitted only after every assertion and explicit owned fixture cleanup. Scope declarations are contracts, never execution evidence. Original libtest registrations and prior assertions remain present.",
+  "production_integration": {
+    "bootstrap_stage": "main.rs run_owned security-windows wraps actual NativeRunOwner::create prerequisites in invoke_bootstrap_stage; render-html also uses owned supervision.",
+    "recovery": "native/recovery.rs recover_profile uses invoke_bootstrap_recovery around the original proof/state/disposition validation and subsequent owned deletion/post-validation/close. recovery-compile names the prelinked Rust recovery context validation; it does not claim runtime compilation.",
+    "source_and_copy": "native/authority_run.rs replaces initial equivalent source validation with assert_source_path, emits leaf-check progress, and measures one completed copy only after held-source copy, flush, sync and both fingerprint checks. The fixed Rust-specific copy-authority phase contains no path data.",
+    "diagnostic_sink": "Production bootstrap/runtime progress uses stderr; the two native authority JSON records retain their exact stdout contract. Original marker byte/newline and metadata checks still execute against injected writers.",
+    "tree_scope": "The Rust native controller copies one held verifier image, not Python/PowerShell runtime trees. assert_source_tree and copy_runtime_tree operate on real filesystem trees and the original Unicode/hidden/empty fixture tests; no native tree-copy call site or obsolete runtime work is claimed."
+  }
 }

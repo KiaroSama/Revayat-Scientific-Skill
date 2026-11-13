@@ -1,5 +1,61 @@
 //! Checked copies, real backend invocation and owned finalization for XeTeX.
 use super::*;
+
+#[derive(Debug)]
+pub struct IsolatedRendererFailure {
+    pub code: i32,
+    pub category: &'static str,
+}
+impl std::fmt::Display for IsolatedRendererFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "isolated renderer failed (exit_code={}, category={})",
+            self.code, self.category
+        )
+    }
+}
+impl std::error::Error for IsolatedRendererFailure {}
+/// Run an already checked, closed input tree with the production finite output
+/// mount and ownership protocol. The caller prepares `input/` and `output/` and
+/// remains responsible for validating and publishing its returned artifacts.
+pub fn execute_prepared_job(
+    config: &RuntimeConfig,
+    stage: tempfile::TempDir,
+    entry_args: &[&str],
+) -> Result<tempfile::TempDir> {
+    let directory = stage.path();
+    for name in ["input", "output"] {
+        let path = directory.join(name);
+        ensure!(
+            path.is_dir() && !is_link(&path)?,
+            "invalid prepared isolated job directory"
+        );
+    }
+    let run_id = crate::tex_supervisor::new_token();
+    let receipt = crate::tex_supervisor::register(config, directory, &run_id)?;
+    let operation = execute_prepared_with(config, directory, &run_id, entry_args, &mut call)
+        .and_then(|(code, _)| {
+            if code != 0 {
+                return Err(IsolatedRendererFailure {
+                    code,
+                    category: failure_class(&directory.join("output"))?,
+                }
+                .into());
+            }
+            Ok(())
+        });
+    let cleanup = cleanup(config, directory, &run_id, false);
+    let (stage, ()) = finalize::finish_stage(
+        stage,
+        &run_id,
+        operation,
+        cleanup,
+        || crate::tex_supervisor::acknowledge(receipt.as_deref()),
+        finalize::recovery,
+    )?;
+    Ok(stage)
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TexBoundary {
     BeforeCopy,
@@ -172,9 +228,9 @@ pub fn compile_document_with_lifecycle(
         BuildGuard::check(path, Some(&snapshots))?;
     }
     boundary(TexBoundary::BeforeBackend, &source, &directory)?;
-    let arguments = run_arguments(&config, &directory, STAGED_MAIN, &run_id)?;
     let receipt = register(&config, &directory, &run_id)?;
-    let rendered = execute(&arguments, INNER_TIMEOUT + 30);
+    let engine_source = format!("/input/{STAGED_MAIN}");
+    let rendered = execute_prepared_with(&config, &directory, &run_id, &[&engine_source], execute);
     let after = boundary(TexBoundary::AfterBackend, &source, &directory);
     let rendered = rendered.and_then(|(code, text)| {
         if code != 0 {

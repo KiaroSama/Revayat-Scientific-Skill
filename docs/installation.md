@@ -47,7 +47,14 @@ cargo run --locked --release --bin revayat-scientific -- package --output dist/r
 
 The ZIP root is `revayat-scientific/`. It includes the collected native main executable and, on Linux/macOS, its adjacent `bin/revayat-process-owner`, plus skill instructions, eligible references/assets/agent metadata, `LICENSE` and `NOTICE.md`. ZIP entries use Unix creator metadata, `0755` for `bin/` and `0644` for data; use an extractor that preserves executable bits. Choose the archive for the target operating system and architecture. Collection refuses payloads above 64 MiB and bounds source-tree entries/files; the staged archive is reopened and checked against exact collected members, sizes and hashes before recoverable publication.
 
-Packaging does not bundle external engines, installed fonts, job data, logs, credentials, hidden files or build caches. Font delivery is a separate licensed/provenance-checked operation. HTML rendering needs a sandboxed Chromium-family browser; TeX needs the supported Linux Docker/Podman image with effective resource controls, not an unrestricted host XeLaTeX fallback. Poppler provides required PDF verification/extraction; OCR needs Tesseract language data and independent DOCX rendering needs LibreOffice. Installers do not provision these tools.
+Packaging does not bundle external engines, installed fonts, job data, logs, credentials, hidden files or build caches. Font delivery is a separate licensed/provenance-checked operation. HTML rendering uses a sandboxed Chromium-family browser or the actual optional WeasyPrint engine inside the supported Linux Docker/Podman image. TeX uses that image with effective resource controls and a finite aggregate output tmpfs. External WeasyPrint/Python image packages do not require host Python or owned Python scripts. Poppler provides required PDF verification/extraction; OCR needs Tesseract language data and independent DOCX rendering needs LibreOffice. Installers do not provision these tools.
+
+The WeasyPrint adapter admits a closed static resource view. It refuses `srcset`
+and `imagesrcset`, XML stylesheet processing instructions, ambiguous SVG style
+markup/entities, incompatible text encodings and CSS expressions that synthesize
+external resource URLs. Ordinary local HTML, CSS, fonts, images, SVG references
+and bounded data resources pass through the same checked resource policy. Resolve
+unsupported resource syntax in the source before selecting this backend.
 
 Installed/extracted CLI, companion byte/mode/version and real-document regressions are authored but remain unexecuted in this source checkpoint. Neither archive construction nor `doctor` discovery establishes successful document output, effective containment or signed-release trust.
 

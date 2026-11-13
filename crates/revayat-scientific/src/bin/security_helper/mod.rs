@@ -270,8 +270,12 @@ pub fn preflight_then_worker() -> io::Result<()> {
     if probe.checks != 39 {
         return Err(io::Error::other("helper control inventory mismatch"));
     }
+    let deadline = fs::read("/proc/1/cmdline")?;
+    if deadline != b"/usr/bin/timeout\0--signal=TERM\0--kill-after=2s\090s\0/usr/local/bin/revayat-sandbox-probe\0--helper-entry\0" {
+        return Err(io::Error::other("helper wall deadline is not the exact trusted PID1 configuration"));
+    }
     println!(
-        "{{\"phase\":\"helper-preflight\",\"status\":\"passed\",\"checks\":{},\"environment_names\":7,\"scratch_bytes\":134217728,\"file_bytes\":67108864}}",
+        "{{\"phase\":\"helper-preflight\",\"status\":\"passed\",\"checks\":{},\"environment_names\":7,\"scratch_bytes\":134217728,\"file_bytes\":67108864,\"wall_seconds\":90,\"kill_after_seconds\":2,\"wall_configuration_verified\":true}}",
         probe.checks
     );
     io::stdout().flush()?;

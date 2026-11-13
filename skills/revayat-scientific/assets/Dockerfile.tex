@@ -10,7 +10,7 @@ FROM debian:trixie-slim
 LABEL org.revayat.tex.toolchain="1"
 
 RUN ["/usr/bin/apt-get", "update"]
-RUN ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "texlive-xetex", "texlive-lang-arabic", "texlive-latex-extra", "texlive-fonts-recommended", "fonts-vazirmatn", "fonts-texgyre", "fonts-dejavu-core", "fontconfig", "coreutils"]
+RUN ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "texlive-xetex", "texlive-lang-arabic", "texlive-latex-extra", "texlive-fonts-recommended", "fonts-vazirmatn", "fonts-texgyre", "fonts-dejavu-core", "fontconfig", "coreutils", "weasyprint"]
 RUN ["/usr/bin/test", "-s", "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf"]
 RUN ["/usr/bin/test", "-s", "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf"]
 RUN ["/usr/bin/test", "-s", "/usr/share/texlive/texmf-dist/fonts/tfm/adobe/zapfding/pzdr.tfm"]

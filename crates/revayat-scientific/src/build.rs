@@ -1,4 +1,6 @@
 //! Bind checked input snapshots, reserved destinations and exact renderer bytes.
+#[path = "engine_production.rs"]
+mod engines;
 #[path = "build_guard.rs"]
 mod guard;
 use crate::identity::{file_identity, is_link};
@@ -105,13 +107,7 @@ pub fn select_source_with_available(
     requested: Option<&str>,
     available: &BTreeSet<String>,
 ) -> Result<(PathBuf, String)> {
-    let requested = requested.map(|engine| {
-        if engine == "weasyprint" {
-            "chromium"
-        } else {
-            engine
-        }
-    });
+    let requested = requested.filter(|engine| *engine != "auto");
     let mut source = source.canonicalize()?;
     let tex = source
         .extension()
@@ -124,8 +120,8 @@ pub fn select_source_with_available(
     );
     if let Some(engine) = requested {
         ensure!(
-            engine == "tex" || engine == "chromium",
-            "native PDF engine must be tex or chromium"
+            ["tex", "chromium", "weasyprint"].contains(&engine),
+            "PDF engine must be tex, chromium or weasyprint"
         );
         ensure!(
             available.contains(engine),
@@ -148,6 +144,7 @@ pub fn select_source_with_available(
     }
     let engine = requested
         .or_else(|| available.contains("chromium").then_some("chromium"))
+        .or_else(|| available.contains("weasyprint").then_some("weasyprint"))
         .context("no compatible PDF renderer available")?;
     Ok((source, engine.into()))
 }
@@ -159,62 +156,23 @@ pub fn select_source(
     engine: Option<&str>,
     browser: Option<&str>,
 ) -> Result<Selection> {
-    let engine = engine.map(|engine| {
-        if engine == "weasyprint" {
-            "chromium"
-        } else {
-            engine
-        }
-    });
-    let source = source.canonicalize()?;
-    let tex = source
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("tex"));
-    ensure!(
-        tex || source
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("html") || e.eq_ignore_ascii_case("htm")),
-        "expected existing .tex or .html source"
-    );
-    if let Some(engine) = engine {
-        ensure!(
-            engine == "tex" || engine == "chromium",
-            "native PDF engine must be tex or chromium"
-        );
-    }
-    if engine == Some("tex") {
-        ensure!(tex, "tex engine requires TeX source");
-        let config = crate::tex_container::runtime_config()?;
-        let (source, engine) =
-            select_source_with_available(&source, engine, &BTreeSet::from(["tex".into()]))?;
-        return Ok(Selection {
-            source,
-            engine,
-            browser: None,
-            container: Some(config),
-        });
-    }
-    if tex
-        && engine.is_none()
-        && let Ok(config) = crate::tex_container::runtime_config()
-    {
-        let (source, engine) =
-            select_source_with_available(&source, engine, &BTreeSet::from(["tex".into()]))?;
-        return Ok(Selection {
-            source,
-            engine,
-            browser: None,
-            container: Some(config),
-        });
-    }
-    let browser = crate::render::discover_browser(browser)?;
-    let (source, engine) =
-        select_source_with_available(&source, engine, &BTreeSet::from(["chromium".into()]))?;
+    let discovered = engines::discover(engine, browser)?;
+    let available = discovered
+        .engines
+        .iter()
+        .map(|engine| (*engine).into())
+        .collect();
+    let (source, engine) = select_source_with_available(source, engine, &available)?;
+    let container = match engine.as_str() {
+        "tex" => discovered.tex,
+        "weasyprint" => discovered.weasyprint,
+        _ => None,
+    };
     Ok(Selection {
         source,
         engine,
-        browser: Some(browser),
-        container: None,
+        browser: discovered.browser,
+        container,
     })
 }
 
@@ -254,6 +212,16 @@ pub fn cli_build(args: &[String]) -> Result<i32> {
                     &selection.source,
                     working,
                     selection.container.clone(),
+                    Some(record),
+                )
+            } else if selection.engine == "weasyprint" {
+                crate::weasyprint_container::render_html(
+                    &selection.source,
+                    working,
+                    selection
+                        .container
+                        .clone()
+                        .context("selected WeasyPrint container unavailable")?,
                     Some(record),
                 )
             } else {

@@ -180,10 +180,10 @@
     },
     {
       "repository": "PDFMathTranslate/PDFMathTranslate",
-      "commit": "be166d351ab0ac5aec41dabef321a43ec8456fbb",
-      "committed_at": "2026-11-10T18:11:12Z",
+      "commit": "38401fb95858b02918846837bbb61ca6e9eb4d41",
+      "committed_at": "2026-11-10T23:18:23Z",
       "subject": "chore: update star history [skip ci]",
-      "commit_url": "https://github.com/PDFMathTranslate/PDFMathTranslate/commit/be166d351ab0ac5aec41dabef321a43ec8456fbb"
+      "commit_url": "https://github.com/PDFMathTranslate/PDFMathTranslate/commit/38401fb95858b02918846837bbb61ca6e9eb4d41"
     },
     {
       "repository": "ocrmypdf/OCRmyPDF",
@@ -215,10 +215,10 @@
     },
     {
       "repository": "github/spec-kit",
-      "commit": "0226ff65b9d670d55fb06334e659866f0f3b53b9",
-      "committed_at": "2026-11-10T21:02:50Z",
-      "subject": "chore: limit automatic Python 3.11 tests to Linux (#5367)",
-      "commit_url": "https://github.com/github/spec-kit/commit/0226ff65b9d670d55fb06334e659866f0f3b53b9"
+      "commit": "f29319d550d1f05404f7184b92e995600ca2293f",
+      "committed_at": "2026-11-10T23:14:56Z",
+      "subject": "[extension] Add A·I·DID·IT — Agile Expansion Pack extension to community catalog (#5375)",
+      "commit_url": "https://github.com/github/spec-kit/commit/f29319d550d1f05404f7184b92e995600ca2293f"
     },
     {
       "repository": "docling-project/docling",

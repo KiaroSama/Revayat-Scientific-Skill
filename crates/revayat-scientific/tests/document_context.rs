@@ -13,6 +13,12 @@ fn test_selection_honors_explicit_engine_and_actual_source() {
     fs::write(&html, "<html></html>").unwrap();
     let chromium = BTreeSet::from(["chromium".to_owned()]);
     let both = BTreeSet::from(["tex".to_owned(), "chromium".to_owned()]);
+    let weasyprint = BTreeSet::from(["weasyprint".to_owned()]);
+    let all = BTreeSet::from([
+        "tex".to_owned(),
+        "chromium".to_owned(),
+        "weasyprint".to_owned(),
+    ]);
     assert_eq!(
         select_source_with_available(&tex, None, &chromium).unwrap(),
         (html.clone(), "chromium".into())
@@ -27,23 +33,34 @@ fn test_selection_honors_explicit_engine_and_actual_source() {
             .is_err()
     );
     assert!(select_source_with_available(&tex, Some("tex"), &chromium).is_err());
-    // The approved compatibility spelling reports the actual renderer, not WeasyPrint.
+    // Optional external WeasyPrint retains its renderer identity and requires
+    // its own successful discovery capability; Chromium never satisfies it.
     for source in [&tex, &html] {
         assert_eq!(
-            select_source_with_available(source, Some("weasyprint"), &both).unwrap(),
+            select_source_with_available(source, Some("weasyprint"), &all).unwrap(),
+            (html.clone(), "weasyprint".into())
+        );
+        assert!(select_source_with_available(source, Some("weasyprint"), &both).is_err());
+        for requested in [None, Some("auto"), Some("weasyprint")] {
+            assert_eq!(
+                select_source_with_available(source, requested, &weasyprint).unwrap(),
+                (html.clone(), "weasyprint".into())
+            );
+        }
+    }
+    for requested in [None, Some("auto")] {
+        assert_eq!(
+            select_source_with_available(&tex, requested, &all).unwrap(),
+            (tex.clone(), "tex".into())
+        );
+        assert_eq!(
+            select_source_with_available(&html, requested, &all).unwrap(),
             (html.clone(), "chromium".into())
         );
-        assert!(
-            select_source_with_available(
-                source,
-                Some("weasyprint"),
-                &BTreeSet::from(["tex".into()])
-            )
-            .is_err()
-        );
     }
+    assert!(select_source_with_available(&html, Some("unknown"), &all).is_err());
     fs::remove_file(&html).unwrap();
-    assert!(select_source_with_available(&tex, Some("weasyprint"), &both).is_err());
+    assert!(select_source_with_available(&tex, Some("weasyprint"), &weasyprint).is_err());
 }
 #[test]
 fn test_nested_prose_and_repeated_includes_keep_order_and_location() {

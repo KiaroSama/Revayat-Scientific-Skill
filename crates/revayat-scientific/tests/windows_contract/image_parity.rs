@@ -131,6 +131,7 @@ fn malformed_x64_headers_sections_and_unbacked_rvas_are_refused() {
 
 #[test]
 fn imports_reject_duplicates_delay_directories_private_names_and_profile_drift() {
+    check_import_validation().unwrap();
     let bytes = imports(&["KERNEL32.dll", "ntdll.dll", "advapi32.dll"]);
     let image = PeImage::parse(&bytes, 1).unwrap();
     assert_eq!(
@@ -291,6 +292,9 @@ fn export_selection_uses_unbiased_ordinals_and_rejects_forwarders() {
 
 #[test]
 fn manifest_ids_languages_payloads_and_disjoint_resource_spans_remain_bound() {
+    check_manifest_validation().unwrap();
+    check_default_activation_validation().unwrap();
+    check_module_activation_validation().unwrap();
     for id in [1, 2, 101] {
         let bytes = manifest(id);
         let image = PeImage::parse(&bytes, 1).unwrap();
@@ -335,6 +339,7 @@ fn manifest_ids_languages_payloads_and_disjoint_resource_spans_remain_bound() {
 
 #[test]
 fn static_records_bind_bytes_and_window_without_exposing_operands() {
+    check_static_validation().unwrap();
     let bytes = fixture();
     let image = PeImage::parse(&bytes, 1).unwrap();
     let slice = image.static_slice(0x1000).unwrap();
@@ -370,6 +375,7 @@ fn static_records_bind_bytes_and_window_without_exposing_operands() {
 
 #[test]
 fn cached_codeview_identity_binds_guid_age_name_and_entire_image_hash() {
+    check_identity_validation().unwrap();
     let mut bytes = fixture();
     put(&mut bytes, 0x88, 0x12345678);
     put(&mut bytes, 0x138, 0x1400);

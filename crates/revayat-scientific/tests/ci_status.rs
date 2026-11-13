@@ -420,18 +420,28 @@ impl Drop for HttpServer {
     }
 }
 fn http_fixture(code: &str, extra: &str, body: Vec<u8>) -> (String, HttpServer) {
+    let length = body.len();
+    http_fixture_framed(code, extra, body, Some(length))
+}
+fn http_fixture_framed(
+    code: &str,
+    extra: &str,
+    body: Vec<u8>,
+    declared_length: Option<usize>,
+) -> (String, HttpServer) {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/", listener.local_addr().unwrap());
-    let header = format!(
-        "HTTP/1.1 {code}\r\nContent-Length: {}\r\nConnection: close\r\n{extra}\r\n",
-        body.len()
-    );
+    let length = declared_length
+        .map(|length| format!("Content-Length: {length}\r\n"))
+        .unwrap_or_default();
+    let header = format!("HTTP/1.1 {code}\r\n{length}Connection: close\r\n{extra}\r\n");
     listener.set_nonblocking(true).unwrap();
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let cancellation = cancelled.clone();
     let thread = std::thread::spawn(move || {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(ci::HTTP_TIMEOUT_SECONDS);
         let mut connection = loop {
             if cancellation.load(std::sync::atomic::Ordering::Relaxed) {
                 return Vec::new();
@@ -489,6 +499,7 @@ fn http_fixture(code: &str, extra: &str, body: Vec<u8>) -> (String, HttpServer) 
                 break;
             }
         }
+        let _ = connection.shutdown(std::net::Shutdown::Write);
         request
     });
     (
@@ -511,6 +522,7 @@ fn test_http_timeout_cap_utf8_and_secret_safe_errors() {
     assert!(!error.contains("private-test-token"));
     assert!(error.contains("invalid GitHub API path"));
     assert_eq!(ci::HTTP_TIMEOUT_SECONDS, 15);
+    assert_eq!(ci::HTTP_RESPONSE_MAX_BYTES, 8 * 1024 * 1024);
     for (code, body, expected) in [
         ("200 OK", b"{\"ok\":true}".to_vec(), None),
         ("200 OK", vec![255], Some("UTF-8 JSON")),
@@ -525,18 +537,42 @@ fn test_http_timeout_cap_utf8_and_secret_safe_errors() {
             Some("HTTP 403"),
         ),
     ] {
+        let body_bytes = body.len();
         let (url, server) = http_fixture(code, "", body);
         let response = ci::status_client().unwrap().get(url).send().unwrap();
         let result = ci::decode_response(response);
         server.join().unwrap();
         if let Some(expected) = expected {
             let error = result.unwrap_err().to_string();
-            assert!(error.contains(expected), "{error}");
+            assert!(
+                error.contains(expected),
+                "HTTP fixture {code} body_bytes={body_bytes} expected={expected}: {error}"
+            );
             assert!(!error.contains("private-test-token"));
             assert!(!error.contains("secret response"));
         } else {
             assert_eq!(result.unwrap(), json!({"ok":true}));
         }
+    }
+    // Declared oversize must win even if the peer sends a short/truncated body;
+    // an absent Content-Length must still exercise the actual streaming bound.
+    for (body, declared_length) in [
+        (b"{\"ok\":true}".to_vec(), Some(8 * 1024 * 1024 + 1)),
+        (vec![b'x'; 8 * 1024 * 1024 + 1], None),
+    ] {
+        let (url, server) = http_fixture_framed("200 OK", "", body, declared_length);
+        let response = ci::status_client().unwrap().get(url).send().unwrap();
+        assert_eq!(
+            response.content_length(),
+            declared_length.map(|length| length as u64)
+        );
+        let error = ci::decode_response(response).unwrap_err().to_string();
+        server.join().unwrap();
+        assert!(
+            error.contains("exceeded 8 MiB"),
+            "framing={declared_length:?}: {error}"
+        );
+        assert!(!error.contains("private-test-token") && !error.contains("secret response"));
     }
 }
 #[test]

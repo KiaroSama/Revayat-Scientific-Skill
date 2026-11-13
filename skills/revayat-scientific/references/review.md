@@ -45,6 +45,12 @@ original language** as an additional diagnostic, then compare with the actual
 original. English pivot agreement or the same model agreeing with itself is not
 independent evidence. Unreadable source material remains unresolved.
 
+House style never changes the force of an attributed source claim. A wording
+preference can select an equivalent expression, but cannot remove uncertainty,
+add caution absent from the source, or turn a negative finding into equivalence.
+Keep the researcher's or model's own inference separate from the translated
+source; a smoother transition does not authorize a new scientific relationship.
+
 ### Citation evidence crosswalk
 
 For each reviewed citation, record its original location/key and target location

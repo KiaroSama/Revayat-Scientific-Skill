@@ -22,6 +22,7 @@ pub const REQUIRED_JOBS: &[&str] = &[
 ];
 pub const SUMMARY: &str = "ci/manual-summary";
 pub const HTTP_TIMEOUT_SECONDS: u64 = 15;
+pub const HTTP_RESPONSE_MAX_BYTES: usize = 8 * 1024 * 1024;
 pub fn status_client() -> Result<reqwest::blocking::Client> {
     Ok(reqwest::blocking::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -34,15 +35,23 @@ pub fn decode_response(response: reqwest::blocking::Response) -> Result<Value> {
         "GitHub status API returned HTTP {}",
         response.status().as_u16()
     );
-    let mut raw = Vec::new();
-    response
-        .take(8 * 1024 * 1024 + 1)
-        .read_to_end(&mut raw)
-        .map_err(|_| anyhow::anyhow!("GitHub status API read failed"))?;
+    // A declared oversize is already a refusal. Do not wait for a body that
+    // may be truncated/reset and turn that known limit into a transport error.
     ensure!(
-        raw.len() <= 8 * 1024 * 1024,
+        response
+            .content_length()
+            .is_none_or(|length| length <= HTTP_RESPONSE_MAX_BYTES as u64),
         "GitHub status API response exceeded 8 MiB"
     );
+    let mut raw = Vec::new();
+    let read = response
+        .take((HTTP_RESPONSE_MAX_BYTES + 1) as u64)
+        .read_to_end(&mut raw);
+    ensure!(
+        raw.len() <= HTTP_RESPONSE_MAX_BYTES,
+        "GitHub status API response exceeded 8 MiB"
+    );
+    read.map_err(|_| anyhow::anyhow!("GitHub status API read failed"))?;
     let value: Value =
         serde_json::from_slice(&raw).context("GitHub status API response is not UTF-8 JSON")?;
     ensure!(value.is_object(), "GitHub response must be an object");

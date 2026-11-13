@@ -109,16 +109,23 @@ impl Owner {
         let pending_exit = self.pending.is_some_and(|event| event.kind == 5);
         let wait = unsafe { WaitForSingleObject(self.process, 0) };
         if wait == 258 {
-            let success = unsafe { api::TerminateProcess(self.process, 125) };
-            let error = if success == 0 {
-                Some(unsafe { GetLastError() })
-            } else {
-                None
-            };
-            if success == 0 {
-                errors.push(anyhow::anyhow!(
-                    "debug child termination failed winerror={error:?}"
-                ));
+            if let Err(error) = crate::windows_security::diagnostic_validation::request_termination(
+                &mut self.termination_requested,
+                || {
+                    let success = unsafe { api::TerminateProcess(self.process, 125) };
+                    let error = if success == 0 {
+                        Some(unsafe { GetLastError() })
+                    } else {
+                        None
+                    };
+                    ensure!(
+                        success != 0,
+                        "debug child termination failed winerror={error:?}"
+                    );
+                    Ok(())
+                },
+            ) {
+                errors.push(error);
             }
         } else if wait != 0 {
             errors.push(anyhow::anyhow!("debug child cleanup wait failed"));

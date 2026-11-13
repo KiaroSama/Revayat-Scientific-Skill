@@ -1,96 +1,17 @@
 //! Durable profile intent and private state contracts. Native execution is hosted only.
 use super::*;
 
-fn native_private_child(parent: &Pin, name: &str, user: &str) -> Result<()> {
-    use registry_authority::native::{Attributes, Unicode};
-    use std::os::windows::io::AsRawHandle;
-
-    #[repr(C)]
-    struct IoStatus {
-        status: usize,
-        information: usize,
-    }
-    #[link(name = "ntdll")]
-    unsafe extern "system" {
-        fn NtCreateFile(
-            handle: *mut Handle,
-            access: u32,
-            attributes: *const Attributes,
-            io: *mut IoStatus,
-            allocation: Handle,
-            flags: u32,
-            share: u32,
-            disposition: u32,
-            options: u32,
-            ea: Handle,
-            ea_length: u32,
-        ) -> i32;
-    }
-    parent.require()?;
-    let path = parent.path.join(name);
-    let name = wide(name);
-    let text = Unicode {
-        length: ((name.len() - 1) * 2) as u16,
-        maximum: (name.len() * 2) as u16,
-        buffer: name.as_ptr(),
-    };
-    let mut descriptor = Descriptor::new(&private_sddl(user, true)?)?;
-    let attributes = Attributes {
-        length: size_of::<Attributes>() as u32,
-        root: parent.file.as_ref().unwrap().as_raw_handle(),
-        name: &text,
-        flags: 0x1040,
-        descriptor: descriptor.0,
-        qos: null_mut(),
-    };
-    let mut raw = null_mut();
-    let mut io = IoStatus {
-        status: usize::MAX,
-        information: 0,
-    };
-    let returned = unsafe {
-        NtCreateFile(
-            &mut raw,
-            0x120080,
-            &attributes,
-            &mut io,
-            null_mut(),
-            0x80,
-            3,
-            2,
-            0x200021,
-            null_mut(),
-            0,
-        )
-    };
-    if returned == 0x103 {
-        std::process::abort();
-    }
-    let result = (|| {
-        ensure!(
-            returned == 0
-                && io.status as u32 == 0
-                && io.information == 2
-                && !raw.is_null()
-                && raw as isize != -1,
-            "native private child returned={:08X} completed={:08X} information={}",
-            returned as u32,
-            io.status as u32,
-            io.information
-        );
-        let pin = Pin::open(&path, true)?;
-        private(pin.file.as_ref().unwrap(), user, true)
-    })();
-    let cleanup = if raw.is_null() || raw as isize == -1 || unsafe { CloseHandle(raw) } != 0 {
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!("native private child handle close failed"))
-    };
-    finish(finish(result, cleanup), descriptor.close())
-}
+#[cfg(test)]
+#[path = "state_creation_tests.rs"]
+mod creation;
+use creation::{
+    check_compact_status, compact_assignment_rows, compact_status, native_private_child,
+    state_creation_assignment_matrix,
+};
 
 #[test]
 fn original_intent_is_exact_three_utf8_lines_and_run_sid_bound() {
+    check_compact_status();
     let run = "0123456789abcdef0123456789abcdef";
     let name = format!("Scientific.Security.{run}");
     let sid = "S-1-15-2-1-2-3-4-5-6-7";
@@ -235,6 +156,22 @@ fn actual_runtime_finalization_recovers_absence_and_flushed_profile_creation_int
             .unwrap();
     assert_eq!(output.code, 7);
     assert!(owner.recovered && state.join("profile.receipt").is_file());
+    let repeated =
+        crate::runtime::run_with_recovery(&command, &binding, |proof| owner.recover(proof))
+            .unwrap_err();
+    let cleanup = repeated
+        .downcast_ref::<crate::runtime::CleanupFailure>()
+        .unwrap();
+    let aggregate = cleanup
+        .0
+        .downcast_ref::<crate::windows_security::preparation::RecoveryFailure<anyhow::Error>>()
+        .unwrap();
+    assert_eq!(aggregate.errors.len(), 1);
+    assert_eq!(
+        aggregate.errors[0].to_string(),
+        "profile recovery already completed"
+    );
+    assert!(owner.recovered && state.join("profile.receipt").is_file());
     drop(owner);
     fs::remove_dir_all(state).unwrap();
     let mut owner = NativeRunOwner::create(root.path()).unwrap();
@@ -284,9 +221,21 @@ fn private_state_ownership_never_delegates_to_package_or_inherited_acl() {
     let native = native_private_child(pins.last().unwrap(), "native-pins", &host);
     drop(pins);
     let after = create_private(&parent.join("after-pins"), &host);
+    let assignment = state_creation_assignment_matrix(root.path(), &host);
     assert!(
-        policy.is_ok() && before.is_ok() && during.is_ok() && native.is_ok() && after.is_ok(),
-        "private child creation parent_policy={policy:?} before={before:?} during={during:?} native={native:?} after={after:?}"
+        policy.is_ok()
+            && before.is_ok()
+            && during.is_ok()
+            && native.is_ok()
+            && after.is_ok()
+            && assignment.is_ok(),
+        "private child creation parent_policy={} before={} during={} native={} after={}\nassignment={}",
+        compact_status(&policy),
+        compact_status(&before),
+        compact_status(&during),
+        compact_status(&native),
+        compact_status(&after),
+        compact_assignment_rows(&assignment)
     );
 }
 

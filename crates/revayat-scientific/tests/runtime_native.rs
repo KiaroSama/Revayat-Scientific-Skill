@@ -243,6 +243,23 @@ fn secondary_cleanup_failure_keeps_typed_primary_deadline() {
         Duration::from_secs(1)
     );
     assert!(format!("{error:#}").contains("controlled cleanup failure"));
+    assert_eq!(
+        runtime::deadline_diagnostic(&error),
+        Some("command timed out; owned cleanup could not be verified")
+    );
+    let clean: anyhow::Error = DeadlineExceeded {
+        idle: false,
+        limit: Duration::from_secs(1),
+    }
+    .into();
+    assert_eq!(
+        runtime::deadline_diagnostic(&clean),
+        Some("command timed out; owned process tree terminated")
+    );
+    assert_eq!(
+        runtime::deadline_diagnostic(&anyhow::anyhow!("ordinary refusal")),
+        None
+    );
     assert!(
         runtime::with_cleanup(Ok(7), Err(anyhow::anyhow!("controlled cleanup failure"))).is_err()
     );

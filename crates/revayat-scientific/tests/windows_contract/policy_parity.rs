@@ -456,6 +456,9 @@ fn diagnostic_other_ace_kinds_require_their_actual_layout_and_never_supply_grant
 
 #[test]
 fn child_acl_insertion_preserves_aces_and_event_mapping_matches_original_vectors() {
+    default_control::check_child_validation().unwrap();
+    default_control::check_control_validation().unwrap();
+    default_control::comparison::check_validation().unwrap();
     let user = sid(5, &[21, 1, 2, 3, 500]);
     let package = package();
     for (input, expected) in [

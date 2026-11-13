@@ -1,5 +1,5 @@
 //! Creation diagnostics exercise the controller's real decision seam, not a kernel sandbox.
-use super::creation::{CreationFailure, creation_result, retain_cleanup};
+use super::creation::{CreationFailure, authority_environment, creation_result, retain_cleanup};
 use super::{Handle, Profile, null_mut, wide};
 use std::cell::{Cell, RefCell};
 
@@ -8,7 +8,7 @@ const OPERATIONS: [&str; 2] = ["CreateRestrictedToken", "CreateProcessAsUserW"];
 #[test]
 fn failed_creation_captures_once_before_cleanup_and_retains_the_original_code() {
     for operation in OPERATIONS {
-        for code in [0, 5, 87, 1314, u32::MAX] {
+        for code in [0, 5, 87, 203, 1314, u32::MAX] {
             let last_error = Cell::new(code);
             let reads = Cell::new(0);
             let events = RefCell::new(Vec::new());
@@ -137,12 +137,64 @@ fn immediate_capture(source: &str, call: &str, status: &str, operation: &str) ->
 
 #[test]
 fn actual_creation_calls_capture_before_any_followup_statement() {
+    use std::{
+        ffi::{OsStr, OsString},
+        os::windows::ffi::{OsStrExt, OsStringExt},
+        path::Path,
+    };
+    let root = OsStr::new(r"C:\Windows");
+    let scratch = Path::new(r"C:\owned protected scratch");
+    let foreign = Path::new(r"C:\owned outside sentinel\private-sentinel");
+    let block =
+        authority_environment(root, scratch, "owned-registry-key", foreign, "1,2,3,4").unwrap();
+    assert_eq!(&block[block.len() - 2..], &[0, 0]);
+    let fields: Vec<_> = block[..block.len() - 1]
+        .split(|unit| *unit == 0)
+        .filter(|field| !field.is_empty())
+        .map(|field| String::from_utf16(field).unwrap())
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            r"LOCALAPPDATA=C:\owned protected scratch",
+            "REVAYAT_AUTHORITY_FIXTURE=owned-registry-key",
+            r"REVAYAT_AUTHORITY_FOREIGN=C:\owned outside sentinel\private-sentinel",
+            "REVAYAT_AUTHORITY_NETWORK=1,2,3,4",
+            r"SystemRoot=C:\Windows",
+            r"TEMP=C:\owned protected scratch",
+            r"TMP=C:\owned protected scratch",
+            r"WINDIR=C:\Windows",
+        ]
+    );
+    let keys: Vec<_> = fields
+        .iter()
+        .map(|field| field.split_once('=').unwrap().0.to_ascii_uppercase())
+        .collect();
+    assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
+    // Preserve Windows path units instead of lossy display conversion, while
+    // refusing environment injection and over-budget inputs before creation.
+    let opaque = OsString::from_wide(&[b'C' as u16, b':' as u16, b'\\' as u16, 0xd800]);
+    let opaque_block =
+        authority_environment(root, Path::new(&opaque), "fixture", foreign, "1,2,3,4").unwrap();
+    let mut first = "LOCALAPPDATA=".encode_utf16().collect::<Vec<_>>();
+    first.extend(opaque.encode_wide());
+    first.push(0);
+    assert!(opaque_block.starts_with(&first));
+    for invalid in [OsString::new(), OsString::from_wide(&[65, 0, 66])] {
+        assert!(authority_environment(&invalid, scratch, "fixture", foreign, "1,2,3,4").is_err());
+    }
+    assert!(
+        authority_environment(root, scratch, "fixture\0INJECTED=value", foreign, "1,2,3,4")
+            .is_err()
+    );
+    assert!(authority_environment(root, scratch, &"x".repeat(32767), foreign, "1,2,3,4").is_err());
     let source = format!(
         "{}\n{}",
         include_str!("authority.rs"),
         include_str!("authority_run.rs")
     );
     let source = source.as_str();
+    assert!(source.contains("super::creation::authority_environment("));
     for (call, status, operation) in [
         ("CreateRestrictedToken(", "success", "CreateRestrictedToken"),
         ("CreateProcessAsUserW(", "created", "CreateProcessAsUserW"),

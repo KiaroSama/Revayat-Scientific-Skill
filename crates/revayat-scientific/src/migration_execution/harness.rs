@@ -72,7 +72,7 @@ pub(super) fn execute(
     if tier != "portable" && selected.is_empty() {
         return Ok((None, None));
     }
-    let capture = super::oracle_capture::OracleCapture::create(artifact, tier)?;
+    let capture = super::oracle_capture::Capture::create(artifact, tier)?;
     if let Some(capture) = &capture {
         capture.configure(&mut spec)?;
     }
@@ -146,12 +146,15 @@ pub(super) fn execute(
         }
     }
     let operation = if let Some(capture) = capture {
-        let binary = combined.as_mut().context("oracle carrier result missing")?;
+        let binary = combined
+            .as_mut()
+            .context("operation carrier result missing")?;
         match capture.finish(root, identity, binary) {
             Ok(operation) => Some(operation),
             Err(_) => {
                 if binary.error.is_none() {
-                    binary.error = Some("oracle observation or journal cleanup incomplete".into());
+                    binary.error =
+                        Some("operation observation or journal cleanup incomplete".into());
                 }
                 None
             }

@@ -5,7 +5,11 @@
 [Upstream revisions](upstream-revisions.json) records the latest default-branch
 commit metadata observed for the 33 referenced repositories. That inventory is
 discovery evidence, not a claim that every repository's complete history was
-reviewed. The following current documents were also read:
+reviewed. The following current documents were also read. A separate
+[selected-source review](upstream-review-2026-11-10.md) records actual documents
+read for the other 23 repositories, completing selected-document inspection
+across all 33 identities. It records decisions and limitations rather than
+claiming a full history, dataset or translation-quality audit:
 
 | Inspected source | Finding adopted or retained |
 | --- | --- |

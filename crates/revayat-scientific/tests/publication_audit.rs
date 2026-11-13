@@ -16,15 +16,16 @@ fn publication_uses_complete_unicode_default_casefold_for_collision_keys() -> Re
         ("ﬅ.pdf", "st.pdf"),
         ("Ა.pdf", "ა.pdf"),
     ] {
-        let root = tempfile::tempdir()?;
-        let first = root.path().join("a");
-        let second = root.path().join("b");
+        let temporary = tempfile::tempdir()?;
+        let root = temporary.path().canonicalize()?;
+        let first = root.join("a");
+        let second = root.join("b");
         fs::write(&first, b"first")?;
         fs::write(&second, b"second")?;
         let error = publish_files(
             &[
-                (first.clone(), root.path().join(a)),
-                (second.clone(), root.path().join(b)),
+                (first.clone(), root.join(a)),
+                (second.clone(), root.join(b)),
             ],
             &[],
             None,
@@ -33,16 +34,17 @@ fn publication_uses_complete_unicode_default_casefold_for_collision_keys() -> Re
         assert!(error.to_string().contains("duplicate"));
         assert_eq!(fs::read(first)?, b"first");
         assert_eq!(fs::read(second)?, b"second");
-        assert!(!root.path().join(a).exists());
-        assert!(!root.path().join(b).exists());
+        assert!(!root.join(a).exists());
+        assert!(!root.join(b).exists());
     }
     Ok(())
 }
 #[test]
 fn foreign_backup_substitution_after_close_is_retained_for_recovery() -> Result<()> {
-    let root = tempfile::tempdir()?;
-    let stage = root.path().join("stage");
-    let dest = root.path().join("dest");
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let stage = root.join("stage");
+    let dest = root.join("dest");
     fs::write(&stage, b"candidate")?;
     fs::write(&dest, b"approved")?;
     let mut changed = None;
@@ -56,7 +58,7 @@ fn foreign_backup_substitution_after_close_is_retained_for_recovery() -> Result<
                 let id = object_id(&original)?;
                 let modified = original.metadata()?.modified()?;
                 drop(original);
-                let foreign = root.path().join("foreign");
+                let foreign = root.join("foreign");
                 let contents = fs::read(path)?;
                 fs::write(&foreign, &contents)?;
                 File::options()
@@ -84,7 +86,7 @@ fn foreign_backup_substitution_after_close_is_retained_for_recovery() -> Result<
     assert_eq!(fs::read(dest)?, b"approved");
     assert!(path.parent().unwrap().join("recovery.json").is_file());
     assert!(
-        fs::read_dir(root.path())?
+        fs::read_dir(&root)?
             .filter_map(|e| e.ok())
             .any(|e| e.path().extension().is_some_and(|s| s == "lock"))
     );
@@ -92,9 +94,10 @@ fn foreign_backup_substitution_after_close_is_retained_for_recovery() -> Result<
 }
 #[test]
 fn same_bytes_foreign_backup_cannot_be_activated_during_rollback() -> Result<()> {
-    let root = tempfile::tempdir()?;
-    let stage = root.path().join("stage");
-    let dest = root.path().join("dest");
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let stage = root.join("stage");
+    let dest = root.join("dest");
     fs::write(&stage, b"candidate")?;
     fs::write(&dest, b"approved")?;
     let mut backup: Option<PathBuf> = None;
@@ -109,7 +112,7 @@ fn same_bytes_foreign_backup_cannot_be_activated_during_rollback() -> Result<()>
             }
             if event == Boundary::AfterCommit {
                 let path = backup.as_ref().unwrap();
-                let foreign = root.path().join("foreign");
+                let foreign = root.join("foreign");
                 fs::copy(path, &foreign)?;
                 let modified = fs::metadata(path)?.modified()?;
                 File::options()

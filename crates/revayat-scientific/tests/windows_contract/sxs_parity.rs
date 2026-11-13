@@ -132,6 +132,8 @@ fn strict_trace_codecs_reject_missing_bom_malformed_text_and_private_payloads() 
 
 #[test]
 fn collector_positive_control_cannot_substitute_for_failed_consumer_evidence() {
+    revayat_scientific::windows_security::activation::control::check_trace_control_validation()
+        .unwrap();
     let control = "F:\\private-control-sentinel\\collector.manifest";
     let positive = block(
         control,
@@ -365,6 +367,7 @@ fn ordinal_paths_match_unicode_case_without_expansion_or_normalization() {
 
 #[test]
 fn fixed_event_xml_bounds_namespaces_leaf_nodes_and_owned_image_selection() {
+    check_startup_events_validation().unwrap();
     let image = "C:\\fixed owned\\authority.exe";
     let start = "2026-01-01T00:00:00Z";
     let end = "2026-01-01T00:00:01Z";

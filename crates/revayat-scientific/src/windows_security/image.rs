@@ -7,6 +7,23 @@ mod profiles;
 #[path = "image/static_view.rs"]
 mod static_view;
 pub use profiles::ActivationSites;
+#[path = "image/activation.rs"]
+mod activation;
+#[path = "image/subjects.rs"]
+mod subjects;
+pub use subjects::KernelImage;
+#[path = "image/imports.rs"]
+mod imports;
+#[path = "image/observation.rs"]
+mod observation;
+pub use imports::qualify_registry_authority;
+#[path = "image/validation.rs"]
+mod validation;
+pub use validation::{
+    activation_worker_validation_fixture, check_default_activation_validation,
+    check_identity_validation, check_import_validation, check_manifest_validation,
+    check_module_activation_validation, check_static_validation, static_validation_fixture,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Section {
@@ -227,41 +244,7 @@ impl<'a> PeImage<'a> {
         anyhow::bail!("PE text lacks bounded terminator")
     }
     pub fn direct_imports(&self) -> Result<Vec<String>> {
-        ensure!(
-            self.directory(13)? == (0, 0),
-            "PE delay imports are unsupported"
-        );
-        let (rva, size) = self.directory(1)?;
-        ensure!(
-            rva != 0 && (40..=2580).contains(&size) && size % 20 == 0,
-            "invalid PE import directory shape"
-        );
-        let table = self.map(rva, size)?;
-        let mut names = BTreeSet::new();
-        for offset in (0..size as usize).step_by(20) {
-            let row = span(self.bytes, table + offset, 20)?;
-            if row.iter().all(|byte| *byte == 0) {
-                ensure!(
-                    !names.is_empty()
-                        && self.bytes[table + offset + 20..table + size as usize]
-                            .iter()
-                            .all(|byte| *byte == 0),
-                    "PE import tail is not empty"
-                );
-                return Ok(names.into_iter().collect());
-            }
-            let name = u32_at(row, 12)?;
-            ensure!(
-                name != 0 && u32_at(row, 16)? != 0 && names.len() < 128,
-                "invalid PE import descriptor"
-            );
-            let text = self.text(name, 128, true)?.to_ascii_lowercase();
-            ensure!(
-                text.len() > 4 && text.ends_with(".dll") && names.insert(text),
-                "invalid or duplicate PE import name"
-            );
-        }
-        anyhow::bail!("PE import directory lacks terminator")
+        self.read_imports(false)
     }
     /// Rust's console verifier is a different image subject from the historical fixed C fixture.
     /// Keep executable/CLR/import-span contracts, but do not guess its toolchain DLL allowlist.
@@ -294,30 +277,7 @@ impl<'a> PeImage<'a> {
         Ok(())
     }
     pub fn qualify_registry_authority(&self) -> Result<()> {
-        ensure!(
-            self.entry != 0
-                && u16_at(self.bytes, self.pe + 22)? & 0x2002 == 2
-                && u16_at(self.bytes, self.optional + 68)? == 3
-                && self.directory(14)? == (0, 0),
-            "wrong registry authority PE role"
-        );
-        let allowed = [
-            "kernel32.dll",
-            "ntdll.dll",
-            "advapi32.dll",
-            "bcrypt.dll",
-            "userenv.dll",
-            "ws2_32.dll",
-            "api-ms-win-core-synch-l1-2-0.dll",
-            "bcryptprimitives.dll",
-        ];
-        ensure!(
-            self.direct_imports()?
-                .iter()
-                .all(|name| allowed.contains(&name.as_str())),
-            "registry authority import profile drift"
-        );
-        Ok(())
+        self.registry_authority_checked()
     }
     pub fn kernelbase_identity(&self) -> Result<String> {
         let (rva, length) = self.directory(6)?;
@@ -585,6 +545,10 @@ impl<'a> PeImage<'a> {
             "fixed manifest bytes or language differ"
         );
         Ok(())
+    }
+    /// Original ModuleManifest: numeric RT_MANIFEST/2, without inventing a DLL-bit policy.
+    pub fn module_manifest(&self, sole: bool) -> Result<Manifest<'a>> {
+        self.manifest(2, sole)
     }
 }
 fn resource_span(size: u32, offset: u32, length: u32, spans: &mut Vec<(u32, u32)>) -> Result<()> {

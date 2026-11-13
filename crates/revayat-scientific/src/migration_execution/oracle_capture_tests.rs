@@ -1,34 +1,39 @@
-//! Synthetic inputs test the boundary, never attest to actual oracle execution.
+//! Synthetic inputs test the boundary, never attest to actual operation execution.
 use super::*;
 use serde_json::json;
 
 fn fixture() -> (tempfile::TempDir, CollectedExecution, serde_json::Value) {
+    fixture_for(&ORACLE)
+}
+fn fixture_for(config: &Config) -> (tempfile::TempDir, CollectedExecution, serde_json::Value) {
     let root = tempfile::tempdir().unwrap();
     fs::create_dir(root.path().join("tests")).unwrap();
-    let rows: Vec<_> = (1..=41).map(|i| format!("synthetic-oracle::{i}")).collect();
+    let rows: Vec<_> = (1..=config.count)
+        .map(|i| format!("synthetic-{}::{i}", config.population))
+        .collect();
     let entries: Vec<_> = rows
         .iter()
         .enumerate()
         .map(|(i, id)| {
             json!({
-                "id": id, "parent_id": OWNER, "invokes_ids": [],
+                "id": id, "parent_id": config.owner, "invokes_ids": [],
                 "obligation_ids": [format!("SYNTHETIC-{}", i + 1)], "variant_ids": [], "checks": []
             })
         })
         .collect();
     let scope =
         json!({"platform":"linux", "tier":"scientific", "profile":"debug", "job":"scientific"});
-    fs::write(root.path().join("tests/oracle-census.json"), serde_json::to_vec(&json!({
-        "schema": 1, "baseline_commit": "b".repeat(40), "cases": rows.iter().map(|id| json!({"id":id})).collect::<Vec<_>>(),
-        "execution_contract": {"entries": entries, "scopes": [{"scope":scope, "owner_case_id":OWNER, "entry_ids":rows}]}
+    fs::write(root.path().join(config.census), serde_json::to_vec(&json!({
+        "schema": 1, "baseline_commit": "b".repeat(40), (config.key): rows.iter().map(|id| json!({"id":id})).collect::<Vec<_>>(),
+        "execution_contract": {"entries": entries, "scopes": [{"scope":scope, "owner_case_id":config.owner, "entry_ids":rows}]}
     })).unwrap()).unwrap();
     let binary = BinaryExecution {
-        target: TARGET.into(),
+        target: config.target.into(),
         mapping_target: None,
         exit: Some(0),
         cleanup_complete: true,
         error: None,
-        cases: [(CASE.into(), CaseOutcome::Passed)].into(),
+        cases: [(config.case.into(), CaseOutcome::Passed)].into(),
     };
     let identity = CollectedExecution {
         schema: 1,
@@ -47,9 +52,9 @@ fn fixture() -> (tempfile::TempDir, CollectedExecution, serde_json::Value) {
         final_parity_verified: false,
         binaries: vec![binary],
     };
-    let raw = json!({"schema":1, "population":"oracle", "owner_case_id":OWNER,
-        "events": (1..=41).map(|i| json!({
-            "case_id":format!("synthetic-oracle::{i}"), "parent_id":OWNER, "sequence":i,
+    let raw = json!({"schema":1, "population":config.population, "owner_case_id":config.owner,
+        "events": (1..=config.count).map(|i| json!({
+            "case_id":format!("synthetic-{}::{i}", config.population), "parent_id":config.owner, "sequence":i,
             "invokes_ids":[], "obligation_ids":[format!("SYNTHETIC-{i}")], "source":"execution",
             "outcome":"passed", "exit":0, "cleanup_complete":false, "assertions_complete":true,
             "variants":[], "check_results":[]
@@ -64,6 +69,15 @@ fn captured(raw: &serde_json::Value) -> OracleCapture {
     )
     .unwrap();
     capture
+}
+fn captured_for(raw: &serde_json::Value, config: &'static Config) -> Capture {
+    let directory = tempfile::tempdir().unwrap();
+    fs::write(
+        directory.path().join(config.journal),
+        serde_json::to_vec(raw).unwrap(),
+    )
+    .unwrap();
+    Capture { directory, config }
 }
 
 #[test]
@@ -115,6 +129,63 @@ fn complete_raw_rows_bind_to_outer_identity_and_publish_without_overwrite() {
                 .unwrap()
                 .join("oracle-debug.json")
                 .exists()
+        );
+    }
+    // Exercise the same outer-owner boundary and all-or-missing publication
+    // for the two additional authored populations without new registrations.
+    let (batch_root, mut batch_identity, oracle_raw) = fixture();
+    let mut batch = vec![
+        captured(&oracle_raw)
+            .finish(
+                batch_root.path(),
+                &batch_identity,
+                &batch_identity.binaries[0],
+            )
+            .unwrap(),
+    ];
+    for config in [&ENGINE, &PREPARATION] {
+        let (additional_root, mut additional_identity, raw) = fixture_for(config);
+        fs::copy(
+            additional_root.path().join(config.census),
+            batch_root.path().join(config.census),
+        )
+        .unwrap();
+        let binary = additional_identity.binaries.pop().unwrap();
+        let report = captured_for(&raw, config)
+            .finish(batch_root.path(), &batch_identity, &binary)
+            .unwrap();
+        assert_eq!(report.population, config.population);
+        assert_eq!(report.events.len(), config.count);
+        assert!(report.events.iter().all(|event| event.cleanup_complete));
+        let mut self_certified = raw;
+        self_certified["events"][0]["cleanup_complete"] = true.into();
+        assert!(
+            captured_for(&self_certified, config)
+                .finish(batch_root.path(), &batch_identity, &binary)
+                .is_err()
+        );
+        batch.push(report);
+        batch_identity.binaries.push(binary);
+    }
+    let batch_output = batch_root.path().join("execution/portable-debug.json");
+    assert!(
+        publish_all(
+            batch_root.path(),
+            &batch_output,
+            &batch_identity,
+            &batch[..2]
+        )
+        .is_err()
+    );
+    assert!(!batch_output.parent().unwrap().exists());
+    publish_all(batch_root.path(), &batch_output, &batch_identity, &batch).unwrap();
+    for config in CONFIGS {
+        assert!(
+            batch_output
+                .parent()
+                .unwrap()
+                .join(format!("{}-debug.json", config.population))
+                .is_file()
         );
     }
 }
@@ -254,4 +325,34 @@ fn raw_reads_are_actual_bounded_and_routing_only_targets_the_actual_carrier() {
             .unwrap()
             .is_none()
     );
+    for config in CONFIGS {
+        let artifact = Artifact {
+            target: config.target.into(),
+            mapping_target: None,
+            executable: "never-executed".into(),
+            directory: root.path().to_owned(),
+        };
+        assert!(Capture::create(&artifact, "scientific").unwrap().is_none());
+        let capture = Capture::create(&artifact, "portable").unwrap().unwrap();
+        assert_eq!(capture.config.population, config.population);
+        let mut spec = command(root.path(), "never-executed", Duration::from_secs(1));
+        for other in CONFIGS {
+            assert!(
+                spec.env_remove
+                    .iter()
+                    .any(|key| key == std::ffi::OsStr::new(other.environment))
+            );
+        }
+        capture.configure(&mut spec).unwrap();
+        assert_eq!(spec.env.len(), 1);
+        assert_eq!(
+            Path::new(
+                spec.env
+                    .get(std::ffi::OsStr::new(config.environment))
+                    .unwrap()
+            ),
+            capture.directory.path().canonicalize().unwrap()
+        );
+    }
+    assert!(Capture::create(&unrelated, "portable").unwrap().is_none());
 }

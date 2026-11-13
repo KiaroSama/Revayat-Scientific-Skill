@@ -32,6 +32,9 @@ can select a different dependency feature union from `--all-targets` and trigger
 unnecessary recompilation, including during cancellation cleanup. Release test
 collection uses the release runner and adjacent release process owner, so a debug
 build failure cannot make it borrow a missing debug companion.
+Release harnesses use ordinary optimized linking without per-harness LTO. This
+keeps compilation of the complete frozen inventory inside the collection deadline;
+the release binaries and release tests still use the same release profile.
 
 ## Hosted checks
 
@@ -66,9 +69,15 @@ exact, nonignored case selection. On Linux it runs the production containment
 probe and isolated worker, then records every actual worker outcome only after
 the fixed preflight and owned cleanup succeed. Missing, duplicate, reordered or
 failed case results cannot be replaced by a successful summary. These are flat
-case reports, not fabricated bootstrap markers. The native-stage,
-runtime-preparation, engine and coverage censuses still contain unresolved
-source/evidence contracts.
+case reports. Engine discovery and runtime preparation now execute their original
+six cases and nineteen requirement sites in existing carrier registrations. Like
+the registry oracle, each writes observations only after its assertions complete;
+the supervisor binds them to the actual passing carrier, run, census digest and
+completed outer cleanup. Debug and release reports remain separate on each OS.
+The native-stage and coverage censuses still contain unresolved source/evidence
+contracts, including the full ordered Windows diagnostic bootstrap. Implemented
+stage helpers remain explicitly unverified until their required native execution
+and relationships have been observed.
 Those gaps must be implemented and actually run before claiming complete parity
 or an all-green migration. The aggregate is kept blocking; it is not replaced by
 registration counts or fabricated successful events.

@@ -1,6 +1,11 @@
 //! Independent native OPC consumer, always invoked under the test runtime owner.
 use anyhow::{Result, ensure};
-use std::{os::windows::ffi::OsStrExt, path::Path};
+use std::{
+    io::Write,
+    os::windows::{ffi::OsStrExt, process::CommandExt},
+    path::Path,
+    process::{Command, Stdio},
+};
 use windows::{
     Win32::{
         Storage::{
@@ -46,7 +51,34 @@ fn allocated_text(value: PWSTR) -> Result<String> {
     Ok(unsafe { owned.0.to_string() }?)
 }
 
-pub(super) fn consume(path: &Path) -> Result<()> {
+pub(super) fn run(args: &[String]) -> Result<()> {
+    ensure!(
+        args.len() == 1,
+        "OPC consumer requires exactly one package path"
+    );
+    let path = Path::new(&args[0]);
+    if std::env::var_os("REVAYAT_TEST_OPC_CHILD_HANG").is_some() {
+        let mut child = Command::new(std::env::current_exe()?)
+            .arg("silent")
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .creation_flags(0x08000000)
+            .spawn()?;
+        std::fs::write(path, child.id().to_string())?;
+        child.wait()?;
+        anyhow::bail!("nonreturning OPC fixture unexpectedly exited");
+    }
+    consume(path)?;
+    // The COM interfaces, allocated strings and apartment have all been dropped
+    // before reporting this marker. This executable has no libtest banners.
+    let mut stdout = std::io::stdout().lock();
+    writeln!(stdout, "OPC_CASE_RELATIONSHIP_RECOGNIZED")?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn consume(path: &Path) -> Result<()> {
     let _apartment = Apartment::initialize()?;
     let name = path
         .as_os_str()
@@ -121,6 +153,5 @@ pub(super) fn consume(path: &Path) -> Result<()> {
             .ok()?;
         ensure!(eof == 0, "OPC chunk had an unqualified tail");
     }
-    println!("OPC_CASE_RELATIONSHIP_RECOGNIZED");
     Ok(())
 }

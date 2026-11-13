@@ -1,5 +1,8 @@
 //! Actual native execution. Flat outcomes never manufacture bootstrap/census events.
 use super::*;
+#[path = "native_coverage.rs"]
+mod coverage;
+pub use coverage::observe_linux_coverage;
 
 pub(super) const LINUX_TARGET: &str = "crates/revayat-scientific/bin/revayat-security-worker";
 const WINDOWS_TARGETS: &[&str] = &["windows_native", "windows_standalone"];
@@ -29,38 +32,95 @@ pub(super) fn select(
     Ok(all.clone())
 }
 
-pub(super) fn linux(timeout: Duration) -> BinaryExecution {
-    let mut binary = BinaryExecution {
-        target: LINUX_TARGET.into(),
-        mapping_target: Some("standalone_security".into()),
-        exit: None,
-        cleanup_complete: false,
-        cases: BTreeMap::new(),
-        error: None,
-    };
-    let result = (|| -> Result<BTreeMap<String, CaseOutcome>> {
-        ensure!(
-            timeout >= Duration::from_secs(150),
-            "native collection deadline is too short for the fixed containment gates"
+pub(super) fn collect_linux(
+    root: &Path,
+    output: &Path,
+    mut report: CollectedExecution,
+    artifacts: &[Artifact],
+    started: Instant,
+    timeout: Duration,
+) -> Result<()> {
+    let observation = (|| -> Result<()> {
+        let mut owners = artifacts
+            .iter()
+            .filter(|artifact| artifact.target == coverage::OWNER_TARGET);
+        let owner = owners
+            .next()
+            .context("required actual Linux host owner missing")?;
+        ensure!(owners.next().is_none(), "ambiguous Linux host owner");
+        let remaining = || {
+            timeout
+                .checked_sub(started.elapsed())
+                .context("native collection deadline exceeded")
+        };
+        let mut spec = command(
+            &owner.directory,
+            owner.executable.as_os_str(),
+            remaining()?.min(Duration::from_secs(30)),
         );
-        // These return only after actual control observations and owned container cleanup.
-        // Neither a host-side parser test nor libtest registration qualifies this worker.
-        crate::sandbox::probe()?;
-        let helper = crate::sandbox::security()?;
-        linux_cases(&helper)
+        spec.args = ["--list", "--format", "terse"]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let all = listed_cases(&spec)?;
+        spec.args.push("--ignored".into());
+        let ignored = listed_cases(&spec)?;
+        ensure!(
+            all.contains(coverage::OWNER_CASE) && ignored.contains(coverage::OWNER_CASE),
+            "native coverage owner registration differs"
+        );
+        let capture = coverage::Capture::create()?;
+        capture.configure(&mut spec)?;
+        spec.timeout = remaining()?.min(Duration::from_secs(900));
+        spec.args = [
+            "--ignored",
+            "--exact",
+            coverage::OWNER_CASE,
+            "--format",
+            "pretty",
+            "--color",
+            "never",
+            "--test-threads=1",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        let executed = match runtime::run_supervised(&spec) {
+            Ok(output) => output,
+            Err(_) => {
+                capture.retain();
+                report.error =
+                    Some("native host owner execution or outer cleanup incomplete".into());
+                return Err(anyhow::anyhow!("native host owner did not finish"));
+            }
+        };
+        let owner_result = record_execution(
+            owner,
+            &executed,
+            &[coverage::OWNER_CASE.into()].into(),
+            all.len() - 1,
+        );
+        let observed = capture.finish(root, &report, &owner_result);
+        report.binaries.push(owner_result);
+        match observed {
+            Ok((worker, events)) => {
+                report.binaries.push(worker);
+                if coverage::publish(output, &events).is_err() {
+                    report.error =
+                        Some("native coverage observation publication incomplete".into());
+                }
+            }
+            Err(_) => report.error = Some(
+                "native prerequisites, exact worker observations or coverage journal incomplete"
+                    .into(),
+            ),
+        }
+        Ok(())
     })();
-    match result {
-        Ok(cases) => {
-            binary.cases = cases;
-            binary.exit = Some(0);
-            binary.cleanup_complete = true;
-        }
-        Err(_) => {
-            binary.error =
-                Some("native containment, isolated worker or owned cleanup incomplete".into())
-        }
+    if observation.is_err() && report.error.is_none() {
+        report.error = Some("native host owner discovery or bounded observation incomplete".into());
     }
-    binary
+    write_execution_report(output, &report)
 }
 
 fn linux_cases(helper: &serde_json::Value) -> Result<BTreeMap<String, CaseOutcome>> {
@@ -126,6 +186,7 @@ pub(super) mod tests {
         assert!(validate_targets(&[]).is_err());
     }
     pub(crate) fn worker_outcomes_require_real_qualification_and_each_exact_case() {
+        coverage::tests::native_receipts_require_every_control_and_exact_witness();
         let mut helper = serde_json::json!({"container_cleanup":"verified", "preflight":{"status":"passed"},
             "cases":crate::security_cases::IDS.iter().map(|id|
                 serde_json::json!({"phase":"security-case","id":id,"status":"passed"})).collect::<Vec<_>>()});

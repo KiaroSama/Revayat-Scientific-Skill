@@ -389,30 +389,34 @@ impl Storage {
         let path = self.path(name)?;
         let result = tokens::owner(|user| {
             ensure!(user == self.owner, "SxS canary user changed");
-            let mut file = OpenOptions::new()
+            let file = OpenOptions::new()
                 .create_new(true)
                 .read(true)
                 .write(true)
                 .share_mode(0)
                 .custom_flags(0x00200000)
                 .open(&path)?;
-            // Retain the created identity even if writing/flushing/closing subsequently fails.
-            let acquired = identity::object_id(&file);
-            if let Ok(id) = &acquired {
-                self.files.push((name, *id));
-            }
-            let result = (|| {
-                acquired?;
-                ensure!(
-                    file.metadata()?.len() == 0,
-                    "SxS seed is not empty at creation"
-                );
-                file.write_all(bytes)?;
-                file.flush()?;
-                file.sync_all()?;
-                Ok(())
-            })();
-            tokens::finish(result, close(file).err().into_iter().collect())
+            crate::windows_security::activation::control::write_fixed(
+                bytes,
+                || Ok(file),
+                |file, bytes| {
+                    // Retain the created identity even if writing/flushing/closing later fails.
+                    let id = identity::object_id(file)?;
+                    self.files.push((name, id));
+                    ensure!(
+                        file.metadata()?.len() == 0,
+                        "SxS seed is not empty at creation"
+                    );
+                    file.write_all(bytes)?;
+                    Ok(())
+                },
+                |file| {
+                    file.flush()?;
+                    file.sync_all()?;
+                    Ok(())
+                },
+                close,
+            )
         });
         result?;
         self.require(name)?;

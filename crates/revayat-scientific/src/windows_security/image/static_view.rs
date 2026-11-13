@@ -3,8 +3,8 @@ use super::*;
 impl PeImage<'_> {
     pub fn qualify_static(&self, text: &str, slice: StaticSlice) -> Result<StaticView> {
         ensure!(
-            self.static_slice(slice.rva)? == slice && text.len() <= 1048576,
-            "static input or slice differs"
+            self.static_slice(slice.rva)? == slice,
+            "static slice differs"
         );
         let instruction = regex::Regex::new(
             r"^[ \t]*([0-9A-Fa-f]{16}):[ \t]+((?:[0-9A-Fa-f]{2} )*[0-9A-Fa-f]{2})[ \t]{2,}([a-z][a-z0-9]{0,15})(?:[ \t]+(.*))?$",
@@ -24,11 +24,26 @@ impl PeImage<'_> {
         };
         let mut pending = None;
         let mut previous = slice.start;
-        for (line_index, line) in text.lines().enumerate() {
-            ensure!(
-                line_index < 4096 && line.len() <= 1024,
-                "static line budget exceeded"
-            );
+        let mut lines = 0;
+        let text_chars = text.encode_utf16().count();
+        require(
+            text_chars <= 1048576,
+            "input-bound",
+            lines,
+            text_chars,
+            &result,
+        )?;
+        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        for line in normalized.lines() {
+            lines += 1;
+            require(lines <= 4096, "line-count", lines, text_chars, &result)?;
+            require(
+                line.encode_utf16().count() <= 1024,
+                "line-length",
+                lines,
+                text_chars,
+                &result,
+            )?;
             let trimmed = line.trim();
             if line
                 .bytes()
@@ -46,7 +61,7 @@ impl PeImage<'_> {
                 || matches!(trimmed, "File Type: DLL" | "Summary")
                 || summary.is_match(trimmed)
             {
-                append_record(&mut result, pending.take())?;
+                append_record(&mut result, pending.take(), lines, text_chars)?;
                 continue;
             }
             let Some(capture) = instruction.captures(line) else {
@@ -54,19 +69,33 @@ impl PeImage<'_> {
                 result.unsupported += 1;
                 continue;
             };
-            append_record(&mut result, pending.take())?;
+            append_record(&mut result, pending.take(), lines, text_chars)?;
             let address = u64::from_str_radix(&capture[1], 16)?;
             let opcode = capture[2]
                 .split(' ')
                 .map(|byte| u8::from_str_radix(byte, 16))
                 .collect::<std::result::Result<Vec<_>, _>>()?;
-            ensure!(
-                (1..=15).contains(&opcode.len())
-                    && address >= previous
-                    && address >= slice.start
-                    && address < slice.start + u64::from(slice.length),
-                "static opcode order/window differs"
-            );
+            require(
+                (1..=15).contains(&opcode.len()),
+                "opcode-count",
+                lines,
+                text_chars,
+                &result,
+            )?;
+            require(
+                address >= previous,
+                "address-order",
+                lines,
+                text_chars,
+                &result,
+            )?;
+            require(
+                address >= slice.start && address < slice.start + u64::from(slice.length),
+                "address-window",
+                lines,
+                text_chars,
+                &result,
+            )?;
             previous = address + opcode.len() as u64;
             if opcode.len() as u64 > slice.start + u64::from(slice.length) - address
                 || !mnemonic.is_match(&capture[3])
@@ -75,10 +104,13 @@ impl PeImage<'_> {
                 continue;
             }
             let raw = slice.raw + (address - slice.start) as usize;
-            ensure!(
+            require(
                 span(self.bytes, raw, opcode.len())? == opcode,
-                "static opcode differs from image"
-            );
+                "byte-equality",
+                lines,
+                text_chars,
+                &result,
+            )?;
             let operands = capture.get(4).map_or("", |value| value.as_str());
             let mut safe = if operands.is_empty() {
                 "none".to_owned()
@@ -108,22 +140,56 @@ impl PeImage<'_> {
                 &capture[3]
             ));
         }
-        append_record(&mut result, pending)?;
-        ensure!(
+        append_record(&mut result, pending, lines, text_chars)?;
+        require(
             result.records != 0,
-            "static output has no qualified records"
-        );
+            "no-qualified-record",
+            lines,
+            text_chars,
+            &result,
+        )?;
         Ok(result)
     }
 }
-fn append_record(view: &mut StaticView, record: Option<String>) -> Result<()> {
+fn require(
+    condition: bool,
+    stage: &str,
+    lines: usize,
+    text_chars: usize,
+    view: &StaticView,
+) -> Result<()> {
+    ensure!(
+        condition,
+        "static qualifier refused stage={stage} lines={lines} records={} unsupported={} output_chars={} text_chars={text_chars}",
+        view.records,
+        view.unsupported,
+        view.text.len()
+    );
+    Ok(())
+}
+fn append_record(
+    view: &mut StaticView,
+    record: Option<String>,
+    lines: usize,
+    text_chars: usize,
+) -> Result<()> {
     if let Some(record) = record {
         view.text.push_str(&record);
+        require(
+            view.text.len() <= 65024,
+            "output-budget",
+            lines,
+            text_chars,
+            view,
+        )?;
         view.records += 1;
-        ensure!(
-            view.text.len() <= 65024 && view.records <= 4096,
-            "static output budget exceeded"
-        );
+        require(
+            view.records <= 4096,
+            "record-count",
+            lines,
+            text_chars,
+            view,
+        )?;
     }
     Ok(())
 }

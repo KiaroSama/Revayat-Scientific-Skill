@@ -1,6 +1,7 @@
 use super::*;
 #[test]
 fn owned_lifetime_does_not_admit_host_descriptor() {
+    revayat_scientific::windows_security::scratch::check_attachment_validation().unwrap();
     let mut state = Lifecycle::Prepared;
     assert!(state.advance(Lifecycle::Running).is_err());
     assert!(authority::child_record(b"descriptor_checked=true\n").is_err());
@@ -15,6 +16,7 @@ fn suspended_lifetime_precedes_discovery() {
 }
 #[test]
 fn receipt_precedes_mutation_and_recovery_precedes_detach() {
+    revayat_scientific::windows_security::scratch::check_volume_policy_validation().unwrap();
     let mut state = Lifecycle::Running;
     assert!(state.advance(Lifecycle::Restored).is_err());
     state.advance(Lifecycle::Reaped).unwrap();
@@ -23,6 +25,7 @@ fn receipt_precedes_mutation_and_recovery_precedes_detach() {
 }
 #[test]
 fn frames_follow_restore_and_retain_close_failure() {
+    revayat_scientific::windows_security::scratch::check_cleanup_validation().unwrap();
     let mut value = Receipt::new(Phase::Restore, Fault::Cleanup);
     value.retain(Phase::Close, Fault::Cleanup);
     let parsed = Receipt::parse(value.wire().unwrap().as_bytes()).unwrap();

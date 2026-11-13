@@ -1,5 +1,7 @@
 //! Local-only immutable-source resource policy shared by all HTML renderers.
 use crate::html::ParsedHtml;
+#[path = "resource_container.rs"]
+mod container;
 #[path = "resource_io.rs"]
 mod io_guard;
 use anyhow::{Context, Result, bail, ensure};
@@ -32,6 +34,15 @@ pub struct ResourcePolicy {
     preflight_bytes: usize,
 }
 impl ResourcePolicy {
+    /// Snapshot a closed resource graph for the read-only `/input` container mount.
+    /// Only resource references are canonicalized; admitted source files stay unchanged.
+    pub fn stage_for_container(&mut self, destination: &Path) -> Result<()> {
+        let result = container::stage(self, destination);
+        if result.is_err() {
+            self.denied = true;
+        }
+        result
+    }
     pub fn new(source: &Path) -> Result<Self> {
         let source = source.canonicalize()?;
         let root = source

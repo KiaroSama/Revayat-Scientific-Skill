@@ -124,6 +124,13 @@ States: `todo`, `drafting`, `done`, `needs-review`. Fluency:
 `progress.md` and `terms.tsv` first, then the part in `drafting`. Never
 restart a `done` part; never re-decide a term already in `terms.tsv`.
 
+When source or terminology revisions change, keep the last accepted source/target
+snapshot while preparing the replacement. Mark affected parts `needs-review`;
+do not mark them complete to suppress a stale-state warning. Apply spot fixes to
+the editable part, because reconstruction can overwrite edits made only in an
+assembled derivative. These durable job files are separate from temporary sandbox
+staging, whose verified cleanup remains mandatory.
+
 ## Ambiguity queue
 
 Stopping to ask forty times does not work at this length, and guessing

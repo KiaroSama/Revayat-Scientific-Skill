@@ -1,6 +1,46 @@
 //! Safe diagnostics shared by the two native creation boundaries.
-use anyhow::Result;
-use std::fmt;
+use anyhow::{Result, ensure};
+use std::{ffi::OsStr, fmt, os::windows::ffi::OsStrExt, path::Path};
+
+/// An explicit Unicode allowlist, never a copy of the host environment.
+/// AppContainer initialization requires LOCALAPPDATA as well as SystemRoot;
+/// Windows reroutes the former to the package profile. Baseline Sandbox.cs also
+/// supplied it from its private home. Keep its input in our protected scratch.
+/// https://learn.microsoft.com/windows/win32/secauthz/implementing-an-appcontainer
+/// https://github.com/microsoft/mxc/pull/1158
+pub(super) fn authority_environment(
+    system_root: &OsStr,
+    scratch: &Path,
+    fixture: &str,
+    foreign: &Path,
+    network: &str,
+) -> Result<Vec<u16>> {
+    let entries = [
+        ("LOCALAPPDATA", scratch.as_os_str()),
+        ("REVAYAT_AUTHORITY_FIXTURE", OsStr::new(fixture)),
+        ("REVAYAT_AUTHORITY_FOREIGN", foreign.as_os_str()),
+        ("REVAYAT_AUTHORITY_NETWORK", OsStr::new(network)),
+        ("SystemRoot", system_root),
+        ("TEMP", scratch.as_os_str()),
+        ("TMP", scratch.as_os_str()),
+        ("WINDIR", system_root),
+    ];
+    let mut block = Vec::new();
+    for (name, value) in entries {
+        let value = value.encode_wide().collect::<Vec<_>>();
+        ensure!(
+            !value.is_empty() && !value.contains(&0),
+            "invalid authority environment value"
+        );
+        block.extend(name.encode_utf16());
+        block.push(b'=' as u16);
+        block.extend(value);
+        block.push(0);
+        ensure!(block.len() < 32767, "authority environment exceeds bound");
+    }
+    block.push(0);
+    Ok(block)
+}
 
 #[derive(Debug)]
 pub(super) struct CreationFailure {

@@ -9,7 +9,12 @@ use std::{
     time::{Duration, Instant},
 };
 fn receipts(root: &Path, result: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in fs::read_dir(root)? {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    for entry in entries {
         let path = entry?.path();
         if path.is_dir() {
             receipts(&path, result)?;
@@ -21,6 +26,12 @@ fn receipts(root: &Path, result: &mut Vec<PathBuf>) -> Result<()> {
     }
     Ok(())
 }
+fn receipt_scope() -> Result<PathBuf> {
+    let directory = std::env::var_os(revayat_scientific::tex_supervisor::DIRECTORY_ENV)
+        .context("cancellation fixture requires the scoped native test runner")?;
+    let token = std::env::var(revayat_scientific::tex_supervisor::TOKEN_ENV)?;
+    revayat_scientific::tex_supervisor::validate_scope(Path::new(&directory), &token)
+}
 pub(super) fn surviving_owner_reaps_container() -> Result<()> {
     #[cfg(unix)]
     abrupt_controller_death()?;
@@ -28,6 +39,7 @@ pub(super) fn surviving_owner_reaps_container() -> Result<()> {
 }
 #[cfg(unix)]
 fn abrupt_controller_death() -> Result<()> {
+    let receipt_root = receipt_scope()?;
     let temp = tempfile::tempdir()?;
     let source = temp.path().join("paper.tex");
     let output = temp.path().join("paper.pdf");
@@ -57,7 +69,7 @@ fn abrupt_controller_death() -> Result<()> {
             let deadline = Instant::now() + Duration::from_secs(40);
             while Instant::now() < deadline {
                 let mut paths = Vec::new();
-                receipts(temp.path(), &mut paths)?;
+                receipts(&receipt_root, &mut paths)?;
                 for path in paths {
                     let receipt: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
                     let run = receipt["run_id"].as_str().context("missing run identity")?;
@@ -115,7 +127,7 @@ fn abrupt_controller_death() -> Result<()> {
             "owned daemon container survived controller death"
         );
         let mut paths = Vec::new();
-        receipts(temp.path(), &mut paths)?;
+        receipts(&receipt_root, &mut paths)?;
         ensure!(paths.is_empty(), "abrupt death retained owned receipts");
         ensure!(
             !fs::read_dir(temp.path())?.any(|entry| entry
@@ -137,6 +149,7 @@ fn abrupt_controller_death() -> Result<()> {
     Ok(())
 }
 fn timed_controller_cancellation() -> Result<()> {
+    let receipt_root = receipt_scope()?;
     let temp = tempfile::tempdir()?;
     let source = temp.path().join("paper.tex");
     let output = temp.path().join("paper.pdf");
@@ -174,7 +187,7 @@ fn timed_controller_cancellation() -> Result<()> {
                 let deadline = Instant::now() + Duration::from_secs(40);
                 while Instant::now() < deadline {
                     let mut paths = vec![];
-                    receipts(temp.path(), &mut paths)?;
+                    receipts(&receipt_root, &mut paths)?;
                     for path in paths {
                         let receipt: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
                         let identity = receipt["run_id"]
@@ -236,7 +249,7 @@ fn timed_controller_cancellation() -> Result<()> {
             "owned container survived cancellation"
         );
         let mut paths = vec![];
-        receipts(temp.path(), &mut paths)?;
+        receipts(&receipt_root, &mut paths)?;
         ensure!(paths.is_empty(), "cancellation left owned receipts");
         ensure!(
             !fs::read_dir(temp.path())?.any(|e| {

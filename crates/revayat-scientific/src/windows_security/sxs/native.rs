@@ -266,42 +266,39 @@ pub fn collect_authority_observed(
         stop_attempted: false,
         start: Instant::now(),
     };
-    // run_observed reaps the suspended/running authority and descendants before returning an error.
-    let execution =
-        run_observed(authority, &mut capture).map_err(|error| super::safe(error, "authority"));
-    let completed = execution.is_ok();
-    let mut primary = execution.err();
-    let qualified = if completed {
-        match capture.control() {
-            Ok(()) => true,
-            Err(error) => {
-                primary = Some(super::safe(error, "collector-control"));
-                false
-            }
-        }
-    } else {
-        false
-    };
-    let stopping = capture.stop();
-    let stopped_cleanly = stopping.is_ok();
-    if let Err(error) = stopping {
-        primary = Some(match primary {
-            Some(first) => super::combine(first, super::safe(error, "stop")),
-            None => super::safe(error, "stop"),
-        });
-    }
+    // Share the exact source-derived operation/control/stop/parse ordering with its validator.
+    // A failed launch before binding has no capture to parse; stop/close still run independently.
+    let completed = std::cell::Cell::new(false);
+    let qualified = std::cell::Cell::new(false);
     let mut evidence = String::new();
-    if stopped_cleanly && capture.bound.is_some() && (!completed || qualified) {
-        match capture.parse(qualified) {
-            Ok(parsed) => evidence = parsed,
-            Err(error) => {
-                primary = Some(match primary {
-                    Some(first) => super::combine(first, super::safe(error, "parse")),
-                    None => super::safe(error, "parse"),
-                });
-            }
-        }
-    }
+    let execution = {
+        let capture_ref = std::cell::RefCell::new(&mut capture);
+        super::execute_capture(
+            || {
+                // run_observed reaps the authority and descendants before returning an error.
+                let result = run_observed(authority, &mut **capture_ref.borrow_mut())
+                    .map_err(|error| super::safe(error, "authority"));
+                completed.set(result.is_ok());
+                result.map(|_| ())
+            },
+            || {
+                capture_ref.borrow_mut().control()?;
+                qualified.set(true);
+                Ok(())
+            },
+            || capture_ref.borrow_mut().stop(),
+            |success| {
+                let mut current = capture_ref.borrow_mut();
+                if current.bound.is_some() {
+                    evidence = current.parse(success)?;
+                }
+                Ok(())
+            },
+        )
+    };
+    let primary = execution.err();
+    let completed = completed.get();
+    let qualified = qualified.get();
     let proof = CaptureProof {
         starter_reaped: capture.reaped,
         session_stopped: capture.stopped,

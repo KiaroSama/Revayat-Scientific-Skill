@@ -10,6 +10,8 @@ use std::{collections::BTreeMap, fs, path::Path};
 #[path = "support/tex_fixture.rs"]
 mod fixture;
 use fixture::{Backend, Fixture, compile, config};
+#[path = "support/tex_output_checks.rs"]
+mod output_checks;
 
 #[test]
 fn test_missing_tex_font_file_is_classified_without_exposing_log() -> Result<()> {
@@ -165,6 +167,7 @@ fn test_staging_selects_closure_graphics_fonts_and_refuses_outside_assets() -> R
 }
 #[test]
 fn test_mount_csv_and_resource_flags_keep_cid_host_private() -> Result<()> {
+    output_checks::bounded_output_delivery_admission()?;
     let root = std::path::absolute(Path::new("job, Persian فارسی"))?;
     let args = tex::run_arguments(&config(), &root, "مقاله.tex", &"b".repeat(32))?;
     for flag in [
@@ -184,7 +187,7 @@ fn test_mount_csv_and_resource_flags_keep_cid_host_private() -> Result<()> {
         .filter(|p| p[0] == "--mount")
         .map(|p| p[1].clone())
         .collect::<Vec<_>>();
-    assert_eq!(mounts.len(), 2);
+    assert_eq!(mounts.len(), 1, "TeX must have no writable host bind");
     let fields = csv::ReaderBuilder::new()
         .has_headers(false)
         .from_reader(mounts[0].as_bytes())
@@ -201,24 +204,22 @@ fn test_mount_csv_and_resource_flags_keep_cid_host_private() -> Result<()> {
         args[args.iter().position(|a| a == "--cidfile").unwrap() + 1],
         root.join("container.cid").display().to_string()
     );
-    assert!(args.contains(&"120s".into()));
+    assert!(args.contains(&"150s".into()));
     assert!(args.contains(&"--kill-after=5s".into()));
+    assert!(args.contains(&"--detach".into()));
+    assert!(args.contains(&"--hold".into()));
     assert!(!mounts.contains(&root.display().to_string()));
-    let output_fields = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .from_reader(mounts[1].as_bytes())
-        .records()
-        .next()
-        .unwrap()?;
-    assert!(output_fields.iter().any(|s| s == "dst=/output"));
     assert!(
-        output_fields
-            .iter()
-            .any(|s| s == format!("src={}", root.join("output").display()))
+        args.windows(2)
+            .any(|pair| pair == ["--tmpfs", "/output:rw,noexec,nosuid,nodev,size=268435456"])
     );
-    assert!(!output_fields.iter().any(|s| s == "readonly"));
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["--ulimit", "fsize=268435456:268435456"])
+    );
     Ok(())
 }
+
 #[test]
 fn test_cleanup_removes_only_verified_run_and_detects_lost_label() -> Result<()> {
     let f = Fixture::new()?;
@@ -278,13 +279,29 @@ fn test_cleanup_removes_only_verified_run_and_detects_lost_label() -> Result<()>
 #[test]
 fn test_failed_renderer_valid_pdf_timeout_and_cleanup_failure_never_publish() -> Result<()> {
     finalize_checks::primary_and_recovery()?;
-    for outcome in ["nonzero", "timeout", "cleanup", "invalid"] {
+    for outcome in [
+        "nonzero",
+        "timeout",
+        "inner-timeout",
+        "inner-kill",
+        "cleanup",
+        "invalid",
+        "chunk",
+        "digest",
+    ] {
         let f = Fixture::new()?;
         let mut backend = Backend::new();
-        backend.code = if outcome == "nonzero" { 42 } else { 0 };
+        backend.code = match outcome {
+            "nonzero" => 42,
+            "inner-timeout" => 124,
+            "inner-kill" => 137,
+            _ => 0,
+        };
         backend.timeout = outcome == "timeout";
         backend.cleanup_fail = outcome == "cleanup";
         backend.invalid = outcome == "invalid";
+        backend.corrupt_chunk = outcome == "chunk";
+        backend.corrupt_hash = outcome == "digest";
         let error = compile(&f, &mut backend, None, |phase, _, directory| {
             if phase == TexBoundary::BeforeBackend {
                 f.assert_copies(directory)?;
@@ -296,12 +313,19 @@ fn test_failed_renderer_valid_pdf_timeout_and_cleanup_failure_never_publish() ->
         if outcome == "nonzero" {
             assert!(error.to_string().contains("undefined-control-sequence"));
         }
-        if outcome == "timeout" {
+        if matches!(outcome, "timeout" | "inner-timeout" | "inner-kill") {
             assert!(
                 error
                     .downcast_ref::<revayat_scientific::runtime::DeadlineExceeded>()
                     .is_some()
             );
+            assert!(!revayat_scientific::weasyprint_container::is_unavailable_probe(&error));
+        }
+        if outcome == "chunk" {
+            assert!(error.to_string().contains("bounded container output read"));
+        }
+        if outcome == "digest" {
+            assert!(error.to_string().contains("admitted digest"));
         }
         assert_eq!(backend.calls, 1);
         if outcome == "cleanup" {
@@ -322,6 +346,23 @@ fn test_failed_renderer_valid_pdf_timeout_and_cleanup_failure_never_publish() ->
             f.clean_staging()?;
         }
         f.unchanged()?;
+    }
+    for code in [1, 2, 124, 125, 126, 127, 137] {
+        let error: anyhow::Error = tex::IsolatedRendererFailure {
+            code,
+            category: "renderer-failure",
+        }
+        .into();
+        assert_eq!(
+            revayat_scientific::weasyprint_container::is_unavailable_probe(&error),
+            code == 2
+        );
+        let uncertain = revayat_scientific::runtime::with_cleanup::<()>(
+            Err(error),
+            Err(anyhow::anyhow!("controlled cleanup failure")),
+        )
+        .unwrap_err();
+        assert!(!revayat_scientific::weasyprint_container::is_unavailable_probe(&uncertain));
     }
     Ok(())
 }

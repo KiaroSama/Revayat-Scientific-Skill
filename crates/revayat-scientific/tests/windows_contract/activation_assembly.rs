@@ -13,6 +13,7 @@ fn path_buffer() -> Vec<u8> {
 }
 #[test]
 fn assembly_query_paths_are_inside_returned_span_with_strict_terminated_utf16() {
+    check_assembly_contract("C:\\fixed\\python.exe", "C:\\Windows").unwrap();
     let bytes = path_buffer();
     let path = "C:\\fixed\\authority.exe";
     let count = (path.encode_utf16().count() * 2) as u32;

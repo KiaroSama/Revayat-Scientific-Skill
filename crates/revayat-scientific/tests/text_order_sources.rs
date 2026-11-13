@@ -232,6 +232,15 @@ fn test_real_two_page_pdf_matches_source_tokens() -> anyhow::Result<()> {
     assert!(!plain.contains(HIDDEN));
     let browser = revayat_scientific::render::discover_browser(None)?;
     revayat_scientific::render::render_html(&source, &pdf, &browser, None)?;
+    if let Some(evidence) = std::env::var_os("SCIENTIFIC_EVIDENCE_DIR") {
+        fs::create_dir_all(&evidence)?;
+        let destination = std::path::Path::new(&evidence).join("order-source.pdf");
+        anyhow::ensure!(
+            !revayat_scientific::identity::is_link(&destination)?,
+            "linked evidence output refused"
+        );
+        fs::copy(&pdf, destination)?;
+    }
     let doc = revayat_scientific::pdf::open_pdf(&pdf, false)?;
     assert_eq!(revayat_scientific::pdf::page_ids(&doc)?.len(), 2);
     let extracted = revayat_scientific::pdf::pdf_text(&pdf)?;

@@ -5,6 +5,9 @@ use std::mem::{offset_of, size_of};
 
 #[test]
 fn actctx_x64_layout_and_fixed_roles_do_not_alias() {
+    check_startup_activation_validation().unwrap();
+    check_fixed_dll_validation().unwrap();
+    check_policy_result_validation().unwrap();
     if size_of::<usize>() == 8 {
         assert_eq!(size_of::<ActCtx>(), 56);
         assert_eq!(
@@ -91,6 +94,7 @@ fn host_context_requires_absent_thread_token_not_denied_query_or_valid_impersona
 
 #[test]
 fn finalization_reverts_before_independent_cleanup_and_preserves_failure_order() {
+    revayat_scientific::windows_security::diagnostic_validation::check_startup_image_access_validation().unwrap();
     let order = RefCell::new(Vec::new());
     let cleanup: Vec<Box<dyn FnMut() -> anyhow::Result<()> + '_>> = vec![
         Box::new(|| {
@@ -168,6 +172,8 @@ fn finalization_reverts_before_independent_cleanup_and_preserves_failure_order()
 
 #[test]
 fn debug_context_distinguishes_owned_traps_from_exact_setter_readback() {
+    revayat_scientific::windows_security::diagnostic_validation::check_debug_control_validation()
+        .unwrap();
     for slot in 0..2 {
         for rtm in [0, 0x10000] {
             for fixed in [0, 0x400] {
@@ -233,6 +239,9 @@ fn debug_context_distinguishes_owned_traps_from_exact_setter_readback() {
     }
     assert!(raw_debug_equal(&original[..100], &original).is_err());
     assert!(trap_qualifiers(0xffff0ff1).contains("transaction_context=unknown"));
+    assert!(trap_qualifiers(0xfffe0ff1).contains("rtm_bit_set=False"));
+    assert!(trap_qualifiers(0xffff0ff1).contains("rtm_bit_set=True"));
+    assert!(trap_qualifiers(0xfffe0ff1).contains("bld_bit_set=True"));
 }
 
 #[test]
@@ -364,6 +373,11 @@ fn actual_host_activation_context_and_collector_negative_control_release_owned_h
     use std::io::Write;
     let root = tempfile::tempdir().unwrap();
     let run = "a".repeat(32);
+    revayat_scientific::windows_security::activation::native::check_assembly_validation(
+        root.path(),
+    )
+    .unwrap();
+    let events_start = revayat_scientific::windows_security::sxs::native_events::utc_now().unwrap();
     for role in [ManifestRole::Host, ManifestRole::CollectorControl] {
         let path = root.path().join(role.filename());
         let expected = role.bytes(&run).unwrap();
@@ -385,10 +399,70 @@ fn actual_host_activation_context_and_collector_negative_control_release_owned_h
             proof.assemblies,
             if role == ManifestRole::Host { 1 } else { 0 }
         );
+        assert_eq!(
+            proof.assembly_metadata.len(),
+            if role == ManifestRole::Host {
+                proof.assemblies as usize + 1
+            } else {
+                0
+            }
+        );
+        for line in &proof.assembly_metadata {
+            assert!(line.ends_with("cause_claimed=False"));
+            assert!(!line.contains(&root.path().to_string_lossy().to_string()));
+        }
         assert_eq!(std::fs::read(&path).unwrap(), expected);
         let mut changed = expected;
         changed.push(b' ');
         std::fs::write(&path, &changed).unwrap();
         assert!(observe_manifest(&path, &run, role).is_err());
+    }
+    let host =
+        revayat_scientific::windows_security::activation::native::observe_explicit_host_fixture()
+            .unwrap();
+    assert_eq!(
+        host,
+        "WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=True win32_error=0x00000000"
+    );
+    let fixture = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("startup-explicit-id2.exe");
+    let python = root.path().join("python.exe");
+    std::fs::create_dir(root.path().join("DLLs")).unwrap();
+    std::fs::copy(&fixture, &python).unwrap();
+    std::fs::copy(&fixture, root.path().join("DLLs").join("_ctypes.pyd")).unwrap();
+    let dll = revayat_scientific::windows_security::activation::native::observe_fixed_dll(&python)
+        .unwrap();
+    assert!(dll.outcome.created && dll.outcome.error == 0 && dll.outcome.released);
+    assert!(
+        dll.metadata
+            .contains("resource_type=24 resource_id=2 resource_language=1033")
+    );
+    assert!(
+        dll.metadata.contains(
+            "cache_reset_claimed=False cause_claimed=False child_equivalence_claimed=False"
+        )
+    );
+    assert!(
+        revayat_scientific::windows_security::activation::native::observe_fixed_dll(&python)
+            .is_err()
+    );
+    let events_end = revayat_scientific::windows_security::sxs::native_events::utc_now().unwrap();
+    let lines = revayat_scientific::windows_security::sxs::native_events::observe_startup_events(
+        &root.path().join("python.exe"),
+        &events_start,
+        &events_end,
+    )
+    .unwrap();
+    let summary = lines.last().unwrap();
+    assert!(summary.starts_with("WINDOWS_SXS_EVENTS phase=modified-preflight scanned_count="));
+    assert!(summary.ends_with("producer_verified=False cause_claimed=False"));
+    for line in &lines {
+        assert!(!line.contains(&root.path().to_string_lossy().to_string()));
+        assert!(!line.contains("Dependent Assembly"));
     }
 }

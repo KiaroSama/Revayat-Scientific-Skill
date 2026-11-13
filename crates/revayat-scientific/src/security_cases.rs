@@ -503,27 +503,28 @@ fn production_options(root: &Path, label: &str) -> Result<()> {
                 .collect::<Result<Vec<_>>>()?;
             ensure!(
                 mounts
-                    == [
-                        BTreeMap::from([
-                            ("type".into(), "bind".into()),
-                            ("src".into(), root.join("input").display().to_string()),
-                            ("dst".into(), "/input".into()),
-                            ("readonly".into(), "".into())
-                        ]),
-                        BTreeMap::from([
-                            ("type".into(), "bind".into()),
-                            ("src".into(), root.join("output").display().to_string()),
-                            ("dst".into(), "/output".into())
-                        ])
-                    ],
-                "production mount arrangement changed"
+                    == [BTreeMap::from([
+                        ("type".into(), "bind".into()),
+                        ("src".into(), root.join("input").display().to_string()),
+                        ("dst".into(), "/input".into()),
+                        ("readonly".into(), "".into())
+                    ]),],
+                "production must expose only the read-only approved input bind"
+            );
+            ensure!(
+                values("--tmpfs").contains(&"/output:rw,noexec,nosuid,nodev,size=268435456".into()),
+                "production output is not a finite private tmpfs"
             );
         }
         "production-per-file-not-aggregate" => ensure!(
             values("--ulimit").contains(&"fsize=268435456:268435456".into())
-                && values("--tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=268435456"]
+                && values("--tmpfs")
+                    == [
+                        "/tmp:rw,noexec,nosuid,nodev,size=268435456",
+                        "/output:rw,noexec,nosuid,nodev,size=268435456"
+                    ]
                 && !args.contains(&"--storage-opt".into()),
-            "production per-file versus aggregate quota arrangement changed"
+            "production must separately request its unchanged per-file limit and aggregate output tmpfs quota"
         ),
         _ => bail!("unknown production option admission"),
     }

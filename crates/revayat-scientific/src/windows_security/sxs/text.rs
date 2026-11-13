@@ -248,3 +248,119 @@ pub fn success_evidence(bytes: &[u8], manifest: &str, control: &str) -> Result<S
     ensure!(output.len() <= 4096, "SxS evidence output exceeds bound");
     Ok(output)
 }
+
+/// Original SxsTraceSuccess.CheckValidation assertions, executable from the ordered bootstrap.
+/// The result validates parser contracts; it does not prove that a collector recorded an event.
+pub fn check_success_validation() -> Result<()> {
+    use anyhow::ensure;
+    const CONTROL: &str = "F:\\private-control-sentinel\\collector.manifest";
+    const CONSUMER: &str = "F:\\private-python-sentinel\\DLLs\\_ctypes.pyd";
+    const BEGIN: &str = "Begin Activation Context Generation.\n";
+    const END: &str = "End Activation Context Generation.\n";
+    let positive = format!(
+        "{BEGIN}ManifestPath = {CONTROL}\nERROR: invalid namespace\nERROR: Activation Context generation failed.\n{END}"
+    );
+    let benign = format!(
+        "{BEGIN}ManifestPath = {CONSUMER}\nINFO: Activation Context generation succeeded.\n{END}"
+    );
+    let utf8 = |text: &str| [b"\xef\xbb\xbf".as_slice(), text.as_bytes()].concat();
+    let utf16 = |text: &str| {
+        let mut bytes = vec![255, 254];
+        for unit in text.encode_utf16() {
+            bytes.extend(unit.to_le_bytes());
+        }
+        bytes
+    };
+    for count in 0..3 {
+        let text = benign.repeat(count) + &positive;
+        let result = success_evidence(&utf8(&text), CONSUMER, CONTROL)?;
+        ensure!(result == success_evidence(&utf16(&text), CONSUMER, CONTROL)?
+            && result.contains(&format!("collector_recording_verified=True consumer_qualified=True consumer_blocks={count}"))
+            && result.contains("child_visibility_claimed=False") && !result.contains("private-"),
+            "collector successful-consumer parser fixture differs");
+    }
+    for invalid in [
+        String::new(),
+        benign.clone(),
+        positive.clone() + &positive,
+        positive.replace(CONTROL, "wrong.manifest"),
+        positive.replace("ERROR: Activation Context generation failed.\n", ""),
+        positive.replace(
+            "ERROR: Activation Context generation failed.",
+            "INFO: Activation Context generation succeeded.",
+        ),
+        positive.replace(
+            END,
+            &format!("ERROR: Activation Context generation failed.\n{END}"),
+        ),
+        positive.replace(
+            "ERROR: invalid namespace",
+            "ERROR: Cannot resolve reference unknown",
+        ),
+        positive.replace("ERROR: invalid namespace", "INFO: Reference: unknown"),
+        positive.replace(
+            "ERROR: invalid namespace",
+            "ERROR: Activation Context generation succeeded.",
+        ),
+        positive.replace(
+            "ManifestPath = ",
+            &format!("ManifestPath = {CONTROL}\nManifestPath = "),
+        ),
+        positive.clone() + BEGIN,
+        positive.clone() + &benign.replace(END, ""),
+        BEGIN.to_owned() + &positive,
+        positive.clone() + END,
+        positive.clone() + "private-outside-sentinel\n",
+        positive.clone() + "\0",
+        positive.clone() + "\r",
+        positive.clone() + &"x".repeat(2049),
+        positive.clone() + &"\n".repeat(4096),
+        benign.repeat(64) + &positive,
+        positive.clone()
+            + &benign.replace(
+                "INFO: Activation Context generation succeeded.",
+                "ERROR: Access is denied.",
+            ),
+        positive.clone()
+            + &benign.replace(
+                "INFO: Activation Context generation succeeded.",
+                "INFO: Reference: unknown",
+            ),
+        positive.clone()
+            + &benign.replace(
+                "ManifestPath = ",
+                &format!("ManifestPath = {CONSUMER}\nManifestPath = "),
+            ),
+    ] {
+        let error = success_evidence(&utf8(&invalid), CONSUMER, CONTROL)
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("collector malformed text accepted"))?;
+        ensure!(
+            !format!("{:?}", super::safe(error, "collector-evidence")).contains("private-"),
+            "collector parser disclosed private payload"
+        );
+    }
+    for invalid in [
+        vec![],
+        vec![239, 187, 191],
+        vec![239, 187, 191, 255],
+        vec![255, 254, 0],
+        vec![254, 255, 0, 0],
+        positive.as_bytes().to_vec(),
+        vec![0; 1_048_577],
+    ] {
+        ensure!(
+            success_evidence(&invalid, CONSUMER, CONTROL).is_err(),
+            "collector malformed bytes accepted"
+        );
+    }
+    ensure!(
+        success_evidence(&utf8(&positive), CONTROL, CONTROL).is_err(),
+        "collector aliased consumer accepted"
+    );
+    ensure!(
+        failure_evidence(&utf8(&positive), CONSUMER).is_err(),
+        "collector substituted for failed consumer"
+    );
+    Ok(())
+}

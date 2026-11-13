@@ -207,12 +207,18 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
         .unwrap();
     assert_eq!(joined.matches("--report ").count(), 11);
     assert_eq!(joined.matches("--ledger ").count(), 8);
-    assert_eq!(joined.matches("--event-report ").count(), 6);
+    assert_eq!(joined.matches("--event-report ").count(), 19);
+    assert!(
+        joined
+            .contains("--event-report execution-input/execution-native-linux/coverage-debug.json")
+    );
     for platform in ["ubuntu", "macos", "windows"] {
         for profile in ["debug", "release"] {
-            assert!(joined.contains(&format!(
-                "--event-report execution-input/execution-{platform}-latest/oracle-{profile}.json"
-            )));
+            for population in ["oracle", "engine", "runtime-preparation"] {
+                assert!(joined.contains(&format!(
+                    "--event-report execution-input/execution-{platform}-latest/{population}-{profile}.json"
+                )));
+            }
         }
     }
     assert!(joined.contains("execution-macos-latest/scientific-debug.json"));

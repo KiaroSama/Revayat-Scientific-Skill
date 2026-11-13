@@ -3,6 +3,9 @@ use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
 
+#[path = "policy/default_control.rs"]
+pub mod default_control;
+
 pub const REGISTRY_READ: u32 = 0x20019;
 pub const REGISTRY_DENY: u32 = 2 | 4 | 0x10000 | 0x40000 | 0x80000;
 pub const SCRATCH_MASKS: [u32; 9] = [0, 0x20, 0x100000, 0x100020, 1, 2, 0x20000, 0x40000, 0x80000];

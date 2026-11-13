@@ -85,13 +85,14 @@ revayat-scientific docx --help
 revayat-scientific pdf --help
 ```
 
-`--engine weasyprint` is accepted as a compatibility spelling for the existing Chromium renderer. It requires the same sandboxed browser and HTML source (a sibling `.html` for TeX inputs), adds no Python dependency, and returns the selected engine identity as `chromium`. CSS support and pagination follow Chromium, so output may differ from WeasyPrint and is not claimed byte-identical.
+`--engine weasyprint` selects the actual optional WeasyPrint engine in the isolated document image. Its Rust adapter stages a closed, checked resource view and uses the same finite output quota and owned cleanup as TeX. WeasyPrint and its Python dependencies are external image packages; the repository contains no owned Python program and no host Python installation is required. TeX input needs an existing sibling `.html`. Automatic discovery preserves the order TeX, Chromium, WeasyPrint and never aliases their engine identities.
 
 Use `--help` on each command for its exact schema. Keep job sources, ledgers, figures and translation logs outside the installed skill. Obtain consent before delegating translation to additional agents. Record source language, intended readership, selected terminology level and actual checks in the job log.
 
-| Optional native tool | Required use |
+| Optional tool | Required use |
 | --- | --- |
 | Sandboxed Chrome/Chromium/Edge | HTML rendering through the native DevTools client |
+| WeasyPrint in the isolated document image | Explicit WeasyPrint rendering and HTML fallback when Chromium is unavailable |
 | Docker or Podman with effective limits | Isolated TeX builds; native host XeLaTeX does not replace this boundary |
 | Poppler | PDF text/font/raster verification and supported extraction |
 | Tesseract with selected language data | Optional OCR |

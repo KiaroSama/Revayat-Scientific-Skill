@@ -1,4 +1,5 @@
 use super::*;
+use revayat_scientific::windows_security::scratch;
 #[test]
 fn exact_control_request_rejects_path_escape() {
     for value in ["../outside", "/outside", "C:\\outside", "a:b", "a\\b"] {
@@ -70,6 +71,7 @@ fn private_parent_binding_is_checked_before_admission() {
 }
 #[test]
 fn authority_consumer_retains_actual_controls() {
+    scratch::check_private_creator_validation().unwrap();
     assert!(authority::basic(0, 56, 0, 0x20019));
     for access in [0x19, 0x2001b, 0xf003f] {
         assert!(!authority::basic(0, 56, 0, access));

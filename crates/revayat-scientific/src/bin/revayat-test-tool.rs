@@ -7,6 +7,9 @@ use std::{
     thread,
     time::Duration,
 };
+#[cfg(windows)]
+#[path = "test_tool/opc.rs"]
+mod opc;
 fn docker(args: &[String]) {
     let locator = args.get(2).unwrap().replacen("unix:", "file:", 1);
     let state = url::Url::parse(&locator).unwrap().to_file_path().unwrap();
@@ -133,6 +136,14 @@ fn main() {
         std::process::exit(status.code().unwrap_or(2));
     }
     match args.get(1).map(String::as_str) {
+        Some("--version") => println!("Revayat controlled test fixture 1.0"),
+        #[cfg(windows)]
+        Some("opc-consume") => {
+            if let Err(error) = opc::run(&args[2..]) {
+                eprintln!("independent OPC consumer failed: {error:#}");
+                std::process::exit(2);
+            }
+        }
         Some("package-relocated-index") => {
             let (source, repository, output) = (
                 Path::new(&args[2]),

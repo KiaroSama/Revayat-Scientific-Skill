@@ -129,3 +129,137 @@ pub fn require_profile(labels: &[AssemblyLabel], count: usize) -> Result<()> {
     );
     Ok(())
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct AssemblyInfo {
+    pub flags: u32,
+    pub identity_bytes: u32,
+    pub path_type: u32,
+    pub path_bytes: u32,
+    pub manifest_time: i64,
+    pub policy_type: u32,
+    pub policy_bytes: u32,
+    pub policy_time: i64,
+    pub satellite: u32,
+    pub manifest_major: u32,
+    pub manifest_minor: u32,
+    pub policy_major: u32,
+    pub policy_minor: u32,
+    pub directory_bytes: u32,
+    pub identity: usize,
+    pub path: usize,
+    pub policy: usize,
+    pub directory: usize,
+    pub files: u32,
+}
+pub fn require_size(returned: usize, minimum: usize) -> Result<usize> {
+    ensure!(
+        (minimum..=65536).contains(&returned),
+        "activation query returned size exceeds fixed buffer"
+    );
+    Ok(returned)
+}
+pub fn require_path_type(kind: u32) -> Result<()> {
+    ensure!(kind == 2, "activation manifest is not a Win32 file");
+    Ok(())
+}
+/// Preserve qualified count metadata before rejecting an out-of-profile count, as in ReadCount.
+pub fn read_count(bytes: &[u8], returned: usize, lines: &mut Vec<String>) -> Result<u32> {
+    require_size(returned, 64)?;
+    ensure!(
+        returned <= bytes.len(),
+        "activation count allocation exceeds bound"
+    );
+    let count = u32_at(bytes, 8)?;
+    lines.push(format!("WINDOWS_ACTIVATION_QUERY context=host class=2 returned_bytes={returned} assembly_count={count} cause_claimed=False"));
+    assembly_count(bytes, returned)
+}
+impl AssemblyLabel {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Root => "python-root",
+            Self::CommonControls => "common-controls-manifest",
+            Self::CommonControlsResources => "common-controls-resources-manifest",
+        }
+    }
+    pub fn from_label(label: &str) -> Result<Self> {
+        match label {
+            "python-root" => Ok(Self::Root),
+            "common-controls-manifest" => Ok(Self::CommonControls),
+            "common-controls-resources-manifest" => Ok(Self::CommonControlsResources),
+            _ => anyhow::bail!("activation assembly family differs"),
+        }
+    }
+}
+pub fn require_profile_names(labels: &[&str], count: usize) -> Result<()> {
+    let labels = labels
+        .iter()
+        .map(|label| AssemblyLabel::from_label(label))
+        .collect::<Result<Vec<_>>>()?;
+    require_profile(&labels, count)
+}
+fn family(path: &str, prefix: &str) -> bool {
+    let name = path.rsplit('\\').next().unwrap_or(path);
+    name.len() <= 240
+        && name.to_ascii_lowercase().starts_with(prefix)
+        && name.to_ascii_lowercase().ends_with(".manifest")
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-.".contains(&byte))
+}
+/// Fixed predicates describe a refused path without disclosing its text or granting qualification.
+pub fn path_metadata(
+    path: &str,
+    root: &str,
+    windows: &str,
+    index: u32,
+    returned: usize,
+    kind: u32,
+) -> Result<String> {
+    let boolean = |value| if value { "True" } else { "False" };
+    let directory = path
+        .rsplit_once('\\')
+        .map(|(directory, _)| directory)
+        .unwrap_or("");
+    Ok(format!(
+        "WINDOWS_ACTIVATION_ASSEMBLY context=host class=3 index={index} returned_bytes={returned} path_type={kind} canonical={} python_root={} system_manifests={} common_controls={} common_controls_resources={} cause_claimed=False",
+        boolean(canonical(path)),
+        boolean(ordinal_path_equal(path, root)?),
+        boolean(ordinal_path_equal(
+            directory,
+            &format!("{windows}\\WinSxS\\Manifests")
+        )?),
+        boolean(family(
+            path,
+            "amd64_microsoft.windows.common-controls_6595b64144ccf1df_"
+        )),
+        boolean(family(
+            path,
+            "amd64_microsoft.windows.c..-controls.resources_6595b64144ccf1df_"
+        ))
+    ))
+}
+/// Complete independent release attempts, preserving an operation error before cleanup errors.
+pub fn release<T>(
+    operation: Result<T>,
+    actions: Vec<Box<dyn FnMut() -> Result<()> + '_>>,
+) -> Result<T> {
+    let mut errors = Vec::new();
+    for mut action in actions {
+        if let Err(error) = action() {
+            errors.push(error);
+        }
+    }
+    if errors.is_empty() {
+        return operation;
+    }
+    if let Err(primary) = operation {
+        errors.insert(0, primary);
+    }
+    Err(super::Failures { errors }.into())
+}
+#[path = "assembly_validation.rs"]
+mod validation;
+pub use validation::check_assembly_contract;
+pub(crate) use validation::check_cleanup_validation;

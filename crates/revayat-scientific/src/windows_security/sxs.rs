@@ -2,8 +2,14 @@
 use anyhow::{Result, ensure};
 use std::fmt;
 
+#[path = "sxs/event_collector.rs"]
+pub mod event_collector;
 #[path = "sxs/events.rs"]
 mod events;
+pub use event_collector::check_startup_events_validation;
+#[cfg(windows)]
+#[path = "sxs/native_events.rs"]
+pub mod native_events;
 #[path = "sxs/ordinal.rs"]
 mod ordinal;
 pub use ordinal::ordinal_path_equal;
@@ -34,7 +40,9 @@ pub use events::classify_event;
 pub use session::{
     SESSION_CAPACITY, SESSION_NAME, SessionSnapshot, require_enumeration, select_session,
 };
-pub use text::{decode_lines, failure_evidence, known_dependency, success_evidence};
+pub use text::{
+    check_success_validation, decode_lines, failure_evidence, known_dependency, success_evidence,
+};
 
 /// The raw cause remains private and is deliberately not an Error::source or Debug field.
 pub struct PrivateFailure {
@@ -61,7 +69,7 @@ impl fmt::Debug for PrivateFailure {
     }
 }
 impl std::error::Error for PrivateFailure {}
-fn safe(error: anyhow::Error, stage: &'static str) -> anyhow::Error {
+pub(crate) fn safe(error: anyhow::Error, stage: &'static str) -> anyhow::Error {
     if error.is::<PrivateFailure>() {
         error
     } else {

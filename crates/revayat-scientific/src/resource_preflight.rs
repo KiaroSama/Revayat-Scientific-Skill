@@ -5,6 +5,10 @@
 use crate::html::{ParsedHtml, member};
 use anyhow::{Result, bail, ensure};
 use cssparser::{ParseError, Parser, ParserInput, Token};
+#[path = "resource_html5.rs"]
+mod html5;
+pub(crate) use html5::require_agreement as require_html5_agreement;
+pub(crate) use html5::require_staged_agreement as require_staged_html5_agreement;
 const MAX_CSS_TOKENS: usize = 2_000_000;
 const MAX_CSS_DEPTH: usize = 128;
 
@@ -28,25 +32,18 @@ fn css_tokens<'i>(
         return Err(parser.new_custom_error("CSS nesting exceeds 128"));
     }
     let mut import = false;
-    let mut namespace_rule = false;
     while !parser.is_exhausted() {
         *steps += 1;
         if *steps > MAX_CSS_TOKENS {
             return Err(parser.new_custom_error("CSS token budget exceeded"));
         }
         let token = parser.next()?.clone();
-        if namespace_rule {
-            if token == Token::Semicolon {
-                namespace_rule = false;
-            }
-            continue;
-        }
         let import_value = import;
         import = false;
         match token {
             Token::AtKeyword(name) if name.eq_ignore_ascii_case("import") => import = true,
             Token::AtKeyword(name) if name.eq_ignore_ascii_case("namespace") => {
-                namespace_rule = true
+                namespace_prelude(parser)?;
             }
             Token::UnquotedUrl(url) => urls.push(url.to_string()),
             Token::QuotedString(url) if import_value || quoted_urls => urls.push(url.to_string()),
@@ -86,6 +83,32 @@ fn css_tokens<'i>(
         if urls.len() > 2048 {
             return Err(parser.new_custom_error("CSS resource count exceeds 2048"));
         }
+    }
+    Ok(())
+}
+/// Namespace names are identifiers, not fetched resources. Consume precisely
+/// their grammar, so an invalid block cannot hide later live resource rules.
+pub(crate) fn namespace_prelude<'i>(
+    parser: &mut Parser<'i, '_>,
+) -> Result<(), ParseError<'i, String>> {
+    let _ = parser.try_parse(|parser| parser.expect_ident_cloned());
+    match parser.next()?.clone() {
+        Token::QuotedString(_) | Token::UnquotedUrl(_) => (),
+        Token::Function(name) if name.eq_ignore_ascii_case("url") => {
+            parser.parse_nested_block(|nested| {
+                nested.expect_string()?;
+                nested.expect_exhausted()?;
+                Ok(())
+            })?;
+        }
+        _ => {
+            return Err(
+                parser.new_custom_error("namespace requires a static namespace name".to_owned())
+            );
+        }
+    }
+    if !parser.is_exhausted() {
+        parser.expect_semicolon()?;
     }
     Ok(())
 }
@@ -140,6 +163,7 @@ pub fn srcset_urls(value: &str) -> Result<Vec<String>> {
     Ok(urls)
 }
 fn attributes(tag: &str, namespace: &str, get: impl Fn(&str) -> String) -> Result<Vec<String>> {
+    let tag = resource_tag(tag, namespace);
     let mut urls = Vec::new();
     let mut add = |name| {
         let value = get(name);
@@ -186,9 +210,21 @@ fn attributes(tag: &str, namespace: &str, get: impl Fn(&str) -> String) -> Resul
     urls.extend(css_urls(&get("style"))?);
     Ok(urls)
 }
+/// HTML5 repairs the obsolete HTML image spelling to img; SVG image is distinct.
+pub(crate) fn resource_tag<'a>(tag: &'a str, namespace: &str) -> &'a str {
+    if namespace == "html" && tag == "image" {
+        "img"
+    } else {
+        tag
+    }
+}
 pub fn html_urls(model: &ParsedHtml) -> Result<Vec<String>> {
     let mut urls = Vec::new();
     for node in &model.nodes {
+        ensure!(
+            !member("isindex noscript", &node.tag),
+            "HTML parser-dependent element requires reviewed static markup"
+        );
         ensure!(
             node.attr("xml:base").trim().is_empty(),
             "XML base requires reviewed static artwork"
@@ -222,6 +258,7 @@ pub fn html_urls(model: &ParsedHtml) -> Result<Vec<String>> {
         }
         ensure!(urls.len() <= 2048, "document resource count exceeds 2048");
     }
+    require_html5_agreement(&model.raw, &urls)?;
     Ok(urls)
 }
 pub fn svg_urls(bytes: &[u8]) -> Result<Vec<String>> {

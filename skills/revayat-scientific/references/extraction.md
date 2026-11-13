@@ -51,6 +51,12 @@ not proof of correct order in any source language. Read `source-languages.md` fo
 language/script identification and quote-safe processing. Record source page/book
 dimensions and original image pixels using `layout-and-images.md` before drafting.
 
+Record what the selected extraction or translation mode actually processed. A
+page can be preserved unchanged while its scanned text remains untranslated,
+and a mixed native-text/scanned page can be only partly covered. Track translated,
+OCRed, reviewed and skipped source objects separately; appearance, output page
+count and successful file creation do not close the coverage ledger.
+
 ## Extracting figures
 
 The destination PDF must show the **same pixels the reader sees on the

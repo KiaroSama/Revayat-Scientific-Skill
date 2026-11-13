@@ -129,6 +129,16 @@ impl std::fmt::Display for CleanupFailure {
 }
 impl std::error::Error for CleanupFailure {}
 
+/// A deadline alone never certifies cleanup when its retained secondary failed.
+pub fn deadline_diagnostic(error: &anyhow::Error) -> Option<&'static str> {
+    error.downcast_ref::<DeadlineExceeded>()?;
+    Some(if error.downcast_ref::<CleanupFailure>().is_some() {
+        "command timed out; owned cleanup could not be verified"
+    } else {
+        "command timed out; owned process tree terminated"
+    })
+}
+
 pub fn is_missing_executable(error: &anyhow::Error) -> bool {
     error.downcast_ref::<CleanupFailure>().is_none()
         && error

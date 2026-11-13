@@ -143,7 +143,7 @@ pub fn security() -> Result<Value> {
         "/usr/local/bin/revayat-sandbox-probe".into(),
         "--helper-entry".into(),
     ]);
-    let (stage, text) = super::run_owned(
+    let (stage, text, elapsed_millis) = super::run_owned(
         &config,
         stage,
         &run,
@@ -187,7 +187,10 @@ pub fn security() -> Result<Value> {
             && proofs[0]["checks"] == 39
             && proofs[0]["environment_names"] == 7
             && proofs[0]["scratch_bytes"] == 134_217_728
-            && proofs[0]["file_bytes"] == 67_108_864,
+            && proofs[0]["file_bytes"] == 67_108_864
+            && proofs[0]["wall_seconds"] == 90
+            && proofs[0]["kill_after_seconds"] == 2
+            && proofs[0]["wall_configuration_verified"] == true,
         "trusted native helper preflight did not verify its boundary"
     );
     let summaries = records
@@ -201,7 +204,7 @@ pub fn security() -> Result<Value> {
     );
     let cases = verified_cases(&records)?;
     Ok(
-        json!({"preflight":proofs[0],"scenarios":summaries[0],"cases":cases,"run_id":run,"worker_sha256":original.sha256,"container_cleanup":"verified"}),
+        json!({"preflight":proofs[0],"scenarios":summaries[0],"cases":cases,"run_id":run,"worker_sha256":original.sha256,"container_cleanup":"verified","execution":{"exit":0,"host_wall_seconds":110,"elapsed_millis":elapsed_millis}}),
     )
 }
 

@@ -41,7 +41,7 @@ fn decimal(text: &str) -> Result<u32> {
     text.parse()
         .map_err(|e: std::num::ParseIntError| safe(e.into(), "event-evidence"))
 }
-fn timestamp(value: &str) -> Result<[u32; 7]> {
+pub(super) fn timestamp(value: &str) -> Result<[u32; 7]> {
     let bytes = value.as_bytes();
     check(
         (20..=28).contains(&bytes.len())

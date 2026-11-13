@@ -154,8 +154,25 @@ fn run_owned(cli: &Cli) -> Result<i32> {
                 .any(|arg| arg == "--owned-run" || arg.starts_with("--owned-run=")),
             "owned native run locators are internal"
         );
-        let mut owner =
-            revayat::windows_security::native::NativeRunOwner::create(&std::env::current_dir()?)?;
+        let mut owner = None;
+        let prepared = revayat::windows_security::preparation::invoke_bootstrap_stage(
+            "prerequisite",
+            0,
+            revayat::windows_security::preparation::bootstrap_progress,
+            || {
+                owner = Some(revayat::windows_security::native::NativeRunOwner::create(
+                    &std::env::current_dir()?,
+                )?);
+                Ok(())
+            },
+        );
+        if let Err(primary) = prepared {
+            return revayat::runtime::with_cleanup(
+                Err(primary),
+                owner.as_mut().map_or(Ok(()), |owner| owner.close()),
+            );
+        }
+        let mut owner = owner.expect("successful prerequisite created its owned state");
         command.args.push("--owned-run".into());
         command.args.extend(owner.worker_arguments());
         let binding = owner.recovery_binding().to_owned();
@@ -165,8 +182,14 @@ fn run_owned(cli: &Cli) -> Result<i32> {
         io::stderr().write_all(&output.stderr)?;
         return Ok(output.code);
     }
-    let output = if ["build", "tex-container", "run-check", "security-linux"]
-        .contains(&cli.command.as_str())
+    let output = if [
+        "build",
+        "render-html",
+        "tex-container",
+        "run-check",
+        "security-linux",
+    ]
+    .contains(&cli.command.as_str())
     {
         revayat::runtime::run_supervised(&command)?
     } else {
@@ -185,11 +208,14 @@ fn main() {
                 let code = usage.exit_code();
                 let _ = usage.print();
                 code
-            } else if error
-                .downcast_ref::<revayat::runtime::DeadlineExceeded>()
-                .is_some()
-            {
-                eprintln!("revayat-scientific: command timed out; owned process tree terminated");
+            } else if let Some(diagnostic) = revayat::runtime::deadline_diagnostic(&error) {
+                eprintln!("revayat-scientific: {diagnostic}");
+                if error
+                    .downcast_ref::<revayat::runtime::CleanupFailure>()
+                    .is_some()
+                {
+                    eprintln!("revayat-scientific: {error:#}");
+                }
                 124
             } else {
                 eprintln!("revayat-scientific: {error:#}");

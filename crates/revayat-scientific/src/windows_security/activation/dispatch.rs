@@ -164,6 +164,9 @@ impl QualifiedFailure {
     pub fn original(&self) -> &anyhow::Error {
         &self.original
     }
+    pub fn into_original(self) -> anyhow::Error {
+        self.original
+    }
 }
 impl fmt::Display for QualifiedFailure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

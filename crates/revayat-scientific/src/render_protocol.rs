@@ -170,7 +170,14 @@ impl<'a> DevTools<'a> {
                 } else {
                     match self.policy.fetch(url) {
                         Ok((bytes, mime)) => {
-                            self.send("Fetch.fulfillRequest",json!({"requestId":id,"responseCode":200,"body":STANDARD.encode(bytes),"responseHeaders":[{"name":"Content-Type","value":mime},{"name":"Content-Security-Policy","value":"script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"}]}))?;
+                            // Resource admission decodes these files as UTF-8;
+                            // the HTTP response must preserve that interpretation
+                            // when the immutable source omits a declaration.
+                            let content_type = match mime.as_str() {
+                                "text/html" | "text/css" => format!("{mime}; charset=utf-8"),
+                                _ => mime,
+                            };
+                            self.send("Fetch.fulfillRequest",json!({"requestId":id,"responseCode":200,"body":STANDARD.encode(bytes),"responseHeaders":[{"name":"Content-Type","value":content_type},{"name":"Content-Security-Policy","value":"script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"}]}))?;
                         }
                         Err(_) => {
                             self.failed = true;

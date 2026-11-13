@@ -71,6 +71,75 @@ fn tmp_size(options: &[&str]) -> io::Result<u64> {
         .checked_mul(multiplier)
         .ok_or_else(|| io::Error::other("temporary size overflow"))
 }
+
+#[cfg(target_os = "linux")]
+fn output_allocation_limits() -> io::Result<bool> {
+    use std::os::fd::AsRawFd;
+    unsafe extern "C" {
+        fn signal(signum: i32, handler: usize) -> usize;
+        fn posix_fallocate(fd: i32, offset: i64, length: i64) -> i32;
+    }
+    const LIMIT: u64 = 268_435_456;
+    // SIGXFSZ must be ignored temporarily so the probe observes EFBIG rather
+    // than terminating. No reviewed target runs concurrently with this probe.
+    let previous = unsafe { signal(25, 1) };
+    if previous == usize::MAX {
+        return Err(io::Error::last_os_error());
+    }
+    let sparse = Path::new("/output/per-file-control");
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(sparse)?;
+    let at_limit = file.set_len(LIMIT).is_ok();
+    let per_file = file.set_len(LIMIT + 1);
+    drop(file);
+    let restored = unsafe { signal(25, previous) };
+    fs::remove_file(sparse)?;
+    if restored == usize::MAX {
+        return Err(io::Error::last_os_error());
+    }
+    if !at_limit || !per_file.is_err_and(|error| error.raw_os_error() == Some(27)) {
+        return Ok(false);
+    }
+    let mut paths = Vec::new();
+    let mut admitted = 0;
+    let outcome = (|| {
+        for index in 0..17 {
+            let path = Path::new("/output").join(format!("aggregate-control-{index}"));
+            let file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)?;
+            paths.push(path);
+            // Every allocation is 16 MiB, well below RLIMIT_FSIZE. Reservation
+            // consumes real pages; sparse lengths cannot prove aggregate quota.
+            let code = unsafe { posix_fallocate(file.as_raw_fd(), 0, 16 * 1024 * 1024) };
+            if code != 0 {
+                return if code == 28 {
+                    // probe.txt already occupies one page, so exactly fifteen
+                    // complete 16MiB reservations fit; the sixteenth must fail.
+                    Ok(admitted == 15)
+                } else {
+                    Err(io::Error::from_raw_os_error(code))
+                };
+            }
+            admitted += 1;
+        }
+        Ok(false)
+    })();
+    for path in paths {
+        fs::remove_file(path)?;
+    }
+    outcome
+}
+
+#[cfg(not(target_os = "linux"))]
+fn output_allocation_limits() -> io::Result<bool> {
+    Err(io::Error::other(
+        "production output enforcement requires Linux",
+    ))
+}
 fn run() -> io::Result<()> {
     let mut probe = Probe { checks: 0 };
     probe.require(
@@ -105,9 +174,19 @@ fn run() -> io::Result<()> {
         fs::write("/usr/local/bin/revayat-probe-write", b"probe").is_err(),
         "toolchain is writable",
     )?;
+    let output = options(&mounts, "/output")?;
+    let output_type = mounts
+        .lines()
+        .find(|line| line.split_whitespace().nth(1) == Some("/output"))
+        .and_then(|line| line.split_whitespace().nth(2));
     probe.require(
-        fs::write("/output/probe.txt", b"allowed output\n").is_ok(),
-        "approved output is not writable",
+        fs::write("/output/probe.txt", b"allowed output\n").is_ok()
+            && output_type == Some("tmpfs")
+            && tmp_size(&output)? == 268_435_456
+            && ["rw", "noexec", "nosuid", "nodev"]
+                .iter()
+                .all(|flag| output.contains(flag)),
+        "approved output is not a private quota-backed tmpfs",
     )?;
     probe.require(
         fs::write("/tmp/probe.txt", b"allowed temporary").is_ok(),
@@ -222,9 +301,30 @@ fn run() -> io::Result<()> {
     if probe.checks != 29 {
         return Err(io::Error::other("sandbox probe check inventory mismatch"));
     }
+    if !output_allocation_limits()? {
+        return Err(io::Error::other(
+            "production output EFBIG/aggregate ENOSPC enforcement failed",
+        ));
+    }
+    let status = std::process::Command::new("/usr/local/bin/revayat-tex-entry")
+        .arg("/input/.revayat-main.tex")
+        .stdin(std::process::Stdio::null())
+        .status()?;
+    if !status.success()
+        || fs::read_to_string("/output/public-one.txt")?.trim() != "public harmless first"
+        || fs::read_to_string("/output/public-two.txt")?.trim() != "public harmless second"
+        || fs::metadata("/output/document.pdf")?.len() == 0
+    {
+        return Err(io::Error::other(
+            "production harmless XeLaTeX output controls failed",
+        ));
+    }
     fs::write(
         "/output/sandbox-verified.json",
-        format!("{{\"verified\":true,\"checks\":{}}}\n", probe.checks),
+        format!(
+            "{{\"verified\":true,\"checks\":{},\"output_mount\":\"tmpfs\",\"output_bytes\":268435456,\"per_file_bytes\":268435456,\"per_file_efbig\":true,\"aggregate_enospc\":true,\"tex_openout_files\":2,\"ordinary_pdf\":true}}\n",
+            probe.checks
+        ),
     )?;
     println!("sandbox_controls_verified");
     Ok(())

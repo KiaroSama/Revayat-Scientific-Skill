@@ -10,23 +10,76 @@ pub(super) fn probe_output_integrity() -> Result<()> {
     fs::write(root.join("input/sentinel.txt"), b"public sandbox fixture")?;
     fs::write(root.join("output/probe.txt"), b"allowed output\n")?;
     fs::write(
+        root.join("output/public-one.txt"),
+        b"public harmless first\n",
+    )?;
+    fs::write(
+        root.join("output/public-two.txt"),
+        b"public harmless second\n",
+    )?;
+    {
+        use lopdf::{Document, Object, Stream, dictionary};
+        let mut pdf = Document::with_version("1.7");
+        let pages = pdf.new_object_id();
+        let content = pdf.add_object(Stream::new(dictionary! {}, Vec::new()));
+        let page = pdf.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages,
+            "MediaBox" => vec![0.into(), 0.into(), 200.into(), 300.into()],
+            "Contents" => content, "Resources" => dictionary! {},
+        });
+        pdf.objects.insert(
+            pages,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(page)], "Count" => 1,
+            }),
+        );
+        let catalog = pdf.add_object(dictionary! {"Type" => "Catalog", "Pages" => pages});
+        pdf.trailer.set("Root", catalog);
+        pdf.save(root.join("output/document.pdf"))?;
+    }
+    let proof = serde_json::json!({
+        "verified":true,"checks":29,"output_mount":"tmpfs",
+        "output_bytes":268435456,"per_file_bytes":268435456,
+        "per_file_efbig":true,"aggregate_enospc":true,
+        "tex_openout_files":2,"ordinary_pdf":true,
+    });
+    fs::write(
         root.join("output/sandbox-verified.json"),
-        b"{\"verified\":true,\"checks\":29}",
+        serde_json::to_vec(&proof)?,
     )?;
     revayat_scientific::sandbox::verify_probe_output(root)?;
     for (name, bytes) in [
         ("input/sentinel.txt", b"changed input".as_slice()),
         ("output/probe.txt", b"allowed output".as_slice()),
-        (
-            "output/sandbox-verified.json",
-            b"{\"verified\":true,\"checks\":28}".as_slice(),
-        ),
+        ("output/public-one.txt", b"changed first output".as_slice()),
+        ("output/public-two.txt", b"changed second output".as_slice()),
     ] {
         let path = root.join(name);
         let original = fs::read(&path)?;
         fs::write(&path, bytes)?;
         assert!(revayat_scientific::sandbox::verify_probe_output(root).is_err());
         fs::write(path, original)?;
+    }
+    for (field, invalid) in [
+        ("checks", serde_json::json!(28)),
+        ("output_mount", serde_json::json!("bind")),
+        ("output_bytes", serde_json::json!(536870912)),
+        ("per_file_bytes", serde_json::json!(536870912)),
+        ("per_file_efbig", serde_json::json!(false)),
+        ("aggregate_enospc", serde_json::json!(false)),
+        ("tex_openout_files", serde_json::json!(1)),
+        ("ordinary_pdf", serde_json::json!(false)),
+    ] {
+        let mut changed = proof.clone();
+        changed[field] = invalid;
+        fs::write(
+            root.join("output/sandbox-verified.json"),
+            serde_json::to_vec(&changed)?,
+        )?;
+        assert!(
+            revayat_scientific::sandbox::verify_probe_output(root).is_err(),
+            "{field}"
+        );
     }
     Ok(())
 }

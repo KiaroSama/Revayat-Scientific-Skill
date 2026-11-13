@@ -5,6 +5,8 @@ use revayat_scientific::{
     tex_container as tex,
 };
 use std::{cell::Cell, fs, path::Path};
+#[path = "tex_backend.rs"]
+mod backend;
 fn selected(source: &Path) -> Result<Selection> {
     Ok(Selection {
         source: source.canonicalize()?,
@@ -17,21 +19,6 @@ fn selected(source: &Path) -> Result<Selection> {
         }),
     })
 }
-fn valid_pdf(path: &Path) -> Result<()> {
-    use lopdf::{Document, Object, Stream, dictionary};
-    let mut document = Document::with_version("1.7");
-    let pages = document.new_object_id();
-    let content = document.add_object(Stream::new(dictionary! {}, vec![]));
-    let page=document.add_object(dictionary!{"Type"=>"Page","Parent"=>pages,"MediaBox"=>vec![Object::from(0),Object::from(0),Object::from(230),Object::from(340)],"Contents"=>content,"Resources"=>dictionary!{}});
-    document.objects.insert(
-        pages,
-        dictionary! {"Type"=>"Pages","Kids"=>vec![Object::Reference(page)],"Count"=>1}.into(),
-    );
-    let catalog = document.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages});
-    document.trailer.set("Root", catalog);
-    document.save(path)?;
-    Ok(())
-}
 pub(super) fn controller_mode(mode: &str) -> Result<()> {
     let work = Work::new();
     let old = b"%PDF-1.7 stale working output\n%%EOF\n";
@@ -39,6 +26,9 @@ pub(super) fn controller_mode(mode: &str) -> Result<()> {
     let invoked = Cell::new(false);
     let produced = Cell::new(false);
     let cleaned = Cell::new(0);
+    let mut backend = backend::Backend::new();
+    backend.invalid = mode == "truncated";
+    backend.code = if mode == "failed-valid" { 42 } else { 0 };
     let marker = work.root.join("engine-invoked");
     let error = build::cli_build_with(
         &work.args()[1..],
@@ -50,30 +40,29 @@ pub(super) fn controller_mode(mode: &str) -> Result<()> {
                 selection.container.clone().unwrap(),
                 Some(record),
                 &mut |args, _| {
-                    if args.iter().any(|a| a == "run") {
+                    let launch = args.iter().any(|a| a == "run");
+                    let compile = args.iter().any(|a| a == "exec")
+                        && args
+                            .last()
+                            .is_some_and(|arg| arg == "/input/.revayat-main.tex");
+                    if (launch && mode == "error") || compile {
                         invoked.set(true);
                         fs::write(&marker, b"compiler invoked")?;
                         if mode == "error" {
                             bail!("fixture container failed");
                         }
-                        let directory = Path::new(
-                            &args[args.iter().position(|a| a == "--cidfile").unwrap() + 1],
-                        )
-                        .parent()
-                        .unwrap();
-                        let staged = directory.join("output/document.pdf");
-                        if mode == "truncated" {
-                            fs::write(&staged, b"%PDF-1.7\ntruncated fixture")?;
-                        } else {
-                            valid_pdf(&staged)?;
+                        let result = backend.execute(args, 150)?;
+                        if mode != "truncated" {
+                            let staged = backend.directory.join("container-output/document.pdf");
                             revayat_scientific::render::validate_pdf(&staged)?;
                             produced.set(true);
                         }
-                        return Ok((if mode == "failed-valid" { 42 } else { 0 }, String::new()));
+                        return Ok(result);
                     }
-                    assert!(args.iter().any(|a| a == "ps"));
-                    cleaned.set(cleaned.get() + 1);
-                    Ok((0, String::new()))
+                    if args.iter().any(|a| a == "ps") {
+                        cleaned.set(cleaned.get() + 1);
+                    }
+                    backend.execute(args, 150)
                 },
                 |_, _, _| Ok(()),
                 (

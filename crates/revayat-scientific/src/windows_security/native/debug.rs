@@ -48,6 +48,7 @@ struct Owner {
     exited: bool,
     exit_seen: bool,
     retirement_attempted: bool,
+    termination_requested: bool,
     event_file_released: bool,
     initial: bool,
     entry: u32,

@@ -445,14 +445,17 @@ fn test_live_root_entities_and_comment_only_waivers() {
 #[test]
 fn test_encoded_and_starred_assets_share_lint_and_build_resolution() {
     let d = tempfile::tempdir().unwrap();
-    fs::create_dir(d.path().join("figures")).unwrap();
-    fs::create_dir(d.path().join("chapters")).unwrap();
-    let image = d.path().join("figures/figure one.png");
+    // Match Source::load/lint::check/build's approved canonical root, including
+    // macOS's /var -> /private/var temporary-directory alias.
+    let root = d.path().canonicalize().unwrap();
+    fs::create_dir(root.join("figures")).unwrap();
+    fs::create_dir(root.join("chapters")).unwrap();
+    let image = root.join("figures/figure one.png");
     image::RgbaImage::from_pixel(8, 8, image::Rgba([100, 120, 140, 128]))
         .save(&image)
         .unwrap();
-    let html = d.path().join("main.html");
-    let tex = d.path().join("main.tex");
+    let html = root.join("main.html");
+    let tex = root.join("main.tex");
     fs::write(
         &html,
         "<html lang=\"fa\" dir=\"rtl\"><img dir=\"ltr\" src=\"figures/figure%20one.png\"></html>",
@@ -464,12 +467,13 @@ fn test_encoded_and_starred_assets_share_lint_and_build_resolution() {
     )
     .unwrap();
     fs::write(
-        d.path().join("chapters/one.tex"),
+        root.join("chapters/one.tex"),
         "\\begin{LTR}\\includegraphics* [width=2cm] {figures/figure one.png}\\end{LTR}",
     )
     .unwrap();
     for p in [&html, &tex] {
         let s = Source::load(p).unwrap();
+        assert_eq!(s.path().parent().unwrap(), root);
         assert!(
             lint::check(&s, &[], Some(&["figure one.png".into()]), "journal")
                 .unwrap()
@@ -478,13 +482,13 @@ fn test_encoded_and_starred_assets_share_lint_and_build_resolution() {
         let refs = s.image_references();
         assert_eq!(refs.len(), 1);
         assert_eq!(
-            lint::resolve_asset(d.path(), &refs[0].1).unwrap(),
+            lint::resolve_asset(&root, &refs[0].1).unwrap(),
             image.canonicalize().unwrap()
         );
         let inputs = revayat_scientific::build::document_inputs(p, &[], None).unwrap();
         let sources = [
             p.canonicalize().unwrap(),
-            d.path().join("chapters/one.tex").canonicalize().unwrap(),
+            root.join("chapters/one.tex").canonicalize().unwrap(),
         ];
         let assets = inputs
             .into_iter()

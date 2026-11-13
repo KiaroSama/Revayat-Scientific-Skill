@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::path::{Component, Path};
 
 pub mod activation;
+pub mod diagnostic_validation;
 pub mod image;
 pub mod policy;
+pub mod preparation;
+pub mod scratch;
 pub mod sxs;
 
 #[cfg(windows)]

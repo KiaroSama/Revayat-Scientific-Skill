@@ -15,8 +15,6 @@ use std::{
     time::Duration,
 };
 use zip::{ZipWriter, write::SimpleFileOptions};
-#[path = "../src/bin/test_tool/opc.rs"]
-mod opc;
 #[path = "support/windows_junction.rs"]
 mod windows_junction;
 
@@ -101,33 +99,39 @@ fn authored_case_package(path: &Path) -> Result<()> {
     Ok(())
 }
 
-const OPC_CASE: &str = "native_opc_consumer_recognizes_case_variant_relationship_part";
-const OPC_CHILD: &str = "REVAYAT_TEST_OPC_CHILD_PACKAGE";
 const OPC_HANG: &str = "REVAYAT_TEST_OPC_CHILD_HANG";
 
-fn opc_command(path: &Path) -> Result<CommandSpec> {
-    let mut command = CommandSpec::new(std::env::current_exe()?);
-    command.args = ["--exact", OPC_CASE, "--nocapture", "--quiet"]
-        .into_iter()
-        .map(Into::into)
-        .collect();
-    command
-        .env
-        .insert(OPC_CHILD.into(), path.as_os_str().into());
+fn opc_command(path: &Path) -> CommandSpec {
+    let mut command = CommandSpec::new(env!("CARGO_BIN_EXE_revayat-test-tool")).args([
+        std::ffi::OsString::from("opc-consume"),
+        path.as_os_str().to_owned(),
+    ]);
     command.env_remove.push(OPC_HANG.into());
     command.timeout = Duration::from_secs(10);
     command.max_output = 65536;
-    Ok(command)
+    command
 }
 
 #[test]
 fn opc_consumer_deadline_terminates_and_reaps_owned_tree() -> Result<()> {
     let temp = tempfile::tempdir()?;
     let pid_path = temp.path().join("owned-child.pid");
-    let mut command = opc_command(&pid_path)?;
+    let mut command = opc_command(&pid_path);
     assert_eq!(command.timeout, Duration::from_secs(10));
-    assert_eq!(command.args[0], "--exact");
-    assert_eq!(command.args[1], OPC_CASE);
+    assert_eq!(command.program, env!("CARGO_BIN_EXE_revayat-test-tool"));
+    assert_eq!(
+        command.args,
+        [
+            std::ffi::OsString::from("opc-consume"),
+            pid_path.as_os_str().to_owned()
+        ]
+    );
+    assert!(command.env.is_empty());
+    assert!(
+        command
+            .env_remove
+            .contains(&std::ffi::OsString::from(OPC_HANG))
+    );
     command.env.insert(OPC_HANG.into(), "1".into());
     command.timeout = Duration::from_secs(1);
     let error = runtime::run(&command).expect_err("nonreturning consumer must time out");
@@ -146,33 +150,11 @@ fn opc_consumer_deadline_terminates_and_reaps_owned_tree() -> Result<()> {
 
 #[test]
 fn native_opc_consumer_recognizes_case_variant_relationship_part() -> Result<()> {
-    if let Some(path) = std::env::var_os(OPC_CHILD) {
-        if std::env::var_os(OPC_HANG).is_some() {
-            use std::os::windows::process::CommandExt;
-            use std::process::{Command, Stdio};
-            let mut child = Command::new(env!("CARGO_BIN_EXE_revayat-test-tool"))
-                .arg("silent")
-                .stdin(Stdio::null())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .creation_flags(0x08000000)
-                .spawn()?;
-            fs::write(&path, child.id().to_string())?;
-            child.wait()?;
-            anyhow::bail!("nonreturning OPC fixture unexpectedly exited");
-        }
-        opc::consume(Path::new(&path))?;
-        // Suppress libtest's result trailer only after the real COM consumer
-        // returned and dropped every apartment/interface/string owner.
-        let mut stdout = std::io::stdout().lock();
-        stdout.flush()?;
-        std::process::exit(0);
-    }
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("case-variant.docx");
     authored_case_package(&path)?;
     let before = file_identity(&path, None)?;
-    let output = runtime::run(&opc_command(&path)?)?;
+    let output = runtime::run(&opc_command(&path))?;
     ensure!(
         output.success()
             && output.stdout == b"OPC_CASE_RELATIONSHIP_RECOGNIZED\n"
@@ -277,7 +259,10 @@ fn public_build_junction_refusal_precedes_lint_and_renderer() -> Result<()> {
         &source,
         "<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><style>pre{white-space:pre-wrap}</style></head><body><p>كتاب در دیوار آتش</p></body></html>",
     )?;
-    fs::write(f.root.join("terms.tsv"), b"en\tfa\tnote\n")?;
+    fs::write(
+        f.root.join("terms.tsv"),
+        include_bytes!("../../../tests/fixtures/terms-empty.tsv"),
+    )?;
     fs::write(f.root.join("manifest.txt"), b"")?;
     let ordinary = f.root.join("ordinary-output");
     fs::create_dir(&ordinary)?;
