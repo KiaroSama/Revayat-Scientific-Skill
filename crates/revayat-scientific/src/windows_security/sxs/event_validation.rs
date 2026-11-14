@@ -171,6 +171,54 @@ impl EventApi for Fixture {
 
 /// Source counterpart of StartupActivationEvents.CheckValidation and its CheckCollection root.
 pub fn check_startup_events_validation() -> Result<()> {
+    // Actual XML adapter semantics preserve the raw nonzero observation. The frozen generic
+    // model still refuses it; neither operation invents a zero property count.
+    let raw = Rendered {
+        success: false,
+        error: 122,
+        bytes: 1812,
+        properties: 1,
+    };
+    ensure!(
+        xml_required_bytes(raw)? == 1812 && required_bytes(raw).is_err(),
+        "XML sizing confused string bytes with EVT_VARIANT properties"
+    );
+    let done = Rendered {
+        success: true,
+        error: 0,
+        bytes: 10,
+        properties: 1,
+    };
+    ensure!(
+        xml_rendered_bytes(done, 10)? == 10 && done.properties == 1,
+        "XML rendering replaced raw property observation"
+    );
+    for invalid in [
+        Rendered { bytes: 3, ..raw },
+        Rendered { error: 5, ..raw },
+        Rendered {
+            success: true,
+            ..raw
+        },
+    ] {
+        ensure!(
+            xml_required_bytes(invalid).is_err(),
+            "invalid native XML sizing accepted"
+        );
+    }
+    ensure!(
+        xml_rendered_bytes(Rendered { bytes: 12, ..done }, 10).is_err()
+            && xml_rendered_bytes(
+                Rendered {
+                    success: false,
+                    ..done
+                },
+                10
+            )
+            .is_err(),
+        "invalid native XML render span accepted"
+    );
+
     ensure!(
         query_text(START, END)?
             == "*[System[Provider[@Name='SideBySide'] and TimeCreated[@SystemTime>='2026-01-01T00:00:00Z' and @SystemTime<='2026-01-01T00:00:01Z']]]",

@@ -65,6 +65,15 @@ pub(super) fn run<'a>(
             })?;
             worker.require_readonly_registry()?;
             volume.private_use(&worker, binding)?;
+            super::super::scratch_diagnostic::compare(volume, binding, &worker, |frames| {
+                use std::io::Write;
+                let mut output = std::io::stdout().lock();
+                for frame in frames {
+                    writeln!(output, "{frame}")?;
+                }
+                output.flush()?;
+                Ok(())
+            })?;
             lease = Some(VolumeLease::begin(volume, binding, &worker)?);
             lease.as_mut().unwrap().install(&worker)?;
             lease.as_ref().unwrap().require_resume(&worker)?;

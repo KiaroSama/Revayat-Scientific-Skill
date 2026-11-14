@@ -57,11 +57,14 @@ fn dispatch(cli: &Cli) -> Result<i32> {
                     #[arg(long, hide = true, num_args = 4)]
                     owned_run: Vec<std::ffi::OsString>,
                     /// Compare original, temporary and restored machine registry policy.
-                    #[arg(long, conflicts_with = "machine_quota")]
+                    #[arg(long, conflicts_with_all = ["machine_quota", "machine_kernel"])]
                     machine_authority: bool,
                     /// Include the real fixed NTFS/quota actor in the same disposable profile.
-                    #[arg(long, conflicts_with = "machine_authority")]
+                    #[arg(long, conflicts_with_all = ["machine_authority", "machine_kernel"])]
                     machine_quota: bool,
+                    /// Include full fixed kernel controls and the verified forced wall-tree.
+                    #[arg(long, conflicts_with_all = ["machine_authority", "machine_quota"])]
+                    machine_kernel: bool,
                     /// Run the original ordered 53 validators and three direct checks.
                     #[arg(long)]
                     bootstrap_checks: bool,
@@ -83,7 +86,9 @@ fn dispatch(cli: &Cli) -> Result<i32> {
                 if options.bootstrap_checks {
                     revayat::windows_security::native::run_bootstrap_checks(&view)?;
                 }
-                let report = if options.machine_quota {
+                let report = if options.machine_kernel {
+                    revayat::windows_security::native::run_machine_kernel_session(&image, &view)?
+                } else if options.machine_quota {
                     revayat::windows_security::native::run_machine_quota_session(&image, &view)?
                 } else if options.machine_authority {
                     revayat::windows_security::native::run_machine_authority_session(&image, &view)?
@@ -165,6 +170,9 @@ fn run_owned(cli: &Cli) -> Result<i32> {
     command.timeout = Duration::from_secs(cli.timeout);
     #[cfg(windows)]
     if cli.command == "security-windows" {
+        command.windows_job = revayat::windows_security::JobLimits::security_bootstrap();
+        command.idle_timeout = Some(Duration::from_secs(45));
+        command.max_output = 1024 * 1024;
         anyhow::ensure!(
             !cli.arguments
                 .iter()

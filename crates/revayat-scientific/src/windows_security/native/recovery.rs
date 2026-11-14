@@ -10,12 +10,27 @@ unsafe extern "system" {
 /// Whole-worker recovery restores durable machine intent before profile deletion.
 pub fn recover_run(owner: &mut NativeRunOwner, proof: &ReapedProcessTree) -> Result<()> {
     proof.require_binding(owner.recovery_binding())?;
-    let restored = super::registry_machine::MachineLease::recover(owner, proof)
+    if owner.recovered {
+        return reject_repeated_recovery();
+    }
+    let restored = crate::windows_security::sxs::recover_owned_session(owner, proof)
+        .and_then(|()| super::registry_machine::MachineLease::recover(owner, proof))
         .and_then(|()| super::scratch_recovery::recover_scratch(owner, proof));
     match restored {
         Ok(()) => finish_profile_recovery(owner, proof),
         Err(primary) => crate::runtime::with_cleanup(Err(primary), owner.close()),
     }
+}
+
+/// Repeated recovery retains the legacy typed operation/reporting failure without touching pins.
+fn reject_repeated_recovery() -> Result<()> {
+    use crate::windows_security::preparation::{bootstrap_progress, invoke_bootstrap_recovery};
+    invoke_bootstrap_recovery(
+        bootstrap_progress,
+        || Err(anyhow::anyhow!("profile recovery already completed")),
+        || Ok(()),
+    )
+    .map_err(anyhow::Error::new)
 }
 
 /// Compatibility entry point; durable policy recovery always precedes profile deletion.
@@ -61,3 +76,7 @@ fn finish_profile_recovery(owner: &mut NativeRunOwner, proof: &ReapedProcessTree
     )
     .map_err(anyhow::Error::new)
 }
+
+#[path = "sxs_journal.rs"]
+mod sxs_journal;
+pub(crate) use sxs_journal::SxsJournal;

@@ -17,6 +17,9 @@ use std::cell::RefCell;
 #[path = "registry_quota_session.rs"]
 mod quota;
 pub use quota::run_machine_quota_session;
+#[path = "registry_kernel_session.rs"]
+mod kernel;
+pub use kernel::run_machine_kernel_session;
 
 /// Created only after actual profile creation/sealing and matching held run identity.
 pub(in crate::windows_security::native) struct NativeProfileBinding<'a> {
@@ -39,6 +42,26 @@ impl<'a> NativeProfileBinding<'a> {
             view,
             profile,
             Scope::machine_quota(view.run_id(), machine, quota, arguments)?,
+        )
+    }
+    fn kernel(
+        view: &'a NativeRunView,
+        profile: &Profile,
+        machine: &str,
+        worker: &str,
+        primary_arguments: &str,
+        wall_arguments: &str,
+    ) -> Result<Self> {
+        Self::bind(
+            view,
+            profile,
+            Scope::kernel(
+                view.run_id(),
+                machine,
+                worker,
+                primary_arguments,
+                wall_arguments,
+            )?,
         )
     }
     fn bind(view: &'a NativeRunView, profile: &Profile, scope: Scope) -> Result<Self> {

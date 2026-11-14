@@ -25,6 +25,8 @@ pub(crate) use native_identity::{current_user_sid, observe_startup_token, with_a
 #[path = "sxs/native_session.rs"]
 mod native_session;
 #[cfg(windows)]
+pub(crate) use native_session::recover_owned_session;
+#[cfg(windows)]
 #[path = "sxs/native_storage.rs"]
 mod native_storage;
 #[path = "sxs/recovery.rs"]

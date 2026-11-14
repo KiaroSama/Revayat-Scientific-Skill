@@ -15,10 +15,13 @@ use std::{ffi::OsString, path::PathBuf};
 mod bootstrap;
 #[path = "state_io.rs"]
 mod io;
+#[path = "quota_canary.rs"]
+mod quota_canary;
 pub use bootstrap::run_bootstrap_checks;
 #[cfg(test)]
 use io::private_sddl;
 use io::{Pin, anchors, create_private, private, write_new};
+pub(in crate::windows_security::native) use quota_canary::QuotaCanary;
 fn finish<T>(result: Result<T>, cleanup: Result<()>) -> Result<T> {
     match (result, cleanup) {
         (result, Ok(())) => result,

@@ -10,6 +10,7 @@ use std::path::{Component, Path};
 pub mod activation;
 pub mod diagnostic_validation;
 pub mod image;
+pub mod kernel_controls;
 pub mod loader_comparison;
 pub mod policy;
 pub mod preparation;
@@ -55,6 +56,16 @@ impl JobLimits {
             cpu_seconds: 0,
         }
     }
+    /// The fixed native security controller owns up to64 descendants without
+    /// borrowing the inner LPAC memory/CPU policy or Chromium's resource profile.
+    pub const fn security_bootstrap() -> Self {
+        Self {
+            processes: 64,
+            process_memory: 0,
+            job_memory: 0,
+            cpu_seconds: 0,
+        }
+    }
     /// Chromium's multiprocess renderer needs a distinct bounded profile.
     pub const fn browser() -> Self {
         Self {
@@ -65,7 +76,10 @@ impl JobLimits {
         }
     }
     pub fn validate(self) -> Result<Self> {
-        if self == Self::browser() || self == Self::ownership() {
+        if self == Self::browser()
+            || self == Self::ownership()
+            || self == Self::security_bootstrap()
+        {
             return Ok(self);
         }
         ensure!((1..=8).contains(&self.processes), "invalid process limit");
@@ -208,6 +222,11 @@ pub struct Capture {
 }
 
 impl Capture {
+    /// Read-only progress for an owned live capture; EOF is still required by `finish`.
+    #[cfg(windows)]
+    pub(in crate::windows_security) fn pending(&self) -> &[u8] {
+        &self.bytes
+    }
     pub fn append(&mut self, bytes: &[u8], limit: usize) -> Result<()> {
         ensure!(
             !self.eof

@@ -21,10 +21,11 @@ fn pending(state: &Path) -> Result<()> {
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("owned recovery entry encoding differs"))?;
         ensure!(
-            !(name.ends_with(".receipt")
-                && (name.contains("trace")
-                    || name.starts_with("registry-policy")
-                    || name.starts_with("loader-snaps"))),
+            !(matches!(name, "sxs-trace.intent" | "sxs-trace.bound")
+                || name.ends_with(".receipt")
+                    && (name.contains("trace")
+                        || name.starts_with("registry-policy")
+                        || name.starts_with("loader-snaps"))),
             "trace/registry/loader recovery remains pending before scratch detach"
         );
     }
@@ -52,6 +53,7 @@ pub fn recover_scratch(
     owner.view.require()?;
     let view = &owner.view;
     let state = view.state_path();
+    pending(state)?;
     let host = crate::windows_security::sxs::current_user_sid()?;
     let intent: Option<Intent> = access::read_json(state, &host, "scratch-disk.intent")?;
     let image_path = state.join("scratch.vhdx");
@@ -84,7 +86,6 @@ pub fn recover_scratch(
     layout::guid(&intent.vhd)?;
     layout::guid(&intent.gpt)?;
     layout::guid(&intent.partition)?;
-    pending(state)?;
     let created: Option<Created> = access::read_json(state, &host, "scratch-disk.created")?;
     let detached: Option<Created> = access::read_json(state, &host, "scratch-disk.detached")?;
     if !image_path.try_exists()? {

@@ -115,10 +115,38 @@ mod tests {
     use super::*;
     #[test]
     fn actual_owned_registry_dacl_write_preserves_owner_group_and_integrity() {
-        let mut fixture = RegistryFixture::new("S-1-15-2-1-2-3-4-5-6-7").unwrap();
+        let package = "S-1-15-2-1-2-3-4-5-6-7";
+        let user = crate::windows_security::sxs::current_user_sid().unwrap();
+        let mut fixture = RegistryFixture::new(package).unwrap();
         let mut before = identity_label(fixture.root).unwrap();
-        apply_registry_acl(fixture.root,
-            "D:P(D;;0xd0006;;;S-1-15-2-1-2-3-4-5-6-7)(A;;KA;;;SY)(A;;KA;;;OW)(A;;KR;;;S-1-15-2-1-2-3-4-5-6-7)").unwrap();
+        let text = controls::root_policy(&user, package).unwrap();
+        let mut descriptor = Descriptor::new(&text).unwrap();
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
+                descriptor.0.cast::<u8>(),
+                GetSecurityDescriptorLength(descriptor.0) as usize,
+            )
+        };
+        let parsed = RelativeDescriptor::parse(bytes).unwrap();
+        let acl = crate::windows_security::policy::Acl::parse(parsed.dacl.unwrap()).unwrap();
+        assert_eq!(acl.aces.len(), 5);
+        assert!(acl.aces.iter().all(|ace| ace.flags == 0));
+        assert_eq!(acl.aces[0].kind, 1);
+        assert_eq!(acl.aces[0].mask().unwrap(), 0xd0006);
+        assert_eq!(acl.aces[3].kind, 0);
+        assert_eq!(acl.aces[3].mask().unwrap(), 0x20019);
+        assert_eq!(
+            acl.aces[3].sid().unwrap(),
+            crate::windows_security::scratch::sid(&user).unwrap()
+        );
+        assert_eq!(acl.aces[4].mask().unwrap(), 0x20019);
+        assert_eq!(
+            acl.aces[4].sid().unwrap(),
+            crate::windows_security::scratch::sid(package).unwrap()
+        );
+        descriptor.close().unwrap();
+        apply_registry_acl(fixture.root, &text).unwrap();
+        controls::require_policy(fixture.root, &user, package).unwrap();
         preserved(&before, fixture.root).unwrap();
         before.fill(0);
         fixture.close().unwrap();

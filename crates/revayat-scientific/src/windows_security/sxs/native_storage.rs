@@ -178,6 +178,19 @@ pub(super) struct Storage {
 }
 impl Storage {
     pub fn prepare(root: &Path, package: &str) -> Result<Self> {
+        Self::prepare_run(root, package, None)
+    }
+    pub fn prepare_owned(root: &Path, package: &str, run: &str) -> Result<Self> {
+        ensure!(
+            run.len() == 32
+                && run
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+            "SxS storage run differs"
+        );
+        Self::prepare_run(root, package, Some(run))
+    }
+    fn prepare_run(root: &Path, package: &str, bound_run: Option<&str>) -> Result<Self> {
         let root = drive(root).map_err(|error| diagnostics::at(error, Stage::SxsStorageDrive))?;
         let mut nonce = [0u8; 16];
         getrandom::fill(&mut nonce).map_err(|_| anyhow::anyhow!("fixed SxS nonce unavailable"))?;
@@ -186,6 +199,7 @@ impl Storage {
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
         nonce.fill(0);
+        let run = bound_run.map(str::to_owned).unwrap_or(run);
         let mut owner = Self {
             folder: PathBuf::from(format!("{root}sxs-trace-{run}")),
             run,

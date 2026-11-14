@@ -23,6 +23,22 @@ pub trait EventApi {
     fn query(&mut self) -> Result<usize>;
     fn next(&mut self, query: usize, timeout: u32, value: &mut Next) -> Result<()>;
     fn render(&mut self, item: usize, capacity: u32, data: usize) -> Result<Rendered>;
+    /// Frozen generic render contract. The native XML adapter supplies XML-specific operations.
+    fn xml_capacity(&mut self, item: usize) -> Result<u32> {
+        required_bytes(self.render(item, 0, 0)?)
+    }
+    fn xml_used(&mut self, item: usize, capacity: u32, data: usize) -> Result<u32> {
+        let value = self.render(item, capacity, data)?;
+        ensure!(
+            value.success
+                && value.bytes >= 4
+                && value.bytes <= capacity
+                && value.bytes.is_multiple_of(2)
+                && value.properties == 0,
+            "fixed SxS event evidence contract failed"
+        );
+        Ok(value.bytes)
+    }
     fn allocate(&mut self, capacity: u32) -> Result<usize>;
     fn read(&mut self, data: usize, bytes: &mut [u8]) -> Result<()>;
     fn release(&mut self, data: usize, capacity: u32) -> Result<()>;
@@ -121,13 +137,39 @@ pub fn required_bytes(value: Rendered) -> Result<u32> {
     );
     Ok(value.bytes)
 }
+/// XML bytes are independent of the EVT_VARIANT property count reported by EvtRender.
+/// Native XML output is still bounded, terminated and strictly decoded before classification.
+pub fn xml_required_bytes(value: Rendered) -> Result<u32> {
+    ensure!(
+        !value.success
+            && value.error == 122
+            && (4..=65536).contains(&value.bytes)
+            && value.bytes.is_multiple_of(2),
+        "fixed SxS event evidence contract failed"
+    );
+    Ok(value.bytes)
+}
+pub fn xml_rendered_bytes(value: Rendered, capacity: u32) -> Result<u32> {
+    ensure!(
+        value.success
+            && value.error == 0
+            && value.bytes >= 4
+            && value.bytes <= capacity
+            && value.bytes.is_multiple_of(2),
+        "fixed SxS event evidence contract failed"
+    );
+    Ok(value.bytes)
+}
 pub fn decode(bytes: &[u8], used: u32, capacity: u32, properties: u32) -> Result<String> {
+    ensure!(properties == 0, "fixed SxS event evidence contract failed");
+    decode_xml(bytes, used, capacity)
+}
+pub fn decode_xml(bytes: &[u8], used: u32, capacity: u32) -> Result<String> {
     ensure!(
         used >= 4
             && used <= capacity
             && used as usize == bytes.len()
             && used.is_multiple_of(2)
-            && properties == 0
             && bytes[bytes.len() - 2..] == [0, 0],
         "fixed SxS event evidence contract failed"
     );
@@ -154,7 +196,7 @@ fn render(
     deadline: &mut impl FnMut() -> Result<()>,
 ) -> Result<String> {
     deadline()?;
-    let capacity = required_bytes(api.render(item, 0, 0)?)?;
+    let capacity = api.xml_capacity(item)?;
     ensure!(
         *total <= 262144 - capacity,
         "fixed SxS event evidence contract failed"
@@ -165,19 +207,11 @@ fn render(
     let mut bytes = Vec::new();
     let operation = (|| {
         deadline()?;
-        let rendered = api.render(item, capacity, data)?;
-        ensure!(
-            rendered.success
-                && rendered.bytes >= 4
-                && rendered.bytes <= capacity
-                && rendered.bytes.is_multiple_of(2)
-                && rendered.properties == 0,
-            "fixed SxS event evidence contract failed"
-        );
-        bytes.try_reserve_exact(rendered.bytes as usize)?;
-        bytes.resize(rendered.bytes as usize, 0);
+        let used = api.xml_used(item, capacity, data)?;
+        bytes.try_reserve_exact(used as usize)?;
+        bytes.resize(used as usize, 0);
         api.read(data, &mut bytes)?;
-        decode(&bytes, rendered.bytes, capacity, rendered.properties)
+        decode_xml(&bytes, used, capacity)
     })();
     for byte in &mut bytes {
         // SAFETY: each pointer addresses its unique initialized byte; volatile clearing survives

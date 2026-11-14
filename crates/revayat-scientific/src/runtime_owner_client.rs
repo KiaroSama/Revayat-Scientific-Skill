@@ -25,6 +25,16 @@ pub(super) enum Event {
     Complete(Response),
 }
 
+fn wait_response(socket: Option<&UnixStream>, deadline: Instant) -> Result<()> {
+    let tick = (Instant::now() + Duration::from_millis(5)).min(deadline);
+    if let Some(socket) = socket {
+        super::transport::ready(socket, false, tick)?;
+    } else {
+        thread::sleep(tick.saturating_duration_since(Instant::now()));
+    }
+    Ok(())
+}
+
 pub struct Interactive {
     child: Child,
     socket: Option<UnixStream>,
@@ -233,7 +243,7 @@ impl Interactive {
                 Instant::now() < deadline,
                 "runtime nested cleanup completion missing"
             );
-            thread::sleep(Duration::from_millis(5));
+            wait_response(self.socket.as_ref(), deadline)?;
         }
         let cleanup = self
             .response
@@ -330,7 +340,7 @@ pub fn run(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
             Instant::now() < owner.deadline,
             "runtime companion response deadline exceeded"
         );
-        thread::sleep(Duration::from_millis(5));
+        wait_response(owner.socket.as_ref(), owner.deadline)?;
     }
     let primary = {
         let response = owner
@@ -462,6 +472,7 @@ mod tests {
     // Exercise the actual incremental decoder, without spawning an unrelated process.
     #[test]
     fn complete_then_eof_and_fragmented_frames_preserve_cleanup_result() {
+        super::transport_checks::check_backpressure().unwrap();
         fn decode(bytes: &[u8], eof: bool) -> Result<bool> {
             let mut pending = bytes.to_vec();
             let mut complete = false;
@@ -489,3 +500,7 @@ mod tests {
         assert!(decode(&[], true).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_transport_checks.rs"]
+mod transport_checks;

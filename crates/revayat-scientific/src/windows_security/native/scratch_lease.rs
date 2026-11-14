@@ -38,7 +38,7 @@ unsafe extern "system" {
         returned: *mut u32,
     ) -> i32;
 }
-fn read(handle: Handle) -> Result<Vec<u8>> {
+pub(super) fn read(handle: Handle) -> Result<Vec<u8>> {
     let mut data = vec![0u8; 65536];
     let mut returned = 0;
     let status = unsafe {
@@ -56,7 +56,7 @@ fn read(handle: Handle) -> Result<Vec<u8>> {
     crate::windows_security::policy::descriptor_equal(&data, &data)?;
     Ok(data)
 }
-fn write(handle: Handle, data: &[u8]) -> Result<()> {
+pub(super) fn write(handle: Handle, data: &[u8]) -> Result<()> {
     ensure!(
         (20..=65536).contains(&data.len()),
         "scratch volume policy write exceeds bound"
@@ -72,7 +72,7 @@ fn write(handle: Handle, data: &[u8]) -> Result<()> {
     );
     Ok(())
 }
-fn same(a: &[u8], b: &[u8]) -> Result<()> {
+pub(super) fn same(a: &[u8], b: &[u8]) -> Result<()> {
     ensure!(
         crate::windows_security::policy::descriptor_equal(a, b)?,
         "scratch volume policy differs"
@@ -108,13 +108,13 @@ fn suspended(job: &WindowsJob, process: Handle) -> Result<()> {
     );
     Ok(())
 }
-struct ReceiptPin {
+pub(super) struct ReceiptPin {
     handle: Owned,
     identity: access::Identity,
     uncertain: bool,
 }
 impl ReceiptPin {
-    fn open(state: &Path, host: &str, record: &str, expected: &[u8]) -> Result<Self> {
+    pub(super) fn open(state: &Path, host: &str, record: &str, expected: &[u8]) -> Result<Self> {
         let path = access::record_path(state, record)?;
         crate::windows_security::plain_path(&path)?;
         let mut handle = Owned::open(path, 0x80020080, 5, 0x200000)?;
@@ -134,7 +134,13 @@ impl ReceiptPin {
         })();
         access::combine(result, handle.close())
     }
-    fn require(&self, state: &Path, host: &str, record: &str, expected: &[u8]) -> Result<()> {
+    pub(super) fn require(
+        &self,
+        state: &Path,
+        host: &str,
+        record: &str,
+        expected: &[u8],
+    ) -> Result<()> {
         ensure!(
             !self.uncertain && !self.handle.0.is_null(),
             "scratch receipt pin is uncertain or closed"
@@ -158,7 +164,13 @@ impl ReceiptPin {
         })();
         access::combine(result, current.close())
     }
-    fn retire(&mut self, state: &Path, host: &str, record: &str, expected: &[u8]) -> Result<()> {
+    pub(super) fn retire(
+        &mut self,
+        state: &Path,
+        host: &str,
+        record: &str,
+        expected: &[u8],
+    ) -> Result<()> {
         let result = (|| {
             self.require(state, host, record, expected)?;
             access::remove_record_identity(state, host, record, expected, Some(self.identity))
@@ -170,7 +182,7 @@ impl ReceiptPin {
         );
         Ok(())
     }
-    fn close(&mut self) -> Result<()> {
+    pub(super) fn close(&mut self) -> Result<()> {
         if self.handle.0.is_null() {
             ensure!(!self.uncertain, "scratch receipt close remains uncertain");
             return Ok(());
@@ -533,7 +545,7 @@ impl Drop for VolumeLease<'_> {
         let _ = self.defer();
     }
 }
-fn no_conflicts(state: &Path, host: &str) -> Result<()> {
+pub(super) fn no_conflicts(state: &Path, host: &str) -> Result<()> {
     ensure!(
         !state.join("scratch-volume-policy.receipt").try_exists()?,
         "legacy scratch volume receipt is unsupported"

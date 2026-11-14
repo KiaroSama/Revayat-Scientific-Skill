@@ -213,17 +213,9 @@ impl EventApi for NativeEvents {
             properties,
         };
         let valid = if capacity == 0 {
-            success == 0
-                && error == 122
-                && (4..=65536).contains(&used)
-                && used.is_multiple_of(2)
-                && properties == 0
+            success == 0 && error == 122 && (4..=65536).contains(&used) && used.is_multiple_of(2)
         } else {
-            success != 0
-                && used >= 4
-                && used <= capacity
-                && used.is_multiple_of(2)
-                && properties == 0
+            success != 0 && used >= 4 && used <= capacity && used.is_multiple_of(2)
         };
         if !valid {
             return Err(diagnostics::native(
@@ -242,6 +234,14 @@ impl EventApi for NativeEvents {
             ));
         }
         Ok(rendered)
+    }
+    fn xml_capacity(&mut self, item: usize) -> Result<u32> {
+        // EvtRenderEventXml yields a string, not an EVT_VARIANT array. PropertyCount is retained
+        // above as raw API output; it cannot establish the XML allocation or decode shape.
+        super::event_collector::xml_required_bytes(self.render(item, 0, 0)?)
+    }
+    fn xml_used(&mut self, item: usize, capacity: u32, data: usize) -> Result<u32> {
+        super::event_collector::xml_rendered_bytes(self.render(item, capacity, data)?, capacity)
     }
     fn allocate(&mut self, capacity: u32) -> Result<usize> {
         ensure!(

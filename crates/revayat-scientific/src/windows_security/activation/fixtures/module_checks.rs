@@ -2,6 +2,7 @@
 use super::*;
 use std::fs;
 pub fn check_module_validation(work: &Path) -> Result<()> {
+    super::super::build::check_order_validation()?;
     require_role(true, &[false; 8])?;
     for index in 0..9 {
         let mut flags = [false; 8];

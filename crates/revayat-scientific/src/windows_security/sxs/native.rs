@@ -7,7 +7,10 @@ use super::{
 use crate::windows_security::activation::diagnostics::{self, Stage};
 use crate::windows_security::{
     activation::native::{ManifestRole, observe_manifest, require_host},
-    native::{AuthorityObserver, run_observed, run_sxs_tool},
+    native::{
+        AuthorityObserver, NativeRunView, ScratchVolume, run_observed, run_owned_observed,
+        run_sxs_tool,
+    },
 };
 use anyhow::{Result, ensure};
 use std::{
@@ -35,10 +38,11 @@ pub struct CaptureProof {
 }
 struct Capture<'a, F> {
     volume: &'a Path,
+    view: Option<&'a NativeRunView>,
     observe: F,
     subject: Option<std::path::PathBuf>,
     authority_reaped: bool,
-    session: SessionOwner,
+    session: SessionOwner<'a>,
     storage: Option<Storage>,
     lifecycle: StorageLifecycle,
     package: Option<String>,
@@ -99,7 +103,7 @@ impl<F: FnMut(Boundary) -> Result<()>> Capture<'_, F> {
         if let Err(error) = (self.observe)(Boundary::BeforeStop) {
             errors.push(error);
         }
-        let result = if self.attempted {
+        let result = if self.attempted || self.session.durable_pending()? {
             (|| {
                 let logfile = self.logfile()?;
                 self.storage()?.require("capture.etl")?;
@@ -183,8 +187,16 @@ impl<F: FnMut(Boundary) -> Result<()>> Capture<'_, F> {
 
     fn close(&mut self) -> Result<()> {
         let mut errors = Vec::new();
+        let journal_pending = match self.session.durable_pending() {
+            Ok(pending) => pending,
+            Err(error) => {
+                errors.push(error);
+                true
+            }
+        };
         // Never delete live collector/parser storage. The outer owner must recover uncertain state.
         if self.stopped
+            && !journal_pending
             && self.reaped
             && self.authority_reaped
             && let Some(storage) = &mut self.storage
@@ -214,14 +226,24 @@ impl<F: FnMut(Boundary) -> Result<()>> AuthorityObserver for Capture<'_, F> {
             self.storage.is_none() && self.package.is_none(),
             "SxS authority preparation repeated"
         );
+        if let Some(view) = self.view {
+            view.require()?;
+            ensure!(
+                view.package_sid() == package,
+                "SxS actual profile differs from durable run"
+            );
+        }
         self.package = Some(package.to_owned());
         let storage = &mut self.storage;
         let lifecycle = &mut self.lifecycle;
         capture::boundary(0, || {
             lifecycle.prepare(|| {
                 *storage = Some(
-                    Storage::prepare(self.volume, package)
-                        .map_err(|error| diagnostics::at(error, Stage::SxsStorage))?,
+                    match self.view {
+                        Some(view) => Storage::prepare_owned(self.volume, package, view.run_id()),
+                        None => Storage::prepare(self.volume, package),
+                    }
+                    .map_err(|error| diagnostics::at(error, Stage::SxsStorage))?,
                 );
                 storage
                     .as_ref()
@@ -313,13 +335,44 @@ pub fn collect_authority_observed(
     volume: &Path,
     observe: impl FnMut(Boundary) -> Result<()>,
 ) -> Result<CaptureProof> {
+    collect(authority, volume, None, observe)
+}
+/// Separate bound Rust-consumer control. Genuine Python handoff remains a different subject.
+pub fn collect_owned_authority(
+    authority: &Path,
+    volume: &ScratchVolume,
+    view: &NativeRunView,
+) -> Result<CaptureProof> {
+    volume.require_sxs_view(view)?;
+    let result = collect(
+        authority,
+        Path::new(volume.drive_root()),
+        Some(view),
+        |_| Ok(()),
+    );
+    finish(
+        result,
+        volume.require_sxs_view(view).err().into_iter().collect(),
+    )
+}
+fn collect(
+    authority: &Path,
+    volume: &Path,
+    view: Option<&NativeRunView>,
+    observe: impl FnMut(Boundary) -> Result<()>,
+) -> Result<CaptureProof> {
     require_host()?;
     let mut capture = Capture {
         volume,
+        view,
         observe,
         subject: None,
         authority_reaped: true,
-        session: SessionOwner::acquire().map_err(|error| diagnostics::at(error, Stage::SxsBind))?,
+        session: match view {
+            Some(view) => SessionOwner::acquire_bound(view),
+            None => SessionOwner::acquire_ephemeral(),
+        }
+        .map_err(|error| diagnostics::at(error, Stage::SxsBind))?,
         storage: None,
         lifecycle: StorageLifecycle::default(),
         package: None,
@@ -342,10 +395,15 @@ pub fn collect_authority_observed(
         super::execute_capture(
             || {
                 // run_observed reaps the authority and descendants before returning an error.
-                let result =
-                    run_observed(authority, &mut **capture_ref.borrow_mut()).map_err(|error| {
-                        diagnostics::at(super::safe(error, "authority"), Stage::SxsAuthority)
-                    });
+                let result = match view {
+                    Some(view) => {
+                        run_owned_observed(authority, view, &mut **capture_ref.borrow_mut())
+                    }
+                    None => run_observed(authority, &mut **capture_ref.borrow_mut()),
+                }
+                .map_err(|error| {
+                    diagnostics::at(super::safe(error, "authority"), Stage::SxsAuthority)
+                });
                 completed.set(result.is_ok());
                 result.map(|_| ())
             },

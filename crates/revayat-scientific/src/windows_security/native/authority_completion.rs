@@ -8,6 +8,9 @@ use crate::windows_security::{
     policy::registry_comparison::completion::{self, CompletionIo, Flags, ReceiptRetainer},
 };
 use std::os::windows::io::{AsRawHandle, BorrowedHandle};
+#[path = "authority_wall.rs"]
+mod wall;
+pub(super) use wall::ExpectedWallCompleted;
 
 /// Distinct from runtime::ReapedProcessTree: one bound native observation only.
 pub(in crate::windows_security::native) struct NativeTreeRetired {
@@ -72,6 +75,8 @@ pub(super) struct NativeCompletion<'a> {
     failed: bool,
     releases: usize,
     observer_finished: bool,
+    expected_wall: bool,
+    wall_exit: Option<u32>,
 }
 /// Borrow of this actual created/assigned, still-suspended owner. No caller can construct it.
 pub(in crate::windows_security::native) struct SuspendedWorker<'a> {
@@ -185,6 +190,8 @@ impl<'a> NativeCompletion<'a> {
             failed: false,
             releases: 0,
             observer_finished: false,
+            expected_wall: false,
+            wall_exit: None,
         })
     }
     pub(super) fn suspended<'b>(
@@ -281,9 +288,31 @@ impl<'a> NativeCompletion<'a> {
                 },
                 Err,
             );
-        let ready = !self.failed
+        let ready = self.signaled && self.resources_retired();
+        let retired = if ready {
+            match ticket.retired() {
+                Ok(retired) => Some(NativeTreeRetired { retired }),
+                Err(error) => {
+                    return Completed {
+                        result: Err(match result {
+                            Ok(_) => error,
+                            Err(primary) => Failures {
+                                errors: vec![primary, error],
+                            }
+                            .into(),
+                        }),
+                        retired: None,
+                    };
+                }
+            }
+        } else {
+            None
+        };
+        Completed { result, retired }
+    }
+    fn resources_retired(&self) -> bool {
+        !self.failed
             && self.started
-            && self.signaled
             && self.resumed
             && self.direct_reaped
             && self.job_reaped
@@ -308,27 +337,7 @@ impl<'a> NativeCompletion<'a> {
             && self.attributes.is_none()
             && self.source.is_none()
             && self.target.is_none()
-            && self.prepared.is_none();
-        let retired = if ready {
-            match ticket.retired() {
-                Ok(retired) => Some(NativeTreeRetired { retired }),
-                Err(error) => {
-                    return Completed {
-                        result: Err(match result {
-                            Ok(_) => error,
-                            Err(primary) => Failures {
-                                errors: vec![primary, error],
-                            }
-                            .into(),
-                        }),
-                        retired: None,
-                    };
-                }
-            }
-        } else {
-            None
-        };
-        Completed { result, retired }
+            && self.prepared.is_none()
     }
     fn close_capture(&mut self, error: bool, mut retain: ReceiptRetainer<'_>) -> Result<()> {
         let (reader, writer, capture, limit) = if error {
@@ -413,6 +422,17 @@ impl CompletionIo for NativeCompletion<'_> {
         self.job_reaped = job.is_ok();
         let observed = self.observer.after_reap(direct && self.job_reaped);
         self.observer_finished = observed.is_ok();
+        let exit = if self.expected_wall && direct && self.job_reaped {
+            let mut code = 0;
+            if unsafe { GetExitCodeProcess(self.process.0, &mut code) } != 0 {
+                self.wall_exit = Some(code);
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("expected wall actual exit query failed"))
+            }
+        } else {
+            Ok(())
+        };
         let result = combined([
             if direct {
                 Ok(())
@@ -423,6 +443,7 @@ impl CompletionIo for NativeCompletion<'_> {
             },
             job,
             observed,
+            exit,
         ]);
         self.note(result)
     }

@@ -27,8 +27,24 @@ restores both policy leases before the restored negative control. Whole-worker
 recovery remains responsible for detaching the disk and deleting the profile.
 These source paths still require actual Windows execution; the quota record
 certifies its own subset and does not certify the complete kernel suite.
+`--machine-kernel` extends the fixed worker with the environment, filesystem,
+profile-registry, four network denials, exact job limits, memory/PID denials and
+quota controls. Its separate wall subject must emit the fixed marker while the
+owned job contains at least two live processes, remain live for more than two
+seconds, and complete forced tree cleanup. That retirement cannot substitute for
+a natural exit or for whole-worker recovery. The original, modified, kernel,
+wall and restored subjects share one profile and durable policy obligations;
+both final policy restorations are attempted independently. Native execution
+of this extended path remains required before its results can be accepted.
+The outer security controller has its own 64-process lifetime job, 1 MiB
+capture bound and 45-second idle bound; its inner LPAC resource policy is separate.
+Original Python startup comparisons retain a genuine full x64 CPython 3.11
+installation as an external test subject. The Rust factories discover and pin
+the real compiler, MSVC linker/SDK and runtime, then copy and qualify the full
+base without executing the prepared copy. These factories still need the full
+native coordinator; the ordinary installed document tools require no Python.
 `--bootstrap-checks` runs the original 53 validator bodies in order, followed by
-the three direct checks, inside the bound private run. Its flushed markers alone
+the original runtime-clone helper and three direct checks, inside the bound private run. Its flushed markers alone
 are not an execution report for the complete native experiments or coverage census.
 
 The Rust registry authority and its Rust oracle remove the interpreter dependency, not the original diagnostic obligations. Ordered bootstrap, token/DACL, image/activation/CSR/loader, SxS, scratch/quota, private-creation and recovery behavior still require source-reviewed Rust counterparts and actual appropriate hosted evidence. Actual primary/descendant registry proofs, restricted native token/job controls, ACL/private storage and reparse/junction checks remain required. The authority must not fall back to an ordinary unrestricted process or accept missing evidence. These observations do not certify arbitrary Microsoft Word/OPC behavior or kernel policy.

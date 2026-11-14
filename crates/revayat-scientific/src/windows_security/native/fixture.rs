@@ -1,6 +1,8 @@
 //! Fresh per-run HKCU registry fixture; never changes a machine or existing key.
 use super::authority::{Descriptor, wide};
 use super::*;
+#[path = "fixture_controls.rs"]
+mod controls;
 #[path = "registry_policy.rs"]
 mod registry_policy;
 pub(super) use registry_policy::{
@@ -128,10 +130,9 @@ impl RegistryFixture {
             closed == 0 && child_disposition == 1,
             "private registry child cleanup"
         );
-        apply_registry_acl(
-            root,
-            &format!("D:P(D;;0xd0006;;;{package})(A;;KA;;;SY)(A;;KA;;;OW)(A;;KR;;;{package})"),
-        )?;
+        let user = crate::windows_security::sxs::current_user_sid()?;
+        apply_registry_acl(root, &controls::root_policy(&user, package)?)?;
+        controls::require_policy(root, &user, package)?;
         Ok(owner)
     }
     #[cfg(test)]

@@ -38,20 +38,23 @@ pub use debug::{
 #[path = "native/network.rs"]
 mod network;
 pub use authority::{
-    run_machine_authority_session, run_machine_quota_session, run_owned_registry_authority,
-    run_registry_authority,
+    run_machine_authority_session, run_machine_kernel_session, run_machine_quota_session,
+    run_owned_registry_authority, run_registry_authority,
 };
 #[path = "native/recovery.rs"]
 mod recovery;
 #[path = "native/state.rs"]
 mod state;
-pub(crate) use authority::{AuthorityObserver, run_observed, run_sxs_tool};
+pub(crate) use authority::{AuthorityObserver, run_observed, run_owned_observed, run_sxs_tool};
+pub(crate) use recovery::SxsJournal;
 pub use recovery::{recover_profile, recover_run};
 pub use state::{NativeRunOwner, NativeRunView, run_bootstrap_checks};
 #[path = "native/dos_path.rs"]
 mod dos_path;
 #[path = "native/scratch_access.rs"]
 mod scratch_access;
+#[path = "native/scratch_diagnostic.rs"]
+mod scratch_diagnostic;
 #[path = "native/scratch_disk.rs"]
 mod scratch_disk;
 #[path = "native/scratch_layout.rs"]
@@ -183,6 +186,8 @@ impl WindowsJob {
                 job_time: i64::from(limits.cpu_seconds) * 10_000_000,
                 flags: if limits == JobLimits::ownership() {
                     KILL_ON_CLOSE
+                } else if limits == JobLimits::security_bootstrap() {
+                    KILL_ON_CLOSE | 8
                 } else {
                     REQUIRED_LIMITS
                 },
@@ -231,7 +236,7 @@ impl WindowsJob {
                 && actual.job_memory == limits.job_memory,
             "kernel job limits differ from required values"
         );
-        if limits != JobLimits::ownership() {
+        if limits.cpu_seconds != 0 {
             let cpu = CpuLimits {
                 flags: 5,
                 rate: 1000,

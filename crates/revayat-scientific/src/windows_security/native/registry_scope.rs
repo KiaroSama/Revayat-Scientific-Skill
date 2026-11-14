@@ -9,25 +9,28 @@ pub(in crate::windows_security::native) use restore::{RestoreAuthorization, Rest
 pub(in crate::windows_security::native) enum Mode {
     Machine,
     MachineQuota,
+    Kernel,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::windows_security::native) enum Plan {
     Original,
     Modified,
     Quota,
+    KernelPrimary,
+    KernelWall,
     Restored,
 }
 impl Plan {
     pub fn argument(self) -> Option<&'static str> {
         match self {
             Self::Original | Self::Restored => Some("--machine-baseline"),
-            Self::Modified | Self::Quota => None,
+            Self::Modified | Self::Quota | Self::KernelPrimary | Self::KernelWall => None,
         }
     }
     pub fn expected(self) -> i32 {
         match self {
             Self::Original | Self::Restored => 0xC0000022u32 as i32,
-            Self::Modified | Self::Quota => 0,
+            Self::Modified | Self::Quota | Self::KernelPrimary | Self::KernelWall => 0,
         }
     }
 }
@@ -48,6 +51,7 @@ enum Phase {
 struct QuotaIdentity {
     image: String,
     arguments: String,
+    wall_arguments: Option<String>,
 }
 struct Slot {
     id: u64,
@@ -76,7 +80,7 @@ fn digest(value: &str) -> bool {
 }
 impl Scope {
     pub(super) fn new(run: &str, image: &str) -> Result<Self> {
-        Self::create(run, image, None)
+        Self::create(run, image, None, Mode::Machine)
     }
     pub(super) fn machine_quota(
         run: &str,
@@ -94,10 +98,37 @@ impl Scope {
             Some(QuotaIdentity {
                 image: quota_image.into(),
                 arguments: arguments.into(),
+                wall_arguments: None,
             }),
+            Mode::MachineQuota,
         )
     }
-    fn create(run: &str, image: &str, quota: Option<QuotaIdentity>) -> Result<Self> {
+    pub(super) fn kernel(
+        run: &str,
+        machine: &str,
+        worker: &str,
+        primary_arguments: &str,
+        wall_arguments: &str,
+    ) -> Result<Self> {
+        ensure!(
+            digest(worker)
+                && digest(primary_arguments)
+                && digest(wall_arguments)
+                && primary_arguments != wall_arguments,
+            "native kernel plan identity differs"
+        );
+        Self::create(
+            run,
+            machine,
+            Some(QuotaIdentity {
+                image: worker.into(),
+                arguments: primary_arguments.into(),
+                wall_arguments: Some(wall_arguments.into()),
+            }),
+            Mode::Kernel,
+        )
+    }
+    fn create(run: &str, image: &str, quota: Option<QuotaIdentity>, mode: Mode) -> Result<Self> {
         ensure!(
             run.len() == 32
                 && run
@@ -111,11 +142,6 @@ impl Scope {
             .map_err(|_| anyhow::anyhow!("native session nonce unavailable"))?;
         let session = bytes.iter().map(|b| format!("{b:02x}")).collect();
         bytes.fill(0);
-        let mode = if quota.is_some() {
-            Mode::MachineQuota
-        } else {
-            Mode::Machine
-        };
         Ok(Self(Rc::new(RefCell::new(State {
             run: run.into(),
             session,
@@ -153,6 +179,19 @@ impl Scope {
     pub(super) fn begin_quota(&self, run: &str, image: &str, arguments: &str) -> Result<Ticket> {
         self.begin_checked(Plan::Quota, run, image, Some(arguments))
     }
+    pub(super) fn begin_kernel(
+        &self,
+        plan: Plan,
+        run: &str,
+        image: &str,
+        arguments: &str,
+    ) -> Result<Ticket> {
+        ensure!(
+            matches!(plan, Plan::KernelPrimary | Plan::KernelWall),
+            "foreign native kernel role"
+        );
+        self.begin_checked(plan, run, image, Some(arguments))
+    }
     fn begin_checked(
         &self,
         plan: Plan,
@@ -166,23 +205,40 @@ impl Scope {
             (_, 1) => Plan::Modified,
             (Mode::Machine, 2) | (Mode::MachineQuota, 3) => Plan::Restored,
             (Mode::MachineQuota, 2) => Plan::Quota,
+            (Mode::Kernel, 2) => Plan::KernelPrimary,
+            (Mode::Kernel, 3) => Plan::KernelWall,
+            (Mode::Kernel, 4) => Plan::Restored,
             _ => anyhow::bail!("native observation plan already consumed"),
         };
-        let identity = if plan == Plan::Quota {
+        let identity = if matches!(plan, Plan::Quota | Plan::KernelPrimary | Plan::KernelWall) {
             state.quota.as_ref().is_some_and(|quota| {
-                quota.image == image && Some(quota.arguments.as_str()) == arguments
+                quota.image == image
+                    && if plan == Plan::KernelWall {
+                        quota.wall_arguments.as_deref() == arguments
+                    } else {
+                        Some(quota.arguments.as_str()) == arguments
+                    }
             })
         } else {
             state.image == image && arguments.is_none()
         };
         let leases = match plan {
             Plan::Original | Plan::Restored => state.leases.is_empty(),
-            Plan::Modified | Plan::Quota => {
+            Plan::Modified | Plan::Quota | Plan::KernelPrimary => {
                 state.leases.len() == 1
                     && state
                         .leases
                         .get(&LeaseKind::Machine)
                         .is_some_and(|slot| slot.resource.borrow().is_some())
+            }
+            Plan::KernelWall => {
+                state.leases.len() == 2
+                    && [LeaseKind::Machine, LeaseKind::Volume].iter().all(|kind| {
+                        state
+                            .leases
+                            .get(kind)
+                            .is_some_and(|slot| slot.resource.borrow().is_some())
+                    })
             }
         };
         ensure!(
@@ -238,6 +294,7 @@ impl Scope {
         let (epoch, plan) = match state.mode {
             Mode::Machine => (2, Plan::Modified),
             Mode::MachineQuota => (3, Plan::Quota),
+            Mode::Kernel => (4, Plan::KernelWall),
         };
         Ok(LeaseBinding {
             scope: scope.clone(),
@@ -252,7 +309,11 @@ impl Scope {
     }
     pub(super) fn close(&self) -> Result<()> {
         let mut state = self.0.borrow_mut();
-        let last = if state.mode == Mode::Machine { 3 } else { 4 };
+        let last = match state.mode {
+            Mode::Machine => 3,
+            Mode::MachineQuota => 4,
+            Mode::Kernel => 5,
+        };
         ensure!(
             state.phase == Phase::Idle && state.epoch == last && state.leases.is_empty(),
             "native session did not finish its restored control"
@@ -296,9 +357,12 @@ impl Ticket {
         );
         let mut state = self.scope.0.borrow_mut();
         ensure!(
-            state.mode == Mode::MachineQuota
+            matches!(state.mode, Mode::MachineQuota | Mode::Kernel)
                 && state.phase == Phase::Running
-                && self.plan == Plan::Quota
+                && matches!(
+                    (state.mode, self.plan),
+                    (Mode::MachineQuota, Plan::Quota) | (Mode::Kernel, Plan::KernelPrimary)
+                )
                 && state.plan == Some(self.plan)
                 && state.epoch == self.epoch
                 && state.leases.len() == 1
@@ -308,16 +372,33 @@ impl Ticket {
         Scope::reserve(&self.scope, &mut state, kind, Some(resource.into()))
     }
     pub(super) fn retired(mut self) -> Result<Retired> {
+        ensure!(
+            self.plan != Plan::KernelWall,
+            "expected wall cannot retire as a natural observation"
+        );
+        self.retire(RetirementKind::Natural)
+    }
+    /// Only the concrete completion owner calls this after its verified forced-wall cleanup.
+    pub(super) fn retired_expected_wall(mut self) -> Result<Retired> {
+        ensure!(
+            self.plan == Plan::KernelWall,
+            "expected-wall retirement has a foreign role"
+        );
+        self.retire(RetirementKind::ExpectedWall)
+    }
+    fn retire(&mut self, kind: RetirementKind) -> Result<Retired> {
         {
             let mut state = self.scope.0.borrow_mut();
-            let obligations = self.plan != Plan::Quota
-                || (state.leases.len() == 2
-                    && [LeaseKind::Machine, LeaseKind::Volume].iter().all(|kind| {
-                        state
-                            .leases
-                            .get(kind)
-                            .is_some_and(|slot| slot.resource.borrow().is_some())
-                    }));
+            let obligations = !matches!(
+                self.plan,
+                Plan::Quota | Plan::KernelPrimary | Plan::KernelWall
+            ) || (state.leases.len() == 2
+                && [LeaseKind::Machine, LeaseKind::Volume].iter().all(|kind| {
+                    state
+                        .leases
+                        .get(kind)
+                        .is_some_and(|slot| slot.resource.borrow().is_some())
+                }));
             ensure!(
                 state.phase == Phase::Running
                     && state.epoch == self.epoch
@@ -332,6 +413,7 @@ impl Ticket {
             scope: self.scope.clone(),
             epoch: self.epoch,
             plan: self.plan,
+            kind,
             armed: true,
         })
     }
@@ -391,10 +473,16 @@ impl LeaseResourceWriter {
         Ok(())
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RetirementKind {
+    Natural,
+    ExpectedWall,
+}
 pub(super) struct Retired {
     scope: Scope,
     epoch: u64,
     plan: Plan,
+    kind: RetirementKind,
     armed: bool,
 }
 impl Retired {
@@ -405,6 +493,7 @@ impl Retired {
                 state.phase == Phase::Retired
                     && state.epoch == self.epoch
                     && state.plan == Some(self.plan)
+                    && self.kind == RetirementKind::Natural
                     && matches!(self.plan, Plan::Original | Plan::Restored)
                     && state.leases.is_empty(),
                 "native nontrial retirement differs"
@@ -418,13 +507,19 @@ impl Retired {
         {
             let mut state = self.scope.0.borrow_mut();
             ensure!(
-                state.mode == Mode::MachineQuota
+                matches!(state.mode, Mode::MachineQuota | Mode::Kernel)
                     && state.phase == Phase::Retired
-                    && state.epoch == 2
-                    && self.epoch == 2
-                    && self.plan == Plan::Modified
+                    && self.kind == RetirementKind::Natural
+                    && state.epoch == self.epoch
+                    && ((state.epoch == 2
+                        && self.plan == Plan::Modified
+                        && state.leases.len() == 1)
+                        || (state.mode == Mode::Kernel
+                            && state.epoch == 3
+                            && self.plan == Plan::KernelPrimary
+                            && state.leases.len() == 2
+                            && state.leases.contains_key(&LeaseKind::Volume)))
                     && state.plan == Some(self.plan)
-                    && state.leases.len() == 1
                     && state.leases.contains_key(&LeaseKind::Machine),
                 "native intermediate retirement cannot restore policies"
             );
@@ -444,6 +539,7 @@ impl Retired {
             let (epoch, plan) = match state.mode {
                 Mode::Machine => (2, Plan::Modified),
                 Mode::MachineQuota => (3, Plan::Quota),
+                Mode::Kernel => (4, Plan::KernelWall),
             };
             ensure!(
                 Rc::ptr_eq(&self.scope.0, &scope.0)
@@ -451,6 +547,7 @@ impl Retired {
                     && state.epoch == epoch
                     && self.epoch == epoch
                     && self.plan == plan
+                    && (self.kind == RetirementKind::ExpectedWall) == (state.mode == Mode::Kernel)
                     && state.plan == Some(plan)
                     && state
                         .profile
@@ -473,6 +570,7 @@ impl Retired {
             let mut state = self.scope.0.borrow_mut();
             ensure!(
                 state.mode == Mode::Machine
+                    && self.kind == RetirementKind::Natural
                     && Rc::ptr_eq(&self.scope.0, &lease.scope.0)
                     && state.phase == Phase::Retired
                     && state.epoch == 2

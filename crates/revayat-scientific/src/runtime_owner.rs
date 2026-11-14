@@ -26,6 +26,8 @@ const PARENT: &str = "REVAYAT_RUNTIME_PARENT";
 const LIMIT: usize = 140 * 1024 * 1024;
 #[path = "runtime_owner_client.rs"]
 mod client;
+#[path = "runtime_owner_transport.rs"]
+mod transport;
 pub use client::Interactive;
 pub use client::run;
 const CLEANUP_LIMIT: Duration = Duration::from_secs(30);
@@ -226,7 +228,7 @@ fn transfer(
             Ok(0) => bail!("ownership protocol disconnected"),
             Ok(count) => offset += count,
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(5))
+                transport::ready(stream, write, deadline)?;
             }
             Err(error) => return Err(error.into()),
         }
@@ -693,6 +695,5 @@ pub fn cli() -> Result<()> {
     lifeline.set_nonblocking(false)?;
     lifeline.set_write_timeout(Some(Duration::from_secs(2)))?;
     // Caller death may close the response endpoint; cleanup above still ran.
-    let _ = frame(&mut lifeline, &client::Event::Complete(response), LIMIT);
-    Ok(())
+    frame(&mut lifeline, &client::Event::Complete(response), LIMIT)
 }

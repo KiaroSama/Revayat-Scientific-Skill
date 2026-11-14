@@ -23,6 +23,10 @@ use std::{
     time::Duration,
 };
 
+#[path = "build_plan.rs"]
+mod plan;
+pub use plan::check_order_validation;
+
 pub struct RustTools {
     pub rustc: PathBuf,
     pub linker: PathBuf,
@@ -320,7 +324,7 @@ fn seal(
     runtime: &RuntimeBytes,
     image: &Path,
     module: Option<&Path>,
-    start: usize,
+    ranges: &[std::ops::Range<usize>],
 ) -> Result<PreparedFixture> {
     let source_path = if matches!(kind, FixtureKind::Child | FixtureKind::Default) {
         &runtime.python_path
@@ -341,10 +345,11 @@ fn seal(
         false,
     )?;
     let mut snapshots = Vec::new();
-    for snapshot in inputs.snapshots[..inputs.common]
-        .iter()
-        .chain(&inputs.snapshots[start..])
-    {
+    for snapshot in inputs.snapshots[..inputs.common].iter().chain(
+        ranges
+            .iter()
+            .flat_map(|range| inputs.snapshots[range.clone()].iter()),
+    ) {
         if !snapshots
             .iter()
             .any(|value: &Snapshot| value.path == snapshot.path)
@@ -386,92 +391,19 @@ pub fn prepare(
         let runtime = runtime_bytes(python, state, &mut inputs)?;
         inputs.common = inputs.snapshots.len();
         let mut output = PreparedSet::default();
-        for (kind, label) in [
-            (FixtureKind::Child, "child"),
-            (FixtureKind::DllRequest, "dll-request"),
-            (FixtureKind::Default, "default"),
-            (FixtureKind::SelfHost(SelfRole::Original), "self"),
-            (FixtureKind::SelfHost(SelfRole::Manual), "manual"),
-            (FixtureKind::SelfHost(SelfRole::ExplicitId2), "explicit-id2"),
-        ] {
-            let start = inputs.snapshots.len();
-            let directory_path = root.join(label);
-            directory(&directory_path)?;
-            let source_bytes = if matches!(kind, FixtureKind::Child | FixtureKind::Default) {
-                &runtime.python
-            } else {
-                &runtime.dll
-            };
-            let manifest = PeImage::parse(source_bytes, 1)?.manifest(
-                if matches!(kind, FixtureKind::Child | FixtureKind::Default) {
-                    1
-                } else {
-                    2
-                },
-                false,
-            )?;
-            let (role, config) = match kind {
-                FixtureKind::Child => (
-                    load_source(&mut inputs, sources, "child.rs")?,
-                    source::header(python, manifest.language, false)?,
-                ),
-                FixtureKind::DllRequest => (
-                    source::dll_source(&load_source(&mut inputs, sources, "child.rs")?)?,
-                    source::header(&runtime.dll_path, manifest.language, true)?,
-                ),
-                FixtureKind::Default => (
-                    load_source(&mut inputs, sources, "default_host.rs")?,
-                    "pub const FIXED_ROLE_INPUT: bool = false;\n".into(),
-                ),
-                FixtureKind::SelfHost(role) => {
-                    let request = self_build_request(
-                        Some(python),
-                        Some(state),
-                        match role {
-                            SelfRole::Original => 0,
-                            SelfRole::Manual => 1,
-                            SelfRole::ExplicitId2 => 2,
-                        },
-                    )?;
-                    (
-                        source::self_source(
-                            &load_source(&mut inputs, sources, "self_host.rs")?,
-                            request.role,
-                        )?,
-                        "pub const FIXED_ROLE_INPUT: bool = false;\n".into(),
-                    )
-                }
-                _ => unreachable!(),
-            };
-            rust_inputs(&mut inputs, sources, &directory_path, &role, false, &config)?;
-            let resource = kind
-                .resource_id()
-                .map(|id| {
-                    resource(
-                        &mut inputs,
-                        &directory_path,
-                        manifest.language,
-                        id,
-                        manifest.bytes,
-                    )
-                })
-                .transpose()?;
-            let image = python.parent().unwrap().join(kind.image_name());
-            compile(
-                tools,
-                &mut inputs,
-                Compile {
-                    directory: &directory_path,
-                    output: &image,
-                    resource: resource.as_deref(),
-                    module: false,
-                    explicit: kind == FixtureKind::SelfHost(SelfRole::ExplicitId2),
-                    imports: None,
-                },
-            )?;
-            output.insert(seal(&inputs, kind, &runtime, &image, None, start)?)?;
-        }
-        prepare_module(tools, sources, &root, &runtime, &mut inputs, &mut output)?;
+        let context = BuildContext {
+            tools,
+            sources,
+            root: &root,
+            state,
+            runtime: &runtime,
+        };
+        plan::execute(|step| match step {
+            plan::Step::Single(kind, label) => {
+                prepare_single(&context, &mut inputs, &mut output, kind, label)
+            }
+            plan::Step::Module => prepare_module(&context, &mut inputs, &mut output),
+        })?;
         inputs.verify()?;
         Ok(output)
     })();
@@ -486,33 +418,139 @@ pub fn prepare(
         }
     }
 }
+struct BuildContext<'a> {
+    tools: &'a RustTools,
+    sources: &'a Path,
+    root: &'a Path,
+    state: &'a Path,
+    runtime: &'a RuntimeBytes,
+}
+fn prepare_single(
+    context: &BuildContext<'_>,
+    inputs: &mut Inputs,
+    output: &mut PreparedSet,
+    kind: FixtureKind,
+    label: &str,
+) -> Result<()> {
+    let BuildContext {
+        tools,
+        sources,
+        root,
+        state,
+        runtime,
+    } = context;
+    let python = &runtime.python_path;
+    let start = inputs.snapshots.len();
+    let directory_path = root.join(label);
+    directory(&directory_path)?;
+    let source_bytes = if matches!(kind, FixtureKind::Child | FixtureKind::Default) {
+        &runtime.python
+    } else {
+        &runtime.dll
+    };
+    let manifest = PeImage::parse(source_bytes, 1)?.manifest(
+        if matches!(kind, FixtureKind::Child | FixtureKind::Default) {
+            1
+        } else {
+            2
+        },
+        false,
+    )?;
+    let (role, config) = match kind {
+        FixtureKind::Child => (
+            load_source(inputs, sources, "child.rs")?,
+            source::header(python, manifest.language, false)?,
+        ),
+        FixtureKind::DllRequest => (
+            source::dll_source(&load_source(inputs, sources, "child.rs")?)?,
+            source::header(&runtime.dll_path, manifest.language, true)?,
+        ),
+        FixtureKind::Default => (
+            load_source(inputs, sources, "default_host.rs")?,
+            "pub const FIXED_ROLE_INPUT: bool = false;\n".into(),
+        ),
+        FixtureKind::SelfHost(role) => {
+            let request = self_build_request(
+                Some(python),
+                Some(state),
+                match role {
+                    SelfRole::Original => 0,
+                    SelfRole::Manual => 1,
+                    SelfRole::ExplicitId2 => 2,
+                },
+            )?;
+            (
+                source::self_source(&load_source(inputs, sources, "self_host.rs")?, request.role)?,
+                "pub const FIXED_ROLE_INPUT: bool = false;\n".into(),
+            )
+        }
+        _ => unreachable!(),
+    };
+    rust_inputs(inputs, sources, &directory_path, &role, false, &config)?;
+    let resource = kind
+        .resource_id()
+        .map(|id| {
+            resource(
+                inputs,
+                &directory_path,
+                manifest.language,
+                id,
+                manifest.bytes,
+            )
+        })
+        .transpose()?;
+    let image = python.parent().unwrap().join(kind.image_name());
+    compile(
+        tools,
+        inputs,
+        Compile {
+            directory: &directory_path,
+            output: &image,
+            resource: resource.as_deref(),
+            module: false,
+            explicit: kind == FixtureKind::SelfHost(SelfRole::ExplicitId2),
+            imports: None,
+        },
+    )?;
+    let owned_inputs = start..inputs.snapshots.len();
+    output.insert(seal(
+        inputs,
+        kind,
+        runtime,
+        &image,
+        None,
+        std::slice::from_ref(&owned_inputs),
+    )?)?;
+    Ok(())
+}
 fn prepare_module(
-    tools: &RustTools,
-    sources: &Path,
-    root: &Path,
-    runtime: &RuntimeBytes,
+    context: &BuildContext<'_>,
     inputs: &mut Inputs,
     output: &mut PreparedSet,
 ) -> Result<()> {
+    let BuildContext {
+        tools,
+        sources,
+        root,
+        runtime,
+        ..
+    } = context;
     let manifest = PeImage::parse(&runtime.dll, 1)?.manifest(2, false)?;
-    let mut first_host = Vec::new();
-    for present in [false, true] {
+    let folders = ["module-plain", "module-id2"]
+        .map(|label| runtime.python_path.parent().unwrap().join(label));
+    let build_folders = ["module-plain", "module-id2"].map(|label| root.join(label));
+    let mut dll_inputs = Vec::with_capacity(2);
+    // Original ModuleActivationFixture: both DLLs are linked before either host is produced.
+    for (index, present) in [false, true].into_iter().enumerate() {
         let start = inputs.snapshots.len();
-        let label = if present {
-            "module-id2"
-        } else {
-            "module-plain"
-        };
-        let folder = runtime.python_path.parent().unwrap().join(label);
-        directory(&folder)?;
-        let build_folder = root.join(label);
-        directory(&build_folder)?;
+        directory(&folders[index])?;
+        directory(&build_folders[index])?;
         let role = load_source(inputs, sources, "module_dll.rs")?;
-        rust_inputs(inputs, sources, &build_folder, &role, true, "")?;
+        rust_inputs(inputs, sources, &build_folders[index], &role, true, "")?;
         let resource = if present {
             Some(resource(
                 inputs,
-                &build_folder,
+                &build_folders[index],
                 manifest.language,
                 2,
                 manifest.bytes,
@@ -520,59 +558,72 @@ fn prepare_module(
         } else {
             None
         };
-        let dll = folder.join("startup-module.dll");
         compile(
             tools,
             inputs,
             Compile {
-                directory: &build_folder,
-                output: &dll,
+                directory: &build_folders[index],
+                output: &folders[index].join("startup-module.dll"),
                 resource: resource.as_deref(),
                 module: true,
                 explicit: false,
                 imports: None,
             },
         )?;
-        let host = folder.join("startup-module.exe");
+        dll_inputs.push(start..inputs.snapshots.len());
+    }
+    let host_start = inputs.snapshots.len();
+    let host_build = root.join("module-host");
+    directory(&host_build)?;
+    let role = load_source(inputs, sources, "module_host.rs")?;
+    rust_inputs(
+        inputs,
+        sources,
+        &host_build,
+        &role,
+        false,
+        "pub const FIXED_ROLE_INPUT: bool = false;\n",
+    )?;
+    let first_host = folders[0].join("startup-module.exe");
+    compile(
+        tools,
+        inputs,
+        Compile {
+            directory: &host_build,
+            output: &first_host,
+            resource: None,
+            module: false,
+            explicit: false,
+            imports: Some(&build_folders[0]),
+        },
+    )?;
+    let host_inputs = host_start..inputs.snapshots.len();
+    let copy_start = inputs.snapshots.len();
+    // Read through the descriptor already owned by Inputs. The common finalizer
+    // retains and closes it even if reading/copying fails; no unowned close path.
+    let mut bytes = inputs
+        .files
+        .iter_mut()
+        .find(|file| file.path() == first_host)
+        .ok_or_else(|| anyhow::anyhow!("compiled module host is not retained"))?
+        .bytes()?;
+    let copied = inputs.create(&folders[1].join("startup-module.exe"), &bytes, 1048576);
+    bytes.fill(0);
+    copied?;
+    let copy_inputs = copy_start..inputs.snapshots.len();
+    for (index, present) in [false, true].into_iter().enumerate() {
+        let mut selected = vec![dll_inputs[index].clone(), host_inputs.clone()];
         if present {
-            inputs.create(&host, &first_host, 1048576)?;
-        } else {
-            let host_build = root.join("module-host");
-            directory(&host_build)?;
-            let role = load_source(inputs, sources, "module_host.rs")?;
-            rust_inputs(
-                inputs,
-                sources,
-                &host_build,
-                &role,
-                false,
-                "pub const FIXED_ROLE_INPUT: bool = false;\n",
-            )?;
-            compile(
-                tools,
-                inputs,
-                Compile {
-                    directory: &host_build,
-                    output: &host,
-                    resource: None,
-                    module: false,
-                    explicit: false,
-                    imports: Some(&build_folder),
-                },
-            )?;
-            let mut held = HeldFile::open(&host, 1048576)?;
-            first_host = held.bytes()?;
-            held.close()?;
+            selected.push(copy_inputs.clone());
         }
         output.insert(seal(
             inputs,
             FixtureKind::Module { manifest: present },
             runtime,
-            &host,
-            Some(&dll),
-            start,
+            &folders[index].join("startup-module.exe"),
+            Some(&folders[index].join("startup-module.dll")),
+            &selected,
         )?)?;
     }
-    first_host.fill(0);
     Ok(())
 }

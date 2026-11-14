@@ -21,6 +21,8 @@ pub use subjects::KernelImage;
 mod imports;
 #[path = "image/observation.rs"]
 mod observation;
+#[path = "image/rust_imports.rs"]
+mod rust_imports;
 pub use imports::qualify_registry_authority;
 #[path = "image/validation.rs"]
 mod validation;

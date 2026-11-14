@@ -20,6 +20,8 @@ use abi::*;
 use creation::{creation_result, retain_cleanup};
 #[path = "authority_completion.rs"]
 mod authority_completion;
+#[path = "authority_kernel_run.rs"]
+mod authority_kernel_run;
 #[path = "authority_launch.rs"]
 mod authority_launch;
 #[path = "authority_machine_run.rs"]
@@ -28,6 +30,8 @@ mod authority_machine_run;
 mod authority_policy;
 #[path = "authority_quota_run.rs"]
 mod authority_quota_run;
+#[path = "kernel_plan.rs"]
+mod kernel_plan;
 #[path = "quota_plan.rs"]
 mod quota_plan;
 #[path = "registry_scope.rs"]
@@ -40,7 +44,9 @@ pub(super) use registry_scope::{
     RestoreTransaction,
 };
 pub(super) use registry_session::NativeProfileBinding;
-pub use registry_session::{run_machine_authority_session, run_machine_quota_session};
+pub use registry_session::{
+    run_machine_authority_session, run_machine_kernel_session, run_machine_quota_session,
+};
 
 pub(super) fn wide(value: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
     value.as_ref().encode_wide().chain(Some(0)).collect()
@@ -629,7 +635,7 @@ fn drain(pipe: &Owned, capture: &mut Capture, limit: usize) -> Result<()> {
 
 #[path = "authority_run.rs"]
 mod runner;
-pub(crate) use runner::run_observed;
+pub(crate) use runner::{run_observed, run_owned_observed};
 pub(super) fn assigned_package(name: &str) -> Result<String> {
     profile_storage::Storage::assigned_sid(name)
 }

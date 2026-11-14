@@ -57,6 +57,7 @@ impl AuthorityImage {
             );
         }
         let identity = self.identity.clone();
+        let role = self.role;
         let held = self.file()?;
         let metadata = held.metadata()?;
         ensure!(
@@ -76,7 +77,11 @@ impl AuthorityImage {
                 held.read(&mut tail)? == 0 && sha256(&bytes) == identity.sha256,
                 "held authority image bytes differ"
             );
-            PeImage::parse(&bytes, 1)?.qualify_rust_authority()?;
+            let image = PeImage::parse(&bytes, 1)?;
+            match role {
+                Role::Registry => image.qualify_rust_authority()?,
+                Role::Quota => image.qualify_rust_quota()?,
+            }
             ensure!(
                 identity::file_identity(path, Some(8 * 1024 * 1024))? == identity,
                 "authority pathname no longer identifies held image"

@@ -2,7 +2,7 @@
 use super::{NativeRunView, ScratchVolume, profile_storage::Storage};
 use crate::windows_security::native::dos_path::existing as dos;
 use crate::windows_security::quota_controls::{Role, WorkerPlan};
-use anyhow::Result;
+use anyhow::{Result, ensure};
 pub(super) struct PreparedQuota {
     pub plan: WorkerPlan,
     pub directory: tempfile::TempDir,
@@ -10,14 +10,40 @@ pub(super) struct PreparedQuota {
 }
 impl PreparedQuota {
     pub fn new(view: &NativeRunView, volume: &ScratchVolume) -> Result<Self> {
+        Self::prepare(view, volume, None, || view.quota_canary())
+    }
+    pub fn with_canary(
+        view: &NativeRunView,
+        volume: &ScratchVolume,
+        canary: &super::super::state::QuotaCanary,
+    ) -> Result<Self> {
+        Self::prepare(view, volume, Some(view.state_path()), || {
+            canary.require(view)?;
+            Ok(canary.path().to_owned())
+        })
+    }
+    fn prepare(
+        view: &NativeRunView,
+        volume: &ScratchVolume,
+        parent: Option<&std::path::Path>,
+        canary: impl FnOnce() -> Result<std::path::PathBuf>,
+    ) -> Result<Self> {
         view.require()?;
         volume.require()?;
-        let directory = tempfile::Builder::new()
-            .prefix("revayat-quota-image-")
-            .tempdir()?;
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("revayat-quota-image-");
+        let directory = if let Some(parent) = parent {
+            ensure!(
+                crate::identity::path_object_id(parent)? == view.state_identity(),
+                "kernel image parent is not its owned native state"
+            );
+            builder.tempdir_in(parent)?
+        } else {
+            builder.tempdir()?
+        };
         let operation = (|| {
             let root = dos(directory.path())?;
-            let canary = view.quota_canary()?;
+            let canary = canary()?;
             let plan = WorkerPlan {
                 role: Role::Primary,
                 run: view.run_id().into(),

@@ -40,6 +40,8 @@ pub struct CommandSpec {
     pub timeout: Duration,
     pub idle_timeout: Option<Duration>,
     pub max_output: usize,
+    #[cfg(windows)]
+    pub windows_job: crate::windows_security::JobLimits,
 }
 impl CommandSpec {
     pub fn new(program: impl Into<OsString>) -> Self {
@@ -52,6 +54,8 @@ impl CommandSpec {
             timeout: Duration::from_secs(120),
             idle_timeout: None,
             max_output: MAX_DIAGNOSTICS,
+            #[cfg(windows)]
+            windows_job: crate::windows_security::JobLimits::ownership(),
         }
     }
     pub fn args(mut self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Self {
@@ -283,10 +287,8 @@ fn run_input_owned(
         command.env("REVAYAT_RUNTIME_GROUP", "inherit");
     }
     #[cfg(windows)]
-    let (mut child, mut owner) = crate::windows_security::native::spawn_owned(
-        &mut command,
-        crate::windows_security::JobLimits::ownership(),
-    )?;
+    let (mut child, mut owner) =
+        crate::windows_security::native::spawn_owned(&mut command, spec.windows_job)?;
     #[cfg(not(windows))]
     let mut child = command.spawn().context("cannot start external tool")?;
     #[cfg(unix)]

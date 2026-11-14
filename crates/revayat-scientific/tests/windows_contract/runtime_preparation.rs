@@ -391,6 +391,35 @@ fn reported_metadata_is_closed() {
 fn fixed_controls_can_be_checked_without_kernel_claim() {
     assert!(JobLimits::browser().validate().is_ok());
     assert!(JobLimits::ownership().validate().is_ok());
+    let outer = JobLimits::security_bootstrap();
+    assert_eq!(
+        (
+            outer.processes,
+            outer.process_memory,
+            outer.job_memory,
+            outer.cpu_seconds
+        ),
+        (64, 0, 0, 0)
+    );
+    assert!(outer.validate().is_ok());
+    assert_ne!(outer, JobLimits::browser());
+    assert_ne!(outer, JobLimits::ownership());
+    for altered in [
+        JobLimits {
+            processes: 63,
+            ..outer
+        },
+        JobLimits {
+            cpu_seconds: 1,
+            ..outer
+        },
+        JobLimits {
+            process_memory: 1,
+            ..outer
+        },
+    ] {
+        assert!(altered.validate().is_err());
+    }
     let invalid = JobLimits {
         processes: 9,
         ..Default::default()

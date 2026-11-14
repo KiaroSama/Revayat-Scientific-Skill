@@ -61,11 +61,19 @@ pub fn run_owned_registry_authority(
     image: &Path,
     view: &super::super::state::NativeRunView,
 ) -> Result<String> {
+    run_owned_observed(image, view, &mut NoObserver)
+}
+pub(crate) fn run_owned_observed(
+    image: &Path,
+    view: &super::super::state::NativeRunView,
+    observer: &mut impl AuthorityObserver,
+) -> Result<String> {
     view.require()?;
     validate_authority_source(image)?;
     let profile = Profile::new_owned(view)?;
-    run_profile(image, &mut NoObserver, profile)
+    run_profile(image, observer, profile)
 }
+
 fn run_profile(
     image: &Path,
     observer: &mut impl AuthorityObserver,
@@ -266,6 +274,7 @@ fn run_profile(
             observer.startup_token(lines)
         })?;
         startup_access::observe_child(process.0, &sid, |lines| observer.startup_registry(lines))?;
+        registry.require_child_readonly(process.0, &sid)?;
         observer.before_resume(process.0, &sid, &target)?;
         restricted.close()?;
         descriptor.close()?;

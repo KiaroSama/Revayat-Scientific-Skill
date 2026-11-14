@@ -48,8 +48,8 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Build complete Windows executables before containment tests
         run: cargo build --locked --workspace --all-targets
-      - name: Run ordered Windows validators and same-profile native quota controls
-        run: target/debug/revayat-scientific security-windows --authority-image target/debug/registry-authority.exe --bootstrap-checks --machine-quota
+      - name: Run ordered Windows validators, kernel controls and forced wall-tree
+        run: target/debug/revayat-scientific security-windows --authority-image target/debug/registry-authority.exe --bootstrap-checks --machine-kernel
       - name: Collect actual native Windows harness outcomes
         if: ${{ always() && !cancelled() }}
         run: target/debug/revayat-test-runner --tier native --profile debug --ignored --output execution/native-debug.json --timeout 1200

@@ -11,7 +11,7 @@ cargo run --locked --release --bin revayat-scientific -- install --scope project
 cargo run --locked --release --bin revayat-scientific -- install --dest /path/to/final/revayat-scientific
 ```
 
-Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientific.exe` on Windows. Linux/macOS also require executable `bin/revayat-process-owner` beside the main program. Windows packages require adjacent `bin/revayat-quota-worker.exe`, the fixed native quota worker. Keep each platform's files together from the same build and revision; do not copy only the main program or mix artifacts. Rust dependencies are compiled into these binaries; external document/rendering tools are separate.
+Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientific.exe` on Windows. Linux/macOS also require executable `bin/revayat-process-owner` beside the main program. Windows packages require adjacent `bin/revayat-quota-worker.exe`, the fixed native quota and kernel-control worker. Keep each platform's files together from the same build and revision; do not copy only the main program or mix artifacts. Rust dependencies are compiled into these binaries; external document/rendering tools are separate.
 
 Build with `--workspace --bins` before using a source checkout or plugin. `cargo run --bin revayat-scientific` selects the main binary, not a rebuild of every sibling. The Unix companion has a private runtime protocol, not a user document-processing command. Missing, linked or nonregular companion files cause refusal before install/package publication; runtime also refuses an absent companion rather than spawning an unowned fallback. These checks do not authenticate a signed release or enforce a same-version handshake.
 

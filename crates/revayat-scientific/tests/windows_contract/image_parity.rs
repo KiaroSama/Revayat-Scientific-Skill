@@ -49,6 +49,115 @@ fn imports(names: &[&str]) -> Vec<u8> {
     }
     bytes
 }
+fn rust_case_imports() -> Vec<u8> {
+    let mut bytes = imports(&["kernel32.dll", "KERNEL32.dll"]);
+    short(&mut bytes, 0x96, 2);
+    short(&mut bytes, 0xdc, 3);
+    for (index, symbol) in ["GetCurrentProcess", "GetLastError"].iter().enumerate() {
+        let row = 0x400 + index * 20;
+        let lookup = 0x700 + index * 0x20;
+        let address = 0x800 + index * 0x20;
+        let name = 0x900 + index * 0x40;
+        put(&mut bytes, row, (lookup + 0xe00) as u32);
+        put(&mut bytes, row + 16, (address + 0xe00) as u32);
+        for at in [lookup, address] {
+            bytes[at..at + 8].copy_from_slice(&((name + 0xe00) as u64).to_le_bytes());
+        }
+        bytes[name + 2..name + 2 + symbol.len()].copy_from_slice(symbol.as_bytes());
+    }
+    bytes
+}
+fn check_rust_case_imports() {
+    let bytes = rust_case_imports();
+    let image = PeImage::parse(&bytes, 1).unwrap();
+    image.qualify_rust_quota().unwrap();
+    assert!(image.direct_imports().is_err());
+    assert!(image.qualify_registry_authority().is_err());
+    let cases = [
+        (0x601, b'/'), // library path syntax
+        (0x720, 0),    // empty/mismatched second lookup, live IAT
+        (0x728, 1),    // lookup tail is not terminated with the IAT
+        (0x820, 0),    // loaded/substituted IAT
+        (0x902, 0),    // empty imported symbol
+        (0x902, b'/'),
+    ];
+    for (offset, value) in cases {
+        let mut bad = bytes.clone();
+        bad[offset] = value;
+        assert!(
+            PeImage::parse(&bad, 1)
+                .unwrap()
+                .qualify_rust_quota()
+                .is_err()
+        );
+    }
+    for (offset, value) in [
+        (0x400, 0x1400), // ILT aliases a DLL name span
+        (0x414, 0x1400), // second ILT aliases a DLL name span
+        (0x410, 0x1500), // IAT aliases its ILT
+        (0x414, 0x1501), // misaligned second ILT
+        (0x410, 0x1501), // misaligned first IAT
+        (0x414, u32::MAX),
+        (0x404, 1),      // bound-import timestamp
+        (0x408, 1),      // unsupported forwarder chain
+        (0x420, 0x1400), // second DLL name aliases the first
+        (0x114, 39),
+        (0x170, 0x1200), // delay imports
+        (0x178, 0x1200), // managed image
+    ] {
+        let mut bad = bytes.clone();
+        put(&mut bad, offset, value);
+        assert!(
+            PeImage::parse(&bad, 1)
+                .unwrap()
+                .qualify_rust_quota()
+                .is_err()
+        );
+    }
+    let mut exact_case = bytes.clone();
+    exact_case[0x60d..0x619].copy_from_slice(b"kernel32.dll");
+    assert!(
+        PeImage::parse(&exact_case, 1)
+            .unwrap()
+            .qualify_rust_quota()
+            .is_err()
+    );
+    for name in ["private.dll", "api-ms-win-core-synch-l1-2-1.dll"] {
+        let mut unrelated = bytes.clone();
+        unrelated[0x60d..0x680].fill(0);
+        unrelated[0x60d..0x60d + name.len()].copy_from_slice(name.as_bytes());
+        let error = PeImage::parse(&unrelated, 1)
+            .unwrap()
+            .qualify_rust_quota()
+            .unwrap_err();
+        assert!(error.to_string().ends_with("stage=library-profile"));
+        assert!(!format!("{error:?}").contains(name));
+    }
+    let mut duplicate_symbol = bytes.clone();
+    duplicate_symbol.copy_within(0x900..0x914, 0x940);
+    assert!(
+        PeImage::parse(&duplicate_symbol, 1)
+            .unwrap()
+            .qualify_rust_quota()
+            .is_err()
+    );
+    let mut aliased_tables = bytes.clone();
+    put(&mut aliased_tables, 0x424, 0x1520);
+    assert!(
+        PeImage::parse(&aliased_tables, 1)
+            .unwrap()
+            .qualify_rust_quota()
+            .is_err()
+    );
+    let mut unterminated = bytes.clone();
+    unterminated[0x902..0xd02].fill(b'X');
+    assert!(
+        PeImage::parse(&unterminated, 1)
+            .unwrap()
+            .qualify_rust_quota()
+            .is_err()
+    );
+}
 fn manifest(id: u32) -> Vec<u8> {
     let mut bytes = fixture();
     put(&mut bytes, 0x118, 0x1400);
@@ -131,6 +240,7 @@ fn malformed_x64_headers_sections_and_unbacked_rvas_are_refused() {
 
 #[test]
 fn imports_reject_duplicates_delay_directories_private_names_and_profile_drift() {
+    check_rust_case_imports();
     check_import_validation().unwrap();
     let bytes = imports(&["KERNEL32.dll", "ntdll.dll", "advapi32.dll"]);
     let image = PeImage::parse(&bytes, 1).unwrap();

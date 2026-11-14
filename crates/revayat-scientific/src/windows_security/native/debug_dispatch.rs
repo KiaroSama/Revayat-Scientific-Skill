@@ -113,14 +113,27 @@ impl DispatchImages {
                 expected,
                 || {
                     let region = query(process, address)?;
-                    Ok(DispatchRegion {
+                    let view = DispatchRegion {
                         address: region.address as u64,
                         allocation: region.allocation as u64,
                         size: region.size as u64,
                         state: region.state,
                         kind: region.kind,
                         protect: region.protect,
-                    })
+                    };
+                    ensure!(
+                        view.readable(address, kernel.base),
+                        diagnostics::native(
+                            Stage::DebugDispatchRegion,
+                            Numbers {
+                                result: Some(region.state),
+                                properties: Some(region.protect),
+                                count: Some(region.kind),
+                                ..Default::default()
+                            }
+                        )
+                    );
+                    Ok(view)
                 },
                 |bytes| {
                     let mut returned = 0;
@@ -148,6 +161,20 @@ impl DispatchImages {
                             },
                         ));
                     }
+                    ensure!(
+                        returned == 8,
+                        diagnostics::native(
+                            Stage::DebugDispatchLength,
+                            Numbers {
+                                count: Some(returned as u32),
+                                ..Default::default()
+                            }
+                        )
+                    );
+                    ensure!(
+                        u64::from_le_bytes(*bytes) == expected,
+                        diagnostics::native(Stage::DebugDispatchPointer, Numbers::default())
+                    );
                     Ok(returned)
                 },
             )

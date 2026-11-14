@@ -357,7 +357,9 @@ pub(super) fn record_path(state: &Path, record: &str) -> Result<PathBuf> {
     ensure!(
         matches!(
             record,
-            "scratch-disk.intent"
+            "sxs-trace.intent"
+                | "sxs-trace.bound"
+                | "scratch-disk.intent"
                 | "scratch-disk.created"
                 | "scratch-disk.attach-intent"
                 | "scratch-disk.layout-intent"

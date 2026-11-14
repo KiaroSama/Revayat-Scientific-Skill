@@ -34,13 +34,22 @@ fn decode(bytes: &[u64]) -> Result<SessionSnapshot> {
         std::slice::from_raw_parts(bytes.as_ptr().cast::<u8>(), SESSION_CAPACITY)
     })
 }
-pub(super) struct SessionOwner {
+pub(super) struct SessionOwner<'a> {
     mutex: Handle,
     started: Cell<Instant>,
     cleanup: Cell<bool>,
+    journal: Option<crate::windows_security::native::SxsJournal<'a>>,
 }
-impl SessionOwner {
-    pub fn acquire() -> Result<Self> {
+impl<'a> SessionOwner<'a> {
+    pub fn acquire_ephemeral() -> Result<Self> {
+        Self::acquire(None)
+    }
+    pub fn acquire_bound(view: &'a crate::windows_security::native::NativeRunView) -> Result<Self> {
+        Self::acquire(Some(crate::windows_security::native::SxsJournal::new(
+            view,
+        )?))
+    }
+    fn acquire(journal: Option<crate::windows_security::native::SxsJournal<'a>>) -> Result<Self> {
         super::super::activation::native::require_host()?;
         let name = "Local\\Scientific.Security.SxsTrace\0"
             .encode_utf16()
@@ -55,11 +64,14 @@ impl SessionOwner {
             mutex,
             started: Cell::new(Instant::now()),
             cleanup: Cell::new(false),
+            journal,
         };
         if error == 183 {
-            let result = owner.close();
-            ensure!(result.is_ok(), "SxS owner collision cleanup failed");
-            anyhow::bail!("SxS trace owner collision");
+            let closed = owner.close().err().into_iter().collect();
+            return super::native_identity::finish(
+                Err(anyhow::anyhow!("SxS trace owner collision")),
+                closed,
+            );
         }
         Ok(owner)
     }
@@ -113,14 +125,17 @@ impl SessionOwner {
         properties.fill(0);
         result
     }
-    pub fn preabsent(&self, logfile: &str) -> Result<()> {
+    pub fn preabsent(&mut self, logfile: &str) -> Result<()> {
         ensure!(
             select_session(&self.all()?, logfile)?.is_none() && self.query()?.is_none(),
             "pre-existing SxS session collision"
         );
+        if let Some(journal) = &mut self.journal {
+            journal.intent(logfile)?;
+        }
         Ok(())
     }
-    pub fn bind(&self, logfile: &str) -> Result<SessionSnapshot> {
+    pub fn bind(&mut self, logfile: &str) -> Result<SessionSnapshot> {
         let sessions = self.all()?;
         let selected = select_session(&sessions, logfile)?
             .ok_or_else(|| anyhow::anyhow!("SxS standard-tool session is absent"))?;
@@ -129,10 +144,13 @@ impl SessionOwner {
             .ok_or_else(|| anyhow::anyhow!("SxS named session is absent"))?;
         selected.require_same(&queried)?;
         selected.require_capture()?;
+        if let Some(journal) = &mut self.journal {
+            super::session::contract::at_start(6, || journal.bind(selected))?;
+        }
         Ok(selected.clone())
     }
     pub fn stop(
-        &self,
+        &mut self,
         logfile: &str,
         starter_reaped: bool,
         capture: bool,
@@ -143,11 +161,20 @@ impl SessionOwner {
             "SxS session stop already attempted"
         );
         self.started.set(Instant::now());
+        let saved = self
+            .journal
+            .as_ref()
+            .map(|journal| journal.expected(logfile))
+            .transpose()?
+            .flatten();
+        if let (Some(saved), Some(expected)) = (&saved, expected) {
+            saved.require_same(expected)?;
+        }
         stop_owned(
             logfile,
             starter_reaped,
             capture,
-            expected,
+            saved.as_ref().or(expected),
             || self.all(),
             || self.query(),
             |found| {
@@ -166,28 +193,63 @@ impl SessionOwner {
                 properties.fill(0);
                 result
             },
-        )
-    }
-    pub fn close(&mut self) -> Result<()> {
-        if self.mutex.is_null() {
-            return Ok(());
+        )?;
+        if let Some(journal) = &mut self.journal {
+            journal.stopped()?;
         }
-        let mutex = std::mem::replace(&mut self.mutex, null_mut());
-        let success = unsafe { CloseHandle(mutex) };
-        let error = if success == 0 {
-            Some(unsafe { GetLastError() })
-        } else {
-            None
-        };
-        ensure!(
-            success != 0,
-            "SxS exclusive owner close failed winerror={error:?}"
-        );
         Ok(())
     }
+    pub fn durable_pending(&self) -> Result<bool> {
+        self.journal
+            .as_ref()
+            .map_or(Ok(false), |journal| journal.pending())
+    }
+    pub fn close(&mut self) -> Result<()> {
+        let mut errors = Vec::new();
+        if let Some(journal) = &mut self.journal
+            && let Err(error) = journal.close()
+        {
+            errors.push(error);
+        }
+        if !self.mutex.is_null() {
+            let mutex = std::mem::replace(&mut self.mutex, null_mut());
+            let success = unsafe { CloseHandle(mutex) };
+            if success == 0 {
+                errors.push(anyhow::anyhow!(
+                    "SxS exclusive owner close failed winerror={}",
+                    unsafe { GetLastError() }
+                ));
+            }
+        }
+        super::native_identity::finish(Ok(()), errors)
+    }
 }
-impl Drop for SessionOwner {
+impl Drop for SessionOwner<'_> {
     fn drop(&mut self) {
         let _ = self.close();
     }
+}
+
+/// The outer runtime capability proves only process retirement; journal/session checks still run.
+pub(crate) fn recover_owned_session(
+    owner: &crate::windows_security::native::NativeRunOwner,
+    proof: &crate::runtime::ReapedProcessTree,
+) -> Result<()> {
+    let view = owner.sxs_recovery_view(proof)?;
+    // No record means this run never attempted an ETW session. Avoid colliding with unrelated captures.
+    if !crate::windows_security::native::SxsJournal::has_records(view)? {
+        return Ok(());
+    }
+    let mut session = SessionOwner::acquire_ephemeral()?;
+    let operation = (|| {
+        if let Some((journal, logfile)) =
+            crate::windows_security::native::SxsJournal::recovery(view)?
+        {
+            session.journal = Some(journal);
+            session.stop(&logfile, true, false, None)?;
+        }
+        Ok(())
+    })()
+    .map_err(|error| super::safe(error, "recovery"));
+    super::native_identity::finish(operation, session.close().err().into_iter().collect())
 }

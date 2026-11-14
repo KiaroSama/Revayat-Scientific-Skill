@@ -4,6 +4,7 @@ use anyhow::{Result, ensure};
 use std::path::PathBuf;
 
 pub fn check_validation() -> Result<()> {
+    super::super::kernel_controls::check_validation()?;
     let user = Sid::text("S-1-5-21-1-2-3-1000")?;
     let package = Sid::text("S-1-15-2-1-2-3-4-5-6-7")?;
     for text in [

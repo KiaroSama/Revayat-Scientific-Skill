@@ -21,7 +21,7 @@ cargo run --locked --bin revayat-scientific -- validate
 Build all binaries with `cargo build --locked --workspace --bins` before invoking
 development commands: Unix commands require adjacent `revayat-process-owner`, and
 Windows packages require adjacent `revayat-quota-worker.exe` for the fixed native
-quota role. Building only the CLI with `cargo run` does not build its platform
+quota and kernel-control roles. Building only the CLI with `cargo run` does not build its platform
 sibling. The status-publishing CI jobs explicitly build workspace binaries.
 Development and test profiles use level-one
 optimization for bounded parsing and repeated payload hashing, and strip symbols

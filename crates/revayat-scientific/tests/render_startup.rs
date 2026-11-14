@@ -154,8 +154,12 @@ fn inherited_runtime_group_reaps_pipe_holder_without_reader_join_deadlock() -> R
         .current_dir(&root)
         .output()?;
     assert!(!result.status.success());
-    assert!(started.elapsed() < Duration::from_secs(8));
     let text = String::from_utf8(result.stderr)?;
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "owned pipe-holder cleanup took {:?}: {text}",
+        started.elapsed()
+    );
     assert!(text.contains("reader_complete=true"), "{text}");
     assert!(!text.contains("PRIVATE_BROWSER_CANARY"));
     let pid: u32 = fs::read_to_string(root.join("browser-child.pid"))?.parse()?;

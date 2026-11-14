@@ -11,6 +11,8 @@ mod eof;
 mod ffi;
 #[path = "quota_files.rs"]
 mod files;
+#[path = "native_kernel.rs"]
+mod kernel;
 #[path = "quota_private.rs"]
 mod private;
 #[path = "quota_token.rs"]
@@ -74,6 +76,7 @@ fn observe(plan: &WorkerPlan) -> Result<String> {
 }
 
 pub(crate) fn worker_main() -> i32 {
+    let mut kernel_role = false;
     let result: Result<()> = (|| {
         let image = std::env::current_exe()
             .map_err(|_| anyhow::anyhow!("quota worker image lookup failed"))?;
@@ -83,14 +86,24 @@ pub(crate) fn worker_main() -> i32 {
         );
         let args = std::env::args_os()
             .skip(1)
-            .take(10)
+            .take(13)
             .map(|arg| {
                 arg.into_string()
                     .map_err(|_| anyhow::anyhow!("quota worker argument is not Unicode"))
             })
             .collect::<Result<Vec<_>>>()?;
-        let plan = WorkerPlan::parse(&args)?;
-        let result = observe(&plan)?;
+        ensure!(
+            args.len() <= 12,
+            "fixed worker argument count exceeds bound"
+        );
+        kernel_role = args
+            .first()
+            .is_some_and(|arg| crate::windows_security::kernel_controls::Role::parse(arg).is_ok());
+        let result = if kernel_role {
+            kernel::observe(&crate::windows_security::kernel_controls::KernelPlan::parse(&args)?)?
+        } else {
+            observe(&WorkerPlan::parse(&args)?)?
+        };
         use std::io::Write;
         let mut out = std::io::stdout().lock();
         out.write_all(result.as_bytes())
@@ -103,7 +116,11 @@ pub(crate) fn worker_main() -> i32 {
         Ok(()) => 0,
         Err(_) => {
             // Never format native errors or their causes: paths, token SIDs and captured child bytes stay private.
-            eprintln!("WINDOWS_QUOTA_FAILURE phase=native kind=control_or_cleanup");
+            if kernel_role {
+                eprintln!("WINDOWS_KERNEL_FAILURE phase=native kind=control_or_cleanup");
+            } else {
+                eprintln!("WINDOWS_QUOTA_FAILURE phase=native kind=control_or_cleanup");
+            }
             1
         }
     }

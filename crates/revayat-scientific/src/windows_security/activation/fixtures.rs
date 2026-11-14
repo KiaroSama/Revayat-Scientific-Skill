@@ -12,3 +12,5 @@ pub mod python_startup;
 pub mod registry_loader;
 pub mod self_host;
 pub mod source;
+#[cfg(windows)]
+pub mod tool_discovery;

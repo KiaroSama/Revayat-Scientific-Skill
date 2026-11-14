@@ -18,6 +18,10 @@ pub(super) enum LaunchKind<'a> {
         plan: &'a WorkerPlan,
         directory: tempfile::TempDir,
     },
+    Kernel {
+        plan: &'a crate::windows_security::kernel_controls::KernelPlan,
+        directory: tempfile::TempDir,
+    },
 }
 fn close_file(file: File) -> Result<()> {
     let raw = file.into_raw_handle();
@@ -112,7 +116,7 @@ pub(super) fn prepare(
     profile: &Profile,
     kind: LaunchKind<'_>,
 ) -> Result<PathBuf> {
-    let (machine, quota) = match kind {
+    let (machine, quota, kernel) = match kind {
         LaunchKind::Machine(plan) => {
             ensure!(
                 matches!(plan, Plan::Original | Plan::Modified | Plan::Restored),
@@ -122,7 +126,7 @@ pub(super) fn prepare(
                 owner.prepared.is_none(),
                 "native authority preparation already owned"
             );
-            (Some(plan), None)
+            (Some(plan), None, None)
         }
         LaunchKind::Quota { plan, directory } => {
             if owner.prepared.is_some() {
@@ -135,7 +139,17 @@ pub(super) fn prepare(
             }
             // Transfer the actual fresh owner before any fallible plan check.
             owner.prepared = Some(directory);
-            (None, Some(plan))
+            (None, Some(plan), None)
+        }
+        LaunchKind::Kernel { plan, directory } => {
+            if owner.prepared.is_some() {
+                return crate::runtime::with_cleanup(
+                    Err(anyhow::anyhow!("native kernel preparation already owned")),
+                    directory.close().map_err(Into::into),
+                );
+            }
+            owner.prepared = Some(directory);
+            (None, Some(&plan.quota), Some(plan))
         }
     };
     let sid = profile.sid_text()?;
@@ -146,7 +160,21 @@ pub(super) fn prepare(
             "quota primary/profile binding differs"
         );
         quota_source(image, expected)?;
-        ("revayat-quota-worker.exe", plan.arguments(Role::Primary)?)
+        let arguments = if let Some(kernel) = kernel {
+            use crate::windows_security::kernel_controls::Role as KernelRole;
+            kernel.validate()?;
+            ensure!(
+                matches!(
+                    kernel.role,
+                    KernelRole::KernelPrimary | KernelRole::KernelWall
+                ),
+                "native kernel launch cannot select a descendant role"
+            );
+            kernel.arguments(kernel.role)?
+        } else {
+            plan.arguments(Role::Primary)?
+        };
+        ("revayat-quota-worker.exe", arguments)
     } else {
         (
             "registry-authority.exe",
@@ -270,7 +298,11 @@ pub(super) fn prepare(
         let mut command = command_line(&target, &arguments)?;
         let cwd = wide(&scratch);
         let root = std::env::var_os("SystemRoot").context("SystemRoot is required")?;
-        let mut environment = environment(&root, &scratch)?;
+        let mut environment = if let Some(plan) = kernel {
+            plan.environment_block()?
+        } else {
+            environment(&root, &scratch)?
+        };
         owner.source.as_mut().unwrap().require(image)?;
         owner.target.as_mut().unwrap().require(&target)?;
         owner.restricted = restricted_primary()?;
