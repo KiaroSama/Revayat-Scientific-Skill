@@ -131,16 +131,39 @@ fn one_path(text: &str) -> Result<PathBuf> {
         .lines()
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
-    ensure!(
-        lines.len() == 1 && lines[0].len() <= 32768 && !lines[0].contains('\0'),
-        "fixed discovery path output is missing/ambiguous"
-    );
-    let path = PathBuf::from(lines[0]);
-    ensure!(
-        path.is_absolute(),
-        "fixed discovery returned a relative path"
-    );
-    Ok(path)
+    let result = (|| {
+        ensure!(
+            lines.len() == 1 && lines[0].len() <= 32768 && !lines[0].contains('\0'),
+            "fixed discovery path output is missing/ambiguous"
+        );
+        let path = PathBuf::from(lines[0]);
+        ensure!(
+            path.is_absolute(),
+            "fixed discovery returned a relative path"
+        );
+        Ok(path)
+    })();
+    result.map_err(|error| {
+        diagnostics::annotate(
+            error,
+            Stage::FixturePathShape,
+            Numbers {
+                count: u32::try_from(lines.len()).ok(),
+                bytes: u32::try_from(text.len()).ok(),
+                // Closed flags only: BOM, absolute first line, NUL. No path/output text.
+                properties: Some(
+                    u32::from(text.starts_with('\u{feff}'))
+                        | (u32::from(
+                            lines
+                                .first()
+                                .is_some_and(|line| Path::new(line).is_absolute()),
+                        ) << 1)
+                        | (u32::from(text.contains('\0')) << 2),
+                ),
+                ..Default::default()
+            },
+        )
+    })
 }
 fn version(text: &str) -> Result<[u32; 4]> {
     let parts = text.split('.').collect::<Vec<_>>();
@@ -242,6 +265,7 @@ fn discover(pins: &mut Pins, state: &Path) -> Result<RustTools> {
             Stage::FixtureVswhereRun,
             &vswhere,
             &[
+                "-nologo",
                 "-latest",
                 "-products",
                 "*",

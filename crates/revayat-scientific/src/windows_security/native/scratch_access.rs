@@ -220,34 +220,56 @@ pub(super) fn name(handle: Handle) -> Result<String> {
 }
 pub(super) fn ioctl(handle: Handle, code: u32, input: &[u8], output: &mut [u8]) -> Result<usize> {
     let mut returned = 0;
-    ensure!(
-        unsafe {
-            DeviceIoControl(
-                handle,
-                code,
-                if input.is_empty() {
-                    null()
-                } else {
-                    input.as_ptr().cast()
-                },
-                input.len().try_into()?,
-                if output.is_empty() {
-                    null_mut()
-                } else {
-                    output.as_mut_ptr().cast()
-                },
-                output.len().try_into()?,
-                &mut returned,
-                null_mut(),
-            )
-        } != 0,
-        "scratch device control=0x{code:08X} failed winerror={}",
-        std::io::Error::last_os_error().raw_os_error().unwrap_or(-1)
-    );
-    ensure!(
-        returned as usize <= output.len(),
-        "scratch device response exceeds buffer"
-    );
+    let status = unsafe {
+        DeviceIoControl(
+            handle,
+            code,
+            if input.is_empty() {
+                null()
+            } else {
+                input.as_ptr().cast()
+            },
+            input.len().try_into()?,
+            if output.is_empty() {
+                null_mut()
+            } else {
+                output.as_mut_ptr().cast()
+            },
+            output.len().try_into()?,
+            &mut returned,
+            null_mut(),
+        )
+    };
+    // Capture the API's error before any subsequent native call or formatting.
+    let error = (status == 0).then(std::io::Error::last_os_error);
+    let result = (|| {
+        if let Some(error) = error {
+            return Err(error.into());
+        }
+        ensure!(
+            returned as usize <= output.len(),
+            "scratch device response exceeds buffer"
+        );
+        Ok(())
+    })();
+    result.map_err(|error| {
+        use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
+        let native_error = error
+            .downcast_ref::<std::io::Error>()
+            .and_then(std::io::Error::raw_os_error)
+            .map(|code| code as u32);
+        diagnostics::annotate(
+            error,
+            Stage::ScratchDeviceControl,
+            Numbers {
+                native_error,
+                properties: Some(code),
+                bytes: Some(returned),
+                count: u32::try_from(output.len()).ok(),
+                ..Default::default()
+            },
+        )
+    })?;
     Ok(returned as usize)
 }
 pub(super) fn bytes<T>(value: &T) -> &[u8] {

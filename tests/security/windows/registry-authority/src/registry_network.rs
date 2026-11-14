@@ -1,6 +1,6 @@
 //! Four actual LPAC operations. Initialization/creation/cleanup refusal is fatal, never a denial.
-//! Retain Rust's current Winsock2.2 request for the diagnostic. CPython3.11's1.1 request
-//! is a separate source-parity decision after the actual startup return becomes known.
+//! Match the original CPython3.11 socketmodule.c os_init request (Winsock1.1).
+//! A failed startup remains fatal; only four actual connect/sendto denials qualify.
 use crate::protocol::{
     NetworkOperation, PanicPhase, Result, mark_panic_phase, network_denial, network_failure,
     network_finish, network_ports, network_socket, network_startup,
@@ -91,7 +91,7 @@ impl Winsock {
         mark_panic_phase(PanicPhase::NetworkStartup);
         let mut data: WsaData = unsafe { zeroed() };
         // WSAStartup returns its error directly. WSAGetLastError is not its result channel.
-        let status = unsafe { WSAStartup(0x0202, &mut data) };
+        let status = unsafe { WSAStartup(0x0101, &mut data) };
         let result = network_startup(status);
         let version = data.version;
         unsafe {
@@ -103,7 +103,7 @@ impl Winsock {
         };
         result?;
         let mut owner = Self(true);
-        if version != 0x0202 {
+        if version != 0x0101 {
             return network_finish(Err(network_failure("network-version", None)), owner.close());
         }
         Ok(owner)

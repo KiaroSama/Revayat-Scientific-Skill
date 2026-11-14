@@ -74,13 +74,14 @@ impl Drop for Socket {
 pub(super) fn controls(plan: &KernelPlan) -> Result<()> {
     let mut data: WsaData = unsafe { zeroed() };
     ensure!(size_of::<WsaData>() == 408, "kernel Winsock ABI differs");
-    // SAFETY: exact initialized x64 WSADATA buffer, requesting fixed Winsock2.2.
+    // Match the original CPython3.11 socketmodule.c os_init Winsock1.1 request.
+    // SAFETY: exact initialized x64 WSADATA buffer; startup is never a denial.
     ensure!(
-        unsafe { WSAStartup(0x0202, &mut data) } == 0,
+        unsafe { WSAStartup(0x0101, &mut data) } == 0,
         "kernel Winsock initialization failed"
     );
     let operation = (|| {
-        ensure!(data.version == 0x0202, "kernel Winsock version differs");
+        ensure!(data.version == 0x0101, "kernel Winsock version differs");
         for family in [2, 23] {
             for kind in [1, 2] {
                 let raw = unsafe { socket(family, kind, 0) };

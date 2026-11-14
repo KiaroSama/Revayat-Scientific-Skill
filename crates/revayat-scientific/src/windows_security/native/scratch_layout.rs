@@ -1,5 +1,6 @@
 //! GPT creation and exact virtual-disk/partition/volume association.
 use super::scratch_access::{self as access, Owned, bytes, ioctl, query};
+use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -83,12 +84,22 @@ pub(super) fn disk(path: &str) -> Result<(Owned, u32)> {
     let handle = Owned::open(path, 0xc0000000, 3, 0)?;
     let actual = number(handle.0)?;
     let length: GET_LENGTH_INFORMATION = query(handle.0, IOCTL_DISK_GET_LENGTH_INFO)?;
-    ensure!(
-        actual.DeviceNumber == expected
-            && actual.PartitionNumber == 0
-            && length.Length == CAPACITY as i64,
-        "scratch raw disk identity/capacity differs"
-    );
+    if actual.DeviceNumber != expected
+        || actual.PartitionNumber != 0
+        || length.Length != CAPACITY as i64
+    {
+        return Err(diagnostics::annotate(
+            anyhow::anyhow!("scratch raw disk identity/capacity differs"),
+            Stage::ScratchDiskIdentity,
+            Numbers {
+                result: Some(actual.DeviceNumber),
+                properties: Some(actual.PartitionNumber),
+                count: Some(expected),
+                bytes: u32::try_from(length.Length).ok(),
+                ..Default::default()
+            },
+        ));
+    }
     Ok((handle, expected))
 }
 fn layout(
@@ -170,10 +181,18 @@ pub(super) fn initialize(
     partition_id: GUID,
 ) -> Result<VolumeBinding> {
     let (header, entries) = layout(handle)?;
-    ensure!(
-        header.PartitionStyle == 2 && entries.is_empty(),
-        "new scratch disk is not RAW"
-    );
+    if header.PartitionStyle != 2 || !entries.is_empty() {
+        return Err(diagnostics::annotate(
+            anyhow::anyhow!("new scratch disk is not RAW"),
+            Stage::ScratchRawLayout,
+            Numbers {
+                result: Some(header.PartitionStyle),
+                count: Some(header.PartitionCount),
+                bytes: u32::try_from(entries.len()).ok(),
+                ..Default::default()
+            },
+        ));
+    }
     let create = CREATE_DISK {
         PartitionStyle: PARTITION_STYLE_GPT,
         Anonymous: CREATE_DISK_0 {

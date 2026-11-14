@@ -75,8 +75,15 @@ mod unix {
         spec.timeout = Duration::from_millis(100);
         let mut owner = Interactive::spawn(&spec).unwrap();
         let started = Instant::now();
-        while started.elapsed() < Duration::from_millis(150) {
-            let _ = owner.try_wait();
+        // spawn sends a request before the companion has necessarily scheduled
+        // the child. Wait for its actual timeout/kill response; cancelling after
+        // a caller-side sleep can instead request a valid deliberate stop.
+        while owner.termination_signal().is_none() {
+            owner.try_wait().expect("valid owner completion transport");
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "actual timeout response missing"
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(owner.finish().is_err());

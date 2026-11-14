@@ -50,6 +50,13 @@ implementation. Its exact path and normalized source digest are audited; it is
 not included in ordinary installed tools. The Rust body calls genuine ctypes
 objects where the original checks require them. Direct Rust Win32 calls cannot
 stand in for those runtime-specific observations.
+The Rust network controls request Winsock1.1, matching the original CPython3.11
+`socketmodule.c::os_init` request. Initialization, negotiated version, socket
+creation and cleanup must succeed; only the four actual IPv4/IPv6 TCP/UDP
+connect/send outcomes with WSAEACCES qualify as denials. Startup failure is never
+counted as containment. Tool discovery and scratch-device refusals retain closed
+numeric stages and native API error codes while withholding raw paths and output.
+
 Independent startup/debug controls and the four-constant CPython registry-loader
 extension are compiled from pinned Rust sources using the held compiler/SDK and
 the genuine runtime's own import library. The separate explicit-ID2 CSR control

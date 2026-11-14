@@ -176,7 +176,12 @@ mod tests {
             classify_source(PYTHON_FIXTURE, fixture)?,
             "python-runtime-fixture"
         );
-        let crlf = std::str::from_utf8(fixture)?.replace('\n', "\r\n");
+        let canonical = std::str::from_utf8(fixture)?.replace("\r\n", "\n");
+        assert_eq!(
+            classify_source(PYTHON_FIXTURE, canonical.as_bytes())?,
+            "python-runtime-fixture"
+        );
+        let crlf = canonical.replace('\n', "\r\n");
         assert_eq!(
             classify_source(PYTHON_FIXTURE, crlf.as_bytes())?,
             "python-runtime-fixture"

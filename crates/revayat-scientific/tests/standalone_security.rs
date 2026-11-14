@@ -46,7 +46,9 @@ fn refusal_error_boundaries() -> Result<()> {
         security_cases::{ExpectedRefusal, require_contract_refusal},
     };
     let directory = tempfile::tempdir()?;
-    let root = directory.path();
+    // macOS tempfile roots may pass through /var -> /private/var. The actual
+    // refusal cases need a plain canonical parent before exercising missing I/O.
+    let root = directory.path().canonicalize()?;
     let delivery = root.join("previous.docx");
     std::fs::write(&delivery, b"previous valid sentinel")?;
     let patches = serde_json::json!([{"part":"word/document.xml","index":0,"expected":"original","text":"changed"}]);
