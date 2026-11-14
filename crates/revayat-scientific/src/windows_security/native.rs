@@ -401,10 +401,96 @@ pub fn protect_scratch(path: &Path, package_sid: &str) -> Result<()> {
     super::package_sid(package_sid)?;
     plain_path(path)?;
     ensure!(path.is_dir(), "scratch root must exist");
+    let user = super::sxs::current_user_sid()?;
+    // LUA can make an administrator owner deny-only. Supply the normal-token
+    // half explicitly, with the same bounded Modify rights as the package half.
     let sddl = format!(
-        "D:P(D;OICI;0xc0000;;;{package_sid})(A;OICI;FA;;;SY)(A;OICI;FA;;;OW)(A;OICI;0x1301bf;;;{package_sid})S:(ML;OICI;NW;;;LW)"
+        "D:P(D;OICI;0xc0000;;;{package_sid})(A;OICI;FA;;;SY)(A;OICI;FA;;;OW)(A;OICI;0x1301bf;;;{user})(A;OICI;0x1301bf;;;{package_sid})S:(ML;OICI;NW;;;LW)"
     );
     apply_policy(path, &sddl)
+}
+
+/// Real positive under this still-suspended fixture child's qualified LPAC context.
+fn require_scratch_write(path: &Path, process: Handle, package: &str) -> Result<()> {
+    use std::{
+        cell::Cell,
+        io::{Read, Seek, Write},
+        os::windows::{fs::OpenOptionsExt, io::IntoRawHandle},
+    };
+    plain_path(path)?;
+    let identity = crate::identity::path_object_id(path)?;
+    let probe = path.join("native-suspended-create-only-control");
+    let created = Cell::new(false);
+    let started = Instant::now();
+    let deadline = || {
+        ensure!(
+            started.elapsed() <= Duration::from_secs(8),
+            "owned scratch suspended control deadline exceeded"
+        );
+        Ok(())
+    };
+    let operation = super::sxs::with_authority(process, package, deadline, |qualify| {
+        qualify()?;
+        // Match the real worker's requested access and create-only/delete-on-close flags.
+        // A collision is fatal and never authorizes deleting the existing pathname.
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .access_mode(0xc0010000)
+            .share_mode(0)
+            .custom_flags(0x04200000)
+            .open(&probe)
+            .context("owned scratch suspended create failed")?;
+        created.set(true);
+        let expected = b"native owned scratch control\0\r\n";
+        let mut actual = [0u8; 32];
+        let result = (|| {
+            qualify()?;
+            file.write_all(expected)
+                .context("owned scratch suspended write failed")?;
+            file.flush()
+                .context("owned scratch suspended flush failed")?;
+            file.sync_all()
+                .context("owned scratch suspended sync failed")?;
+            file.rewind()
+                .context("owned scratch suspended rewind failed")?;
+            file.read_exact(&mut actual[..expected.len()])
+                .context("owned scratch suspended read failed")?;
+            let mut tail = [0u8; 1];
+            ensure!(
+                actual[..expected.len()] == expected[..] && file.read(&mut tail)? == 0,
+                "owned scratch suspended readback differs"
+            );
+            qualify()
+        })();
+        actual.fill(0);
+        let handle = file.into_raw_handle();
+        let closed = if unsafe { windows_sys::Win32::Foundation::CloseHandle(handle) } != 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error()).context("owned scratch suspended close failed")
+        };
+        crate::runtime::with_cleanup(result, closed)
+    });
+    // The context has reverted before host path/identity checks. Every acquired
+    // file was independently closed; no pathname-delete fallback masks uncertainty.
+    let rechecked = (|| {
+        plain_path(path)?;
+        ensure!(
+            crate::identity::path_object_id(path)? == identity,
+            "owned scratch root identity changed during suspended control"
+        );
+        if created.get() {
+            match std::fs::symlink_metadata(&probe) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+                Err(error) => return Err(error.into()),
+                Ok(_) => anyhow::bail!("owned scratch suspended control did not retire"),
+            }
+        }
+        Ok(())
+    })();
+    crate::runtime::with_cleanup(operation, rechecked)
 }
 
 fn protect_image(path: &Path, package_sid: &str) -> Result<()> {

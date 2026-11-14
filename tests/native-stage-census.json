@@ -1334,6 +1334,13 @@
   "runtime_preparation_validation_roots": [
     {
       "id": "runtime-preparation::PythonStartupFixture.CheckValidation",
+      "declaration_ledger_relation": {
+        "ledger": "tests/native-declaration-census.json",
+        "root_id": "post-bootstrap::PythonStartupFixture.CheckValidation",
+        "call_source": "tests/security/windows/Run-WindowsSecurity.ps1",
+        "relation": "same-frozen-invocation-site",
+        "evidence_limit": "Reviewed identity correspondence only; no execution outcome or transitive helper equivalence is inferred."
+      },
       "source_line": 359,
       "invokes": "ScientificSecurity.PythonStartupFixture::CheckValidation",
       "arguments": [

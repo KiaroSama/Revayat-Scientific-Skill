@@ -43,9 +43,8 @@ impl Member {
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            options
-                .share_mode(if create { 0 } else { 1 })
-                .custom_flags(0x00200000);
+            // Identity reopens need read sharing; writers and deletion stay excluded.
+            options.share_mode(1).custom_flags(0x00200000);
         }
         #[cfg(unix)]
         {
@@ -238,10 +237,52 @@ pub fn copy_member(
     })();
     finish(result, &mut members)
 }
+#[cfg(windows)]
+fn check_creation_sharing(work: &Path) -> Result<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+    let path = work.join("creation-sharing.data");
+    let mut owner = Member::open(&path, true)?;
+    let result = (|| {
+        let file = owner.file.as_mut().unwrap();
+        file.write_all(b"held-data")?;
+        file.sync_all()?;
+        ensure!(
+            identity::path_object_id(&path)? == owner.id,
+            "runtime data creation blocks identity readback"
+        );
+        for desired in [0x40000000, 0x10000] {
+            let attempt = OpenOptions::new()
+                .access_mode(desired)
+                .share_mode(7)
+                .open(&path);
+            ensure!(
+                attempt
+                    .as_ref()
+                    .err()
+                    .and_then(|error| error.raw_os_error())
+                    == Some(32),
+                "runtime data creation admitted another writer/deleter"
+            );
+        }
+        Ok(())
+    })();
+    runtime::with_cleanup(result, owner.close())?;
+    let mut reopened = Member::open(&path, false)?;
+    let result = reopened.read().and_then(|(bytes, _)| {
+        ensure!(
+            bytes.0 == b"held-data",
+            "runtime data sharing changed bytes"
+        );
+        Ok(())
+    });
+    runtime::with_cleanup(result, reopened.close())
+}
 /// Added to the existing preparation carrier; these are real tiny filesystem copies, never native proof.
 pub fn check_validation(work: &Path) -> Result<()> {
     let tree = tempfile::tempdir_in(work)?;
     let result = (|| {
+        #[cfg(windows)]
+        check_creation_sharing(tree.path())?;
         let input = tree.path().join("source").join("Lib");
         let output = tree.path().join("python").join("Lib");
         fs::create_dir_all(input.join("package"))?;

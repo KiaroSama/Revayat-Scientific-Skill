@@ -284,6 +284,7 @@ fn failed_carrier_cleanup_or_noncanonical_rows_block_report_publication() {
 
 #[test]
 fn raw_reads_are_actual_bounded_and_routing_only_targets_the_actual_carrier() {
+    native_census_keeps_the_separate_runtime_validation_root();
     let (root, _, _) = fixture();
     let path = root.path().join("oversized");
     let file = fs::File::create(&path).unwrap();
@@ -355,4 +356,124 @@ fn raw_reads_are_actual_bounded_and_routing_only_targets_the_actual_carrier() {
         );
     }
     assert!(Capture::create(&unrelated, "portable").unwrap().is_none());
+}
+
+fn native_census_keeps_the_separate_runtime_validation_root() {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("tests")).unwrap();
+    for name in [
+        "oracle-census.json",
+        "engine-census.json",
+        "runtime-preparation-census.json",
+        "coverage-census.json",
+        "native-stage-census.json",
+    ] {
+        fs::copy(
+            source.join("tests").join(name),
+            root.path().join("tests").join(name),
+        )
+        .unwrap();
+    }
+    let census_path = root.path().join("tests/native-stage-census.json");
+    let value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&census_path).unwrap()).unwrap();
+    let censuses = events::load_censuses(root.path()).unwrap();
+    let native = censuses
+        .iter()
+        .find(|census| census.population == "native-stage")
+        .unwrap();
+    let clone_id = "runtime-preparation::PythonStartupFixture.CheckValidation";
+    let direct_ids = [
+        "post-bootstrap::RegistryLoaderFixture.CheckValidation",
+        "post-bootstrap::SxsTraceCapture.CheckValidation",
+        "post-bootstrap::StartupActivationAccess.CheckTraceControlValidation",
+    ];
+    let mut expected = (1..=53)
+        .map(|index| format!("bootstrap::managed/{index:02}"))
+        .collect::<Vec<_>>();
+    expected.push(clone_id.into());
+    expected.extend(direct_ids.map(str::to_owned));
+    assert_eq!(
+        native.ids, expected,
+        "native census loader omitted or reordered original validation roots"
+    );
+    assert_eq!(value["stages"].as_array().unwrap().len(), 53);
+    assert_eq!(
+        value["direct_post_bootstrap_checks"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    let roots = value["runtime_preparation_validation_roots"]
+        .as_array()
+        .unwrap();
+    assert_eq!(roots.len(), 1);
+    let clone = &roots[0];
+    assert_eq!(clone["id"], clone_id);
+    let relation = &clone["declaration_ledger_relation"];
+    assert_eq!(relation["ledger"], "tests/native-declaration-census.json");
+    assert_eq!(
+        relation["root_id"],
+        "post-bootstrap::PythonStartupFixture.CheckValidation"
+    );
+    assert_eq!(relation["relation"], "same-frozen-invocation-site");
+    let ledger: serde_json::Value = serde_json::from_slice(
+        &fs::read(source.join(relation["ledger"].as_str().unwrap())).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(ledger["baseline_commit"], value["baseline_commit"]);
+    let matches = ledger["roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|root| root["id"] == relation["root_id"])
+        .collect::<Vec<_>>();
+    assert_eq!(matches.len(), 1);
+    let original = matches[0];
+    assert_eq!(original["source"], relation["call_source"]);
+    assert_eq!(original["source_line"], 359);
+    for key in ["source_line", "invokes", "arguments"] {
+        assert_eq!(
+            original[key], clone[key],
+            "runtime clone identity relation differs at {key}"
+        );
+    }
+    assert!(native.contract.is_none());
+    assert!(value["execution_contract"].is_null());
+    assert_eq!(
+        events::validate_populations(
+            std::slice::from_ref(native),
+            &[],
+            &[],
+            ("a", "run", "attempt", "repository", "workflow")
+        )
+        .unwrap_err()
+        .to_string(),
+        "required execution contract is not source-closed"
+    );
+    assert!(
+        events::validate_operation_reports(
+            &censuses,
+            &[],
+            &[],
+            ("a", "run", "attempt", "repository", "workflow")
+        )
+        .is_err(),
+        "loading declarations cannot manufacture execution evidence"
+    );
+    for key in [
+        "runtime_preparation_validation_roots",
+        "direct_post_bootstrap_checks",
+    ] {
+        let mut missing = value.clone();
+        missing.as_object_mut().unwrap().remove(key);
+        fs::write(&census_path, serde_json::to_vec(&missing).unwrap()).unwrap();
+        assert!(
+            events::load_censuses(root.path()).is_err(),
+            "missing original validation root group accepted: {key}"
+        );
+    }
+    root.close().unwrap();
 }

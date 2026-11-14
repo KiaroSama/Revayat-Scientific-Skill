@@ -88,6 +88,25 @@ fn explicit_receipt_preserves_pre_call_then_consistent_fixed_result_without_raw_
     );
     assert!(result(true, 5).is_none() && result(false, 0).is_none());
     assert!(PRE_CALL.len() + result(false, u32::MAX).unwrap().len() <= 128);
+    for error in (0..=255u32).chain([0x01020304, 0x01234567, 0x89abcdef, 0xdeadbeef, u32::MAX]) {
+        let mut hexadecimal = Vec::new();
+        independent_id2::hexadecimal(error, |byte| hexadecimal.push(byte));
+        assert_eq!(
+            hexadecimal.len(),
+            8,
+            "native error field must have exactly eight bytes"
+        );
+        assert_eq!(hexadecimal, format!("{error:08X}").as_bytes());
+        let hexadecimal = String::from_utf8(hexadecimal).unwrap();
+        let created = error == 0;
+        assert_eq!(
+            format!(
+                "WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created={} win32_error=0x{hexadecimal}\n",
+                if created { "True" } else { "False" }
+            ),
+            result(created, error).unwrap(),
+        );
+    }
     for command in [
         "\"D:\\owned work\\control.exe\"\0",
         "\"D:\\control.exe\" \t\0",
@@ -147,6 +166,7 @@ fn fixture_captures_error_immediately_and_build_links_only_the_fixed_binary_reso
     assert!(independent.contains("#![cfg_attr(not(test), no_std)]"));
     assert!(independent.contains("#![cfg_attr(not(test), no_main)]"));
     assert!(!independent.contains("std::"));
+    assert!(!independent.contains("emit::Record") && !independent.contains("mod builtins"));
     let independent = independent.split_whitespace().collect::<String>();
     let (_, after) = independent
         .split_once("lethandle=unsafe{abi::CreateActCtxW(&context)};")

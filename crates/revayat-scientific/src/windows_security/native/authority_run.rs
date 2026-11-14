@@ -275,6 +275,7 @@ fn run_profile(
         })?;
         startup_access::observe_child(process.0, &sid, |lines| observer.startup_registry(lines))?;
         registry.require_child_readonly(process.0, &sid)?;
+        super::super::require_scratch_write(prepared.path(), process.0, &sid)?;
         observer.before_resume(process.0, &sid, &target)?;
         restricted.close()?;
         descriptor.close()?;

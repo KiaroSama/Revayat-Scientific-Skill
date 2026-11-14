@@ -96,6 +96,14 @@ fn actual_reparse_ancestor_is_refused_before_file_access() {
 
 #[link(name = "advapi32")]
 unsafe extern "system" {
+    fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
+    fn GetTokenInformation(
+        token: *mut c_void,
+        kind: i32,
+        data: *mut c_void,
+        capacity: u32,
+        returned: *mut u32,
+    ) -> i32;
     fn GetFileSecurityW(
         path: *const u16,
         information: u32,
@@ -116,20 +124,36 @@ unsafe extern "system" {
     fn LocalFree(memory: *mut c_void) -> *mut c_void;
 }
 
-#[test]
-fn actual_scratch_acl_is_protected_and_has_only_concrete_package_grant() {
-    let directory = tempfile::tempdir().unwrap();
-    let sid = "S-1-15-2-1-2-3-4-5-6-7";
-    protect_scratch(directory.path(), sid).unwrap();
-    let path = directory
-        .path()
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
+fn current_user_sid() -> Vec<u8> {
+    use windows_sys::Win32::{Foundation::CloseHandle, System::Threading::GetCurrentProcess};
+    let mut token = std::ptr::null_mut();
+    assert_ne!(
+        unsafe { OpenProcessToken(GetCurrentProcess(), 8, &mut token) },
+        0
+    );
+    assert!(!token.is_null());
+    let mut buffer = [0u64; 128];
+    let mut returned = 0;
+    let queried =
+        unsafe { GetTokenInformation(token, 1, buffer.as_mut_ptr().cast(), 1024, &mut returned) };
+    let closed = unsafe { CloseHandle(token) };
+    assert_ne!(closed, 0);
+    assert_ne!(queried, 0);
+    assert!((16..=1024).contains(&returned));
+    let bytes =
+        unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), returned as usize) };
+    revayat_scientific::windows_security::policy::token_metadata_sid(
+        bytes,
+        buffer.as_ptr() as u64,
+        true,
+    )
+    .unwrap()
+    .to_vec()
+}
+fn file_policy(path: &[u16]) -> Vec<u32> {
     let mut needed = 0;
     // SAFETY: size-only query; native API writes only the required-size scalar.
-    unsafe { GetFileSecurityW(path.as_ptr(), 0x14, std::ptr::null_mut(), 0, &mut needed) };
+    unsafe { GetFileSecurityW(path.as_ptr(), 0x17, std::ptr::null_mut(), 0, &mut needed) };
     assert!((20..=65536).contains(&needed));
     let mut descriptor = vec![0u32; (needed as usize).div_ceil(4)];
     // SAFETY: aligned allocation spans exactly the requested native capacity.
@@ -137,7 +161,7 @@ fn actual_scratch_acl_is_protected_and_has_only_concrete_package_grant() {
         unsafe {
             GetFileSecurityW(
                 path.as_ptr(),
-                0x14,
+                0x17,
                 descriptor.as_mut_ptr().cast(),
                 needed,
                 &mut needed,
@@ -145,6 +169,60 @@ fn actual_scratch_acl_is_protected_and_has_only_concrete_package_grant() {
         },
         0
     );
+    descriptor
+}
+fn relative_policy(words: &[u32]) -> &[u8] {
+    // SAFETY: the byte view borrows the complete live aligned native descriptor buffer.
+    unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), std::mem::size_of_val(words)) }
+}
+#[test]
+fn actual_scratch_acl_is_protected_and_has_only_concrete_package_grant() {
+    use revayat_scientific::windows_security::policy::{Acl, Descriptor};
+    let directory = tempfile::tempdir().unwrap();
+    let sid = "S-1-15-2-1-2-3-4-5-6-7";
+    let path = directory
+        .path()
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let before = file_policy(&path);
+    let original = Descriptor::parse(relative_policy(&before)).unwrap();
+    protect_scratch(directory.path(), sid).unwrap();
+    let descriptor = file_policy(&path);
+    let actual = Descriptor::parse(relative_policy(&descriptor)).unwrap();
+    assert_eq!(actual.owner, original.owner);
+    assert_eq!(actual.group, original.group);
+    assert_ne!(actual.control & 0x1000, 0);
+    let binary_sid = |authority: u8, parts: &[u32]| {
+        let mut sid = vec![1, parts.len() as u8, 0, 0, 0, 0, 0, authority];
+        for part in parts {
+            sid.extend(part.to_le_bytes());
+        }
+        sid
+    };
+    let package = binary_sid(15, &[2, 1, 2, 3, 4, 5, 6, 7]);
+    let dacl = Acl::parse(actual.dacl.unwrap()).unwrap();
+    let expected = [
+        (1, 0xc0000, package.clone()),
+        (0, 0x1f01ff, binary_sid(5, &[18])),
+        (0, 0x1f01ff, binary_sid(3, &[4])),
+        (0, 0x1301bf, current_user_sid()),
+        (0, 0x1301bf, package),
+    ];
+    assert_eq!(dacl.aces.len(), expected.len());
+    for (ace, (kind, mask, sid)) in dacl.aces.iter().zip(expected) {
+        assert_eq!((ace.kind, ace.flags, ace.mask().unwrap()), (kind, 3, mask));
+        assert_eq!(ace.sid().unwrap(), sid);
+    }
+    let mandatory = Acl::parse(actual.sacl.unwrap()).unwrap();
+    assert_eq!(mandatory.aces.len(), 1);
+    let mandatory = &mandatory.aces[0];
+    assert_eq!(
+        (mandatory.kind, mandatory.flags, mandatory.mask().unwrap()),
+        (17, 3, 1)
+    );
+    assert_eq!(mandatory.sid().unwrap(), binary_sid(16, &[4096]));
     let mut text = std::ptr::null_mut();
     let mut size = 0;
     // SAFETY: validated native descriptor remains live; output allocation released below.

@@ -10,9 +10,6 @@
 mod abi;
 #[cfg(not(test))]
 #[rustfmt::skip]
-mod builtins;
-#[cfg(not(test))]
-#[rustfmt::skip]
 mod emit;
 
 /// The owned launcher supplies one quoted executable and no selectors. The first
@@ -23,7 +20,8 @@ pub fn no_arguments(mut unit: impl FnMut(usize) -> Option<u16>) -> bool {
     }
     let mut content = false;
     let mut closed = false;
-    for index in 1..32767 {
+    let mut index = 1usize;
+    while index < 32767 {
         let Some(value) = unit(index) else {
             return false;
         };
@@ -42,8 +40,52 @@ pub fn no_arguments(mut unit: impl FnMut(usize) -> Option<u16>) -> bool {
         } else {
             content = true;
         }
+        index = index.wrapping_add(1);
     }
     false
+}
+
+/// Exactly eight uppercase hexadecimal bytes, without table/slice indexing,
+/// checked arithmetic or a formatting runtime. The callback cannot select input.
+pub fn hexadecimal(mut value: u32, mut byte: impl FnMut(u8)) {
+    let mut remaining = 8u32;
+    while remaining != 0 {
+        let nibble = (value >> 28) as u8;
+        byte(if nibble < 10 {
+            b'0'.wrapping_add(nibble)
+        } else {
+            b'A'.wrapping_add(nibble.wrapping_sub(10))
+        });
+        value <<= 4;
+        remaining = remaining.wrapping_sub(1);
+    }
+}
+
+#[cfg(not(test))]
+fn emit_byte(output: abi::Handle, byte: u8) {
+    let mut written = 0;
+    // SAFETY: live one-byte local and synchronous inherited stdout; no slice or
+    // buffer construction can introduce a core bounds/panic dependency.
+    if unsafe { abi::WriteFile(output, &byte, 1, &mut written, core::ptr::null_mut()) } == 0
+        || written != 1
+    {
+        unsafe { abi::ExitProcess(121) }
+    }
+}
+
+#[cfg(not(test))]
+fn command_unit(command: *const u16, index: usize) -> u16 {
+    let value: u16;
+    // SAFETY: GetCommandLineW owns the nonnull UTF-16 process string. The only
+    // caller bounds index below32767 and stops at its first terminator. This
+    // x64 load avoids compiler-inserted debug dereference panic linkage; it
+    // changes no pointer admission or command-line bound.
+    unsafe {
+        core::arch::asm!("mov {value:x}, word ptr [{pointer}]",
+            value = out(reg) value, pointer = in(reg) command.wrapping_add(index),
+            options(readonly, nostack, preserves_flags));
+    }
+    value
 }
 
 #[cfg(not(test))]
@@ -61,7 +103,7 @@ pub extern "system" fn StartupEntry() -> ! {
         || !no_arguments(|index| {
             // GetCommandLineW owns a NUL-terminated process command line. The
             // parser stops at that terminator and never reads beyond its bound.
-            Some(unsafe { *command.add(index) })
+            Some(command_unit(command, index))
         })
     {
         unsafe { abi::ExitProcess(120) }
@@ -96,13 +138,15 @@ pub extern "system" fn StartupEntry() -> ! {
     if handle.is_null() || created != (error == 0) {
         unsafe { abi::ExitProcess(120) }
     }
-    let mut line = emit::Record::new();
-    line.append(b"WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=");
-    line.append(if created { b"True" } else { b"False" });
-    line.append(b" win32_error=0x");
-    line.hexadecimal(error);
-    line.append(b"\n");
-    emit::emit(output, line.bytes(), 121);
+    emit::emit(
+        output,
+        b"WINDOWS_EXPLICIT_ID2_ACTIVATION entry_reached=True created=",
+        121,
+    );
+    emit::emit(output, if created { b"True" } else { b"False" }, 121);
+    emit::emit(output, b" win32_error=0x", 121);
+    hexadecimal(error, |byte| emit_byte(output, byte));
+    emit::emit(output, b"\n", 121);
     unsafe { abi::ExitProcess(0) }
 }
 

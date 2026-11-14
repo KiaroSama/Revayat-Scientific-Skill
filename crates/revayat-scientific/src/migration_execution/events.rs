@@ -470,16 +470,23 @@ pub(super) fn load_censuses(root: &Path) -> Result<Vec<CensusContract>> {
             );
         }
         if population == "native-stage" {
-            for entry in value["direct_post_bootstrap_checks"]
-                .as_array()
-                .context("native direct checks missing")?
-            {
-                ids.push(
-                    entry["id"]
-                        .as_str()
-                        .context("native direct identity missing")?
-                        .to_owned(),
-                );
+            // Keep the separate original runtime clone root before the three direct checks.
+            // Its census ID remains canonical; the historical ledger relation is metadata.
+            for key in [
+                "runtime_preparation_validation_roots",
+                "direct_post_bootstrap_checks",
+            ] {
+                for entry in value[key]
+                    .as_array()
+                    .context("native direct or runtime validation roots missing")?
+                {
+                    ids.push(
+                        entry["id"]
+                            .as_str()
+                            .context("native validation identity missing")?
+                            .to_owned(),
+                    );
+                }
             }
         }
         let contract = value

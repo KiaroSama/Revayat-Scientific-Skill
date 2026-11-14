@@ -7,7 +7,7 @@ const SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../tests/security/windows/native-fixtures/independent_id2.rs"
 ));
-pub const SOURCE_SHA256: &str = "20548ee4a4ef07501906b7e6438b4c3de426d25f9534ed6eb6e2c52736569353";
+pub const SOURCE_SHA256: &str = "2d72df4276249479fe3f0d9fa53aeb84b06b8d5f0b0000ce98748b2298c1f969";
 
 /// Only this actual compiler path constructs the token. The owner retains every
 /// descriptor until explicit close, including while the native observer borrows it.
@@ -38,7 +38,7 @@ impl CompiledIndependentId2 {
                 SOURCE,
                 SOURCE_SHA256,
             )?;
-            for name in ["abi.rs", "builtins.rs", "emit.rs"] {
+            for name in ["abi.rs", "emit.rs"] {
                 let (text, digest) = source::pinned(name)?;
                 copy_pinned(
                     &mut inputs,
