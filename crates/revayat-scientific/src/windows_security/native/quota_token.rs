@@ -277,8 +277,9 @@ pub(super) fn inherited(process: Raw, package: &str, primary: &OwnerInventory) -
             privileges(token.0)?.iter().all(|luid| *luid == 23),
             "quota descendant inherited non-traversal privilege"
         );
+        let matches = inventory(token.0, package)?.digest() == primary.digest();
         ensure!(
-            inventory(token.0, package)?.digest() == primary.digest(),
+            matches,
             "quota descendant suspended owner inventory differs"
         );
         Ok(())

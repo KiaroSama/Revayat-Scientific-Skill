@@ -40,10 +40,13 @@ impl Handle {
     fn outcome(success: i32, raw: Raw, code: u32, operation: &'static str) -> Result<Self> {
         let mut owner = Self(if raw as isize == -1 { null_mut() } else { raw });
         let result = (|| {
-            ensure!(
-                success != 0 && !owner.0.is_null(),
-                "SxS token operation failed operation={operation} winerror={code}"
-            );
+            if success == 0 || owner.0.is_null() {
+                let mut message = String::from("SxS token operation failed operation=");
+                message.push_str(operation);
+                message.push_str(" winerror=");
+                message.push_str(&code.to_string());
+                return Err(anyhow::Error::msg(message));
+            }
             Ok(())
         })();
         if let Err(primary) = result {

@@ -121,9 +121,10 @@ impl ReceiptPin {
         let result = (|| {
             access::require_private(handle.0, host)?;
             let id = access::identity(handle.0, false)?;
+            let matches = access::read_handle(handle.0)? == expected
+                && access::identity(handle.0, false)? == id;
             ensure!(
-                access::read_handle(handle.0)? == expected
-                    && access::identity(handle.0, false)? == id,
+                matches,
                 "scratch pinned receipt identity/bytes changed during read"
             );
             Ok(Self {

@@ -274,8 +274,9 @@ pub(super) fn owner_matches_user(handle: Raw, inventory: &OwnerInventory) -> Res
             "quota new-file owner SID exceeds descriptor"
         );
         let sid = Sid::binary(unsafe { std::slice::from_raw_parts(owner.cast::<u8>(), length) })?;
+        let matches = sid == inventory.user;
         ensure!(
-            sid == inventory.user,
+            matches,
             "quota new file owner differs from actual token user"
         );
         Ok(())

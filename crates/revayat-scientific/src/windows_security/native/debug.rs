@@ -56,6 +56,7 @@ struct Owner {
     expected: ObjectId,
     base: u64,
     dispatch: Option<debug_dispatch::DispatchImages>,
+    pending_dispatch: Option<[u64; 2]>,
     transport: Option<debug_capture::Transport>,
 }
 impl Owner {
@@ -248,9 +249,12 @@ impl Owner {
                     ensure!(!self.initial, "debug initial breakpoint repeated");
                     generations.software(event.tid, true)?;
                     self.initial = true;
+                    if let Some([call, post]) = self.pending_dispatch.take() {
+                        generations.arm_dispatch(call, post)?;
+                    }
                 } else {
                     ensure!(
-                        code == 0x80000004 && (self.initial || self.dispatch.is_some()),
+                        code == 0x80000004 && self.initial,
                         "debug exception is outside fixed entry observation"
                     );
                     if let Some(dispatch) = &mut self.dispatch {
@@ -295,7 +299,12 @@ impl Owner {
                         unsafe { event.data.words[1] },
                     )?
                 {
-                    generations.arm_dispatch(call, post)?;
+                    if self.initial {
+                        generations.arm_dispatch(call, post)?;
+                    } else {
+                        // Loader CSR calls precede the initial breakpoint and are not the fixture.
+                        self.pending_dispatch = Some([call, post]);
+                    }
                 }
             }
             8 => {}

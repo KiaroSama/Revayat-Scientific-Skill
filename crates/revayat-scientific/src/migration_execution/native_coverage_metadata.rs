@@ -86,10 +86,47 @@ fn validate(
         census["schema"] == 1
             && census["baseline_commit"] == BASELINE
             && census["source"] == metadata.source
-            && census["execution_contract"].is_null()
             && source["schema"] == 1,
-        "Linux metadata cannot replace the unresolved global contract"
+        "Linux metadata source identity differs from global census"
     );
+    let global: events::EventContract = serde_json::from_value(
+        census
+            .get("execution_contract")
+            .filter(|value| !value.is_null())
+            .context("required execution contract is not source-closed")?
+            .clone(),
+    )?;
+    ensure!(
+        global.entries.len() == 6 && global.scopes.len() == 2,
+        "global coverage contract must contain six scenarios and two scopes"
+    );
+    let linux = global
+        .scopes
+        .iter()
+        .find(|entry| entry.scope == scope())
+        .context("global Linux coverage scope missing")?;
+    ensure!(
+        serde_json::to_value(linux)?
+            == serde_json::to_value(
+                metadata
+                    .execution_contract
+                    .scopes
+                    .first()
+                    .context("Linux subcontract scope missing")?
+            )?,
+        "global Linux coverage scope differs from subcontract"
+    );
+    for entry in &metadata.execution_contract.entries {
+        let actual = global
+            .entries
+            .iter()
+            .find(|row| row.id == entry.id)
+            .context("global Linux coverage entry missing")?;
+        ensure!(
+            serde_json::to_value(actual)? == serde_json::to_value(entry)?,
+            "global Linux coverage entry differs from subcontract"
+        );
+    }
     let rows = census["scenarios"]
         .as_array()
         .context("coverage census scenarios missing")?;
@@ -100,6 +137,23 @@ fn validate(
         rows.len() == SCENARIOS.len() && originals.len() == SCENARIOS.len(),
         "complete six-scenario inventory requires source review"
     );
+    for (index, entry) in global.entries.iter().enumerate() {
+        let checks = entry
+            .checks
+            .iter()
+            .map(|check| check.id.as_str())
+            .collect::<Vec<_>>();
+        ensure!(
+            entry.id == SCENARIOS[index]
+                && serde_json::to_value(checks)? == rows[index]["checks"]
+                && entry.obligation_ids == obligation_ids(index + 1, entry.checks.len())
+                && entry
+                    .checks
+                    .iter()
+                    .all(|check| !check.witness_ids.is_empty()),
+            "global scenario check or obligation inventory differs"
+        );
+    }
     for ((row, original), id) in rows.iter().zip(originals).zip(SCENARIOS) {
         ensure!(
             row["id"] == *id
@@ -363,8 +417,15 @@ pub(super) fn test_source_contract_and_global_refusal(cases: &BTreeMap<String, C
         assert!(validate(BYTES, &serde_json::to_vec(&changed).unwrap(), &graph).is_err());
     }
     let mut changed = global;
-    changed["execution_contract"] = json!(census.contract);
-    assert!(validate(BYTES, &serde_json::to_vec(&changed).unwrap(), &graph).is_err());
+    changed["execution_contract"] = serde_json::Value::Null;
+    let refusal = validate(BYTES, &serde_json::to_vec(&changed).unwrap(), &graph)
+        .err()
+        .unwrap();
+    assert!(
+        refusal
+            .to_string()
+            .contains("required execution contract is not source-closed")
+    );
 
     let mut identity = CollectedExecution {
         schema: 1,
@@ -443,7 +504,10 @@ pub(super) fn test_source_contract_and_global_refusal(cases: &BTreeMap<String, C
         .find(|census| census.population == "coverage")
         .unwrap();
     assert_eq!(coverage.ids.len(), 6);
-    assert!(coverage.contract.is_none());
+    assert_eq!(coverage.contract.as_ref().unwrap().entries.len(), 6);
+    assert_eq!(coverage.contract.as_ref().unwrap().scopes.len(), 2);
+    let mut missing_contract = coverage.clone();
+    missing_contract.contract = None;
     let run = (
         &*identity.tested_sha,
         &*identity.run_id,
@@ -452,7 +516,7 @@ pub(super) fn test_source_contract_and_global_refusal(cases: &BTreeMap<String, C
         &*identity.workflow_ref,
     );
     let blocked = events::validate_populations(
-        std::slice::from_ref(coverage),
+        std::slice::from_ref(&missing_contract),
         std::slice::from_ref(&report),
         &[],
         run,

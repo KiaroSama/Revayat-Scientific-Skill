@@ -15,7 +15,7 @@ struct Cli {
     timeout: u64,
     #[arg(long, hide = true)]
     worker: bool,
-    #[arg(value_parser=["lint","figures","fonts","docx","pdf","pages","crop","term-brief","text-order","build","doctor","render-html","tex-container","run-check","package","install","validate","ci-status","check-workflows","check-commit-identity","check-sha","security-linux","security-windows","source-closure","ledger","migration-check"])]
+    #[arg(value_parser=["lint","figures","fonts","docx","pdf","pages","crop","term-brief","text-order","build","doctor","render-html","tex-container","run-check","package","install","validate","ci-status","check-workflows","check-commit-identity","check-sha","security-linux","security-windows","source-closure","ledger","migration-check","release-bundle"])]
     command: String,
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     arguments: Vec<String>,
@@ -104,6 +104,7 @@ fn dispatch(cli: &Cli) -> Result<i32> {
             }
         }
         "ci-status" => revayat::ci::cli_status(args),
+        "release-bundle" => revayat::release_bundle::cli(args),
         "check-workflows" => revayat::ci_tools::cli_workflow(args),
         "check-commit-identity" => revayat::ci_tools::cli_commit_identity(args),
         "check-sha" => revayat::ci_tools::cli_sha(args),
@@ -159,6 +160,10 @@ fn run(cli: Cli) -> Result<i32> {
 }
 
 fn run_owned(cli: &Cli) -> Result<i32> {
+    // Dispatch before the ordinary worker boundary; GPG receives key bytes only through stdin.
+    if cli.command == "release-bundle" {
+        return dispatch(cli);
+    }
     let mut command = revayat::runtime::CommandSpec::new(std::env::current_exe()?.into_os_string())
         .args([
             "--worker".to_owned(),
@@ -221,6 +226,16 @@ fn run_owned(cli: &Cli) -> Result<i32> {
         };
         io::stdout().write_all(&output.stdout)?;
         io::stderr().write_all(&output.stderr)?;
+        if output.code == 0
+            && cli.arguments.iter().any(|a| a == "--bootstrap-checks")
+            && cli.arguments.iter().any(|a| a == "--machine-kernel")
+            && std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+        {
+            revayat::migration::execution::record_windows_security_receipt(
+                &output.stdout,
+                &output.stderr,
+            )?;
+        }
         return Ok(output.code);
     }
     let output = if [

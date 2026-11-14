@@ -113,7 +113,7 @@ fn report_scope(report: &CollectedExecution) -> EventScope {
         job: report.job.clone(),
     }
 }
-fn passed_cases(report: &CollectedExecution) -> BTreeSet<String> {
+pub(super) fn passed_cases(report: &CollectedExecution) -> BTreeSet<String> {
     report
         .binaries
         .iter()

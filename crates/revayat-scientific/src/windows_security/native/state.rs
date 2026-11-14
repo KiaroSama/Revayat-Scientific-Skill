@@ -369,7 +369,8 @@ impl NativeRunView {
             let result = (|| {
                 private(pin.file.as_ref().unwrap(), &self.manifest.host, false)?;
                 let bytes = pin.bytes()?;
-                ensure!(bytes == expected, "owned profile phase differs");
+                let matches = bytes == expected;
+                ensure!(matches, "owned profile phase differs");
                 Ok(true)
             })();
             finish(result, pin.close())

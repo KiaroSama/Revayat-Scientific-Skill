@@ -17,6 +17,8 @@ mod kernel;
 mod private;
 #[path = "quota_token.rs"]
 mod token;
+pub(crate) use kernel::network::require_host_afd_positive;
+pub(crate) use private::{cleanup_provisioned_private_file, provision_private_creator_file};
 
 /// Call only while the actual native completion owner still holds the child suspended.
 /// Every finite owner is synchronously persisted and read back by `persist_owner`.

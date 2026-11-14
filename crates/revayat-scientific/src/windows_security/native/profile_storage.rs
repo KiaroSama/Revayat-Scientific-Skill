@@ -132,8 +132,9 @@ fn require_absent(path: &Path) -> Result<()> {
 }
 fn task_path(status: i32, raw: *mut u16) -> Result<PathBuf> {
     let result = (|| {
+        let valid = status == 0 && !raw.is_null();
         ensure!(
-            status == 0 && !raw.is_null(),
+            valid,
             "owned profile path query failed hresult={:08X}",
             status as u32
         );

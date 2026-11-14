@@ -6,6 +6,15 @@ use std::{
     time::{Duration, Instant},
 };
 
+fn prewarm(executable: impl AsRef<std::ffi::OsStr>) -> Result<()> {
+    let output = std::process::Command::new(executable)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .output()?;
+    anyhow::ensure!(output.status.success(), "compiled binary pre-warm failed");
+    Ok(())
+}
+
 fn failed_browser(mode: &str) -> Result<(tempfile::TempDir, String)> {
     let temp = tempfile::tempdir()?;
     let root = temp.path().canonicalize()?;
@@ -15,6 +24,8 @@ fn failed_browser(mode: &str) -> Result<(tempfile::TempDir, String)> {
     let output = root.join("document.pdf");
     fs::write(&source, "<html><body>preserved source</body></html>")?;
     fs::write(&output, b"previous valid output")?;
+    prewarm(&executable)?;
+    prewarm(env!("CARGO_BIN_EXE_revayat-process-owner"))?;
     let started = Instant::now();
     let error = render_html(&source, &output, &executable, None).unwrap_err();
     assert!(started.elapsed() < Duration::from_secs(8));
@@ -144,6 +155,10 @@ fn inherited_runtime_group_reaps_pipe_holder_without_reader_join_deadlock() -> R
     let output = root.join("document.pdf");
     fs::write(&source, "<html>source</html>")?;
     fs::write(&output, b"previous valid output")?;
+    // Exclude first-launch image scanning from the owned-process cleanup bound.
+    prewarm(env!("CARGO_BIN_EXE_revayat-scientific"))?;
+    prewarm(env!("CARGO_BIN_EXE_revayat-process-owner"))?;
+    prewarm(&executable)?;
     let started = Instant::now();
     let result = std::process::Command::new(env!("CARGO_BIN_EXE_revayat-scientific"))
         .arg("render-html")
@@ -219,6 +234,8 @@ fn silent_browser_timeout_preserves_output_and_reaps_owner() -> Result<()> {
     fs::copy(env!("CARGO_BIN_EXE_revayat-test-tool"), &executable)?;
     let source = root.join("source.html");
     fs::write(&source, "<html>source</html>")?;
+    prewarm(&executable)?;
+    prewarm(env!("CARGO_BIN_EXE_revayat-process-owner"))?;
     let started = Instant::now();
     let error = render_html(&source, &root.join("output.pdf"), &executable, None).unwrap_err();
     assert!(

@@ -6,18 +6,21 @@ use crate::windows_security::{
 };
 use anyhow::{Context, Result, ensure};
 use windows::{
-    Win32::System::{
-        Com::{
-            CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
-            CoSetProxyBlanket, CoUninitialize, EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL,
-            RPC_C_IMP_LEVEL_IMPERSONATE,
-        },
-        Ioctl::{GET_LENGTH_INFORMATION, IOCTL_DISK_GET_LENGTH_INFO},
-        Variant::{VARIANT, VT_BSTR, VT_I4, VariantClear},
-        Wmi::{
-            CIM_UINT16, CIM_UINT32, CIM_UINT64, IEnumWbemClassObject, IWbemClassObject,
-            IWbemLocator, WBEM_FLAG_CONNECT_USE_MAX_WAIT, WBEM_FLAG_FORWARD_ONLY,
-            WBEM_FLAG_RETURN_IMMEDIATELY, WbemLocator,
+    Win32::{
+        Foundation::RPC_E_TOO_LATE,
+        System::{
+            Com::{
+                CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+                CoInitializeSecurity, CoSetProxyBlanket, CoUninitialize, EOAC_NONE,
+                RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
+                RPC_C_IMP_LEVEL_IMPERSONATE,
+            },
+            Ioctl::{GET_LENGTH_INFORMATION, IOCTL_DISK_GET_LENGTH_INFO},
+            Variant::{VARIANT, VT_BSTR, VT_I4, VariantClear},
+            Wmi::{
+                CIM_UINT16, CIM_UINT32, CIM_UINT64, IEnumWbemClassObject, IWbemClassObject,
+                IWbemLocator, WBEM_FLAG_CONNECT_USE_MAX_WAIT, WBEM_FLAG_FORWARD_ONLY, WbemLocator,
+            },
         },
     },
     core::{BSTR, IUnknown, Interface, PCWSTR, w},
@@ -39,14 +42,14 @@ impl Drop for Apartment {
     }
 }
 fn blanket(object: &IUnknown) -> Result<()> {
-    // Configure each actual proxy explicitly; do not change process-wide COM security.
+    // Storage's MSFT_Disk provider requires encryption on each actual proxy.
     unsafe {
         CoSetProxyBlanket(
             object,
             10, // RPC_C_AUTHN_WINNT
             0,  // RPC_C_AUTHZ_NONE
             PCWSTR::null(),
-            RPC_C_AUTHN_LEVEL_CALL,
+            RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
             RPC_C_IMP_LEVEL_IMPERSONATE,
             None,
             EOAC_NONE,
@@ -146,6 +149,30 @@ fn next(enumerator: &IEnumWbemClassObject, required: bool) -> Result<Option<IWbe
 }
 fn provider(number: u32) -> Result<Disk> {
     let _apartment = Apartment::new()?;
+    // Initialize before marshaling proxies; another COM user may have done so already.
+    // SAFETY: COM is initialized on this thread and all reserved arguments are null.
+    match unsafe {
+        CoInitializeSecurity(
+            None,
+            -1,
+            None,
+            None,
+            RPC_C_AUTHN_LEVEL_DEFAULT,
+            RPC_C_IMP_LEVEL_IMPERSONATE,
+            None,
+            EOAC_NONE,
+            None,
+        )
+    } {
+        Ok(()) => {}
+        Err(error) if error.code() == RPC_E_TOO_LATE => {}
+        Err(error) => {
+            return Err(diagnostics::operation(
+                error.into(),
+                Stage::ScratchRawProvider,
+            ));
+        }
+    }
     let locator: IWbemLocator =
         unsafe { CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER) }?;
     let empty = BSTR::new();
@@ -164,14 +191,8 @@ fn provider(number: u32) -> Result<Disk> {
     let query = BSTR::from(format!(
         "SELECT Number, Size, PartitionStyle, NumberOfPartitions FROM MSFT_Disk WHERE Number = {number}"
     ));
-    let enumerator = unsafe {
-        services.ExecQuery(
-            &BSTR::from("WQL"),
-            &query,
-            WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-            None,
-        )
-    }?;
+    let enumerator =
+        unsafe { services.ExecQuery(&BSTR::from("WQL"), &query, WBEM_FLAG_FORWARD_ONLY, None) }?;
     blanket(&enumerator.cast()?)?;
     let object = next(&enumerator, true)?.context("scratch provider disk result missing")?;
     let disk = Disk {

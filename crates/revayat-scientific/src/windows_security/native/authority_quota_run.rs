@@ -49,6 +49,7 @@ pub(super) fn run<'a>(
         }
     };
     let mut lease = None;
+    let mut provisioned_path = None;
     let operation = (|| {
         let target = authority_launch::prepare(
             &mut owner,
@@ -77,6 +78,16 @@ pub(super) fn run<'a>(
             lease = Some(VolumeLease::begin(volume, binding, &worker)?);
             lease.as_mut().unwrap().install(&worker)?;
             lease.as_ref().unwrap().require_resume(&worker)?;
+            provisioned_path = Some(
+                Path::new(&plan.scratch)
+                    .join("private-creator")
+                    .join("authority-protected"),
+            );
+            native_quota::provision_private_creator_file(
+                worker.process(),
+                &plan.scratch,
+                &inventory,
+            )?;
             inventory
         };
         owner.source.as_mut().unwrap().require(image)?;
@@ -124,8 +135,10 @@ pub(super) fn run<'a>(
             errors,
         })
     })();
-    Ok(QuotaCompleted {
-        completed: owner.finish(operation, ticket),
-        lease,
-    })
+    let mut completed = owner.finish(operation, ticket);
+    if let Some(path) = provisioned_path {
+        let cleanup = native_quota::cleanup_provisioned_private_file(&path);
+        completed.result = crate::runtime::with_cleanup(completed.result, cleanup);
+    }
+    Ok(QuotaCompleted { completed, lease })
 }

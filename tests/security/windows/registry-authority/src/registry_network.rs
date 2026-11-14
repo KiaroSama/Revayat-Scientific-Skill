@@ -1,9 +1,9 @@
-//! Four actual LPAC operations. Initialization/creation/cleanup refusal is fatal, never a denial.
+//! Four LPAC Winsock denials, or exact catalog refusal plus four native AFD denials.
 //! Match the original CPython3.11 socketmodule.c os_init request (Winsock1.1).
-//! A failed startup remains fatal; only four actual connect/sendto denials qualify.
+//! Catalog refusal alone never proves kernel network containment.
 use crate::protocol::{
-    NetworkOperation, PanicPhase, Result, mark_panic_phase, network_denial, network_failure,
-    network_finish, network_ports, network_socket, network_startup,
+    Failure, NetworkOperation, PanicPhase, Result, mark_panic_phase, network_denial,
+    network_failure, network_finish, network_ports, network_socket, network_startup,
 };
 use std::{
     ffi::c_void,
@@ -315,6 +315,130 @@ fn observe(operation: NetworkOperation, port: u16) -> Result<()> {
     let result = network_socket(operation, raw, error).and_then(|_| attempt(raw, operation, port));
     network_finish(result, owner.close())
 }
+fn catalog_denied(failure: &Failure) -> bool {
+    failure.native_error == Some(10107)
+        && failure.events == [("mutation", "network-startup")]
+        && failure.network_diag.as_ref().is_some_and(|diag| {
+            if diag.cleanup_failed() {
+                return false;
+            }
+            let words = diag
+                .wire()
+                .split(':')
+                .map(|word| u32::from_str_radix(word, 16))
+                .collect::<std::result::Result<Vec<_>, _>>();
+            words.is_ok_and(|words| {
+                words.len() == crate::protocol::NetworkDiagnostic::WORDS
+                    && words[6..12].iter().all(|word| *word == 5)
+                    && words[18] == u32::MAX
+                    && words[19] == 10107
+            })
+        })
+}
+#[repr(C)]
+struct UnicodeString {
+    length: u16,
+    maximum: u16,
+    buffer: *const u16,
+}
+#[repr(C)]
+struct ObjectAttributes {
+    length: u32,
+    root: *mut c_void,
+    name: *const UnicodeString,
+    attributes: u32,
+    sd: *mut c_void,
+    sqos: *mut c_void,
+}
+#[repr(C)]
+struct IoStatusBlock {
+    status: isize,
+    information: usize,
+}
+#[link(name = "ntdll")]
+unsafe extern "system" {
+    fn NtCreateFile(
+        handle: *mut *mut c_void,
+        access: u32,
+        attributes: *const ObjectAttributes,
+        status: *mut IoStatusBlock,
+        allocation: *const i64,
+        file_attributes: u32,
+        share: u32,
+        disposition: u32,
+        options: u32,
+        ea: *const u8,
+        ea_len: u32,
+    ) -> i32;
+    fn NtClose(handle: *mut c_void) -> i32;
+}
+fn afd_denied(operation: NetworkOperation) -> Result<()> {
+    mark_panic_phase(match operation {
+        NetworkOperation::Tcp4 => PanicPhase::NetworkTcp4,
+        NetworkOperation::Udp4 => PanicPhase::NetworkUdp4Send,
+        NetworkOperation::Tcp6 => PanicPhase::NetworkTcp6,
+        NetworkOperation::Udp6 => PanicPhase::NetworkUdp6Send,
+    });
+    let name = crate::native::wide(r"\Device\Afd\Endpoint");
+    let unicode = UnicodeString {
+        length: 40,
+        maximum: 42,
+        buffer: name.as_ptr(),
+    };
+    let attributes = ObjectAttributes {
+        length: 48,
+        root: null_mut(),
+        name: &unicode,
+        attributes: 0x40,
+        sd: null_mut(),
+        sqos: null_mut(),
+    };
+    let mut ea = [0u8; 54];
+    ea[5] = 15;
+    ea[6..8].copy_from_slice(&30u16.to_le_bytes());
+    ea[8..23].copy_from_slice(b"AfdOpenPacketXX");
+    for (offset, value) in [
+        (24, if operation.tcp() { 0i32 } else { 0x11 }),
+        (32, operation.family()),
+        (36, if operation.tcp() { 1 } else { 2 }),
+        (40, if operation.tcp() { 6 } else { 17 }),
+    ] {
+        ea[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    let mut handle = null_mut();
+    let mut iosb = IoStatusBlock {
+        status: 0,
+        information: 0,
+    };
+    // SAFETY: checked x64 layouts, live NUL-terminated NT name and exact 54-byte AFD EA.
+    let status = unsafe {
+        NtCreateFile(
+            &mut handle,
+            0xC014_0000,
+            &attributes,
+            &mut iosb,
+            std::ptr::null(),
+            0,
+            3,
+            1,
+            0,
+            ea.as_ptr(),
+            ea.len() as u32,
+        )
+    };
+    if !handle.is_null() {
+        // SAFETY: own any unexpected output handle, regardless of the returned NTSTATUS.
+        let closed = unsafe { NtClose(handle) };
+        if closed < 0 {
+            return Err(network_failure("network-socket-close", Some(closed)));
+        }
+        return Err(network_failure(operation.socket_kind(), Some(status)));
+    }
+    if status != 0xC0000022u32 as i32 {
+        return Err(network_failure(operation.socket_kind(), Some(status)));
+    }
+    Ok(())
+}
 pub(super) fn controls(value: &str) -> Result<()> {
     mark_panic_phase(PanicPhase::NetworkConfig);
     let ports = network_ports(value)?;
@@ -333,10 +457,26 @@ pub(super) fn controls(value: &str) -> Result<()> {
         || offset_of!(FdSet, sockets) != 8
         || size_of::<TimeVal>() != 8
         || offset_of!(TimeVal, micros) != 4
+        || size_of::<UnicodeString>() != 16
+        || size_of::<ObjectAttributes>() != 48
+        || offset_of!(ObjectAttributes, name) != 16
+        || offset_of!(ObjectAttributes, sd) != 32
+        || size_of::<IoStatusBlock>() != 16
     {
         return Err(network_failure("network-abi", None));
     }
-    let mut initialized = Winsock::begin()?;
+    let mut initialized = match Winsock::begin() {
+        Ok(initialized) => initialized,
+        Err(failure) => {
+            if !catalog_denied(&failure) {
+                return Err(failure);
+            }
+            for operation in NetworkOperation::ALL {
+                afd_denied(operation)?;
+            }
+            return Ok(());
+        }
+    };
     let result = (|| {
         for operation in NetworkOperation::ALL {
             observe(operation, ports[operation.port_index()])?;
@@ -344,4 +484,44 @@ pub(super) fn controls(value: &str) -> Result<()> {
         Ok(())
     })();
     network_finish(result, initialized.close())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_exception_requires_every_denial_and_clean_diagnostics() {
+        let mut words = [0u32; crate::protocol::NetworkDiagnostic::WORDS];
+        words[0] = 1;
+        words[1] = 0x0101;
+        words[6..12].fill(5);
+        words[18] = u32::MAX;
+        words[19] = 10107;
+        let failure = |words| {
+            let mut value = network_failure("network-startup", Some(10107));
+            value.network_diag = crate::protocol::NetworkDiagnostic::measured(words).map(Box::new);
+            value
+        };
+        assert!(catalog_denied(&failure(words)));
+        for index in (6..12).chain([18, 19]) {
+            let mut changed = words;
+            changed[index] = 0;
+            assert!(!catalog_denied(&failure(changed)));
+        }
+        let mut changed = words;
+        changed[5] = 1;
+        changed[12] = 5;
+        assert!(!catalog_denied(&failure(changed)));
+        let mut changed = failure(words);
+        changed
+            .events
+            .push(("mutation", "network-diagnostic-close"));
+        assert!(!catalog_denied(&changed));
+        changed = failure(words);
+        changed.native_error = Some(10013);
+        assert!(!catalog_denied(&changed));
+        changed = failure(words);
+        changed.network_diag = None;
+        assert!(!catalog_denied(&changed));
+    }
 }

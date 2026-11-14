@@ -511,14 +511,10 @@ pub(super) fn remove_record_identity(
     let result = (|| {
         require_private(handle.0, host)?;
         let actual_id = identity(handle.0, false)?;
-        ensure!(
-            expected_id.is_none_or(|id| id == actual_id),
-            "scratch receipt object differs before removal"
-        );
-        ensure!(
-            read_handle(handle.0)? == expected && identity(handle.0, false)? == actual_id,
-            "scratch receipt replaced before removal"
-        );
+        let matches = expected_id.is_none_or(|id| id == actual_id);
+        ensure!(matches, "scratch receipt object differs before removal");
+        let matches = read_handle(handle.0)? == expected && identity(handle.0, false)? == actual_id;
+        ensure!(matches, "scratch receipt replaced before removal");
         let remove = 1u8;
         ensure!(
             unsafe { SetFileInformationByHandle(handle.0, 4, (&remove as *const u8).cast(), 1) }

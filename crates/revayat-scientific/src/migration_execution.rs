@@ -9,7 +9,12 @@ use crate::runtime::{self, CommandSpec};
 pub use aggregate::{aggregate, validate_obligation_scopes, validate_report_matrix};
 #[path = "migration_execution/events.rs"]
 pub mod events;
+#[cfg(windows)]
+#[path = "migration_execution/native_windows.rs"]
+mod native_windows;
 use anyhow::{Context, Result, bail, ensure};
+#[cfg(windows)]
+pub use native_windows::record_windows_security_receipt;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -613,6 +618,13 @@ pub fn collect(
                 }
             }
         });
+    }
+    #[cfg(windows)]
+    if tier == "native"
+        && report.error.is_none()
+        && let Err(error) = native_windows::publish_windows_native_events(root, output, &report)
+    {
+        report.error = Some(format!("Windows operation evidence incomplete: {error:#}"));
     }
     if tier == "portable"
         && oracle_capture::publish_all(root, output, &report, &operations).is_err()

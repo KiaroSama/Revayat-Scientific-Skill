@@ -1,10 +1,17 @@
-//! Exactly four real Winsock connect/sendto denials; socket creation is a positive prerequisite.
-use super::super::ffi::{combine, note_cleanup_failure};
-use crate::windows_security::kernel_controls::KernelPlan;
+//! Four Winsock denials, or exact catalog refusal plus four host-qualified AFD denials.
+use super::super::ffi::{Raw, combine, note_cleanup_failure, wide};
+use crate::windows_security::{
+    kernel_controls::KernelPlan,
+    sxs::{native_file_abi::NtCreateFile, storage::creation::IoStatus as IoStatusBlock},
+};
 use anyhow::{Result, ensure};
+use registry_authority::native::{
+    Attributes as ObjectAttributes, NtClose, Unicode as UnicodeString,
+};
 use std::{
     ffi::c_void,
-    mem::{size_of, zeroed},
+    mem::{offset_of, size_of, zeroed},
+    ptr::{null, null_mut},
 };
 #[repr(C)]
 struct Address4 {
@@ -71,15 +78,136 @@ impl Drop for Socket {
         }
     }
 }
+#[link(name = "advapi32")]
+unsafe extern "system" {
+    fn RegOpenKeyExW(root: Raw, name: *const u16, options: u32, access: u32, out: *mut Raw) -> i32;
+    fn RegCloseKey(key: Raw) -> i32;
+}
+fn require_catalog_denial() -> Result<()> {
+    for path in [
+        r"SYSTEM\CurrentControlSet\Services\WinSock2\Parameters",
+        r"SYSTEM\CurrentControlSet\Services\WinSock2\Parameters\Protocol_Catalog9",
+        r"SYSTEM\CurrentControlSet\Services\WinSock2\Parameters\NameSpace_Catalog5",
+    ] {
+        let name = wide(path);
+        for access in [0x101, 0x20119] {
+            let mut key = null_mut();
+            // SAFETY: borrowed HKLM pseudo-handle, fixed NUL-terminated path and writable output.
+            let status = unsafe {
+                RegOpenKeyExW(
+                    (-2_147_483_646isize) as Raw,
+                    name.as_ptr(),
+                    0,
+                    access,
+                    &mut key,
+                )
+            };
+            let mut closed = 0;
+            if !key.is_null() {
+                // SAFETY: close any unexpected owned registry output before refusing the control.
+                closed = unsafe { RegCloseKey(key) };
+            }
+            let denied = status == 5 && key.is_null();
+            ensure!(closed == 0, "kernel Winsock catalog handle close failed");
+            ensure!(denied, "kernel Winsock catalog was not access-denied");
+        }
+    }
+    Ok(())
+}
+fn afd_packet(family: i32, kind: i32) -> [u8; 54] {
+    let mut ea = [0u8; 54];
+    ea[5] = 15;
+    ea[6..8].copy_from_slice(&30u16.to_le_bytes());
+    ea[8..23].copy_from_slice(b"AfdOpenPacketXX");
+    for (offset, value) in [
+        (24, if kind == 1 { 0i32 } else { 0x11 }),
+        (32, family),
+        (36, kind),
+        (40, if kind == 1 { 6 } else { 17 }),
+    ] {
+        ea[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    ea
+}
+fn require_afd(host: bool) -> Result<()> {
+    let abi = size_of::<usize>() == 8
+        && size_of::<UnicodeString>() == 16
+        && size_of::<ObjectAttributes>() == 48
+        && offset_of!(ObjectAttributes, name) == 16
+        && offset_of!(ObjectAttributes, descriptor) == 32
+        && size_of::<IoStatusBlock>() == 16;
+    ensure!(abi, "kernel AFD ABI differs");
+    let name = wide(r"\Device\Afd\Endpoint");
+    let unicode = UnicodeString {
+        length: 40,
+        maximum: 42,
+        buffer: name.as_ptr(),
+    };
+    let attributes = ObjectAttributes {
+        length: 48,
+        root: null_mut(),
+        name: &unicode,
+        flags: 0x40,
+        descriptor: null_mut(),
+        qos: null_mut(),
+    };
+    for (family, kind) in [(2, 1), (2, 2), (23, 1), (23, 2)] {
+        let mut ea = afd_packet(family, kind);
+        let mut handle = null_mut();
+        // SAFETY: zero is valid for both IO_STATUS_BLOCK union members and information.
+        let mut iosb: IoStatusBlock = unsafe { zeroed() };
+        // SAFETY: checked x64 layouts and live fixed 54-byte AFD open packet/name.
+        let status = unsafe {
+            NtCreateFile(
+                &mut handle,
+                0xC014_0000,
+                &attributes,
+                &mut iosb,
+                null(),
+                0,
+                3,
+                1,
+                0,
+                ea.as_mut_ptr().cast(),
+                ea.len() as u32,
+            )
+        };
+        let opened = !handle.is_null();
+        let closed = if opened {
+            // SAFETY: own every non-null output, even on an unexpected failing NTSTATUS.
+            unsafe { NtClose(handle) }
+        } else {
+            0
+        };
+        let valid = if host {
+            status == 0 && opened
+        } else {
+            status == 0xC0000022u32 as i32 && !opened
+        };
+        ensure!(closed == 0, "kernel AFD endpoint close failed");
+        ensure!(
+            valid,
+            "kernel AFD endpoint outcome differs host={host} family={family} kind={kind} status={status:08X}"
+        );
+    }
+    Ok(())
+}
+pub(crate) fn require_host_afd_positive() -> Result<()> {
+    require_afd(true)
+}
 pub(super) fn controls(plan: &KernelPlan) -> Result<()> {
+    let ports_valid = [plan.tcp_port, plan.udp_port].iter().all(|port| *port != 0);
+    ensure!(ports_valid, "kernel network ports must be non-zero");
     let mut data: WsaData = unsafe { zeroed() };
     ensure!(size_of::<WsaData>() == 408, "kernel Winsock ABI differs");
     // Match the original CPython3.11 socketmodule.c os_init Winsock1.1 request.
-    // SAFETY: exact initialized x64 WSADATA buffer; startup is never a denial.
-    ensure!(
-        unsafe { WSAStartup(0x0101, &mut data) } == 0,
-        "kernel Winsock initialization failed"
-    );
+    // SAFETY: exact initialized x64 WSADATA buffer; startup returns its own status.
+    let startup = unsafe { WSAStartup(0x0101, &mut data) };
+    if startup == 10107 {
+        require_catalog_denial()?;
+        return require_afd(false);
+    }
+    ensure!(startup == 0, "kernel Winsock initialization failed");
     let operation = (|| {
         ensure!(data.version == 0x0101, "kernel Winsock version differs");
         for family in [2, 23] {
@@ -165,4 +293,28 @@ pub(super) fn controls(plan: &KernelPlan) -> Result<()> {
             Err(anyhow::anyhow!("kernel Winsock cleanup failed"))
         },
     )
+}
+#[cfg(test)]
+mod tests {
+    use super::afd_packet;
+
+    #[test]
+    fn afd_packet_encodes_all_four_verified_endpoint_tuples() {
+        for (family, kind, flags, protocol) in [
+            (2i32, 1i32, 0i32, 6i32),
+            (2, 2, 0x11, 17),
+            (23, 1, 0, 6),
+            (23, 2, 0x11, 17),
+        ] {
+            let packet = afd_packet(family, kind);
+            let mut expected = [0u8; 54];
+            expected[5] = 15;
+            expected[6..8].copy_from_slice(&30u16.to_le_bytes());
+            expected[8..24].copy_from_slice(b"AfdOpenPacketXX\0");
+            for (offset, word) in [(24, flags), (32, family), (36, kind), (40, protocol)] {
+                expected[offset..offset + 4].copy_from_slice(&word.to_le_bytes());
+            }
+            assert_eq!(packet, expected);
+        }
+    }
 }

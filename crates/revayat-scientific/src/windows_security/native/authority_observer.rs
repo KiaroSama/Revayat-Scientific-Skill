@@ -13,8 +13,11 @@ pub(crate) trait AuthorityObserver {
         // This is host diagnostic output, not either of the two child authority records.
         // println preserves libtest capture; direct handle writes corrupt its case protocol.
         // Broken output must return through the authority's explicit reap/cleanup path.
-        std::panic::catch_unwind(|| println!("{record}"))
-            .map_err(|_| anyhow::anyhow!("default-DACL diagnostic output failed"))?;
+        std::panic::catch_unwind(|| match record {
+            "" => println!(),
+            _ => println!("{record}"),
+        })
+        .map_err(|_| anyhow::anyhow!("default-DACL diagnostic output failed"))?;
         std::io::stdout().flush()?;
         Ok(())
     }

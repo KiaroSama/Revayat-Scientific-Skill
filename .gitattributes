@@ -13,6 +13,7 @@ Dockerfile* text eol=lf
 *.tsv text eol=lf whitespace=-blank-at-eol
 *.html text eol=lf
 *.tex text eol=lf
+*.asc text eol=lf
 *.png binary
 *.ttf binary
 *.zip binary

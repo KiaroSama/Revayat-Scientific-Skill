@@ -41,10 +41,12 @@ impl std::error::Error for ValidationFailure {}
 fn direct(index: i32, operation: impl FnOnce() -> Result<()>) -> Result<()> {
     let marker = |state| -> Result<()> {
         let mut output = std::io::stderr().lock();
-        writeln!(
-            output,
-            "WINDOWS_BOOTSTRAP_DIRECT state={state} index={index}"
-        )?;
+        let line = String::from("WINDOWS_BOOTSTRAP_DIRECT state=")
+            + state
+            + " index="
+            + &index.to_string()
+            + "\n";
+        output.write_all(line.as_bytes())?;
         output.flush()?;
         Ok(())
     };

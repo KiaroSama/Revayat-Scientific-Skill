@@ -253,8 +253,10 @@ impl Context {
                 "scratch diagnostic primary open failed winerror={code}"
             );
             let expected = Snapshot::read(value.primary.0, false)?;
+            let bound =
+                expected.user == scratch::sid(host)? && expected.package == scratch::sid(package)?;
             ensure!(
-                expected.user == scratch::sid(host)? && expected.package == scratch::sid(package)?,
+                bound,
                 "scratch diagnostic token is not the bound host/package"
             );
             let success = unsafe {

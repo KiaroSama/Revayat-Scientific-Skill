@@ -5,6 +5,19 @@ use std::{collections::BTreeMap, path::Path};
 const PYTHON_FIXTURE: &str = "tests/security/windows/python-authority/import_dispatch.py";
 const PYTHON_FIXTURE_SHA256: &str =
     "f62db5611e8bf8d43b914b6925f3b2fd2ae6965ad415bb30a6ce173716781d79";
+const RELEASE_PUBLIC_KEY: &str = "signing/release-signing-public-key.asc";
+
+fn require_release_public_key(bytes: &[u8]) -> Result<()> {
+    let text = std::str::from_utf8(bytes).context("release public key is not UTF-8")?;
+    let valid = bytes.len() <= 8192
+        && text.lines().next() == Some("-----BEGIN PGP PUBLIC KEY BLOCK-----")
+        && text
+            .trim_end()
+            .ends_with("-----END PGP PUBLIC KEY BLOCK-----")
+        && !text.contains("PRIVATE KEY");
+    ensure!(valid, "tracked .asc file is not a bounded PGP public key");
+    Ok(())
+}
 
 fn require_python_fixture(bytes: &[u8]) -> Result<()> {
     use sha2::{Digest, Sha256};
@@ -36,6 +49,10 @@ pub fn classify_source(filename: &str, bytes: &[u8]) -> Result<&'static str> {
         "py" if filename == PYTHON_FIXTURE => {
             require_python_fixture(bytes)?;
             "python-runtime-fixture"
+        }
+        "asc" if filename == RELEASE_PUBLIC_KEY => {
+            require_release_public_key(bytes)?;
+            "configuration"
         }
         "md" | "txt" => "documentation",
         "toml" | "lock" | "json" | "yaml" | "yml" | "docx-defaults" | "dockerignore" => {
@@ -191,6 +208,22 @@ mod tests {
         changed.push(b'\n');
         assert!(classify_source(PYTHON_FIXTURE, &changed).is_err());
         assert!(classify_source(PYTHON_FIXTURE, b"print('unreviewed')\n").is_err());
+        let pubkey = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../signing/release-signing-public-key.asc"
+        ));
+        assert_eq!(
+            classify_source(RELEASE_PUBLIC_KEY, pubkey)?,
+            "configuration"
+        );
+        assert!(classify_source("signing/other.asc", pubkey).is_err());
+        assert!(
+            classify_source(
+                RELEASE_PUBLIC_KEY,
+                b"-----BEGIN PGP PRIVATE KEY BLOCK-----\n-----END PGP PRIVATE KEY BLOCK-----\n"
+            )
+            .is_err()
+        );
         let root = tempfile::tempdir()?;
         for (filename, bytes, expected) in [
             (

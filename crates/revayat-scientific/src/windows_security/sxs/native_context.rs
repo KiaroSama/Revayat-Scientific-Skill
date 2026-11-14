@@ -31,10 +31,8 @@ pub(super) fn authority_context<T>(
         primary = open(process)?;
         checkpoint()?;
         let expected = Snapshot::read(primary.0, false)?;
-        ensure!(
-            sid_text(&expected.package)? == package,
-            "SxS authority is not the assigned actual profile"
-        );
+        let assigned = sid_text(&expected.package)? == package;
+        ensure!(assigned, "SxS authority is not the assigned actual profile");
         checkpoint()?;
         copy = duplicate(primary.0, false)?;
         checkpoint()?;

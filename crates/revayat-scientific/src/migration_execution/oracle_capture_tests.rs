@@ -440,11 +440,37 @@ fn native_census_keeps_the_separate_runtime_validation_root() {
             "runtime clone identity relation differs at {key}"
         );
     }
-    assert!(native.contract.is_none());
-    assert!(value["execution_contract"].is_null());
+    let contract = native.contract.as_ref().unwrap();
+    assert_eq!(
+        contract
+            .entries
+            .iter()
+            .map(|entry| &entry.id)
+            .collect::<Vec<_>>(),
+        expected.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(contract.scopes.len(), 1);
+    assert_eq!(contract.scopes[0].entry_ids, expected);
+    for (index, entry) in contract.entries.iter().enumerate() {
+        assert_eq!(entry.parent_id, contract.scopes[0].owner_case_id);
+        assert_eq!(
+            entry.obligation_ids,
+            [format!("NATIVE-STAGE-{:03}", index + 1)]
+        );
+        assert_eq!(entry.variant_ids, ["actual-bootstrap-stage"]);
+        assert!(entry.checks.is_empty());
+    }
+    let mut missing = value.clone();
+    missing["execution_contract"] = serde_json::Value::Null;
+    fs::write(&census_path, serde_json::to_vec(&missing).unwrap()).unwrap();
+    let mutated = events::load_censuses(root.path()).unwrap();
+    let unclosed = mutated
+        .iter()
+        .find(|census| census.population == "native-stage")
+        .unwrap();
     assert_eq!(
         events::validate_populations(
-            std::slice::from_ref(native),
+            std::slice::from_ref(unclosed),
             &[],
             &[],
             ("a", "run", "attempt", "repository", "workflow")

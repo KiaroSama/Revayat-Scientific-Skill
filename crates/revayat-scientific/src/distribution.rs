@@ -88,6 +88,12 @@ pub fn skill_identity(path: &Path) -> Result<()> {
 }
 impl Payload {
     pub fn collect(source: &Path, binary: Option<&Path>) -> Result<Self> {
+        Self::collect_platform(source, binary, cfg!(windows))
+    }
+    pub fn collect_for_target(source: &Path, binary: &Path, target_triple: &str) -> Result<Self> {
+        Self::collect_platform(source, Some(binary), target_triple.contains("windows"))
+    }
+    fn collect_platform(source: &Path, binary: Option<&Path>, windows: bool) -> Result<Self> {
         let source = directory_path(source)?;
         skill_identity(&source)?;
         let mut pending = vec![source.clone()];
@@ -164,30 +170,24 @@ impl Payload {
             }
         }
         if let Some(binary) = binary {
+            let name = if windows {
+                "revayat-scientific.exe"
+            } else {
+                "revayat-scientific"
+            };
+            let companion = if windows {
+                "revayat-quota-worker.exe"
+            } else {
+                "revayat-process-owner"
+            };
             let executables = [
-                (
-                    binary.to_owned(),
-                    if cfg!(windows) {
-                        "revayat-scientific.exe"
-                    } else {
-                        "revayat-scientific"
-                    },
-                ),
-                #[cfg(windows)]
+                (binary.to_owned(), name),
                 (
                     binary
                         .parent()
                         .context("distribution executable lacks parent")?
-                        .join("revayat-quota-worker.exe"),
-                    "revayat-quota-worker.exe",
-                ),
-                #[cfg(unix)]
-                (
-                    binary
-                        .parent()
-                        .context("distribution executable lacks parent")?
-                        .join("revayat-process-owner"),
-                    "revayat-process-owner",
+                        .join(companion),
+                    companion,
                 ),
             ];
             for (path, name) in executables {
@@ -651,4 +651,4 @@ pub fn cli_install(args: &[String]) -> Result<i32> {
     }
     Ok(0)
 }
-pub use crate::distribution_package::{cli_package, package};
+pub use crate::distribution_package::{cli_package, package, package_for_target};

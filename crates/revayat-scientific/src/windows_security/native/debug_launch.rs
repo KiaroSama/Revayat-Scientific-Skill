@@ -176,6 +176,7 @@ fn observe_fixed(
         expected: identity.identity,
         base: 0,
         dispatch: dispatch.then(debug_dispatch::DispatchImages::new),
+        pending_dispatch: None,
         transport,
     };
     let execution = (|| {

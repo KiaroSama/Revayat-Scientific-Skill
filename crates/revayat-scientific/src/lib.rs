@@ -7,6 +7,7 @@ pub mod docx;
 pub mod identity;
 pub mod ledger;
 pub mod publication;
+pub mod release_bundle;
 pub mod render;
 pub mod runtime;
 pub mod sandbox;

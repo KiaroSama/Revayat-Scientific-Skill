@@ -167,11 +167,9 @@ impl PrivateCreator {
         portable(self.lifecycle.use_control(|| {
             shared((|| {
                 binding.empty()?;
-                ensure!(
-                    access::process_sid(process, 1)? == scratch::sid(&binding.host)?
-                        && access::process_sid(process, 31)? == scratch::sid(&binding.package)?,
-                    "private creator suspended token binding differs"
-                );
+                let matches = access::process_sid(process, 1)? == scratch::sid(&binding.host)?
+                    && access::process_sid(process, 31)? == scratch::sid(&binding.package)?;
+                ensure!(matches, "private creator suspended token binding differs");
                 Ok(())
             })())
         }))

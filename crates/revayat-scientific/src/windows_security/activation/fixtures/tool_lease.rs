@@ -249,10 +249,8 @@ fn fingerprint(pin: &mut Pin, started: Instant) -> Result<Fingerprint> {
         let mut hasher = Sha256::new();
         let mut consumed = 0;
         loop {
-            ensure!(
-                started.elapsed() < Duration::from_secs(120),
-                "fixed tool hashing deadline elapsed"
-            );
+            let within_deadline = started.elapsed() < Duration::from_secs(120);
+            ensure!(within_deadline, "fixed tool hashing deadline elapsed");
             let length = file.read(&mut buffer.0)?;
             if length == 0 {
                 break;

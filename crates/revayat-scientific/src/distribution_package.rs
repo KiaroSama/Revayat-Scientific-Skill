@@ -22,14 +22,33 @@ pub fn package(
 ) -> Result<()> {
     package_observed(source, repository, output, binary, |_, _| Ok(()))
 }
+pub fn package_for_target(
+    source: &Path,
+    repository: &Path,
+    output: &Path,
+    binary: &Path,
+    target_triple: &str,
+) -> Result<()> {
+    let payload = Payload::collect_for_target(source, binary, target_triple)?;
+    package_payload(source, repository, output, payload, |_, _| Ok(()))
+}
 pub fn package_observed(
     source: &Path,
     repository: &Path,
     output: &Path,
     binary: Option<&Path>,
-    mut observe: impl FnMut(PackageBoundary, &Path) -> Result<()>,
+    observe: impl FnMut(PackageBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
     let payload = Payload::collect(source, binary)?;
+    package_payload(source, repository, output, payload, observe)
+}
+fn package_payload(
+    source: &Path,
+    repository: &Path,
+    output: &Path,
+    payload: Payload,
+    mut observe: impl FnMut(PackageBoundary, &Path) -> Result<()>,
+) -> Result<()> {
     let output = protected_location(output, repository, source, false)?;
     let mut protected: Vec<_> = payload.files.iter().map(|f| f.source.clone()).collect();
     let administration = crate::distribution_paths::git_paths(repository)?;

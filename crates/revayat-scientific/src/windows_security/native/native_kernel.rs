@@ -14,7 +14,7 @@ mod filesystem;
 #[path = "kernel_job.rs"]
 mod job;
 #[path = "kernel_network.rs"]
-mod network;
+pub(super) mod network;
 #[path = "kernel_registry.rs"]
 mod registry;
 

@@ -58,6 +58,7 @@ pub(super) fn primary<'a>(
         Err(primary) => return refuse(primary, directory),
     };
     let mut lease = None;
+    let mut provisioned_path = None;
     let mut inventory_digest = None;
     let operation = (|| {
         let target = authority_launch::prepare(
@@ -87,6 +88,16 @@ pub(super) fn primary<'a>(
             lease = Some(VolumeLease::begin(volume, binding, &worker)?);
             lease.as_mut().unwrap().install(&worker)?;
             lease.as_ref().unwrap().require_resume(&worker)?;
+            provisioned_path = Some(
+                Path::new(&plan.quota.scratch)
+                    .join("private-creator")
+                    .join("authority-protected"),
+            );
+            native_quota::provision_private_creator_file(
+                worker.process(),
+                &plan.quota.scratch,
+                &inventory,
+            )?;
             inventory
         };
         inventory_digest = Some(inventory.digest());
@@ -96,6 +107,7 @@ pub(super) fn primary<'a>(
             .observer
             .before_resume(owner.process.0, &plan.quota.package, &target)?;
         owner.close_inputs()?;
+        native_quota::require_host_afd_positive()?;
         owner.resume()?;
         let started = Instant::now();
         let mut progress = started;
@@ -147,8 +159,13 @@ pub(super) fn primary<'a>(
             errors,
         })
     })();
+    let mut completed = owner.finish(operation, ticket);
+    if let Some(path) = provisioned_path {
+        let cleanup = native_quota::cleanup_provisioned_private_file(&path);
+        completed.result = crate::runtime::with_cleanup(completed.result, cleanup);
+    }
     Ok(KernelCompleted {
-        completed: owner.finish(operation, ticket),
+        completed,
         lease,
         inventory_digest,
     })

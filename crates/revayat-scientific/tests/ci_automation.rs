@@ -19,6 +19,43 @@ fn root() -> &'static Path {
 }
 
 #[test]
+fn signed_release_workflow_keeps_six_targets_and_invocation_only_steps() {
+    let filename = ".github/workflows/release.yml";
+    let source = fs::read_to_string(root().join(filename)).unwrap();
+    c::validate_workflow_contract(root(), filename, &source).unwrap();
+    let workflow: serde_json::Value = serde_saphyr::from_str(&source).unwrap();
+    let targets = workflow["jobs"]["build"]["strategy"]["matrix"]["include"]
+        .as_array()
+        .unwrap();
+    let actual = targets
+        .iter()
+        .map(|row| row["target"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected = revayat_scientific::release_bundle::REQUIRED_TARGETS
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(actual, expected);
+    assert_eq!(targets.len(), 6);
+    for job in ["build", "publish"] {
+        let steps = workflow["jobs"][job]["steps"].as_array().unwrap();
+        for step in steps {
+            if let Some(run) = step["run"].as_str() {
+                assert!(
+                    run.starts_with("cargo ")
+                        || run.starts_with("target/release/revayat-scientific ")
+                );
+                assert!(!run.contains("${{"));
+            }
+        }
+    }
+    assert!(source.contains("CARGO_BUILD_TARGET: ${{ matrix.target }}"));
+    assert!(source.contains("digest-mismatch: error"));
+    assert!(source.contains("release-bundle stage"));
+    assert!(source.contains("release-bundle sign"));
+    assert!(source.contains("release-bundle publish"));
+}
+
+#[test]
 fn workflows_reject_shell_programs_and_ignored_required_failures() {
     gitleaks_contract_and_actual_git_child();
     let filename = ".github/workflows/gitleaks.yml";
@@ -356,7 +393,13 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
         .unwrap();
     assert_eq!(joined.matches("--report ").count(), 11);
     assert_eq!(joined.matches("--ledger ").count(), 8);
-    assert_eq!(joined.matches("--event-report ").count(), 19);
+    assert_eq!(joined.matches("--event-report ").count(), 21);
+    for population in ["coverage", "native-stage"] {
+        let population = population.to_owned();
+        assert!(joined.contains(&format!(
+            "--event-report execution-input/execution-native-windows/{population}-debug.json"
+        )));
+    }
     assert!(
         joined
             .contains("--event-report execution-input/execution-native-linux/coverage-debug.json")
