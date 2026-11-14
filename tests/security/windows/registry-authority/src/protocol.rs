@@ -14,6 +14,9 @@ pub use network_frame::{
     NETWORK_CHECKS, NetworkOperation, network_denial, network_failure, network_finish,
     network_kind, network_ports, network_socket, network_startup,
 };
+#[path = "protocol_network_diagnostic.rs"]
+mod network_diagnostic;
+pub use network_diagnostic::NetworkDiagnostic;
 
 pub const KEY: &str = r"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide";
 pub const DENIED: u32 = 0xC0000022;
@@ -253,6 +256,7 @@ pub struct Failure {
     pub child_exit: Option<u32>,
     pub restrictions: Option<RestrictionQuery>,
     pub native_error: Option<u32>,
+    pub network_diag: Option<Box<NetworkDiagnostic>>,
 }
 
 thread_local! { static CLEANUP_FAILED: Cell<bool> = const { Cell::new(false) }; }
@@ -265,74 +269,8 @@ pub fn take_cleanup_failure() -> bool {
     CLEANUP_FAILED.with(|value| value.replace(false))
 }
 
-impl Failure {
-    pub fn new(phase: &'static str, kind: &'static str) -> Self {
-        Self {
-            events: vec![(phase, kind)],
-            child_exit: None,
-            restrictions: None,
-            native_error: None,
-        }
-    }
-
-    pub fn wire(&self, role: &str) -> String {
-        let code = self
-            .child_exit
-            .map_or_else(|| "none".into(), |value| format!("{value:08X}"));
-        let events = self
-            .events
-            .iter()
-            .take(8)
-            .map(|(phase, kind)| format!("{phase}:{kind}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let restrictions = self
-            .restrictions
-            .filter(|_| {
-                self.native_error.is_none()
-                    && self
-                        .events
-                        .iter()
-                        .take(8)
-                        .any(|event| *event == ("token", "control-restrictions-query"))
-            })
-            .map_or_else(String::new, |query| {
-                format!(" restrictions={}", query.wire())
-            });
-        let native = self
-            .native_error
-            .filter(|_| {
-                role == "primary"
-                    && self.restrictions.is_none()
-                    && self.events.iter().take(8).any(|(phase, kind)| {
-                        (*phase == "descendant" && NATIVE_CHECKS.contains(kind))
-                            || (*phase == "mutation"
-                                && (SCRATCH_CHECKS.contains(kind) || NETWORK_CHECKS.contains(kind)))
-                    })
-            })
-            .map_or_else(String::new, |error| format!(" native_error={error:08X}"));
-        let root_status = self
-            .native_error
-            .filter(|_| {
-                role == "primary"
-                    && self.restrictions.is_none()
-                    && self
-                        .events
-                        .iter()
-                        .take(8)
-                        .any(|event| *event == ("root", "control-open"))
-            })
-            .map_or_else(String::new, |status| format!(" nt_status={status:08X}"));
-        let native = if root_status.is_empty() {
-            native
-        } else {
-            String::new()
-        };
-        format!(
-            "REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}{restrictions}{native}{root_status}\n"
-        )
-    }
-}
+#[path = "protocol_failure_wire.rs"]
+mod failure_wire;
 
 pub fn need(value: bool, phase: &'static str) -> Result<()> {
     if value {
@@ -632,6 +570,7 @@ mod tests {
                 child_exit: Some(u32::MAX),
                 restrictions: None,
                 native_error: None,
+                network_diag: None,
             };
             let wire = error.wire(role);
             assert!(wire.is_ascii() && wire.len() <= 512);

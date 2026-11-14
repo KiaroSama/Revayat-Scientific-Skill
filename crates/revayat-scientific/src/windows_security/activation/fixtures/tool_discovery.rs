@@ -105,6 +105,16 @@ fn command_at(
     ] {
         spec.env.insert(name.into(), value.into());
     }
+    if matches!(stage, Stage::FixtureVswhereRun) {
+        // SetupConfiguration's COM server resolves its catalog through ProgramData.
+        // Clearing this key makes vswhere report success with no installations.
+        // Use the OS known folder, never an inherited environment path/selector.
+        // Upstream explanation: microsoft/vswhere#236 (missing ProgramData).
+        let program_data = windows::program_data()?;
+        io::plain(&program_data, false)?;
+        spec.env
+            .insert("ProgramData".into(), program_data.into_os_string());
+    }
     let mut output =
         runtime::run(&spec).context("fixed discovery process failed; raw_output_withheld=True")?;
     let numbers = Numbers {

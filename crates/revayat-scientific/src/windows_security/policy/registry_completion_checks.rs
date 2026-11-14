@@ -199,7 +199,8 @@ pub fn check_callback_completion(operation: anyhow::Error) -> Result<anyhow::Err
         &mut io,
     );
     ensure!(
-        completed.reaped
+        completed.cleanup_qualified()
+            && completed.reaped
             && completed.destroyed
             && io.order
                 == [
@@ -385,6 +386,10 @@ pub fn check_validation() -> Result<()> {
             },
             &mut io,
         );
+        ensure!(
+            !result.cleanup_qualified(),
+            "unqualified authority failure qualified private policy cleanup"
+        );
         let error = result
             .failure
             .ok_or_else(|| anyhow::anyhow!("failed authority completion lost operation"))?;
@@ -447,7 +452,8 @@ pub fn check_validation() -> Result<()> {
         &mut io,
     );
     ensure!(
-        result.failure.is_none()
+        result.cleanup_qualified()
+            && result.failure.is_none()
             && result.primary.is_none()
             && io.closed == 1
             && !io.order.contains(&"query"),
@@ -477,6 +483,10 @@ pub fn check_validation() -> Result<()> {
                     authority: false,
                 },
                 &mut io,
+            );
+            ensure!(
+                result.cleanup_qualified() != fail_cleanup,
+                "actual {role} completion policy qualification differs from source"
             );
             let expected = format!(
                 "terminate,reap,{}stdout,stderr,thread,lease{}",

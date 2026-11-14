@@ -56,6 +56,12 @@ creation and cleanup must succeed; only the four actual IPv4/IPv6 TCP/UDP
 connect/send outcomes with WSAEACCES qualify as denials. Startup failure is never
 counted as containment. Tool discovery and scratch-device refusals retain closed
 numeric stages and native API error codes while withholding raw paths and output.
+Visual Studio discovery restores the OS-known `ProgramData` directory only to
+its catalog query, because the SetupConfiguration COM server otherwise returns
+an empty installation list. New VHD initialization requires the same local
+`MSFT_Disk` RAW classification as `Get-Disk`, exact disk number/capacity and an
+empty physical layout. The provider and low-level layout use different enums;
+an empty MBR response alone never authorizes initialization.
 
 Independent startup/debug controls and the four-constant CPython registry-loader
 extension are compiled from pinned Rust sources using the held compiler/SDK and
@@ -73,7 +79,13 @@ The Rust registry authority and its Rust oracle remove the interpreter dependenc
 
 The source-authored collector runs portable harnesses on Linux, macOS and Windows in debug and release, preserving ignored cases as skipped rather than claiming execution. Scientific selection runs exact reviewed ignored cases: the full Linux scientific set, three macOS crop cases, and three Windows crop cases plus the original actual renderer case. It checks expected registration and refuses missing/unknown cases rather than using a broad `--include-ignored` substitute. Two equipped workflow-lint cases remain quality checks. Real XeLaTeX/Poppler, sandboxed browser, OCR and LibreOffice prerequisites apply to their specific scenarios; none is inferred from portable success.
 
-The intended execution-report matrix has eleven scopes: six portable, three scientific, and Linux/Windows native debug. Native collection executes the actual Windows native/standalone harnesses and, on Linux, the production probe plus the isolated worker. Each Linux worker case must have its exact, unique, ordered passed outcome after preflight and owned cleanup. It does not fabricate stage/parent witnesses or replace the existing production security entries. Native53-stage evidence and full aggregate acceptance remain incomplete. Collector/workflow source review and exact-head hosted execution are still required.
+The intended execution-report matrix has eleven scopes: six portable, three scientific, and Linux/Windows native debug. Native collection executes the actual Windows native/standalone harnesses and, on Linux, the production probe plus the isolated worker. Each Linux worker case must have its exact, unique, ordered passed outcome after preflight and owned cleanup. It does not fabricate stage/parent witnesses or replace the existing production security entries. Linux coverage now has a separately reviewed three-scenario contract with 23 exact
+check obligations and owner/isolated-worker witnesses. Publication requires its
+actual qualified production/helper receipts, successful owner execution and owned
+cleanup; metadata alone cannot produce a passing result. The global six-scenario
+contract and five-population aggregate remain mandatory and blocked until the
+remaining Windows evidence is complete. Native53-stage evidence and full aggregate
+acceptance remain incomplete. Collector/workflow source review and exact-head hosted execution are still required.
 
 The maps retain 583 original public test IDs, 37 upstream checks, 41 standalone security leaves and 14 original Rust verifier tests. Their distinct kinds and assertion obligations remain mandatory; registration is not execution. Source censuses separately retain 41 nested registry-oracle rows, six engine-discovery checks, nineteen runtime-preparation requirement sites and six coverage scenarios, including exact unmapped or unverified obligations. A carrier test pass cannot become synthetic row/site/scenario evidence. The original Windows profile, diagnostic, creator-owner and physical/enforced-quota checks remain required rather than retired because the implementation language changed. These inventories do not yet prove all original assertions, helper/stage relationships or real native cases executed. The intermediate migration audit explicitly reports registration-only or scoped execution evidence, never complete final parity. Required trusted execution-result integration is still being completed. [CI](../.github/workflows/ci.yml) must also retain Rust CodeQL security/quality analysis, moderate-or-higher dependency review, strict Cargo audit, actionlint and zizmor. Current workflow/status changes need their own exact-head hosted verification; no successful run is claimed by this document. Missing, retired, cancelled, skipped or timed-out required jobs must not create green status.
 

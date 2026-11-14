@@ -2,6 +2,8 @@
 use super::*;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
+#[path = "native_coverage_metadata.rs"]
+mod metadata;
 
 pub(super) const OWNER_TARGET: &str = "crates/revayat-scientific/test/runtime_build_integration";
 pub(super) const OWNER_CASE: &str =
@@ -171,7 +173,7 @@ fn worker_checks() -> Result<Vec<events::OperationEvent>> {
     ]
     .iter()
     .map(|id| check(id, &[], true))
-    .collect::<Result<_>>()?;
+    .collect::<Result<Vec<_>>>()?;
     let depth = [
         "html/depth/parser",
         "html/depth/source",
@@ -265,18 +267,18 @@ fn worker_checks() -> Result<Vec<events::OperationEvent>> {
         check("normal-output", &["tex-output/ordinary-pdf"], true)?,
     ];
     Ok([
-        ("coverage::linux-controls", controls),
-        ("coverage::html-work-admission", html),
-        ("coverage::tex-output-budget", tex),
+        (1, "coverage::linux-controls", controls),
+        (5, "coverage::html-work-admission", html),
+        (6, "coverage::tex-output-budget", tex),
     ]
     .into_iter()
     .enumerate()
-    .map(|(index, (id, checks))| events::OperationEvent {
+    .map(|(index, (ordinal, id, checks))| events::OperationEvent {
         case_id: id.into(),
         parent_id: OWNER.into(),
         sequence: index + 1,
         invokes_ids: vec![],
-        obligation_ids: vec![],
+        obligation_ids: metadata::obligation_ids(ordinal, checks.len()),
         source: "execution".into(),
         outcome: CaseOutcome::Passed,
         exit: 0,
@@ -352,43 +354,8 @@ impl Capture {
                 "coverage census binding differs"
             );
             let events = worker_checks()?;
-            let linux_rows = census["scenarios"]
-                .as_array()
-                .context("coverage scenarios missing")?
-                .iter()
-                .filter(|row| {
-                    row["platforms"].as_array().is_some_and(|platforms| {
-                        platforms.iter().any(|platform| platform == "linux")
-                    })
-                })
-                .collect::<Vec<_>>();
-            ensure!(
-                linux_rows.len() == events.len(),
-                "Linux scenario scope requires source review"
-            );
+            let contract = metadata::load(root, &census_bytes, &events)?;
             for event in &events {
-                let row = linux_rows
-                    .iter()
-                    .find(|row| row["id"] == event.case_id)
-                    .context("Linux scenario is not declared")?;
-                let check_rows = row["checks"]
-                    .as_array()
-                    .context("scenario checks missing")?;
-                let expected = check_rows
-                    .iter()
-                    .map(|check| check.as_str().context("invalid scenario check"))
-                    .collect::<Result<BTreeSet<_>>>()?;
-                let actual = event
-                    .check_results
-                    .iter()
-                    .map(|check| check.check_id.as_str())
-                    .collect::<BTreeSet<_>>();
-                ensure!(
-                    expected == actual
-                        && expected.len() == event.check_results.len()
-                        && expected.len() == check_rows.len(),
-                    "Linux source check inventory differs"
-                );
                 ensure!(
                     event
                         .check_results
@@ -427,6 +394,7 @@ impl Capture {
                 census_sha256: format!("{:x}", Sha256::digest(&census_bytes)),
                 events,
             };
+            metadata::validate_execution(&contract, &report, identity, owner, &worker)?;
             Ok((worker, report))
         })();
         runtime::with_cleanup(
@@ -534,5 +502,6 @@ pub(super) mod tests {
                             .any(|case| id == &format!("{}::{case}", super::super::LINUX_TARGET)))
             );
         }
+        metadata::test_source_contract_and_global_refusal(&actual);
     }
 }

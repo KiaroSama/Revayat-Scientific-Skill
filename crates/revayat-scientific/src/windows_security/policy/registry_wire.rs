@@ -228,6 +228,10 @@ pub fn failure_detail(errors: &str) -> Option<String> {
             }
         } else {
             let code = suffix.strip_prefix("native_error=")?;
+            let (code, network_diag) = match code.split_once(" network_diag=") {
+                Some((code, diagnostic)) => (code, Some(diagnostic)),
+                None => (code, None),
+            };
             if !hex(code)
                 || !entries.iter().any(|entry| {
                     entry
@@ -237,6 +241,13 @@ pub fn failure_detail(errors: &str) -> Option<String> {
                             .strip_prefix("mutation:")
                             .is_some_and(|kind| protocol::network_kind(kind).is_some())
                 })
+            {
+                return None;
+            }
+            if let Some(diagnostic) = network_diag
+                && (code == "00000000"
+                    || !entries.contains(&"mutation:network-startup")
+                    || protocol::NetworkDiagnostic::parse(diagnostic).is_none())
             {
                 return None;
             }

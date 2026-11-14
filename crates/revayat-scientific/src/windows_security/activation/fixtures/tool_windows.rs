@@ -88,6 +88,17 @@ pub(super) fn program_files_x86() -> Result<PathBuf> {
         Stage::FixtureProgramFiles,
     )
 }
+pub(super) fn program_data() -> Result<PathBuf> {
+    folder(
+        Guid {
+            a: 0x62ab5d82,
+            b: 0xfdc1,
+            c: 0x4dc3,
+            d: [0xa9, 0xdd, 0x07, 0x0d, 0x1d, 0x49, 0x5d, 0x97],
+        },
+        Stage::FixtureVswhereRun,
+    )
+}
 pub(super) fn profile() -> Result<PathBuf> {
     folder(
         Guid {

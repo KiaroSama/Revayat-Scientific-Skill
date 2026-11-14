@@ -17,12 +17,42 @@ fn refused(text: &str) -> Result<()> {
         rendered.contains("unqualified")
             && !rendered.contains("sentinel")
             && !rendered.contains("native_error=")
+            && !rendered.contains("network_diag=")
             && !rendered.contains("restrictions="),
         "registry failure projection accepted or leaked invalid metadata"
     );
     Ok(())
 }
 pub fn check_validation() -> Result<()> {
+    let mut numbers = [0u32; protocol::NetworkDiagnostic::WORDS];
+    numbers[0] = 1;
+    numbers[1] = 0x0101;
+    numbers[3] = 1008;
+    numbers[6..12].fill(5);
+    numbers[18] = u32::MAX;
+    numbers[19] = 10107;
+    let diagnostic = protocol::NetworkDiagnostic::measured(numbers).unwrap();
+    let mut startup = protocol::network_failure("network-startup", Some(10107));
+    startup.network_diag = Some(Box::new(diagnostic));
+    let frame = startup.wire("primary");
+    accepted(&frame)?;
+    let failed = validate_wire(1, None, Some(&frame)).unwrap_err();
+    ensure!(
+        failed.to_string().contains("native_error=0000277B")
+            && failed
+                .to_string()
+                .contains(&format!("network_diag={}", diagnostic.wire())),
+        "failed native startup lost its bounded actual numeric diagnostics"
+    );
+    for invalid in [
+        frame.replace("native_error=0000277B", "native_error=00000000"),
+        frame.replace("mutation:network-startup", "mutation:network-tcp4-connect"),
+        frame.replace(" network_diag=", " network_diagx="),
+        frame.replace(" network_diag=", " network_diag=private-sentinel"),
+        frame.replace('\n', " extra=private-sentinel\n"),
+    ] {
+        refused(&invalid)?;
+    }
     for kind in protocol::NETWORK_CHECKS {
         for status in [None, Some(0u32), Some(10013), Some(u32::MAX)] {
             let suffix = status.map_or(String::new(), |code| format!(" native_error={code:08X}"));

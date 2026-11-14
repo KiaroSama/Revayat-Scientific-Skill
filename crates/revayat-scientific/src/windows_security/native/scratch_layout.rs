@@ -19,6 +19,8 @@ use windows::{
     },
     core::GUID,
 };
+#[path = "scratch_raw.rs"]
+mod raw;
 
 pub(super) const CAPACITY: u64 = 134217728;
 const MIB: i64 = 1048576;
@@ -180,19 +182,7 @@ pub(super) fn initialize(
     gpt: GUID,
     partition_id: GUID,
 ) -> Result<VolumeBinding> {
-    let (header, entries) = layout(handle)?;
-    if header.PartitionStyle != 2 || !entries.is_empty() {
-        return Err(diagnostics::annotate(
-            anyhow::anyhow!("new scratch disk is not RAW"),
-            Stage::ScratchRawLayout,
-            Numbers {
-                result: Some(header.PartitionStyle),
-                count: Some(header.PartitionCount),
-                bytes: u32::try_from(entries.len()).ok(),
-                ..Default::default()
-            },
-        ));
-    }
+    raw::require(handle, disk_number)?;
     let create = CREATE_DISK {
         PartitionStyle: PARTITION_STYLE_GPT,
         Anonymous: CREATE_DISK_0 {

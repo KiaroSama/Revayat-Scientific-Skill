@@ -14,6 +14,8 @@ pub use cleanup::check_cleanup_validation;
 pub mod policy;
 #[path = "scratch_policy_checks.rs"]
 mod policy_checks;
+#[path = "scratch_raw_state.rs"]
+pub(super) mod raw_state;
 pub use policy_checks::{check_attachment_validation, check_volume_policy_validation};
 #[path = "scratch_access.rs"]
 pub mod access;

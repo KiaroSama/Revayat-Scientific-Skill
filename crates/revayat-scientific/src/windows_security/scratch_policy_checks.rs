@@ -26,6 +26,7 @@ fn fixture(mask: u32, medium: bool, users: bool) -> Result<Vec<u8>> {
     ))
 }
 pub fn check_attachment_validation() -> Result<()> {
+    raw_state_checks()?;
     let mut number = vec![7, 0, 0, 0];
     number.extend(2u32.to_le_bytes());
     number.extend(1u32.to_le_bytes());
@@ -95,6 +96,87 @@ pub fn check_attachment_validation() -> Result<()> {
             && Arc::ptr_eq(&group.errors[1], &identity)
             && Arc::ptr_eq(&group.errors[2], &cleanup),
         "scratch attachment lost cleanup order or failure identity"
+    );
+    Ok(())
+}
+
+fn raw_state_checks() -> Result<()> {
+    use super::raw_state::{self, Disk, Layout};
+    let disk = Disk {
+        number: 7,
+        bytes: 134217728,
+        style: 0,
+        partitions: 0,
+    };
+    let layout = Layout {
+        style: 0,
+        count: 0,
+        entries: 0,
+    };
+    raw_state::require(disk, 7, 134217728, layout)?;
+    raw_state::require(disk, 7, 134217728, Layout { style: 2, ..layout })?;
+    for changed in [
+        Disk { number: 8, ..disk },
+        Disk {
+            bytes: 134217727,
+            ..disk
+        },
+        Disk { style: 1, ..disk },
+        Disk { style: 2, ..disk },
+        Disk {
+            style: u16::MAX,
+            ..disk
+        },
+        Disk {
+            partitions: 1,
+            ..disk
+        },
+    ] {
+        ensure!(
+            raw_state::require(changed, 7, 134217728, layout).is_err(),
+            "scratch raw fact validation accepted foreign or initialized provider state"
+        );
+    }
+    for changed in [
+        Layout { style: 1, ..layout },
+        Layout { style: 3, ..layout },
+        Layout { count: 1, ..layout },
+        Layout {
+            entries: 1,
+            ..layout
+        },
+    ] {
+        ensure!(
+            raw_state::require(disk, 7, 134217728, changed).is_err(),
+            "scratch raw fact validation accepted nonempty or contradictory physical state"
+        );
+    }
+    for text in ["0", "134217728", "18446744073709551615"] {
+        ensure!(
+            raw_state::unsigned(&text.encode_utf16().collect::<Vec<_>>())?
+                == text.parse::<u64>()?,
+            "scratch capacity decimal readback differs"
+        );
+    }
+    for text in [
+        "",
+        "0x",
+        "01",
+        "01000000000",
+        " 134217728",
+        "+134217728",
+        "-1",
+        "134217728x",
+        "18446744073709551616",
+    ] {
+        ensure!(
+            raw_state::unsigned(&text.encode_utf16().collect::<Vec<_>>()).is_err(),
+            "scratch capacity accepted noncanonical or overflowing representation"
+        );
+    }
+    ensure!(
+        raw_state::unsigned(&"0x8000000".encode_utf16().collect::<Vec<_>>())? == 134217728,
+        "scratch capacity hexadecimal readback differs"
     );
     Ok(())
 }

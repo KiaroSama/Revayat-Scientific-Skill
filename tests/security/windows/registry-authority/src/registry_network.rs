@@ -11,6 +11,8 @@ use std::{
     ptr::null_mut,
     time::{Duration, Instant},
 };
+#[path = "registry_network_diagnostic.rs"]
+mod diagnostic;
 #[repr(C)]
 struct WsaData {
     version: u16,
@@ -92,6 +94,12 @@ impl Winsock {
         let mut data: WsaData = unsafe { zeroed() };
         // WSAStartup returns its error directly. WSAGetLastError is not its result channel.
         let status = unsafe { WSAStartup(0x0101, &mut data) };
+        // Observational only: preserve it before any allocation/diagnostic API can replace it.
+        let immediate_error = if status != 0 {
+            unsafe { crate::native::GetLastError() }
+        } else {
+            0
+        };
         let result = network_startup(status);
         let version = data.version;
         unsafe {
@@ -101,7 +109,22 @@ impl Winsock {
                 size_of::<WsaData>(),
             )
         };
-        result?;
+        if let Err(mut failure) = result {
+            match diagnostic::measure(immediate_error) {
+                Some(diagnostic) => {
+                    if diagnostic.cleanup_failed() {
+                        failure
+                            .events
+                            .push(("mutation", "network-diagnostic-close"));
+                    }
+                    failure.network_diag = Some(Box::new(diagnostic));
+                }
+                None => failure
+                    .events
+                    .push(("mutation", "network-diagnostic-geometry")),
+            }
+            return Err(failure);
+        }
         let mut owner = Self(true);
         if version != 0x0101 {
             return network_finish(Err(network_failure("network-version", None)), owner.close());

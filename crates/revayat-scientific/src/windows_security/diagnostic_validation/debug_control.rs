@@ -1,4 +1,8 @@
 use super::*;
+#[path = "debug_control_owner.rs"]
+pub(super) mod control;
+#[path = "debug_control_owner_checks.rs"]
+mod control_checks;
 use std::{cell::Cell, sync::Arc};
 
 /// A failed termination request stays retryable; only native success consumes it.
@@ -30,6 +34,7 @@ pub fn debug_control_status(stage: &str, expected: &[u8], actual: &[u8]) -> Resu
 }
 /// Direct DebugControl.CheckValidation assertions; called dependencies are exposed separately.
 pub fn check_debug_control_core_validation() -> Result<()> {
+    control_checks::check_operations()?;
     let mut requested = false;
     let attempts = Cell::new(0);
     for _ in 0..2 {

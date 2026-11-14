@@ -1,7 +1,7 @@
 //! Closed failure metadata for the owner. Unknown child diagnostics stay private.
 use super::{
-    DESCENDANT_CHECKS, NATIVE_CHECKS, RestrictionQuery, SCRATCH_CHECKS, TOKEN_CHECKS, network_kind,
-    panic_kind,
+    DESCENDANT_CHECKS, NATIVE_CHECKS, NetworkDiagnostic, RestrictionQuery, SCRATCH_CHECKS,
+    TOKEN_CHECKS, network_kind, panic_kind,
 };
 
 fn hex(value: &str) -> bool {
@@ -55,7 +55,8 @@ pub fn failure_summary(frame: &str) -> Option<String> {
     if !(1..=8).contains(&count) || !events.split(',').all(event) {
         return None;
     }
-    let detail = match fields.next() {
+    let mut native_status = None;
+    let mut detail = match fields.next() {
         None => String::new(),
         Some(field) => {
             if let Some(query) = field.strip_prefix("restrictions=") {
@@ -86,10 +87,23 @@ pub fn failure_summary(frame: &str) -> Option<String> {
                 {
                     return None;
                 }
+                native_status = Some(code);
             }
             format!(" {field}")
         }
     };
+    if let Some(field) = fields.next() {
+        if native_status.is_none_or(|code| code == "00000000")
+            || !events
+                .split(',')
+                .any(|value| value == "mutation:network-startup")
+        {
+            return None;
+        }
+        NetworkDiagnostic::parse(field.strip_prefix("network_diag=")?)?;
+        detail.push(' ');
+        detail.push_str(field);
+    }
     if fields.next().is_some() {
         return None;
     }

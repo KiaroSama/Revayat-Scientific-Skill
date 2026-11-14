@@ -68,6 +68,8 @@ pub const NETWORK_CHECKS: &[&str] = &[
     "network-soerror",
     "network-socket-close",
     "network-cleanup",
+    "network-diagnostic-close",
+    "network-diagnostic-geometry",
     "network-tcp4-socket",
     "network-tcp4-nonblock",
     "network-tcp4-wait",
@@ -153,6 +155,7 @@ pub fn network_finish<T>(operation: Result<T>, cleanup: Result<()>) -> Result<T>
 }
 #[cfg(test)]
 pub(super) fn check_diagnostics() {
+    super::network_diagnostic::check_validation();
     assert_eq!(network_ports("1,2,3,65535").unwrap(), [1, 2, 3, 65535]);
     for value in [
         "",
