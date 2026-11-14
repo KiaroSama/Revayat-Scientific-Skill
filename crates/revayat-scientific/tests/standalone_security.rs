@@ -36,7 +36,99 @@ fn case(id: &str) -> Result<()> {
 }
 #[test]
 fn docx_restricted_relationship_lowercase() -> Result<()> {
-    case("docx/restricted-rels-_rels")
+    case("docx/restricted-rels-_rels")?;
+    refusal_error_boundaries()
+}
+
+fn refusal_error_boundaries() -> Result<()> {
+    use revayat_scientific::{
+        docx, publication,
+        security_cases::{ExpectedRefusal, require_contract_refusal},
+    };
+    let directory = tempfile::tempdir()?;
+    let root = directory.path();
+    let delivery = root.join("previous.docx");
+    std::fs::write(&delivery, b"previous valid sentinel")?;
+    let patches = serde_json::json!([{"part":"word/document.xml","index":0,"expected":"original","text":"changed"}]);
+    let missing = root.join("missing.docx");
+    let error = docx::edit_package(&missing, &delivery, &patches, &[]).unwrap_err();
+    assert!(error.chain().any(|cause| cause.is::<std::io::Error>()));
+    assert!(require_contract_refusal::<()>(Err(error), ExpectedRefusal::RestrictedDocx).is_err());
+    assert!(!missing.try_exists()?);
+    assert_eq!(std::fs::read(&delivery)?, b"previous valid sentinel");
+
+    // Even a matching outer diagnostic cannot disguise a real filesystem error.
+    for expected in [
+        ExpectedRefusal::RestrictedDocx,
+        ExpectedRefusal::ReparseDestination,
+        ExpectedRefusal::ProtectedAlias,
+    ] {
+        let error = anyhow::Error::from(std::fs::read(&missing).unwrap_err())
+            .context(expected.diagnostic());
+        assert!(require_contract_refusal::<()>(Err(error), expected).is_err());
+        let cleanup = revayat_scientific::runtime::CleanupFailure(
+            std::fs::read(&missing).unwrap_err().into(),
+        );
+        let error = anyhow::Error::msg(expected.diagnostic()).context(cleanup);
+        assert!(require_contract_refusal::<()>(Err(error), expected).is_err());
+    }
+    let malformed = root.join("malformed.docx");
+    std::fs::write(&malformed, b"not a ZIP archive")?;
+    let error = docx::edit_package(&malformed, &delivery, &patches, &[]).unwrap_err();
+    assert!(
+        error
+            .chain()
+            .any(|cause| cause.is::<zip::result::ZipError>())
+    );
+    assert!(
+        require_contract_refusal::<()>(
+            Err(error.context(ExpectedRefusal::RestrictedDocx.diagnostic())),
+            ExpectedRefusal::RestrictedDocx
+        )
+        .is_err()
+    );
+    assert_eq!(std::fs::read(&malformed)?, b"not a ZIP archive");
+    assert_eq!(std::fs::read(&delivery)?, b"previous valid sentinel");
+
+    let candidate = root.join("candidate.pdf");
+    let displaced = root.join("displaced-candidate.pdf");
+    let destination = root.join("result.pdf");
+    std::fs::write(&candidate, b"valid candidate")?;
+    std::fs::write(&destination, b"previous valid sentinel")?;
+    let mut reached = false;
+    let result = publication::publish_observed(
+        &[(candidate.clone(), destination.clone())],
+        &[],
+        None,
+        |boundary, _| {
+            if boundary == publication::Boundary::BeforeReplace {
+                std::fs::rename(&candidate, &displaced)?;
+                reached = true;
+            }
+            Ok(())
+        },
+    );
+    assert!(reached);
+    let error = result.unwrap_err();
+    assert!(error.chain().any(|cause| cause.is::<std::io::Error>()));
+    assert!(
+        require_contract_refusal::<()>(Err(error), ExpectedRefusal::ReparseDestination).is_err()
+    );
+    assert!(!candidate.try_exists()?);
+    assert_eq!(std::fs::read(&displaced)?, b"valid candidate");
+    assert_eq!(std::fs::read(&destination)?, b"previous valid sentinel");
+
+    let protected = root.join("protected.pdf");
+    let alias = root.join("alias.pdf");
+    std::fs::write(&protected, b"approved")?;
+    std::fs::hard_link(&protected, &alias)?;
+    let operation = || publication::validate_destination(&alias, std::slice::from_ref(&protected));
+    require_contract_refusal(operation(), ExpectedRefusal::ProtectedAlias)?;
+    assert!(require_contract_refusal(operation(), ExpectedRefusal::ReparseDestination).is_err());
+    assert!(require_contract_refusal(Ok(()), ExpectedRefusal::ProtectedAlias).is_err());
+    assert_eq!(std::fs::read(&protected)?, b"approved");
+    assert_eq!(std::fs::read(&alias)?, b"approved");
+    Ok(())
 }
 
 #[test]

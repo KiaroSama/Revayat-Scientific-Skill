@@ -44,6 +44,10 @@ pub const BUILTINS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../tests/security/windows/activation-fixture/src/native/builtins.rs"
 ));
+pub const STACK_PROBE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tests/security/windows/activation-fixture/src/native/stack_probe.rs"
+));
 #[path = "source_pins.rs"]
 mod pins;
 pub use pins::*;
@@ -59,6 +63,7 @@ pub fn pinned(name: &str) -> Result<(&'static str, &'static str)> {
         "abi.rs" => (ABI, ABI_SHA256),
         "emit.rs" => (EMIT, EMIT_SHA256),
         "builtins.rs" => (BUILTINS, BUILTINS_SHA256),
+        "stack_probe.rs" => (STACK_PROBE, STACK_PROBE_SHA256),
         "child.rs" => (CHILD, CHILD_SHA256),
         "self_host.rs" => (SELF_HOST, SELF_SHA256),
         "default_host.rs" => (DEFAULT_HOST, DEFAULT_SHA256),

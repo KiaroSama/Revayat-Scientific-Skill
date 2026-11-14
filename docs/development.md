@@ -6,6 +6,13 @@ The default branch remains unchanged until the migration PR is reviewed and merg
 
 ## Local checks
 
+Owned application, CI and authority operations are Rust. The single residual
+Python source, `tests/security/windows/python-authority/import_dispatch.py`,
+preserves the original genuine CPython import/exception boundary and calls the
+Rust extension. It is an external-runtime test fixture, excluded from installed
+document tools. Source audit accepts only that exact path and reviewed SHA-256,
+normalizing checkout CRLF; other Python files or changed dispatcher bytes fail.
+
 Install the toolchain selected by `rust-toolchain.toml`, then run from the repository:
 
 ```console

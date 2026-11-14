@@ -32,20 +32,42 @@ impl Record {
         }
     }
     pub fn append(&mut self, value: &[u8]) {
-        if value.len() > self.bytes.len() - self.length {
+        if self.length > self.bytes.len()
+            || value.len() > self.bytes.len().wrapping_sub(self.length)
+        {
             unsafe { abi::ExitProcess(121) }
         }
         for byte in value {
-            self.bytes[self.length] = *byte;
-            self.length += 1;
+            let Some(target) = self.bytes.get_mut(self.length) else {
+                unsafe { abi::ExitProcess(121) }
+            };
+            *target = *byte;
+            self.length = self.length.wrapping_add(1);
         }
     }
     pub fn hexadecimal(&mut self, value: u32) {
-        for shift in (0..8).rev() {
-            self.append(&[b"0123456789ABCDEF"[((value >> (shift * 4)) & 15) as usize]]);
-        }
+        let [first, second, third, fourth] = value.to_be_bytes();
+        self.hexadecimal_byte(first);
+        self.hexadecimal_byte(second);
+        self.hexadecimal_byte(third);
+        self.hexadecimal_byte(fourth);
+    }
+    fn hexadecimal_byte(&mut self, value: u8) {
+        self.hexadecimal_digit(value >> 4);
+        self.hexadecimal_digit(value & 15);
+    }
+    fn hexadecimal_digit(&mut self, digit: u8) {
+        let byte = if digit < 10 {
+            b'0'.wrapping_add(digit)
+        } else {
+            b'A'.wrapping_add(digit.wrapping_sub(10))
+        };
+        self.append(&[byte]);
     }
     pub fn bytes(&self) -> &[u8] {
-        &self.bytes[..self.length]
+        let Some(bytes) = self.bytes.get(..self.length) else {
+            unsafe { abi::ExitProcess(121) }
+        };
+        bytes
     }
 }

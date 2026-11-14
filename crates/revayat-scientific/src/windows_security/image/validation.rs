@@ -13,6 +13,9 @@ pub use import_checks::check_import_validation;
 #[path = "registry_loader.rs"]
 mod registry_loader;
 pub use registry_loader::{check_registry_loader_validation, qualify_registry_loader};
+#[path = "python_authority.rs"]
+mod python_authority;
+pub use python_authority::{check_python_authority_validation, qualify_python_authority};
 #[path = "observation_checks.rs"]
 mod observation_checks;
 pub use observation_checks::{check_checkpoint_validation, check_observation_validation};

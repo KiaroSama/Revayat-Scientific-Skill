@@ -59,6 +59,43 @@ pub const IDS: &[&str] = &[
     "tex-output/two-permitted-output-files",
     "tex-output/ordinary-pdf",
 ];
+/// The authored negative fixtures accept contract refusals, never failed I/O or transport.
+#[derive(Clone, Copy, Debug)]
+pub enum ExpectedRefusal {
+    RestrictedDocx,
+    ReparseDestination,
+    ProtectedAlias,
+}
+impl ExpectedRefusal {
+    pub fn diagnostic(self) -> &'static str {
+        match self {
+            Self::RestrictedDocx => {
+                "unsupported DOCX features: embedded-or-alternate-content; retain the original and convert/review a separate copy"
+            }
+            Self::ReparseDestination => "output path must not contain links or junctions",
+            Self::ProtectedAlias => "output destination aliases a protected source",
+        }
+    }
+}
+pub fn require_contract_refusal<T>(result: Result<T>, expected: ExpectedRefusal) -> Result<()> {
+    let error = result.err().context("unsafe admission was accepted")?;
+    ensure!(
+        !contains_cause::<std::io::Error>(&error)
+            && !contains_cause::<zip::result::ZipError>(&error)
+            && !contains_cause::<runtime::DeadlineExceeded>(&error)
+            && !contains_cause::<runtime::CleanupFailure>(&error),
+        "admission failed outside its expected contract refusal"
+    );
+    ensure!(
+        error.root_cause().to_string() == expected.diagnostic(),
+        "admission refused for an unrelated reason"
+    );
+    Ok(())
+}
+fn contains_cause<E: std::error::Error + Send + Sync + 'static>(error: &anyhow::Error) -> bool {
+    // anyhow contexts retain typed errors separately from their std::error::Error source chain.
+    error.downcast_ref::<E>().is_some() || error.chain().any(|cause| cause.is::<E>())
+}
 pub struct Cases {
     root: PathBuf,
     lint_program: PathBuf,
@@ -116,10 +153,7 @@ impl Cases {
             json!([{"part":"word/document.xml","index":0,"expected":"original","text":"changed"}]);
         let result = docx::edit_package(&source, &destination, &patches, &[]);
         if restricted {
-            ensure!(
-                result.is_err(),
-                "restricted relationship identity was accepted"
-            );
+            require_contract_refusal(result, ExpectedRefusal::RestrictedDocx)?;
             ensure!(
                 fs::read(&destination)? == b"previous valid sentinel",
                 "restricted edit changed delivery"
@@ -292,10 +326,10 @@ impl Cases {
                     identity::is_link(&link)?,
                     "native reparse ancestry fixture is unavailable"
                 );
-                ensure!(
-                    publication::validate_destination(&link.join("result.pdf"), &[]).is_err(),
-                    "linked ancestry admitted"
-                );
+                require_contract_refusal(
+                    publication::validate_destination(&link.join("result.pdf"), &[]),
+                    ExpectedRefusal::ReparseDestination,
+                )?;
                 ensure!(
                     fs::read(candidate)? == b"valid candidate",
                     "reparse refusal changed candidate"
@@ -314,11 +348,10 @@ impl Cases {
                 fs::write(&destination, b"approved")?;
                 let alias = self.root.join("alias.pdf");
                 fs::hard_link(&destination, &alias)?;
-                ensure!(
-                    publication::validate_destination(&alias, std::slice::from_ref(&destination))
-                        .is_err(),
-                    "protected hardlink admitted"
-                );
+                require_contract_refusal(
+                    publication::validate_destination(&alias, std::slice::from_ref(&destination)),
+                    ExpectedRefusal::ProtectedAlias,
+                )?;
                 ensure!(
                     fs::read(destination)? == b"approved",
                     "alias refusal changed source"

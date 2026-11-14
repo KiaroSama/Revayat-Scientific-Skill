@@ -4,6 +4,8 @@ use crate::protocol::{
 };
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
+#[path = "registry_network.rs"]
+mod network;
 
 fn deadline(start: Instant) -> Result<()> {
     if start.elapsed() < Duration::from_secs(8) {
@@ -228,61 +230,7 @@ pub fn controls() -> Result<(u32, u32)> {
 }
 
 fn network_denied(value: &str) -> Result<()> {
-    mark_panic_phase(PanicPhase::NetworkConfig);
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream, UdpSocket};
-    use std::time::Duration;
-    let ports = value
-        .split(',')
-        .map(|part| {
-            part.parse::<u16>()
-                .ok()
-                .filter(|number| *number > 0 && part == number.to_string())
-        })
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| Failure::new("mutation", "control"))?;
-    need(ports.len() == 4, "mutation")?;
-    let hosts = [
-        IpAddr::V4(Ipv4Addr::LOCALHOST),
-        IpAddr::V6(Ipv6Addr::LOCALHOST),
-    ];
-    for (index, (host, port)) in hosts.into_iter().zip(&ports[..2]).enumerate() {
-        mark_panic_phase(if index == 0 {
-            PanicPhase::NetworkTcp4
-        } else {
-            PanicPhase::NetworkTcp6
-        });
-        match TcpStream::connect_timeout(&SocketAddr::new(host, *port), Duration::from_secs(1)) {
-            Err(error) if error.raw_os_error() == Some(10013) => {}
-            _ => return Err(Failure::new("mutation", "control")),
-        }
-    }
-    for (index, (host, port)) in hosts.into_iter().zip(&ports[2..]).enumerate() {
-        let bind = match host {
-            IpAddr::V4(_) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-            IpAddr::V6(_) => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-        };
-        mark_panic_phase(if index == 0 {
-            PanicPhase::NetworkUdp4Bind
-        } else {
-            PanicPhase::NetworkUdp6Bind
-        });
-        match UdpSocket::bind(SocketAddr::new(bind, 0)) {
-            Err(error) if error.raw_os_error() == Some(10013) => {}
-            Ok(socket) => {
-                mark_panic_phase(if index == 0 {
-                    PanicPhase::NetworkUdp4Send
-                } else {
-                    PanicPhase::NetworkUdp6Send
-                });
-                match socket.send_to(b"native LPAC denial control", SocketAddr::new(host, *port)) {
-                    Err(error) if error.raw_os_error() == Some(10013) => {}
-                    _ => return Err(Failure::new("mutation", "control")),
-                }
-            }
-            _ => return Err(Failure::new("mutation", "control")),
-        }
-    }
-    Ok(())
+    network::controls(value)
 }
 
 fn scratch_control() -> Result<()> {

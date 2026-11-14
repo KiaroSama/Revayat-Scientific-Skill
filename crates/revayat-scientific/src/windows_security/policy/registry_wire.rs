@@ -115,6 +115,9 @@ fn event(value: &str) -> bool {
     if phase == "panic" {
         return protocol::panic_kind(kind).is_some();
     }
+    if phase == "mutation" && protocol::network_kind(kind).is_some() {
+        return true;
+    }
     if phase == "token" && protocol::TOKEN_CHECKS.contains(&kind)
         || phase == "descendant" && protocol::DESCENDANT_CHECKS.contains(&kind)
     {
@@ -230,6 +233,9 @@ pub fn failure_detail(errors: &str) -> Option<String> {
                     entry
                         .strip_prefix("descendant:")
                         .is_some_and(|kind| protocol::NATIVE_CHECKS.contains(&kind))
+                        || entry
+                            .strip_prefix("mutation:")
+                            .is_some_and(|kind| protocol::network_kind(kind).is_some())
                 })
             {
                 return None;

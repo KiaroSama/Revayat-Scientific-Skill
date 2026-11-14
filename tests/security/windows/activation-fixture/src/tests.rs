@@ -2,6 +2,8 @@
 use super::*;
 #[path = "../../native-fixtures/independent_id2.rs"]
 mod independent_id2;
+#[path = "record_checks.rs"]
+mod record_checks;
 #[test]
 fn explicit_id2_context_keeps_only_module_resource_flags_and_exact_x64_layout() {
     use std::mem::{offset_of, size_of};
@@ -146,6 +148,7 @@ fn explicit_receipt_preserves_pre_call_then_consistent_fixed_result_without_raw_
 }
 #[test]
 fn fixture_captures_error_immediately_and_build_links_only_the_fixed_binary_resource() {
+    record_checks::check();
     let source = include_str!("main.rs")
         .lines()
         .filter(|line| !line.trim_start().starts_with("//"))

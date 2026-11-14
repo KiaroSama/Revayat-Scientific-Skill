@@ -54,11 +54,11 @@ pub fn run() -> ! {
     }
     let mut line = Record::new();
     line.append(b"WINDOWS_MODULE_ACTIVATION attach=1 query_succeeded=");
-    line.append(&[b'0' + value.query as u8]);
+    line.append(&[b'0'.wrapping_add(value.query as u8)]);
     line.append(b" root_evaluated=");
-    line.append(&[b'0' + value.evaluated as u8]);
+    line.append(&[b'0'.wrapping_add(value.evaluated as u8)]);
     line.append(b" root_is_module=");
-    line.append(&[b'0' + value.own_root as u8]);
+    line.append(&[b'0'.wrapping_add(value.own_root as u8)]);
     line.append(b" win32_error=0x");
     line.hexadecimal(value.error);
     line.append(b" returned_bytes=0x");

@@ -6,7 +6,10 @@ use super::{
 };
 use crate::{
     runtime::{self, CommandSpec},
-    windows_security::activation::Failures,
+    windows_security::activation::{
+        Failures,
+        diagnostics::{self, Numbers, Stage},
+    },
 };
 use anyhow::{Context, Result, ensure};
 use std::{
@@ -20,6 +23,9 @@ mod lease;
 #[path = "tool_windows.rs"]
 mod windows;
 use lease::Pins;
+fn step<T>(stage: Stage, body: impl FnOnce() -> Result<T>) -> Result<T> {
+    body().map_err(|error| diagnostics::operation(error, stage))
+}
 #[path = "python_base.rs"]
 pub mod python_base;
 pub struct DiscoveredRustTools {
@@ -31,12 +37,11 @@ impl DiscoveredRustTools {
         &self.tools
     }
     pub fn verify(&mut self) -> Result<()> {
-        self.pins
-            .verify()
+        step(Stage::FixturePinsVerify, || self.pins.verify())
             .context("fixed Rust/MSVC tool identities changed; private_cause_retained=True")
     }
     pub fn close(mut self) -> Result<()> {
-        self.pins.close()
+        step(Stage::FixturePinsClose, || self.pins.close())
     }
     /// All compiler and target-library pins remain held until compilation and
     /// post-verification finish. Every close is attempted before results escape.
@@ -60,7 +65,18 @@ impl RustTools {
         }
     }
 }
+// The Python discovery sibling retains its existing private command interface.
 fn command(
+    program: &Path,
+    args: &[OsString],
+    cwd: &Path,
+    system: &Path,
+    search: &[&Path],
+) -> Result<String> {
+    command_at(Stage::FixtureDiscover, program, args, cwd, system, search)
+}
+fn command_at(
+    stage: Stage,
     program: &Path,
     args: &[OsString],
     cwd: &Path,
@@ -91,6 +107,12 @@ fn command(
     }
     let mut output =
         runtime::run(&spec).context("fixed discovery process failed; raw_output_withheld=True")?;
+    let numbers = Numbers {
+        result: Some(output.code as u32),
+        stdout_bytes: u32::try_from(output.stdout.len()).ok(),
+        stderr_bytes: u32::try_from(output.stderr.len()).ok(),
+        ..Default::default()
+    };
     let result = (|| {
         ensure!(
             output.code == 0 && output.stderr.is_empty(),
@@ -98,7 +120,8 @@ fn command(
             output.code
         );
         Ok(std::str::from_utf8(&output.stdout)?.to_owned())
-    })();
+    })()
+    .map_err(|error| diagnostics::annotate(error, stage, numbers));
     output.stdout.fill(0);
     output.stderr.fill(0);
     result
@@ -169,159 +192,239 @@ fn dlls(pins: &mut Pins, path: &Path, require_driver: bool) -> Result<()> {
             pins.file(&path)?;
         }
     }
-    ensure!(
-        !require_driver || drivers == 1,
-        "real Rust toolchain driver is missing/ambiguous"
-    );
-    Ok(())
+    let result = (|| {
+        ensure!(
+            !require_driver || drivers == 1,
+            "real Rust toolchain driver is missing/ambiguous"
+        );
+        Ok(())
+    })();
+    result.map_err(|error| {
+        diagnostics::annotate(
+            error,
+            if require_driver {
+                Stage::FixtureRustDlls
+            } else {
+                Stage::FixtureVcDlls
+            },
+            Numbers {
+                count: Some(drivers),
+                properties: Some(count),
+                ..Default::default()
+            },
+        )
+    })
 }
 fn discover(pins: &mut Pins, state: &Path) -> Result<RustTools> {
-    crate::windows_security::activation::native::require_host()?;
-    let state = pins.path(state)?;
-    ensure!(state.is_dir(), "fixed tool state is not a directory");
-    let system_root = pins.path(&windows::system_root()?)?;
-    let vswhere = pins.file(
-        &windows::program_files_x86()?
-            .join("Microsoft Visual Studio")
-            .join("Installer")
-            .join("vswhere.exe"),
+    step(
+        Stage::FixtureHost,
+        crate::windows_security::activation::native::require_host,
     )?;
-    let text = command(
-        &vswhere,
-        &[
-            "-latest",
-            "-products",
-            "*",
-            "-requires",
-            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-            "-property",
-            "installationPath",
-            "-utf8",
-        ]
-        .map(OsString::from),
-        &state,
-        &system_root,
-        &[],
-    )?;
-    let install = pins.path(&one_path(&text)?)?;
+    let state = step(Stage::FixtureState, || {
+        let state = pins.path(state)?;
+        ensure!(state.is_dir(), "fixed tool state is not a directory");
+        Ok(state)
+    })?;
+    let system_root = step(Stage::FixtureWindowsRoot, || {
+        pins.path(&windows::system_root()?)
+    })?;
+    let program_files = step(Stage::FixtureProgramFiles, windows::program_files_x86)?;
+    let vswhere = step(Stage::FixtureVswhere, || {
+        pins.file(
+            &program_files
+                .join("Microsoft Visual Studio")
+                .join("Installer")
+                .join("vswhere.exe"),
+        )
+    })?;
+    let text = step(Stage::FixtureVswhereRun, || {
+        command_at(
+            Stage::FixtureVswhereRun,
+            &vswhere,
+            &[
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+                "-utf8",
+            ]
+            .map(OsString::from),
+            &state,
+            &system_root,
+            &[],
+        )
+    })?;
+    let install = step(Stage::FixtureVsInstall, || pins.path(&one_path(&text)?))?;
     let metadata = install
         .join("VC")
         .join("Auxiliary")
         .join("Build")
         .join("Microsoft.VCToolsVersion.default.txt");
-    let mut bytes = pins.read(&metadata, 128)?;
-    let parsed = (|| {
+    let mut bytes = step(Stage::FixtureVcMetadata, || pins.read(&metadata, 128))?;
+    let parsed = step(Stage::FixtureVcVersion, || {
         let text = std::str::from_utf8(&bytes)?.trim();
         version(text)?;
-        Ok::<_, anyhow::Error>(text.to_owned())
-    })();
+        Ok(text.to_owned())
+    });
     bytes.fill(0);
     let vc_version = parsed?;
-    let vc = pins.path(
-        &install
-            .join("VC")
-            .join("Tools")
-            .join("MSVC")
-            .join(vc_version)
-            .join("bin")
-            .join("Hostx64")
-            .join("x64"),
-    )?;
-    let linker = pins.file(&vc.join("link.exe"))?;
-    dlls(pins, &vc, false)?;
-    let sdk = pins.path(&windows::sdk_root()?)?;
-    let libraries = pins.path(&sdk.join("Lib"))?;
-    let mut candidates = Vec::new();
-    for path in entries(&libraries, 32)? {
-        if !path.is_dir() {
-            continue;
+    let vc = step(Stage::FixtureVcBin, || {
+        pins.path(
+            &install
+                .join("VC")
+                .join("Tools")
+                .join("MSVC")
+                .join(vc_version)
+                .join("bin")
+                .join("Hostx64")
+                .join("x64"),
+        )
+    })?;
+    let linker = step(Stage::FixtureLinker, || pins.file(&vc.join("link.exe")))?;
+    step(Stage::FixtureVcDlls, || dlls(pins, &vc, false))?;
+    let sdk = step(Stage::FixtureSdkRoot, || pins.path(&windows::sdk_root()?))?;
+    let libraries = step(Stage::FixtureSdkLibraries, || pins.path(&sdk.join("Lib")))?;
+    let library = step(Stage::FixtureSdkSelect, || {
+        let mut candidates = Vec::new();
+        for path in entries(&libraries, 32)? {
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Ok(parsed) = version(name) else { continue };
+            let library = path.join("um").join("x64").join("kernel32.lib");
+            io::plain(&library, true)?;
+            if library.try_exists()? {
+                candidates.push((parsed, library));
+            }
         }
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let Ok(parsed) = version(name) else { continue };
-        let library = path.join("um").join("x64").join("kernel32.lib");
-        io::plain(&library, true)?;
-        if library.try_exists()? {
-            candidates.push((parsed, library));
-        }
-    }
-    candidates.sort_by_key(|value| std::cmp::Reverse(value.0));
-    let Some((_, library)) = candidates.first() else {
-        anyhow::bail!("installed x64 Kernel32 import library is unavailable")
-    };
-    if candidates.len() > 1 {
+        candidates.sort_by_key(|value| std::cmp::Reverse(value.0));
+        let selected = (|| {
+            let Some((_, library)) = candidates.first() else {
+                anyhow::bail!("installed x64 Kernel32 import library is unavailable")
+            };
+            if candidates.len() > 1 {
+                ensure!(
+                    candidates[0].0 != candidates[1].0,
+                    "installed SDK version selection is ambiguous"
+                );
+            }
+            Ok(library.clone())
+        })();
+        selected.map_err(|error| {
+            diagnostics::annotate(
+                error,
+                Stage::FixtureSdkSelect,
+                Numbers {
+                    count: u32::try_from(candidates.len()).ok(),
+                    ..Default::default()
+                },
+            )
+        })
+    })?;
+    let kernel32 = step(Stage::FixtureKernel32, || pins.file(&library))?;
+    let rustup = step(Stage::FixtureRustupRoot, || {
+        Ok(match std::env::var_os("RUSTUP_HOME") {
+            Some(path) => PathBuf::from(path),
+            None => windows::profile()?.join(".rustup"),
+        })
+    })?;
+    let sysroot = step(Stage::FixtureRustSysroot, || {
+        pins.path(
+            &rustup
+                .join("toolchains")
+                .join("1.100.0-x86_64-pc-windows-msvc"),
+        )
+    })?;
+    let bin = step(Stage::FixtureRustBin, || pins.path(&sysroot.join("bin")))?;
+    let rustc = step(Stage::FixtureRustc, || pins.file(&bin.join("rustc.exe")))?;
+    step(Stage::FixtureRustDlls, || dlls(pins, &bin, true))?;
+    step(Stage::FixtureRustVersion, || {
+        let text = command_at(
+            Stage::FixtureRustVersion,
+            &rustc,
+            &["--version".into(), "--verbose".into()],
+            &state,
+            &system_root,
+            &[&vc],
+        )?;
         ensure!(
-            candidates[0].0 != candidates[1].0,
-            "installed SDK version selection is ambiguous"
+            text.lines().any(|line| line == "release: 1.100.0")
+                && text
+                    .lines()
+                    .any(|line| line == "host: x86_64-pc-windows-msvc"),
+            "real compiler version or target differs"
         );
-    }
-    let kernel32 = pins.file(library)?;
-    let rustup = match std::env::var_os("RUSTUP_HOME") {
-        Some(path) => PathBuf::from(path),
-        None => windows::profile()?.join(".rustup"),
-    };
-    let sysroot = pins.path(
-        &rustup
-            .join("toolchains")
-            .join("1.100.0-x86_64-pc-windows-msvc"),
-    )?;
-    let bin = pins.path(&sysroot.join("bin"))?;
-    let rustc = pins.file(&bin.join("rustc.exe"))?;
-    dlls(pins, &bin, true)?;
-    let text = command(
-        &rustc,
-        &["--version".into(), "--verbose".into()],
-        &state,
-        &system_root,
-        &[&vc],
-    )?;
-    ensure!(
-        text.lines().any(|line| line == "release: 1.100.0")
-            && text
-                .lines()
-                .any(|line| line == "host: x86_64-pc-windows-msvc"),
-        "real compiler version or target differs"
-    );
-    let expected = pins.path(
-        &sysroot
-            .join("lib")
-            .join("rustlib")
-            .join("x86_64-pc-windows-msvc")
-            .join("lib"),
-    )?;
-    let text = command(
-        &rustc,
-        &[
-            "--print".into(),
-            "target-libdir".into(),
-            "--target=x86_64-pc-windows-msvc".into(),
-        ],
-        &state,
-        &system_root,
-        &[&vc],
-    )?;
-    let actual = pins.path(&one_path(&text)?)?;
-    ensure!(
-        actual == expected,
-        "compiler target library root differs from pinned toolchain"
-    );
-    for prefix in ["libcore-", "libcompiler_builtins-"] {
-        let selected = entries(&expected, 256)?
-            .into_iter()
-            .filter(|path| {
-                path.file_name()
-                    .and_then(|v| v.to_str())
-                    .is_some_and(|v| v.starts_with(prefix) && v.ends_with(".rlib"))
+        Ok(())
+    })?;
+    let expected = step(Stage::FixtureTargetLibdir, || {
+        pins.path(
+            &sysroot
+                .join("lib")
+                .join("rustlib")
+                .join("x86_64-pc-windows-msvc")
+                .join("lib"),
+        )
+    })?;
+    step(Stage::FixtureTargetIdentity, || {
+        let text = command_at(
+            Stage::FixtureTargetIdentity,
+            &rustc,
+            &[
+                "--print".into(),
+                "target-libdir".into(),
+                "--target=x86_64-pc-windows-msvc".into(),
+            ],
+            &state,
+            &system_root,
+            &[&vc],
+        )?;
+        let actual = pins.path(&one_path(&text)?)?;
+        ensure!(
+            actual == expected,
+            "compiler target library root differs from pinned toolchain"
+        );
+        Ok(())
+    })?;
+    for (prefix, stage) in [
+        ("libcore-", Stage::FixtureCore),
+        ("libcompiler_builtins-", Stage::FixtureBuiltins),
+    ] {
+        step(stage, || {
+            let selected = entries(&expected, 256)?
+                .into_iter()
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|v| v.to_str())
+                        .is_some_and(|v| v.starts_with(prefix) && v.ends_with(".rlib"))
+                })
+                .collect::<Vec<_>>();
+            let result = (|| {
+                ensure!(
+                    selected.len() == 1,
+                    "required no-CRT target library is missing/ambiguous"
+                );
+                pins.file(&selected[0])?;
+                Ok(())
+            })();
+            result.map_err(|error| {
+                diagnostics::annotate(
+                    error,
+                    stage,
+                    Numbers {
+                        count: u32::try_from(selected.len()).ok(),
+                        ..Default::default()
+                    },
+                )
             })
-            .collect::<Vec<_>>();
-        ensure!(
-            selected.len() == 1,
-            "required no-CRT target library is missing/ambiguous"
-        );
-        pins.file(&selected[0])?;
+        })?;
     }
-    pins.verify()?;
+    step(Stage::FixturePinsVerify, || pins.verify())?;
     Ok(RustTools {
         rustc,
         linker,

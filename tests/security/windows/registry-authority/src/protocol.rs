@@ -8,6 +8,12 @@ pub use scratch_frame::{SCRATCH_CHECKS, scratch_failure, scratch_kind};
 #[path = "protocol_panic.rs"]
 mod panic_frame;
 pub use panic_frame::{PANIC_CHECKS, PanicPhase, mark_panic_phase, panic_frame, panic_kind};
+#[path = "protocol_network.rs"]
+mod network_frame;
+pub use network_frame::{
+    NETWORK_CHECKS, NetworkOperation, network_denial, network_failure, network_finish,
+    network_kind, network_ports, network_socket, network_startup,
+};
 
 pub const KEY: &str = r"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide";
 pub const DENIED: u32 = 0xC0000022;
@@ -300,7 +306,8 @@ impl Failure {
                     && self.restrictions.is_none()
                     && self.events.iter().take(8).any(|(phase, kind)| {
                         (*phase == "descendant" && NATIVE_CHECKS.contains(kind))
-                            || (*phase == "mutation" && SCRATCH_CHECKS.contains(kind))
+                            || (*phase == "mutation"
+                                && (SCRATCH_CHECKS.contains(kind) || NETWORK_CHECKS.contains(kind)))
                     })
             })
             .map_or_else(String::new, |error| format!(" native_error={error:08X}"));
@@ -541,6 +548,7 @@ mod tests {
     fn token_stages_are_closed_and_fit_complete_failure_frames() {
         scratch_frame::check_diagnostics();
         panic_frame::check_diagnostics();
+        network_frame::check_diagnostics();
         for &kind in TOKEN_CHECKS {
             assert!(token_need(true, kind).is_ok());
             let error = token_need(false, kind).expect_err("predicate refused");

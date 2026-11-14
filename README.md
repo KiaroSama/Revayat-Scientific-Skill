@@ -85,7 +85,7 @@ revayat-scientific docx --help
 revayat-scientific pdf --help
 ```
 
-`--engine weasyprint` selects the actual optional WeasyPrint engine in the isolated document image. Its Rust adapter stages a closed, checked resource view and uses the same finite output quota and owned cleanup as TeX. WeasyPrint and its Python dependencies are external image packages; the repository contains no owned Python program and no host Python installation is required. TeX input needs an existing sibling `.html`. Automatic discovery preserves the order TeX, Chromium, WeasyPrint and never aliases their engine identities.
+`--engine weasyprint` selects the actual optional WeasyPrint engine in the isolated document image. Its Rust adapter stages a closed, checked resource view and uses the same finite output quota and owned cleanup as TeX. WeasyPrint and its Python dependencies are external image packages; ordinary installed tools require no host Python installation. The Windows security fixtures retain one fixed CPython import dispatcher to exercise the genuine external runtime; its authority operations are implemented in Rust. TeX input needs an existing sibling `.html`. Automatic discovery preserves the order TeX, Chromium, WeasyPrint and never aliases their engine identities.
 
 Use `--help` on each command for its exact schema. Keep job sources, ledgers, figures and translation logs outside the installed skill. Obtain consent before delegating translation to additional agents. Record source language, intended readership, selected terminology level and actual checks in the job log.
 

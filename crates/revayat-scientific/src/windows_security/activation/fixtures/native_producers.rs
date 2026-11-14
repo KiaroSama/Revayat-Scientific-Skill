@@ -33,6 +33,9 @@ pub use control_plan::check_order_validation;
 #[path = "independent_id2.rs"]
 pub mod independent_id2;
 pub use independent_id2::CompiledIndependentId2;
+#[path = "python_authority_producer.rs"]
+pub mod python_authority;
+pub use python_authority::{CompiledPythonAuthority, HeldPythonAuthority};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NativeControlRole {
@@ -250,6 +253,7 @@ fn build_control(
 enum LinkRole<'a> {
     Control(NativeControlRole),
     RegistryLoader(&'a Path),
+    PythonAuthority(&'a Path),
     IndependentId2(&'a Path),
 }
 fn compile(
@@ -308,7 +312,10 @@ fn compile(
         "/MACHINE:X64".into(),
         "/INCREMENTAL:NO".into(),
     ];
-    let maximum = if matches!(&role, LinkRole::RegistryLoader(_)) {
+    let maximum = if matches!(
+        &role,
+        LinkRole::RegistryLoader(_) | LinkRole::PythonAuthority(_)
+    ) {
         16 * 1024 * 1024
     } else {
         1048576
@@ -341,6 +348,21 @@ fn compile(
                 .args
                 .push(format!("-Clink-arg={}", library.display()).into());
             Some(folder.join("registry-loader.lib"))
+        }
+        LinkRole::PythonAuthority(library) => {
+            command.args.push("-Copt-level=2".into());
+            link.extend([
+                "/DLL".into(),
+                "/NOENTRY".into(),
+                "/EXPORT:PyInit__registry_authority".into(),
+            ]);
+            command
+                .args
+                .push(format!("-Lnative={}", library.parent().unwrap().display()).into());
+            command
+                .args
+                .push(format!("-Clink-arg={}", library.display()).into());
+            Some(folder.join("python-authority.lib"))
         }
         LinkRole::IndependentId2(resource) => {
             command.args.push("-Copt-level=0".into());

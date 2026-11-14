@@ -43,6 +43,13 @@ installation as an external test subject. The Rust factories discover and pin
 the real compiler, MSVC linker/SDK and runtime, then copy and qualify the full
 base without executing the prepared copy. These factories still need the full
 native coordinator; the ordinary installed document tools require no Python.
+The fixed `python-authority/import_dispatch.py` fixture preserves the original
+eight CPython imports and their actual exception, then dispatches to the Rust
+C-API authority body. It contains no registry, token, descendant or reporting
+implementation. Its exact path and normalized source digest are audited; it is
+not included in ordinary installed tools. The Rust body calls genuine ctypes
+objects where the original checks require them. Direct Rust Win32 calls cannot
+stand in for those runtime-specific observations.
 Independent startup/debug controls and the four-constant CPython registry-loader
 extension are compiled from pinned Rust sources using the held compiler/SDK and
 the genuine runtime's own import library. The separate explicit-ID2 CSR control

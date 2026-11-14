@@ -23,6 +23,32 @@ fn refused(text: &str) -> Result<()> {
     Ok(())
 }
 pub fn check_validation() -> Result<()> {
+    for kind in protocol::NETWORK_CHECKS {
+        for status in [None, Some(0u32), Some(10013), Some(u32::MAX)] {
+            let suffix = status.map_or(String::new(), |code| format!(" native_error={code:08X}"));
+            let frame = format!(
+                "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=mutation:{kind}{suffix}\n"
+            );
+            accepted(&frame)?;
+            let error = validate_wire(1, None, Some(&frame)).unwrap_err();
+            ensure!(
+                error.to_string().contains("primary_exit=0x00000001")
+                    && error.to_string().contains(&format!("mutation:{kind}")),
+                "a known network refusal must remain an actual failed worker"
+            );
+        }
+    }
+    for invalid in [
+        "mutation:network-private native_error=0000271D",
+        "mutation:network-startup native_error=private-sentinel",
+        "mutation:network-startup native_error=0000271d",
+        "mutation:network-startup native_error=0000271D extra=private-sentinel",
+        "panic:network-startup native_error=0000271D",
+    ] {
+        refused(&format!(
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors={invalid}\n"
+        ))?;
+    }
     for phase in protocol::PANIC_CHECKS {
         let frame = format!(
             "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=panic:{phase}\n"

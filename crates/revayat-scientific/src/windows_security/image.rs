@@ -32,11 +32,11 @@ pub use validation::{
     check_child_activation_validation, check_default_activation_validation,
     check_identity_validation, check_import_validation, check_independent_id2_validation,
     check_manifest_validation, check_module_activation_validation, check_observation_validation,
-    check_python_dispatch_identity, check_registry_loader_validation,
-    check_self_activation_validation, check_static_validation, check_validation,
-    child_activation_validation_fixture, module_activation_validation_fixture,
-    python_dispatch_validation_fixtures, qualify_python_dispatch_image, qualify_registry_loader,
-    self_activation_validation_fixture, static_validation_fixture,
+    check_python_authority_validation, check_python_dispatch_identity,
+    check_registry_loader_validation, check_self_activation_validation, check_static_validation,
+    check_validation, child_activation_validation_fixture, module_activation_validation_fixture,
+    python_dispatch_validation_fixtures, qualify_python_authority, qualify_python_dispatch_image,
+    qualify_registry_loader, self_activation_validation_fixture, static_validation_fixture,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -2,6 +2,24 @@
 use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, path::Path};
 
+const PYTHON_FIXTURE: &str = "tests/security/windows/python-authority/import_dispatch.py";
+const PYTHON_FIXTURE_SHA256: &str =
+    "f62db5611e8bf8d43b914b6925f3b2fd2ae6965ad415bb30a6ce173716781d79";
+
+fn require_python_fixture(bytes: &[u8]) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    let text = std::str::from_utf8(bytes)
+        .context("fixed CPython fixture is not UTF-8")?
+        .replace("\r\n", "\n");
+    ensure!(
+        bytes.len() <= 4096
+            && !text.contains('\r')
+            && format!("{:x}", Sha256::digest(text.as_bytes())) == PYTHON_FIXTURE_SHA256,
+        "fixed CPython import fixture differs from its reviewed source"
+    );
+    Ok(())
+}
+
 pub fn classify_source(filename: &str, bytes: &[u8]) -> Result<&'static str> {
     ensure!(
         !bytes.starts_with(b"#!") || bytes.starts_with(b"#!["),
@@ -15,6 +33,10 @@ pub fn classify_source(filename: &str, bytes: &[u8]) -> Result<&'static str> {
     let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("");
     let category = match extension {
         "rs" => "rust",
+        "py" if filename == PYTHON_FIXTURE => {
+            require_python_fixture(bytes)?;
+            "python-runtime-fixture"
+        }
         "md" | "txt" => "documentation",
         "toml" | "lock" | "json" | "yaml" | "yml" | "docx-defaults" | "dockerignore" => {
             "configuration"
@@ -146,6 +168,24 @@ mod tests {
 
     #[test]
     fn audit_keeps_classification_utf8_shebang_and_per_file_limits() -> Result<()> {
+        let fixture = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/security/windows/python-authority/import_dispatch.py"
+        ));
+        assert_eq!(
+            classify_source(PYTHON_FIXTURE, fixture)?,
+            "python-runtime-fixture"
+        );
+        let crlf = std::str::from_utf8(fixture)?.replace('\n', "\r\n");
+        assert_eq!(
+            classify_source(PYTHON_FIXTURE, crlf.as_bytes())?,
+            "python-runtime-fixture"
+        );
+        assert!(classify_source("other/import_dispatch.py", fixture).is_err());
+        let mut changed = fixture.to_vec();
+        changed.push(b'\n');
+        assert!(classify_source(PYTHON_FIXTURE, &changed).is_err());
+        assert!(classify_source(PYTHON_FIXTURE, b"print('unreviewed')\n").is_err());
         let root = tempfile::tempdir()?;
         for (filename, bytes, expected) in [
             (

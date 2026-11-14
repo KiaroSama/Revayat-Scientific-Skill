@@ -2,6 +2,9 @@ use super::*;
 #[test]
 fn reusable_policy_helpers_do_not_launch_children() {
     activation::fixtures::registry_loader::check_validation().unwrap();
+    revayat_scientific::windows_security::image::check_python_authority_validation().unwrap();
+    #[cfg(windows)]
+    activation::fixtures::native_producers::python_authority::check_source_validation().unwrap();
     revayat_scientific::windows_security::loader_comparison::check_validation().unwrap();
     let baseline = registry_authority::protocol::machine_baseline_record(0xC0000022, 0).unwrap();
     registry_authority::protocol::require_machine_baseline(baseline.as_bytes()).unwrap();

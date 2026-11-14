@@ -53,6 +53,7 @@ phases! {
     Foreign => "foreign",
     Scratch => "scratch",
     NetworkConfig => "network-config",
+    NetworkStartup => "network-startup",
     NetworkTcp4 => "network-tcp4",
     NetworkTcp6 => "network-tcp6",
     NetworkUdp4Bind => "network-udp4-bind",

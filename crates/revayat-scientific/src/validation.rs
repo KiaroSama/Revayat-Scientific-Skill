@@ -113,6 +113,25 @@ fn validate_source_length(filename: &str, source: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_implementation_kind(filename: &str, bytes: &[u8]) -> Result<()> {
+    let extension = Path::new(filename)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    if extension == "py" {
+        ensure!(
+            crate::ci_tools::classify_source(filename, bytes)? == "python-runtime-fixture",
+            "{filename}: only the reviewed fixed CPython import fixture is allowed"
+        );
+        return Ok(());
+    }
+    ensure!(
+        !["pyc", "sh", "ps1", "cs", "c", "cpp", "js", "ts"].contains(&extension),
+        "{filename}: implementation must be native Rust"
+    );
+    Ok(())
+}
+
 pub fn validate_repository(root: &Path) -> Result<()> {
     let listing = crate::distribution_paths::git_result(
         root,
@@ -136,10 +155,18 @@ pub fn validate_repository(root: &Path) -> Result<()> {
             continue;
         }
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        ensure!(
-            !["py", "pyc", "sh", "ps1", "cs", "c", "cpp", "js", "ts"].contains(&extension),
-            "{filename}: implementation must be native Rust"
-        );
+        let mut fixture = Vec::new();
+        if extension == "py" {
+            use std::io::Read;
+            ensure!(
+                fs::symlink_metadata(&path)?.is_file(),
+                "{filename}: runtime fixture must be a regular file"
+            );
+            fs::File::open(&path)?
+                .take(4097)
+                .read_to_end(&mut fixture)?;
+        }
+        validate_implementation_kind(filename, &fixture)?;
         if ![
             "rs", "toml", "lock", "md", "json", "yaml", "yml", "tex", "html", "tsv", "txt",
         ]
@@ -212,6 +239,22 @@ pub fn cli(args: &[String]) -> Result<i32> {
 mod tests {
     #[test]
     fn rust_source_limit_accepts_799_and_refuses_800_lines() {
+        let path = "tests/security/windows/python-authority/import_dispatch.py";
+        let fixture = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/security/windows/python-authority/import_dispatch.py"
+        ));
+        assert!(super::validate_implementation_kind(path, fixture).is_ok());
+        assert!(super::validate_implementation_kind("other/import_dispatch.py", fixture).is_err());
+        let mut altered = fixture.to_vec();
+        altered.push(b'\n');
+        assert!(super::validate_implementation_kind(path, &altered).is_err());
+        for extension in ["py", "pyc", "sh", "ps1", "cs", "c", "cpp", "js", "ts"] {
+            assert!(
+                super::validate_implementation_kind(&format!("fixture.{extension}"), b"unreviewed")
+                    .is_err()
+            );
+        }
         for newline in ["\n", "\r\n"] {
             assert!(
                 super::validate_source_length(

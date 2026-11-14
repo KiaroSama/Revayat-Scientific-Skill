@@ -184,13 +184,12 @@ fn compile(tools: &RustTools, inputs: &mut Inputs, job: Compile<'_>) -> Result<(
         )
         .into(),
     );
-    command.args.push(
-        format!(
-            "-Clink-arg=/ALLOWISOLATION:{}",
-            if job.explicit { "NO" } else { "YES" }
-        )
-        .into(),
-    );
+    // MSVC documents the positive option bare; only the negative form has :NO.
+    command.args.push(if job.explicit {
+        "-Clink-arg=/ALLOWISOLATION:NO".into()
+    } else {
+        "-Clink-arg=/ALLOWISOLATION".into()
+    });
     command
         .args
         .push(format!("-Lnative={}", tools.kernel32.parent().unwrap().display()).into());

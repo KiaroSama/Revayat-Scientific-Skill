@@ -67,6 +67,40 @@ pub enum Stage {
     ScratchSeal,
     ScratchReady,
     FixtureDiscover,
+    FixtureHost,
+    FixtureState,
+    FixtureWindowsRoot,
+    FixtureProgramFiles,
+    FixtureVswhere,
+    FixtureVswhereRun,
+    FixtureVsInstall,
+    FixtureVcMetadata,
+    FixtureVcVersion,
+    FixtureVcBin,
+    FixtureLinker,
+    FixtureVcDlls,
+    FixtureSdkRoot,
+    FixtureSdkLibraries,
+    FixtureSdkSelect,
+    FixtureKernel32,
+    FixtureRustupRoot,
+    FixtureRustSysroot,
+    FixtureRustBin,
+    FixtureRustc,
+    FixtureRustDlls,
+    FixtureRustVersion,
+    FixtureTargetLibdir,
+    FixtureTargetIdentity,
+    FixtureCore,
+    FixtureBuiltins,
+    FixturePinsVerify,
+    FixturePinsClose,
+    FixturePinPath,
+    FixturePinCanonical,
+    FixturePinOpen,
+    FixturePinIdentity,
+    FixturePinFingerprint,
+    FixturePinRead,
     FixtureBuild,
 }
 impl Stage {
@@ -136,6 +170,40 @@ impl Stage {
             Self::ScratchSeal => "scratch-seal",
             Self::ScratchReady => "scratch-ready",
             Self::FixtureDiscover => "fixture-discover",
+            Self::FixtureHost => "fixture-host",
+            Self::FixtureState => "fixture-state",
+            Self::FixtureWindowsRoot => "fixture-windows-root",
+            Self::FixtureProgramFiles => "fixture-program-files",
+            Self::FixtureVswhere => "fixture-vswhere",
+            Self::FixtureVswhereRun => "fixture-vswhere-run",
+            Self::FixtureVsInstall => "fixture-vs-install",
+            Self::FixtureVcMetadata => "fixture-vc-metadata",
+            Self::FixtureVcVersion => "fixture-vc-version",
+            Self::FixtureVcBin => "fixture-vc-bin",
+            Self::FixtureLinker => "fixture-linker",
+            Self::FixtureVcDlls => "fixture-vc-dlls",
+            Self::FixtureSdkRoot => "fixture-sdk-root",
+            Self::FixtureSdkLibraries => "fixture-sdk-libraries",
+            Self::FixtureSdkSelect => "fixture-sdk-select",
+            Self::FixtureKernel32 => "fixture-kernel32",
+            Self::FixtureRustupRoot => "fixture-rustup-root",
+            Self::FixtureRustSysroot => "fixture-rust-sysroot",
+            Self::FixtureRustBin => "fixture-rust-bin",
+            Self::FixtureRustc => "fixture-rustc",
+            Self::FixtureRustDlls => "fixture-rust-dlls",
+            Self::FixtureRustVersion => "fixture-rust-version",
+            Self::FixtureTargetLibdir => "fixture-target-libdir",
+            Self::FixtureTargetIdentity => "fixture-target-identity",
+            Self::FixtureCore => "fixture-core",
+            Self::FixtureBuiltins => "fixture-builtins",
+            Self::FixturePinsVerify => "fixture-pins-verify",
+            Self::FixturePinsClose => "fixture-pins-close",
+            Self::FixturePinPath => "fixture-pin-path",
+            Self::FixturePinCanonical => "fixture-pin-canonical",
+            Self::FixturePinOpen => "fixture-pin-open",
+            Self::FixturePinIdentity => "fixture-pin-identity",
+            Self::FixturePinFingerprint => "fixture-pin-fingerprint",
+            Self::FixturePinRead => "fixture-pin-read",
             Self::FixtureBuild => "fixture-build",
         }
     }
@@ -163,35 +231,46 @@ impl AuthoredFailure {
         &self.original
     }
 }
-impl fmt::Display for AuthoredFailure {
+struct ClosedHeader<'a>(&'a AuthoredFailure);
+impl fmt::Display for ClosedHeader<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "fixed native operation failed stage={}",
-            self.stage.label()
+            self.0.stage.label()
         )?;
         for (name, value) in [
-            ("native_error", self.numbers.native_error),
-            ("result", self.numbers.result),
-            ("count", self.numbers.count),
-            ("bytes", self.numbers.bytes),
-            ("properties", self.numbers.properties),
-            ("stdout_bytes", self.numbers.stdout_bytes),
-            ("stderr_bytes", self.numbers.stderr_bytes),
+            ("native_error", self.0.numbers.native_error),
+            ("result", self.0.numbers.result),
+            ("count", self.0.numbers.count),
+            ("bytes", self.0.numbers.bytes),
+            ("properties", self.0.numbers.properties),
+            ("stdout_bytes", self.0.numbers.stdout_bytes),
+            ("stderr_bytes", self.0.numbers.stderr_bytes),
         ] {
             if let Some(value) = value {
                 write!(f, " {name}=0x{value:08X}")?;
             }
         }
-        if let Some(exact) = self.numbers.exact_prefix {
+        if let Some(exact) = self.0.numbers.exact_prefix {
             write!(f, " exact_prefix={}", if exact { "True" } else { "False" })?;
         }
-        for (name, value) in [("raw_dr6", self.numbers.dr6), ("raw_dr7", self.numbers.dr7)] {
+        for (name, value) in [
+            ("raw_dr6", self.0.numbers.dr6),
+            ("raw_dr7", self.0.numbers.dr7),
+        ] {
             if let Some(value) = value {
                 write!(f, " {name}=0x{value:016X}")?;
             }
         }
         Ok(())
+    }
+}
+impl fmt::Display for AuthoredFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Preserve nested authored stages in ordinary CLI formatting. The same
+        // closed visitor bounds depth and bytes and never formats a raw cause.
+        f.write_str(&project(Some(self), &self.original))
     }
 }
 impl fmt::Debug for AuthoredFailure {
@@ -242,12 +321,15 @@ pub fn native(stage: Stage, numbers: Numbers) -> anyhow::Error {
 }
 /// The diagnostic projection visits only known private carriers and never formats a raw cause.
 pub fn summary(error: &anyhow::Error) -> String {
+    project(None, error)
+}
+fn project(prefix: Option<&AuthoredFailure>, error: &anyhow::Error) -> String {
     fn visit(error: &anyhow::Error, depth: usize, lines: &mut Vec<String>) {
         if depth >= 16 || lines.len() >= 16 {
             return;
         }
         if let Some(value) = error.downcast_ref::<AuthoredFailure>() {
-            lines.push(value.to_string());
+            lines.push(ClosedHeader(value).to_string());
             visit(value.original(), depth + 1, lines);
         } else if let Some(value) = error.downcast_ref::<Failures>() {
             lines.push(format!(
@@ -275,7 +357,10 @@ pub fn summary(error: &anyhow::Error) -> String {
         }
     }
     let mut lines = Vec::new();
-    visit(error, 0, &mut lines);
+    if let Some(value) = prefix {
+        lines.push(ClosedHeader(value).to_string());
+    }
+    visit(error, usize::from(prefix.is_some()), &mut lines);
     let mut result = String::new();
     for line in lines {
         let separator = usize::from(!result.is_empty());
@@ -318,6 +403,19 @@ pub fn find<T: Error + Send + Sync + 'static>(error: &anyhow::Error) -> Option<&
     visit(error, 0)
 }
 pub fn check_validation() -> anyhow::Result<()> {
+    let inner = operation(
+        std::io::Error::from_raw_os_error(5).into(),
+        Stage::ScratchCreate,
+    );
+    let nested = at(inner, Stage::ScratchPrepare);
+    let displayed = nested.to_string();
+    anyhow::ensure!(
+        displayed.contains("stage=scratch-prepare")
+            && displayed.contains("stage=scratch-create")
+            && displayed.contains("native_error=0x00000005")
+            && displayed.len() <= 4096,
+        "CLI Display discarded nested closed native operation stages"
+    );
     let typed = annotate(
         anyhow::anyhow!("private fixture path and compiler output"),
         Stage::DebugCreate,
