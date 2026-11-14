@@ -1,14 +1,17 @@
 # Built-in DOCX workflow
 
-Use the packaged `scripts/revayat-scientific.py docx` command. This independently
-implemented workflow does not need a separately installed DOCX skill. Creation
-uses the MIT-licensed `python-docx` dependency; inspection and targeted editing use
-Python's ZIP/XML libraries. Install the skill's documented requirements first.
+Use the native Rust `revayat-scientific docx` command. The installed skill carries
+the executable under `bin/revayat-scientific` (`.exe` on Windows); use its full
+path if it is not on `PATH`. This workflow needs no Python runtime or separately
+installed DOCX skill. Creation, inspection, ZIP handling and text editing run in
+Rust. New documents embed the existing built-in styles, numbering and theme as
+inert OOXML data, with their MIT license retained in the source distribution.
+LibreOffice and Poppler are used separately for visual acceptance tests.
 
 ## Inspect before translation
 
 ```sh
-python scripts/revayat-scientific.py docx inspect source.docx --output inventory.json
+revayat-scientific docx inspect source.docx --output inventory.json
 ```
 
 The UTF-8 report contains text-node addresses (`part`, zero-based `index`, `text`),
@@ -55,8 +58,8 @@ content into helper logs.
 ```
 
 ```sh
-python scripts/revayat-scientific.py docx edit source.docx translated.docx --patch patches.json
-python scripts/revayat-scientific.py docx validate translated.docx
+revayat-scientific docx edit source.docx translated.docx --patch patches.json
+revayat-scientific docx validate translated.docx
 ```
 
 Every patch must match the inspected old text exactly. Reinspect after any other
@@ -110,13 +113,16 @@ Creation accepts a UTF-8 JSON document with explicit physical dimensions. Exampl
 ```
 
 ```sh
-python scripts/revayat-scientific.py docx create content.json translated.docx
+revayat-scientific docx create content.json translated.docx
 ```
 
 Each section begins on a new page and needs dimensions, all four margins and an
 ordered `blocks` array. Paragraphs need either `text` or `runs`; runs support text,
 bold, italic, font, size_pt, language and rtl. Paragraphs also support a built-in
-Word style name. Tables require rectangular rows of strings or paragraph objects.
+Word paragraph style name, such as `Heading 1`, `Title`, `Quote` or `List Bullet`.
+Style definitions and their numbering/theme dependencies are retained; unknown
+styles and character/table styles used as paragraph styles are rejected.
+Tables require rectangular rows of strings or paragraph objects.
 Paragraph/table language and direction can override the document defaults.
 Headers/footers accept strings or paragraph objects and are independent per section.
 
@@ -168,11 +174,18 @@ needs a reviewed split/conversion, not disabling guards. Output parents must exi
 source aliases and directories cannot be destinations. Writes are staged, reopened
 and published through the shared recoverable publication helper.
 
-Helper logs are content-free files in the installed scripts' `logs/` directory;
-`REVAYAT_LOG_LEVEL` selects DEBUG, INFO, WARNING or ERROR. The agent's translation
-workflow log beside the output remains mandatory and distinct from these logs.
+The native DOCX command prints operation status and content-free failure
+diagnostics. Its inspection JSON intentionally contains source text and must
+remain with the translation job. The agent's translation workflow log beside the
+output remains mandatory.
 
-Implementation sources: [python-docx document API](https://python-docx.readthedocs.io/en/latest/api/document.html),
-[section API](https://python-docx.readthedocs.io/en/latest/api/section.html), and
-[text API](https://python-docx.readthedocs.io/en/latest/api/text.html).
+Implementation: [native Rust DOCX module](../../../crates/revayat-scientific/src/docx.rs),
+[Rust preservation and rendering tests](../../../crates/revayat-scientific/tests/docx_native.rs),
+and [OOXML defaults license](../../../crates/revayat-scientific/assets/LICENSE.docx-defaults).
+The default test tier exercises ZIP/XML admission, exact patching, script-aware
+formatting and recoverable publication. The scientific tier additionally runs
+the explicitly ignored LibreOffice/Poppler tests with
+`cargo test --locked --test docx_native -- --include-ignored`: renamed story edits
+must match an independently assembled two-page render, and newly created
+documents must render their tables/images at the requested section dimensions.
 Font precedence: [Microsoft Word's rFonts behavior](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/aef3c9a6-5d6c-434b-90b7-85e761fd8e62).

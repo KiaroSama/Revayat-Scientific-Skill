@@ -1,0 +1,453 @@
+{
+  "schema": 1,
+  "population": "coverage",
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "source_census": "tests/coverage-census.json",
+  "source": "tests/security/coverage.json",
+  "completeness": "linux-subcontract-only; global six-scenario and five-population validation remains required",
+  "qualification_sources": [
+    "crates/revayat-scientific/tests/runtime_build_integration.rs::test_production_launch_enforces_isolation_and_cleans_owned_container",
+    "crates/revayat-scientific/src/migration_execution/native_coverage.rs::qualify",
+    "crates/revayat-scientific/src/sandbox.rs::probe",
+    "crates/revayat-scientific/src/sandbox_helper.rs::security",
+    "crates/revayat-scientific/src/bin/security_helper/mod.rs::preflight_then_worker",
+    "crates/revayat-scientific/src/security_cases.rs::Cases::run"
+  ],
+  "execution_contract": {
+    "entries": [
+      {
+        "id": "coverage::linux-controls",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+        "invokes_ids": [],
+        "obligation_ids": [
+          "COVERAGE-001-01",
+          "COVERAGE-001-02",
+          "COVERAGE-001-03",
+          "COVERAGE-001-04",
+          "COVERAGE-001-05",
+          "COVERAGE-001-06",
+          "COVERAGE-001-07"
+        ],
+        "variant_ids": [],
+        "checks": [
+          {
+            "id": "readonly-target-tools-root",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          },
+          {
+            "id": "scratch-only-writes",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          },
+          {
+            "id": "empty-allowlisted-environment",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          },
+          {
+            "id": "network-namespace",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          },
+          {
+            "id": "nonroot-capabilities",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          },
+          {
+            "id": "cpu-memory-pid-file-disk-wall",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          },
+          {
+            "id": "owned-cleanup",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coverage::html-work-admission",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+        "invokes_ids": [],
+        "obligation_ids": [
+          "COVERAGE-005-01",
+          "COVERAGE-005-02",
+          "COVERAGE-005-03",
+          "COVERAGE-005-04",
+          "COVERAGE-005-05",
+          "COVERAGE-005-06",
+          "COVERAGE-005-07",
+          "COVERAGE-005-08",
+          "COVERAGE-005-09",
+          "COVERAGE-005-10",
+          "COVERAGE-005-11"
+        ],
+        "variant_ids": [],
+        "checks": [
+          {
+            "id": "depth-boundary",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_parser",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_source",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_guard",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_assets",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_text_order",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_resource_policy",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_render_entry",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_lint"
+            ]
+          },
+          {
+            "id": "element-count-boundary",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_parser",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_source",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_guard",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_assets",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_text_order",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_resource_policy",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_render_entry",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_lint"
+            ]
+          },
+          {
+            "id": "parser",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_parser",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_parser",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_nesting"
+            ]
+          },
+          {
+            "id": "source",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_source",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_source",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_nesting"
+            ]
+          },
+          {
+            "id": "lint",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_lint",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_lint",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_lint"
+            ]
+          },
+          {
+            "id": "guard",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_guard",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_guard",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_guard"
+            ]
+          },
+          {
+            "id": "assets",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_assets",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_assets",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_assets"
+            ]
+          },
+          {
+            "id": "text-order",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_text_order",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_text_order",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_nesting"
+            ]
+          },
+          {
+            "id": "resource-policy",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_resource_policy",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_resource_policy",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_nesting"
+            ]
+          },
+          {
+            "id": "render-entry-admission-ordering",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_depth_render_entry",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_nodes_render_entry",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_render_entry_ordering"
+            ]
+          },
+          {
+            "id": "ordinary-nesting",
+            "witness_ids": [
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_nesting",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_lint",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_guard",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_assets",
+              "crates/revayat-scientific/bin/revayat-security-worker::html_ordinary_render_entry_ordering"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "coverage::tex-output-budget",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+        "invokes_ids": [],
+        "obligation_ids": [
+          "COVERAGE-006-01",
+          "COVERAGE-006-02",
+          "COVERAGE-006-03",
+          "COVERAGE-006-04",
+          "COVERAGE-006-05"
+        ],
+        "variant_ids": [],
+        "checks": [
+          {
+            "id": "effective-production-mount",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+              "crates/revayat-scientific/bin/revayat-security-worker::tex_output_production_run_arguments_evaluated",
+              "crates/revayat-scientific/bin/revayat-security-worker::tex_output_production_rw_output_bind"
+            ]
+          },
+          {
+            "id": "per-file-versus-aggregate",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+              "crates/revayat-scientific/bin/revayat-security-worker::tex_output_production_per_file_not_aggregate"
+            ]
+          },
+          {
+            "id": "finite-multi-file-quota",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container"
+            ]
+          },
+          {
+            "id": "harmless-tex-openout-policy",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+              "crates/revayat-scientific/bin/revayat-security-worker::tex_output_real_xelatex_no_shell",
+              "crates/revayat-scientific/bin/revayat-security-worker::tex_output_two_permitted_output_files"
+            ]
+          },
+          {
+            "id": "normal-output",
+            "witness_ids": [
+              "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+              "crates/revayat-scientific/bin/revayat-security-worker::tex_output_ordinary_pdf"
+            ]
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      {
+        "scope": {
+          "platform": "linux",
+          "tier": "native",
+          "profile": "debug",
+          "job": "linux-security"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_production_launch_enforces_isolation_and_cleans_owned_container",
+        "entry_ids": [
+          "coverage::linux-controls",
+          "coverage::html-work-admission",
+          "coverage::tex-output-budget"
+        ]
+      }
+    ]
+  },
+  "obligations": [
+    {
+      "id": "COVERAGE-001-01",
+      "scenario_id": "coverage::linux-controls",
+      "scenario_ordinal": 1,
+      "check_id": "readonly-target-tools-root",
+      "check_ordinal": 1,
+      "source_pointer": "/scenarios/0/checks/0"
+    },
+    {
+      "id": "COVERAGE-001-02",
+      "scenario_id": "coverage::linux-controls",
+      "scenario_ordinal": 1,
+      "check_id": "scratch-only-writes",
+      "check_ordinal": 2,
+      "source_pointer": "/scenarios/0/checks/1"
+    },
+    {
+      "id": "COVERAGE-001-03",
+      "scenario_id": "coverage::linux-controls",
+      "scenario_ordinal": 1,
+      "check_id": "empty-allowlisted-environment",
+      "check_ordinal": 3,
+      "source_pointer": "/scenarios/0/checks/2"
+    },
+    {
+      "id": "COVERAGE-001-04",
+      "scenario_id": "coverage::linux-controls",
+      "scenario_ordinal": 1,
+      "check_id": "network-namespace",
+      "check_ordinal": 4,
+      "source_pointer": "/scenarios/0/checks/3"
+    },
+    {
+      "id": "COVERAGE-001-05",
+      "scenario_id": "coverage::linux-controls",
+      "scenario_ordinal": 1,
+      "check_id": "nonroot-capabilities",
+      "check_ordinal": 5,
+      "source_pointer": "/scenarios/0/checks/4"
+    },
+    {
+      "id": "COVERAGE-001-06",
+      "scenario_id": "coverage::linux-controls",
+      "scenario_ordinal": 1,
+      "check_id": "cpu-memory-pid-file-disk-wall",
+      "check_ordinal": 6,
+      "source_pointer": "/scenarios/0/checks/5"
+    },
+    {
+      "id": "COVERAGE-001-07",
+      "scenario_id": "coverage::linux-controls",
+      "scenario_ordinal": 1,
+      "check_id": "owned-cleanup",
+      "check_ordinal": 7,
+      "source_pointer": "/scenarios/0/checks/6"
+    },
+    {
+      "id": "COVERAGE-005-01",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "depth-boundary",
+      "check_ordinal": 1,
+      "source_pointer": "/scenarios/4/checks/0"
+    },
+    {
+      "id": "COVERAGE-005-02",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "element-count-boundary",
+      "check_ordinal": 2,
+      "source_pointer": "/scenarios/4/checks/1"
+    },
+    {
+      "id": "COVERAGE-005-03",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "parser",
+      "check_ordinal": 3,
+      "source_pointer": "/scenarios/4/checks/2"
+    },
+    {
+      "id": "COVERAGE-005-04",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "source",
+      "check_ordinal": 4,
+      "source_pointer": "/scenarios/4/checks/3"
+    },
+    {
+      "id": "COVERAGE-005-05",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "lint",
+      "check_ordinal": 5,
+      "source_pointer": "/scenarios/4/checks/4"
+    },
+    {
+      "id": "COVERAGE-005-06",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "guard",
+      "check_ordinal": 6,
+      "source_pointer": "/scenarios/4/checks/5"
+    },
+    {
+      "id": "COVERAGE-005-07",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "assets",
+      "check_ordinal": 7,
+      "source_pointer": "/scenarios/4/checks/6"
+    },
+    {
+      "id": "COVERAGE-005-08",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "text-order",
+      "check_ordinal": 8,
+      "source_pointer": "/scenarios/4/checks/7"
+    },
+    {
+      "id": "COVERAGE-005-09",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "resource-policy",
+      "check_ordinal": 9,
+      "source_pointer": "/scenarios/4/checks/8"
+    },
+    {
+      "id": "COVERAGE-005-10",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "render-entry-admission-ordering",
+      "check_ordinal": 10,
+      "source_pointer": "/scenarios/4/checks/9"
+    },
+    {
+      "id": "COVERAGE-005-11",
+      "scenario_id": "coverage::html-work-admission",
+      "scenario_ordinal": 5,
+      "check_id": "ordinary-nesting",
+      "check_ordinal": 11,
+      "source_pointer": "/scenarios/4/checks/10"
+    },
+    {
+      "id": "COVERAGE-006-01",
+      "scenario_id": "coverage::tex-output-budget",
+      "scenario_ordinal": 6,
+      "check_id": "effective-production-mount",
+      "check_ordinal": 1,
+      "source_pointer": "/scenarios/5/checks/0"
+    },
+    {
+      "id": "COVERAGE-006-02",
+      "scenario_id": "coverage::tex-output-budget",
+      "scenario_ordinal": 6,
+      "check_id": "per-file-versus-aggregate",
+      "check_ordinal": 2,
+      "source_pointer": "/scenarios/5/checks/1"
+    },
+    {
+      "id": "COVERAGE-006-03",
+      "scenario_id": "coverage::tex-output-budget",
+      "scenario_ordinal": 6,
+      "check_id": "finite-multi-file-quota",
+      "check_ordinal": 3,
+      "source_pointer": "/scenarios/5/checks/2"
+    },
+    {
+      "id": "COVERAGE-006-04",
+      "scenario_id": "coverage::tex-output-budget",
+      "scenario_ordinal": 6,
+      "check_id": "harmless-tex-openout-policy",
+      "check_ordinal": 4,
+      "source_pointer": "/scenarios/5/checks/3"
+    },
+    {
+      "id": "COVERAGE-006-05",
+      "scenario_id": "coverage::tex-output-budget",
+      "scenario_ordinal": 6,
+      "check_id": "normal-output",
+      "check_ordinal": 5,
+      "source_pointer": "/scenarios/5/checks/4"
+    }
+  ]
+}

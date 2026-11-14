@@ -1,0 +1,331 @@
+{
+  "schema": 1,
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "source": "tests/Check-EngineDiscovery.ps1",
+  "kind": "check",
+  "original_helper": "skills/revayat-scientific/scripts/build-pdf.ps1::Get-AvailableEngines",
+  "shared_assertions": "Original L3-L24 requires one production discovery seam and per-call doubles with precise boundaries. The Rust carrier executes available_engines with fresh doubles per case, asserts both original ordered engine inventory and actual ordered probe calls, validates the browser capability passed to the Chromium probe, and verifies that each returned capability belongs to its engine. Original Python import readiness becomes Rust-owned adapter readiness; no owned Python helper remains. These six discovery checks launch no native external tool.",
+  "execution_status": "not-run",
+  "execution_contract": {
+    "entries": [
+      {
+        "id": "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/engine_discovery.rs::available_engines"
+        ],
+        "obligation_ids": [
+          "ENGINE-001"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/Check-EngineDiscovery.ps1::explicit-tex",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/engine_discovery.rs::available_engines"
+        ],
+        "obligation_ids": [
+          "ENGINE-002"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/engine_discovery.rs::available_engines"
+        ],
+        "obligation_ids": [
+          "ENGINE-003"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/engine_discovery.rs::available_engines"
+        ],
+        "obligation_ids": [
+          "ENGINE-004"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/engine_discovery.rs::available_engines"
+        ],
+        "obligation_ids": [
+          "ENGINE-005"
+        ],
+        "variant_ids": [],
+        "checks": []
+      },
+      {
+        "id": "tests/Check-EngineDiscovery.ps1::absent-browser-no-import",
+        "parent_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "invokes_ids": [
+          "crates/revayat-scientific/src/engine_discovery.rs::available_engines"
+        ],
+        "obligation_ids": [
+          "ENGINE-006"
+        ],
+        "variant_ids": [],
+        "checks": []
+      }
+    ],
+    "scopes": [
+      {
+        "scope": {
+          "platform": "linux",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "entry_ids": [
+          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::explicit-tex",
+          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "linux",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "entry_ids": [
+          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::explicit-tex",
+          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "macos",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "entry_ids": [
+          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::explicit-tex",
+          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "macos",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "entry_ids": [
+          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::explicit-tex",
+          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "windows",
+          "tier": "portable",
+          "profile": "debug",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "entry_ids": [
+          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::explicit-tex",
+          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
+        ]
+      },
+      {
+        "scope": {
+          "platform": "windows",
+          "tier": "portable",
+          "profile": "release",
+          "job": "portable"
+        },
+        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+        "entry_ids": [
+          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::explicit-tex",
+          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
+        ]
+      }
+    ]
+  },
+  "required_evidence": {
+    "binding": [
+      "tested_sha",
+      "run_id",
+      "run_attempt",
+      "job",
+      "platform",
+      "tier",
+      "profile",
+      "baseline_commit",
+      "census_sha256"
+    ],
+    "case_fields": [
+      "case_id",
+      "parent_id",
+      "obligation_ids",
+      "source",
+      "outcome",
+      "exit",
+      "cleanup_complete"
+    ],
+    "success": "Every exact check executes available_engines with its authored request and preconditions and asserts both original engine result and ordered probe calls before emitting a journal event. Carrier journal records cleanup_complete=false. Only the outer owned harness may finalize cleanup after actual successful process-tree cleanup and same-carrier Passed. Bind actual hosted run/profile/scope/baseline and census digest; reject missing, duplicate, unknown, failed, unclean, wrong-parent or mismatched records. Never expand carrier Passed or census rows into check Passed.",
+    "producer_status": "source-authored-unexecuted",
+    "consumer_rule": "Fail closed until the same production discovery controller, source-reviewed six-check carrier, and outer-owned capture all execute. Explicit WeasyPrint and automatic inventory preserve genuine optional external WeasyPrint identity; Chromium alias/rejection never proves these checks. Pure checks do not certify native backend readiness or rendering."
+  },
+  "cases": [
+    {
+      "id": "tests/Check-EngineDiscovery.ps1::explicit-chromium",
+      "source_lines": "L26-L32,row1",
+      "requested": "chromium",
+      "expected_engines": [
+        "chromium"
+      ],
+      "expected_calls": [
+        "browser",
+        "chromium"
+      ],
+      "candidate_rust_test": "runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+      "counterpart_status": "source-authored-unexecuted",
+      "obligation_ids": [
+        "ENGINE-001"
+      ],
+      "assertions": "Fresh doubles return only Chromium; actual probes are exactly browser,chromium; retained browser capability is fixed-browser and TeX/WeasyPrint capabilities are absent."
+    },
+    {
+      "id": "tests/Check-EngineDiscovery.ps1::explicit-tex",
+      "source_lines": "L26-L32,row2",
+      "requested": "tex",
+      "expected_engines": [
+        "tex"
+      ],
+      "expected_calls": [
+        "tex"
+      ],
+      "candidate_rust_test": "runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+      "counterpart_status": "source-authored-unexecuted",
+      "obligation_ids": [
+        "ENGINE-002"
+      ],
+      "assertions": "Fresh doubles return only TeX; actual probes are exactly tex; only the fixed TeX runtime capability survives."
+    },
+    {
+      "id": "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
+      "source_lines": "L26-L32,row3",
+      "requested": "weasyprint",
+      "expected_engines": [
+        "weasyprint"
+      ],
+      "expected_calls": [
+        "weasyprint"
+      ],
+      "candidate_rust_test": "runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+      "counterpart_status": "source-authored-unexecuted",
+      "obligation_ids": [
+        "ENGINE-003"
+      ],
+      "assertions": "Fresh doubles return only genuine WeasyPrint identity; actual probes are exactly weasyprint; its dedicated adapter capability survives and Chromium/TeX are absent."
+    },
+    {
+      "id": "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
+      "source_lines": "L26-L32,row4",
+      "requested": "auto",
+      "expected_engines": [
+        "tex",
+        "chromium",
+        "weasyprint"
+      ],
+      "expected_calls": [
+        "tex",
+        "browser",
+        "chromium",
+        "weasyprint"
+      ],
+      "candidate_rust_test": "runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+      "counterpart_status": "source-authored-unexecuted",
+      "obligation_ids": [
+        "ENGINE-004"
+      ],
+      "assertions": "Fresh doubles return tex,chromium,weasyprint in that exact order; actual probes are exactly tex,browser,chromium,weasyprint; all three distinct capabilities survive."
+    },
+    {
+      "id": "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
+      "source_lines": "L33-L34",
+      "requested": "chromium",
+      "expected_engines": [],
+      "expected_calls": [
+        "browser",
+        "chromium"
+      ],
+      "candidate_rust_test": "runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+      "counterpart_status": "source-authored-unexecuted",
+      "obligation_ids": [
+        "ENGINE-005"
+      ],
+      "assertions": "With a browser present and Chromium readiness false, returned engines/capabilities are empty and actual probes are exactly browser,chromium; no fallback is probed."
+    },
+    {
+      "id": "tests/Check-EngineDiscovery.ps1::absent-browser-no-import",
+      "source_lines": "L35-L36",
+      "requested": "chromium",
+      "expected_engines": [],
+      "expected_calls": [
+        "browser"
+      ],
+      "candidate_rust_test": "runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+      "counterpart_status": "source-authored-unexecuted",
+      "obligation_ids": [
+        "ENGINE-006"
+      ],
+      "assertions": "With browser absent, returned engines/capabilities are empty and actual probes are exactly browser; Chromium readiness and all fallback probes are skipped."
+    }
+  ],
+  "rust_source": "crates/revayat-scientific/src/engine_discovery.rs::available_engines",
+  "carrier_test": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
+  "carrier_implementation": "crates/revayat-scientific/tests/support/engine_discovery_contract.rs::run (called by the unchanged registered carrier)",
+  "relationship": "The existing runtime_build_integration carrier executes all six authored pure checks in listed order against the production discovery controller. Cases are not new libtest registrations.",
+  "implementation_decision": {
+    "status": "preserve-optional-external-dependency",
+    "weasyprint": "Preserve the genuine WeasyPrint renderer as an optional external dependency. The Rust-owned discovery and rendering adapters must retain weasyprint identity and execute the real external renderer in an approved isolated environment. Rejecting it or aliasing to Chromium is not equivalent.",
+    "production_wiring_required": "build::select_source must execute this same controller through real adapters. A successful optional WeasyPrint readiness probe must yield its own capability. The pure checks do not claim installed-tool or sandboxed-render qualification."
+  },
+  "execution_contract_source": "The source-authored six-case table is independent of this census. After each real available_engines invocation reaches all engine/order/capability assertions, the carrier appends ENGINE-001..006 to engine-observations.json when REVAYAT_ENGINE_EVENT_DIR is supplied by an outer owner. No journal row is generated from census inventory or carrier outcome. Outer capture must validate successful carrier and finalize cleanup before publishing an engine OperationReport in each existing portable scope."
+}

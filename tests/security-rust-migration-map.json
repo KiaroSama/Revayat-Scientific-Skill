@@ -1,0 +1,261 @@
+{
+  "schema": 1,
+  "mappings": [
+    {
+      "legacy_id": "tests/security/admissions.py::docx/restricted-rels-_rels",
+      "rust_test": "standalone_security::docx_restricted_relationship_lowercase",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::docx/restricted-RELS-_rels",
+      "rust_test": "standalone_security::docx_restricted_relationship_uppercase_suffix",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::docx/restricted-rels-_RELS",
+      "rust_test": "standalone_security::docx_restricted_relationship_uppercase_directory",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::docx/restricted-ReLs-_ReLs",
+      "rust_test": "standalone_security::docx_restricted_relationship_mixed_case",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::docx/ordinary-external-False",
+      "rust_test": "standalone_security::docx_ordinary_internal_relationship",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::docx/ordinary-external-True",
+      "rust_test": "standalone_security::docx_ordinary_external_relationship",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/ordinary-nesting",
+      "rust_test": "standalone_security::html_ordinary_nesting",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/ordinary-lint",
+      "rust_test": "standalone_security::html_ordinary_lint",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/ordinary-guard",
+      "rust_test": "standalone_security::html_ordinary_guard",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/ordinary-assets",
+      "rust_test": "standalone_security::html_ordinary_assets",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/ordinary-render-entry-ordering",
+      "rust_test": "standalone_security::html_ordinary_render_entry_ordering",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/parser",
+      "rust_test": "standalone_security::html_depth_parser",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/source",
+      "rust_test": "standalone_security::html_depth_source",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/guard",
+      "rust_test": "standalone_security::html_depth_guard",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/assets",
+      "rust_test": "standalone_security::html_depth_assets",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/text-order",
+      "rust_test": "standalone_security::html_depth_text_order",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/resource-policy",
+      "rust_test": "standalone_security::html_depth_resource_policy",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/render-entry",
+      "rust_test": "standalone_security::html_depth_render_entry",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/depth/lint",
+      "rust_test": "standalone_security::html_depth_lint",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/parser",
+      "rust_test": "standalone_security::html_nodes_parser",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/source",
+      "rust_test": "standalone_security::html_nodes_source",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/guard",
+      "rust_test": "standalone_security::html_nodes_guard",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/assets",
+      "rust_test": "standalone_security::html_nodes_assets",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/text-order",
+      "rust_test": "standalone_security::html_nodes_text_order",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/resource-policy",
+      "rust_test": "standalone_security::html_nodes_resource_policy",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/render-entry",
+      "rust_test": "standalone_security::html_nodes_render_entry",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::html/nodes/lint",
+      "rust_test": "standalone_security::html_nodes_lint",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::publication/portable-reparse-metadata",
+      "rust_test": "standalone_security::publication_portable_reparse_metadata",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::publication/ordinary-publication",
+      "rust_test": "standalone_security::publication_ordinary_publication",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/admissions.py::publication/protected-hardlink",
+      "rust_test": "standalone_security::publication_protected_hardlink",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/tex_output.py::tex-output/production-run-arguments-evaluated",
+      "rust_test": "standalone_security::tex_output_production_run_arguments_evaluated",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof. Production argument checks explicitly report the writable output bind aggregate quota as unresolved; actual XeLaTeX cases assert both harmless output files and parse the real PDF, with no nested runtime discovery.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/tex_output.py::tex-output/production-rw-output-bind",
+      "rust_test": "standalone_security::tex_output_production_rw_output_bind",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof. Production argument checks explicitly report the writable output bind aggregate quota as unresolved; actual XeLaTeX cases assert both harmless output files and parse the real PDF, with no nested runtime discovery.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/tex_output.py::tex-output/production-per-file-not-aggregate",
+      "rust_test": "standalone_security::tex_output_production_per_file_not_aggregate",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof. Production argument checks explicitly report the writable output bind aggregate quota as unresolved; actual XeLaTeX cases assert both harmless output files and parse the real PDF, with no nested runtime discovery.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/tex_output.py::tex-output/real-xelatex-no-shell",
+      "rust_test": "standalone_security::tex_output_real_xelatex_no_shell",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof. Production argument checks explicitly report the writable output bind aggregate quota as unresolved; actual XeLaTeX cases assert both harmless output files and parse the real PDF, with no nested runtime discovery.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/tex_output.py::tex-output/two-permitted-output-files",
+      "rust_test": "standalone_security::tex_output_two_permitted_output_files",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof. Production argument checks explicitly report the writable output bind aggregate quota as unresolved; actual XeLaTeX cases assert both harmless output files and parse the real PDF, with no nested runtime discovery.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/tex_output.py::tex-output/ordinary-pdf",
+      "rust_test": "standalone_security::tex_output_ordinary_pdf",
+      "rationale": "Preserves the fixed authored fixture and original admission/refusal, source/delivery preservation and actual production-API caller contract; the required Linux helper also executes this exact shared case after effective isolation proof. Production argument checks explicitly report the writable output bind aggregate quota as unresolved; actual XeLaTeX cases assert both harmless output files and parse the real PDF, with no nested runtime discovery.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "tests/security/windows_probe.py::WIN-OPC-CASE-IDENTITY",
+      "rust_test": "windows_standalone::native_opc_consumer_recognizes_case_variant_relationship_part",
+      "rationale": "Official typed Windows IOpcFactory independently reads the authored uppercase RELS relationship; checks exact relationship id/type, internal target, resolved part and chunk content.",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "legacy_id": "tests/security/windows_probe.py::WIN-JUNCTION-ADMISSION",
+      "rust_test": "windows_standalone::junction_destination_admission_preserves_owned_controls",
+      "rationale": "Real NTFS junction reaches public validate_destination; refusal preserves staged bytes, junction target and separate outside sentinel.",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "legacy_id": "tests/security/windows_probe.py::WIN-JUNCTION-PUBLICATION",
+      "rust_test": "windows_standalone::junction_publication_refuses_and_preserves_stage_and_sentinels",
+      "rationale": "Real NTFS junction reaches public publication transaction; rejection preserves candidate and both independent sentinels.",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "legacy_id": "tests/security/windows_probe.py::WIN-ORDINARY-PUBLICATION",
+      "rust_test": "windows_standalone::ordinary_publication_commits_exact_bytes",
+      "rationale": "Positive ordinary native publication commits exact stage bytes, consumes its owned stage and preserves independent sentinels.",
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "legacy_id": "tests/security/windows_probe.py::WIN-POWERSHELL-LEXICAL",
+      "rust_test": "windows_standalone::public_build_junction_refusal_precedes_lint_and_renderer",
+      "rationale": "Public Rust build CLI replaces the old PowerShell caller: functioning browser marker positive control, actually failing lint control, then lexical junction refusal before lint or renderer execution, with sentinels preserved.",
+      "platforms": [
+        "windows"
+      ]
+    }
+  ]
+}

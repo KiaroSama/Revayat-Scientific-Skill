@@ -51,6 +51,34 @@ not proof of correct order in any source language. Read `source-languages.md` fo
 language/script identification and quote-safe processing. Record source page/book
 dimensions and original image pixels using `layout-and-images.md` before drafting.
 
+Record what the selected extraction or translation mode actually processed. A
+page can be preserved unchanged while its scanned text remains untranslated,
+and a mixed native-text/scanned page can be only partly covered. Track translated,
+OCRed, reviewed and skipped source objects separately; appearance, output page
+count and successful file creation do not close the coverage ledger.
+
+## Structured-source preservation
+
+When extracting structured documents, inventory relationships and location as well
+as text. In DOCX, preserve a hyperlink's address and separately stored anchor;
+resolve note/header/footer links against the relationships of their owning part.
+A paragraph's direct outline level can identify a heading without a heading
+style, including a numbered heading. Keep nested tables inside their containing
+cell, in order among that cell's paragraphs, and keep a following table distinct
+from a preceding list. Check secondary stories alongside the main body.
+
+Valid OMML math may omit optional property elements. Preserve the expression and
+verify the applicable defaults rather than dropping it because a property node
+is absent. In JATS or other structured sources, retain both heading labels and
+titles, code indentation and line breaks, note links, and each caption's figure
+association. Record an unsupported or unreadable object as unresolved rather
+than treating empty output as successful extraction.
+
+These are source-review checks informed by the
+[November 13 examples](upstream-review-2026-11-13.md#structured-content).
+They do not expand the Rust CLI's admitted OOXML subset or establish that its
+package-preserving edits have the upstream converter's defects.
+
 ## Extracting figures
 
 The destination PDF must show the **same pixels the reader sees on the
@@ -74,7 +102,7 @@ figure**, not the whole source page around it.
    1.1`) appears — do not guess an offset from printed page numbers.
 
    ```bash
-   scripts/crop-source-figures.py source/doc.pdf --out figures/artwork \
+   revayat-scientific crop source/doc.pdf --out figures/artwork \
        --map figures-map.tsv --cover --author-page 18 --dpi 300
    ```
 
@@ -94,27 +122,33 @@ figure**, not the whole source page around it.
 5. **Flatten before the print build:**
 
    ```bash
-   scripts/prepare-figures.py figures/artwork --check
+   revayat-scientific figures figures/artwork --check
    ```
 
-   `--check` fails on leftover alpha (WeasyPrint/Cairo and xepersian paint
+   `--check` fails on leftover alpha (HTML renderers and xepersian paint
    it onto black) and on mostly-black dumps. After confirming against the
    source page that a dark dump is inverted, not a real dark photograph:
 
    ```bash
-   scripts/prepare-figures.py figures/artwork --invert-dark
+   revayat-scientific figures figures/artwork --invert-dark
    ```
 
 ```bash
 pdfimages -png -p source/doc.pdf figures/img      # last-resort rasters
 pdftoppm -png -r 150 -f 12 -l 12 source/doc.pdf /tmp/page-12  # check only
-scripts/crop-source-figures.py source/doc.pdf --out figures/artwork --map figures-map.tsv
-scripts/prepare-figures.py figures/artwork
-scripts/prepare-figures.py figures/artwork --check
+revayat-scientific crop source/doc.pdf --out figures/artwork --map figures-map.tsv
+revayat-scientific figures figures/artwork
+revayat-scientific figures figures/artwork --check
 ```
 
 The checker fails (`full-page-figure`) if the translation still references
 `srcpage-N.png` or `page-N.png`.
+
+A self-contained export can still change its images. Embedding compressed JPEG
+or converting 16-bit samples to 8-bit RGB creates a derivative; retain the
+original asset and record any conversion before comparing the actual figure.
+Portability, a readable preview and larger pixel dimensions do not establish
+preserved scientific image information.
 
 ## Structure inventory
 
@@ -128,7 +162,7 @@ is a missing section. It costs a minute and it is the only way to answer
 
 ```bash
 ls figures/ | sed 's/.*\///' > manifest.txt
-scripts/check-fa.py doc.tex --level <level> --terms terms.tsv --manifest manifest.txt --strict
+revayat-scientific lint doc.tex --level <level> --terms terms.tsv --manifest manifest.txt --strict
 ```
 
 The checker reports any manifest image that never made it into the

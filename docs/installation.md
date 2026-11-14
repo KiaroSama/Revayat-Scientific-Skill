@@ -1,30 +1,21 @@
-# Installation and host paths
+# Installation
 
-The installed payload includes native DOCX/PDF helpers and the optional parallel
-agent workflow. Install `skills/revayat-scientific/requirements.txt` into the same
-interpreter used by the dispatcher. DOCX creation uses python-docx; PDF operations
-use PyMuPDF. Chromium rendering additionally uses Playwright with an existing
-browser executable; set `REVAYAT_CHROMIUM` to an explicit executable when needed.
-WeasyPrint rendering requires its fatal URL-fetcher API (version68 or newer;
-version70 is exercised in CI), installed in that same interpreter.
-Automatic TeX requires local Docker/Podman and the prebuilt toolchain image;
-follow the [isolated TeX setup](../skills/revayat-scientific/references/pdf-output.md).
-The helper never installs a container runtime or pulls an image automatically. The Windows PDF adapter checks only the explicitly requested engine's prerequisites; automatic selection still discovers every supported engine. Selecting Chromium does not probe a container daemon or import WeasyPrint, and a selected engine's failure never falls back. An empty availability list remains an explicit value on both PowerShell 5.1 and 7, so a missing selected prerequisite reports that engine as unavailable.
-OCR requires Tesseract and the requested language data; `TESSERACT_CMD` can name
-an explicitly configured absolute executable. Helpers never install these tools.
+These native instructions apply to `rewrite/rust-complete`; the default `main` checkout is not yet the completed Rust rewrite. Use the exact reviewed rewrite revision and matching successful hosted CI artifacts for your operating system. Current rewrite package/install acceptance is still being verified; historical or partial CI results do not certify a new revision. CI artifacts are intermediate build outputs, not automatically published or signed final releases.
 
-The [security regression CI controllers](security-testing.md) are repository development
-infrastructure, not installed skill prerequisites. Their Windows virtual disk, quotas
-and LPAC setup are owned by a disposable hosted job; ordinary installation never
-configures these controls on the user's system.
+```console
+git clone --branch rewrite/rust-complete https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+cd Revayat-Scientific-Skill
+cargo build --locked --release --workspace --bins
+cargo run --locked --release --bin revayat-scientific -- install --agent codex
+cargo run --locked --release --bin revayat-scientific -- install --scope project --path /path/to/project
+cargo run --locked --release --bin revayat-scientific -- install --dest /path/to/final/revayat-scientific
+```
 
-No separate DOCX or PDF Processing Pro skill installation is required. Parallel
-translation/editing uses available host subagents only after affirmative user
-consent; a host without subagents follows the same workflow sequentially.
+Installed commands reside in `bin/revayat-scientific`, or `bin/revayat-scientific.exe` on Windows. Linux/macOS also require executable `bin/revayat-process-owner` beside the main program. Windows packages require adjacent `bin/revayat-quota-worker.exe`, the fixed native quota and kernel-control worker. Keep each platform's files together from the same build and revision; do not copy only the main program or mix artifacts. Rust dependencies are compiled into these binaries; external document/rendering tools are separate.
 
-Installers make real copies. `--agent all` installs only for detected configuration directories; an explicit agent can create its skill directory. `--scope project` requires `--path`. `--dest` names an explicit final skill directory for other hosts. Existing installations are refused unless `--force` is given; the complete target set is validated and staged before replacement, with old copies retained outside normal skill discovery. Nonempty targets must identify this skill; arbitrary directories cannot be forced. A later failure rolls back earlier targets, or retains a located recovery journal if safe restoration is impossible. See [installation integrity and recovery](installation-integrity.md). Installation does not modify agent configuration or install dependencies.
+Build with `--workspace --bins` before using a source checkout or plugin. `cargo run --bin revayat-scientific` selects the main binary, not a rebuild of every sibling. The Unix companion has a private runtime protocol, not a user document-processing command. Missing, linked or nonregular companion files cause refusal before install/package publication; runtime also refuses an absent companion rather than spawning an unowned fallback. These checks do not authenticate a signed release or enforce a same-version handshake.
 
-| Agent | User skill parent | Project skill parent |
+| Host | User skill directory | Project skill directory |
 | --- | --- | --- |
 | Claude Code | `~/.claude/skills` | `.claude/skills` |
 | Codex | `~/.agents/skills` | `.agents/skills` |
@@ -35,16 +26,36 @@ Installers make real copies. `--agent all` installs only for detected configurat
 | OpenCode | `~/.config/opencode/skills` | `.opencode/skills` |
 | Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
 
-Every target contains `revayat-scientific/SKILL.md`. Codex and Antigravity share one copy in project scope. A host using additional configured directories can use `--dest`. Native host discovery may require refreshing its skill inventory; CI verifies installed layout and execution, not every application's UI.
+`--agent all` is the default and installs only into detected host configuration roots; explicit `--agent` may create its directory. A Codex `.codex` configuration also counts as detection. Shared destinations are deduplicated. Project scope requires `--path`. `--dest` names the final skill directory, not its parent. Installation does not edit host configuration or install system dependencies.
 
-```bash
-python install/install.py --agent codex --scope project --path /path/to/project
-python install/install.py --dest /custom/skills/revayat-scientific
-python install/install.py --agent claude --force
+Existing destinations are refused without `--force`. Force replacement requires an empty directory or a simple, unambiguous `name: revayat-scientific` frontmatter identity. Duplicate keys, ambiguous continuations, foreign contents, linked trees and reserved recovery/backup locations are refused. Every target is staged and checked before activation. Old editions remain in `skill-backups` outside ordinary skill discovery. See [installation integrity](installation-integrity.md).
+
+## Plugin hosts
+
+```text
+/plugin marketplace add KiaroSama/Revayat-Scientific-Skill
+/plugin install revayat-scientific@revayat-scientific-skill
 ```
 
-The Bash and PowerShell entry points forward these same options. Paths with spaces must be quoted. They never download dependencies; Python 3.11+ is required before installation.
+The Claude Code plugin exposes `/translate-paper`, `/revayat-scientific-resume` and `/revayat-scientific-qa`. Codex and Cursor manifests use the same Rust-oriented skill instructions. In Codex invoke `$revayat-scientific`.
 
-For a standalone upload, run `python tools/package.py` and use `dist/revayat-scientific.skill` in a host that accepts ZIP skill uploads. Extract it into the host skill parent otherwise. The package includes the required license notices.
+## Complete archive
 
-Discovery references: [Agent Skills](https://agentskills.io/specification), [Claude Code](https://code.claude.com/docs/en/skills), [Codex](https://developers.openai.com/codex/skills), [Cursor](https://cursor.com/docs/context/skills), [Kiro](https://kiro.dev/docs/skills/), [Cline](https://docs.cline.bot/customization/skills), [OpenCode](https://opencode.ai/docs/skills/), [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills), [Antigravity](https://antigravity.google/docs/migration/workflows-to-skills).
+```console
+cargo run --locked --release --bin revayat-scientific -- package --output dist/revayat-scientific.skill
+```
+
+The ZIP root is `revayat-scientific/`. It includes the collected native main executable and its required platform sibling: `bin/revayat-process-owner` on Linux/macOS or `bin/revayat-quota-worker.exe` on Windows. It also contains skill instructions, eligible references/assets/agent metadata, `LICENSE` and `NOTICE.md`. ZIP entries use Unix creator metadata, `0755` for `bin/` and `0644` for data; use an extractor that preserves executable bits. Choose the archive for the target operating system and architecture. Collection refuses payloads above 64 MiB and bounds source-tree entries/files; the staged archive is reopened and checked against exact collected members, sizes and hashes before recoverable publication.
+
+Packaging does not bundle external engines, installed fonts, job data, logs, credentials, hidden files or build caches. Font delivery is a separate licensed/provenance-checked operation. HTML rendering uses a sandboxed Chromium-family browser or the actual optional WeasyPrint engine inside the supported Linux Docker/Podman image. TeX uses that image with effective resource controls and a finite aggregate output tmpfs. External WeasyPrint/Python image packages do not require host Python or owned Python scripts. Poppler provides required PDF verification/extraction; OCR needs Tesseract language data and independent DOCX rendering needs LibreOffice. Installers do not provision these tools.
+
+The WeasyPrint adapter admits a closed static resource view. It refuses `srcset`
+and `imagesrcset`, XML stylesheet processing instructions, ambiguous SVG style
+markup/entities, incompatible text encodings and CSS expressions that synthesize
+external resource URLs. Ordinary local HTML, CSS, fonts, images, SVG references
+and bounded data resources pass through the same checked resource policy. Resolve
+unsupported resource syntax in the source before selecting this backend.
+
+Installed/extracted CLI, companion byte/mode/version and real-document regressions are authored but remain unexecuted in this source checkpoint. Neither archive construction nor `doctor` discovery establishes successful document output, effective containment or signed-release trust.
+
+Do not install or publish over source, implementation or Git administration. Failed publication preserves the previous approved archive; unresolved installation recovery names the complete local journal and retains evidence for deliberate recovery.

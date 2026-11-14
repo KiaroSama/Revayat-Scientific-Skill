@@ -1,4 +1,6 @@
 /.ai/
+/.specify/
+/specs/
 /secrets.md
 /explain-AI.md
 /reference.md
@@ -12,6 +14,7 @@
 /.cline/
 /graphify-out/
 /.codebase-memory/
+/plans/
 .ignoreme
 **/.ignoreme
 /scientific-fa-translation-skill/
@@ -29,6 +32,10 @@ __pycache__/
 logs/
 *.log
 fonts/
+!/crates/revayat-scientific/assets/fonts/
+!/crates/revayat-scientific/assets/fonts/Vazirmatn-Regular.ttf
+!/crates/revayat-scientific/assets/fonts/Vazirmatn-Bold.ttf
+!/crates/revayat-scientific/assets/fonts/OFL.txt
 .DS_Store
 Thumbs.db
 
@@ -40,8 +47,10 @@ Thumbs.db
 !/.env.template
 !/.env.dist
 
-/.specify/
-/specs/
-/plans/
+/execution/
+/release-stage/
+/release-assets/
 /.revayat-tex-owner-*/
 /tests/security/windows/registry-authority/target/
+/target/
+/var/cache/fontconfig/

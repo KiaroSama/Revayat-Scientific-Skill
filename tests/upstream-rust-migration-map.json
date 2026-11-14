@@ -1,0 +1,229 @@
+{
+  "schema": 1,
+  "mappings": [
+    {
+      "legacy_id": "upstream-01::good_tex_lints_clean",
+      "rust_test": "upstream_native::good_tex_lints_clean",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-02::good_html_lints_clean",
+      "rust_test": "upstream_native::good_html_lints_clean",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-03::journal_tex_lints_clean_at_journal_level",
+      "rust_test": "upstream_native::journal_tex_lints_clean_at_journal_level",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-04::shipped_tex_template_has_no_errors",
+      "rust_test": "upstream_native::shipped_tex_template_has_no_errors",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-05::shipped_html_template_has_no_errors",
+      "rust_test": "upstream_native::shipped_html_template_has_no_errors",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-06::bad_tex_reports_all_original_rule_ids",
+      "rust_test": "upstream_native::bad_tex_reports_all_original_rule_ids",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-07::bad_html_reports_all_original_rule_ids",
+      "rust_test": "upstream_native::bad_html_reports_all_original_rule_ids",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-08::journal_terms_are_forbidden_at_default_system_docs_level",
+      "rust_test": "upstream_native::journal_terms_are_forbidden_at_default_system_docs_level",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-09::extra_pairs_merge_instead_of_replacing_house_terms",
+      "rust_test": "upstream_native::extra_pairs_merge_instead_of_replacing_house_terms",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-10::strict_requires_terms_ledger",
+      "rust_test": "upstream_native::strict_requires_terms_ledger",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-11::strict_requires_figure_manifest",
+      "rust_test": "upstream_native::strict_requires_figure_manifest",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-12::incomplete_keep_english_rows_fail_closed",
+      "rust_test": "upstream_native::incomplete_keep_english_rows_fail_closed",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-13::job_ledger_calques_are_reported",
+      "rust_test": "upstream_native::job_ledger_calques_are_reported",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-14::deprecated_ledger_forms_are_forbidden",
+      "rust_test": "upstream_native::deprecated_ledger_forms_are_forbidden",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-15::job_ledger_keeps_house_term_pairs",
+      "rust_test": "upstream_native::job_ledger_keeps_house_term_pairs",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-16::manifest_reports_figures_missing_from_translation",
+      "rust_test": "upstream_native::manifest_reports_figures_missing_from_translation",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-17::figure_check_rejects_unflattened_alpha",
+      "rust_test": "upstream_native::figure_check_rejects_unflattened_alpha",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-18::figure_preparation_flattens_alpha_to_white_rgb",
+      "rust_test": "upstream_native::figure_preparation_flattens_alpha_to_white_rgb",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-19::build_requires_terms_before_engine_selection",
+      "rust_test": "upstream_native::build_requires_terms_before_engine_selection",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-20::crop_public_command_help_works",
+      "rust_test": "upstream_native::crop_public_command_help_works",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-21::pages_public_command_help_works",
+      "rust_test": "upstream_native::pages_public_command_help_works",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-22::build_uses_actual_isolated_controller",
+      "rust_test": "upstream_native::build_uses_actual_isolated_controller",
+      "rationale": "Native build/controller contract: exact unavailable-runtime diagnostic at bounded compiled entry, or actual shared build flow with selected TeX controller invocation, renderer-mode error/valid-nonzero/truncated output and previous delivery preservation. Per-call external backend adapters replace interpreter controller stubs; independent diagnostics plus unsealed delivery are not equivalent proof. Source-authored controls require hosted execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-23::unavailable_explicit_container_preserves_delivery",
+      "rust_test": "upstream_native::unavailable_explicit_container_preserves_delivery",
+      "rationale": "Native build/controller contract: exact unavailable-runtime diagnostic at bounded compiled entry, or actual shared build flow with selected TeX controller invocation, renderer-mode error/valid-nonzero/truncated output and previous delivery preservation. Per-call external backend adapters replace interpreter controller stubs; independent diagnostics plus unsealed delivery are not equivalent proof. Source-authored controls require hosted execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-24::failed_controller_cannot_deliver_stale_working_pdf",
+      "rust_test": "upstream_native::failed_controller_cannot_deliver_stale_working_pdf",
+      "rationale": "Native build/controller contract: exact unavailable-runtime diagnostic at bounded compiled entry, or actual shared build flow with selected TeX controller invocation, renderer-mode error/valid-nonzero/truncated output and previous delivery preservation. Per-call external backend adapters replace interpreter controller stubs; independent diagnostics plus unsealed delivery are not equivalent proof. Source-authored controls require hosted execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-25::failed_controller_cannot_deliver_valid_unsealed_pdf",
+      "rust_test": "upstream_native::failed_controller_cannot_deliver_valid_unsealed_pdf",
+      "rationale": "Native build/controller contract: exact unavailable-runtime diagnostic at bounded compiled entry, or actual shared build flow with selected TeX controller invocation, renderer-mode error/valid-nonzero/truncated output and previous delivery preservation. Per-call external backend adapters replace interpreter controller stubs; independent diagnostics plus unsealed delivery are not equivalent proof. Source-authored controls require hosted execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-26::truncated_controller_output_is_not_publishable",
+      "rust_test": "upstream_native::truncated_controller_output_is_not_publishable",
+      "rationale": "Native build/controller contract: exact unavailable-runtime diagnostic at bounded compiled entry, or actual shared build flow with selected TeX controller invocation, renderer-mode error/valid-nonzero/truncated output and previous delivery preservation. Per-call external backend adapters replace interpreter controller stubs; independent diagnostics plus unsealed delivery are not equivalent proof. Source-authored controls require hosted execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-27::lint_gate_prevents_compiler_execution_and_delivery",
+      "rust_test": "upstream_native::lint_gate_prevents_compiler_execution_and_delivery",
+      "rationale": "Actual shared production build body selects TeX for original nginx-calque.tex and terms-nginx.tsv; strict forbidden-fa finding plus lint-failed error must precede any controller marker/invocation and preserve prior delivery. Per-call diagnostic/backend adapters avoid global mutation. Existing HTML compiled-entry refusal remains an extra, not a replacement. Source-authored controls require hosted execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-28::persian_font_chain_has_actual_static_regular_and_bold_faces",
+      "rust_test": "upstream_native::persian_font_chain_has_actual_static_regular_and_bold_faces",
+      "rationale": "Preserves original template setter, Windows font fallback, font preference/order and local-file source guards alongside additional static Regular/Bold glyph checks and production TeX/embedded monospace render checks. Baselines30/32 retain portable template guards through declared supporting cases while their scientific render primaries remain mandatory. Source review and registration do not establish execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-29::latin_font_contract_has_western_ascii_glyphs",
+      "rust_test": "upstream_native::latin_font_contract_has_western_ascii_glyphs",
+      "rationale": "Preserves original template setter, Windows font fallback, font preference/order and local-file source guards alongside additional static Regular/Bold glyph checks and production TeX/embedded monospace render checks. Baselines30/32 retain portable template guards through declared supporting cases while their scientific render primaries remain mandatory. Source review and registration do not establish execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-30::monospace_font_contract_renders_actual_code",
+      "rust_test": "upstream_native::monospace_font_contract_renders_actual_code",
+      "additional_rust_tests": ["upstream_native::monospace_template_retains_windows_fallback"],
+      "rationale": "Preserves original template setter, Windows font fallback, font preference/order and local-file source guards alongside additional static Regular/Bold glyph checks and production TeX/embedded monospace render checks. Baselines30/32 retain portable template guards through declared supporting cases while their scientific render primaries remain mandatory. Source review and registration do not establish execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-31::latin_font_selection_keeps_western_and_persian_digits_distinct",
+      "rust_test": "upstream_native::latin_font_selection_keeps_western_and_persian_digits_distinct",
+      "rationale": "Preserves original template setter, Windows font fallback, font preference/order and local-file source guards alongside additional static Regular/Bold glyph checks and production TeX/embedded monospace render checks. Baselines30/32 retain portable template guards through declared supporting cases while their scientific render primaries remain mandatory. Source review and registration do not establish execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-32::monospace_selection_uses_embedded_code_font",
+      "rust_test": "upstream_native::monospace_selection_uses_embedded_code_font",
+      "additional_rust_tests": ["upstream_native::monospace_template_checks_consolas_before_cursor"],
+      "rationale": "Preserves original template setter, Windows font fallback, font preference/order and local-file source guards alongside additional static Regular/Bold glyph checks and production TeX/embedded monospace render checks. Baselines30/32 retain portable template guards through declared supporting cases while their scientific render primaries remain mandatory. Source review and registration do not establish execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-33::local_static_font_files_precede_family_name_lookup",
+      "rust_test": "upstream_native::local_static_font_files_precede_family_name_lookup",
+      "rationale": "Preserves original template setter, Windows font fallback, font preference/order and local-file source guards alongside additional static Regular/Bold glyph checks and production TeX/embedded monospace render checks. Baselines30/32 retain portable template guards through declared supporting cases while their scientific render primaries remain mandatory. Source review and registration do not establish execution.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-34::native_diagnostics_remain_utf8_under_non_utf8_locale",
+      "rust_test": "upstream_native::native_diagnostics_remain_utf8_under_non_utf8_locale",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-35::text_order_reports_logical_dump",
+      "rust_test": "upstream_native::text_order_reports_logical_dump",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-36::text_order_rejects_visual_dump",
+      "rust_test": "upstream_native::text_order_rejects_visual_dump",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    },
+    {
+      "legacy_id": "upstream-37::text_order_rejects_visual_word_order",
+      "rust_test": "upstream_native::text_order_rejects_visual_word_order",
+      "rationale": "Retains the standalone CLI/byte/publication contract through actual native Rust execution and original scientific fixtures.",
+      "platforms": []
+    }
+  ]
+}

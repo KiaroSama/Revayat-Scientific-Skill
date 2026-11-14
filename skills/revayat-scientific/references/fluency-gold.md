@@ -4,7 +4,7 @@ Constructed calibration targets for the register in `scientific-style.md`.
 When changing register rules or the fluency-reader brief, re-read these
 and confirm a good draft still matches them. They are **voice examples
 across software/science genres**, not a product-specific style guide and
-not a checklist for `check-fa.py`.
+not a checklist for `revayat-scientific lint`.
 
 The skill applies to scientific papers and scholarly/technical books across
 disciplines and source languages. Infer genre and terminology from each source;

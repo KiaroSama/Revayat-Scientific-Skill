@@ -1,0 +1,1419 @@
+{
+  "schema": 1,
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "source": "tests/security/windows/Run-WindowsSecurity.ps1",
+  "kind": "stage",
+  "phase": "managed",
+  "platforms": [
+    "windows"
+  ],
+  "tier": "native",
+  "execution_status": "not-run",
+  "execution_contract": {
+    "entries": [
+      {"id":"bootstrap::managed/01","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-001"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/02","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-002"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/03","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-003"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/04","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-004"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/05","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-005"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/06","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-006"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/07","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-007"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/08","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-008"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/09","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-009"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/10","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-010"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/11","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-011"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/12","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-012"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/13","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-013"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/14","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-014"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/15","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-015"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/16","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-016"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/17","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-017"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/18","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-018"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/19","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-019"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/20","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-020"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/21","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-021"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/22","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-022"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/23","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-023"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/24","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-024"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/25","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-025"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/26","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-026"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/27","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-027"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/28","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-028"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/29","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-029"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/30","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-030"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/31","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-031"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/32","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-032"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/33","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-033"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/34","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-034"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/35","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-035"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/36","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-036"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/37","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-037"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/38","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-038"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/39","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-039"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/40","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-040"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/41","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-041"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/42","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-042"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/43","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-043"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/44","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-044"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/45","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-045"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/46","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-046"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/47","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-047"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/48","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-048"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/49","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-049"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/50","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-050"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/51","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-051"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/52","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-052"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"bootstrap::managed/53","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-053"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"runtime-preparation::PythonStartupFixture.CheckValidation","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-054"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"post-bootstrap::RegistryLoaderFixture.CheckValidation","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-055"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"post-bootstrap::SxsTraceCapture.CheckValidation","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-056"],"variant_ids":["actual-bootstrap-stage"],"checks":[]},
+      {"id":"post-bootstrap::StartupActivationAccess.CheckTraceControlValidation","parent_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","invokes_ids":[],"obligation_ids":["NATIVE-STAGE-057"],"variant_ids":["actual-bootstrap-stage"],"checks":[]}
+    ],
+    "scopes": [{"scope":{"platform":"windows","tier":"native","profile":"debug","job":"windows-security"},"owner_case_id":"crates/revayat-scientific/test/windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls","entry_ids":["bootstrap::managed/01","bootstrap::managed/02","bootstrap::managed/03","bootstrap::managed/04","bootstrap::managed/05","bootstrap::managed/06","bootstrap::managed/07","bootstrap::managed/08","bootstrap::managed/09","bootstrap::managed/10","bootstrap::managed/11","bootstrap::managed/12","bootstrap::managed/13","bootstrap::managed/14","bootstrap::managed/15","bootstrap::managed/16","bootstrap::managed/17","bootstrap::managed/18","bootstrap::managed/19","bootstrap::managed/20","bootstrap::managed/21","bootstrap::managed/22","bootstrap::managed/23","bootstrap::managed/24","bootstrap::managed/25","bootstrap::managed/26","bootstrap::managed/27","bootstrap::managed/28","bootstrap::managed/29","bootstrap::managed/30","bootstrap::managed/31","bootstrap::managed/32","bootstrap::managed/33","bootstrap::managed/34","bootstrap::managed/35","bootstrap::managed/36","bootstrap::managed/37","bootstrap::managed/38","bootstrap::managed/39","bootstrap::managed/40","bootstrap::managed/41","bootstrap::managed/42","bootstrap::managed/43","bootstrap::managed/44","bootstrap::managed/45","bootstrap::managed/46","bootstrap::managed/47","bootstrap::managed/48","bootstrap::managed/49","bootstrap::managed/50","bootstrap::managed/51","bootstrap::managed/52","bootstrap::managed/53","runtime-preparation::PythonStartupFixture.CheckValidation","post-bootstrap::RegistryLoaderFixture.CheckValidation","post-bootstrap::SxsTraceCapture.CheckValidation","post-bootstrap::StartupActivationAccess.CheckTraceControlValidation"]}]
+  },
+  "relationship": "Ordered bootstrap invocation positions. Each invokes the named original check; declarations/helpers overlap these roots and must not be counted as another independent population. Arguments state/PSScriptRoot identify original owned fixture context, not portable test substitutions.",
+  "required_evidence": {
+    "binding": [
+      "tested_sha",
+      "run_id",
+      "run_attempt",
+      "job",
+      "platform",
+      "tier",
+      "profile",
+      "baseline_commit",
+      "census_sha256"
+    ],
+    "stage_fields": [
+      "case_id",
+      "parent_id",
+      "invokes_ids",
+      "obligation_ids",
+      "source",
+      "outcome",
+      "exit",
+      "cleanup_complete"
+    ],
+    "success": "Every exact stage executes in index order with before/after flushed markers around the actual qualified operation and complete source-backed check/helper obligations. Before-only/failure/unavailable/unknown/missing/duplicate/wrong-parent or mismatched bindings fail. Direct post-bootstrap checks remain separately mandatory.",
+    "producer_status": "ordered-source-controller-flushed-markers-and-bound-receipt-producer-source-authored; hosted-execution-unverified",
+    "consumer_rule": "No synthetic stage events from portable libtest models, parsed declarations, stage counts or narrow native authority success."
+  },
+  "stages": [
+    {
+      "id": "bootstrap::managed/01",
+      "index": 1,
+      "source_line": 219,
+      "invokes": "ScientificSecurity.Profile::CheckSealComparison",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::profile_validation::check_seal_comparison",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/02",
+      "index": 2,
+      "source_line": 220,
+      "invokes": "ScientificSecurity.Profile::CheckRegistryMasks",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::profile_validation::check_registry_masks",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/03",
+      "index": 3,
+      "source_line": 221,
+      "invokes": "ScientificSecurity.LoaderSnaps::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::diagnostic_validation::check_loader_snaps_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/04",
+      "index": 4,
+      "source_line": 222,
+      "invokes": "ScientificSecurity.TokenDefaultMetadata::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::token_validation::check_default_metadata_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/05",
+      "index": 5,
+      "source_line": 223,
+      "invokes": "ScientificSecurity.ChildDefaultDacl::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::default_control::check_child_validation",
+      "source_sha256": "62de103a631ce8dd354631419af4407848c3b2d8a290767549d1f6e2680e3f8f",
+      "shared_operations": [
+        "child_with_user",
+        "child_event_policy",
+        "child_acl_equal",
+        "within"
+      ],
+      "test_registration": "windows_contract::policy_parity::child_acl_insertion_preserves_aces_and_event_mapping_matches_original_vectors",
+      "execution_limitation": "Existing portable registration executes these original validation matrices against the shared policy, callback, failure and recovery functions. Native default-security event preparation, actual three-condition launch/lease integration and complete ordered Windows bootstrap remain required; no effective-access or native-stage success is inferred from this carrier.",
+      "obligations": [
+        "Five independent generic-to-concrete event ACE mapping vectors; exact inserted user ACE and unchanged input/other ACEs",
+        "Canonical ACE order, malformed header/SID/mask and duplicate-user refusal",
+        "Unused ACL padding equality and checked nonwrapping span bounds"
+      ],
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/06",
+      "index": 6,
+      "source_line": 224,
+      "invokes": "ScientificSecurity.DefaultDaclControl::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::default_control::check_control_validation",
+      "source_sha256": "ec098cf1c0a9ae2e3d68ee22380a014a6484b3d288ea4bd6bbaf13b1ce64c6bf",
+      "shared_operations": [
+        "opened",
+        "decode_path",
+        "object_name",
+        "directory_acl",
+        "directory_descriptor",
+        "require_directory_policy",
+        "event_attributes",
+        "finish_objects",
+        "require_object_policy",
+        "finish_context",
+        "preparation_failure"
+      ],
+      "test_registration": "windows_contract::policy_parity::child_acl_insertion_preserves_aces_and_event_mapping_matches_original_vectors",
+      "execution_limitation": "Existing portable registration executes these original validation matrices against the shared policy, callback, failure and recovery functions. Native default-security event preparation, actual three-condition launch/lease integration and complete ordered Windows bootstrap remain required; no effective-access or native-stage success is inferred from this carrier.",
+      "obligations": [
+        "Exact private object path/session/package/suffix and bounded strict UTF16 NUL discovery",
+        "Independent directory rights/control fixture and ten policy mutations; exact root-relative event attributes",
+        "Success/denial handle consistency and fresh nonalias ownership",
+        "Independent event ACL expectations and malformed/wrong-owner/reordered/extra/missing ACE refusal",
+        "Unique object closure, all cleanup callbacks, primary-first errors and preparation cause retention",
+        "Successful identity reversion precedes cleanup; failed/thrown reversion enters fatal before cleanup"
+      ],
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/07",
+      "index": 7,
+      "source_line": 225,
+      "invokes": "ScientificSecurity.DefaultDaclComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::default_control::comparison::check_validation",
+      "source_sha256": "1855229654a1c54543a1828db95352c437f716720c06b6fd8c0171d67552bc87",
+      "shared_operations": [
+        "comparison::execute",
+        "comparison::Condition",
+        "comparison::Observation",
+        "comparison::Lease"
+      ],
+      "test_registration": "windows_contract::policy_parity::child_acl_insertion_preserves_aces_and_event_mapping_matches_original_vectors",
+      "execution_limitation": "Existing portable registration executes these original validation matrices against the shared policy, callback, failure and recovery functions. Native default-security event preparation, actual three-condition launch/lease integration and complete ordered Windows bootstrap remain required; no effective-access or native-stage success is inferred from this carrier.",
+      "obligations": [
+        "Exact baseline/user-allow/baseline-again order and post-cleanup diagnostics",
+        "Baseline identity and repeated-condition equality; intervention open positive control",
+        "Four observation/result failures select restore versus defer correctly",
+        "Observation/report/recovery failures retain original allocation identity and original-first aggregation",
+        "Owned baseline buffers are erased on every return and unwind; invalid condition refused"
+      ],
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/08",
+      "index": 8,
+      "source_line": 226,
+      "invokes": "ScientificSecurity.KernelImage::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "source_sha256": "75a60f5f57cac11c40ff51e961e36405f05d10fe039e8ac175a2b2a5c0ebb99f",
+      "assertion_contract": "Identity/static roots and subject/observation production helpers authored; original full observation assertion products and final CheckValidation orchestration remain unclosed.",
+      "execution_status": "not-run-as-ordered-native-stage",
+      "rust_validator": "revayat_scientific::windows_security::image::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/09",
+      "index": 9,
+      "source_line": 227,
+      "invokes": "ScientificSecurity.KernelImage::CheckCheckpointValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "source_sha256": "f32c44604dc1c2c3c847f063367ece8589d30b684cd847a3682fff181e03d381",
+      "assertion_contract": "Exact structural checkpoint parser and identity-then-bytes production helper authored; original complete twelve-mutation/two-profile/base/clipping/fake-identity root remains unclosed.",
+      "execution_status": "not-run-as-ordered-native-stage",
+      "rust_validator": "revayat_scientific::windows_security::image::check_checkpoint_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/10",
+      "index": 10,
+      "source_line": 228,
+      "invokes": "ScientificSecurity.KernelImage::CheckImportValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "source_sha256": "a587889eb136c0599f6d36ed590d1cd5c7b25f4a0886a3754d7f73704f876ef0",
+      "assertion_contract": "Complete original direct-import/Python/API-set products, all fifteen registry mutation+exact diagnostic pairs, private-name withholding, accepted synchronization and forbidden alias/name variants; existing imports_reject_duplicates_delay_directories_private_names_and_profile_drift calls the shared production-parser root.",
+      "execution_status": "not-run-as-ordered-native-stage",
+      "rust_validator": "revayat_scientific::windows_security::image::check_import_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/11",
+      "index": 11,
+      "source_line": 229,
+      "invokes": "ScientificSecurity.KernelImage::CheckManifestValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "source_sha256": "41d3f7566144787a7fc0fd4a555c698a92cea5fde32beffb17baa3f2d7b29cd4",
+      "assertion_contract": "All original ID1/ID2/language/payload/copy/extra-type/extra-ID/sole-mode positives and malformed resource products, including duplicate type; existing manifest_ids_languages_payloads_and_disjoint_resource_spans_remain_bound calls the shared parser root.",
+      "execution_status": "not-run-as-ordered-native-stage",
+      "rust_validator": "revayat_scientific::windows_security::image::check_manifest_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/12",
+      "index": 12,
+      "source_line": 230,
+      "invokes": "ScientificSecurity.KernelImage::CheckActivationWorkerValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "source_sha256": "d149095710c65dbe6b3abeebef7c8c5e27305bca62179baf57bb99e9ff1ba055",
+      "assertion_contract": "Bounded export parser, fixed subject facade and exact literal worker fixture authored; original exhaustive export/static/identity/clipping/order/wrong-subject root remains unclosed.",
+      "execution_status": "not-run-as-ordered-native-stage",
+      "rust_validator": "revayat_scientific::windows_security::image::check_activation_worker_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/13",
+      "index": 13,
+      "source_line": 231,
+      "invokes": "ScientificSecurity.StartupActivationAccess::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::check_startup_activation_validation",
+      "source_sha256": "3e195be2c9fcedc5f0a3d1783d4dbab7c51485a8fd203cec569799221aa69639",
+      "source_members": [
+        {
+          "signature": "public static void CheckValidation()",
+          "line": 237,
+          "rust": "activation/validation.rs::check_startup_activation_validation"
+        },
+        {
+          "signature": "static void CheckFinalization()",
+          "line": 197,
+          "rust": "activation/validation.rs::check_finalization + finalize_checked"
+        },
+        {
+          "signature": "static void CheckReporting()",
+          "line": 76,
+          "rust": "activation/validation.rs::check_reporting + report"
+        },
+        {
+          "signature": "static ActCtx Fixed(string python, ushort language)",
+          "line": 29,
+          "rust": "activation/validation.rs::FixedPathCall + activation.rs::ActCtx::fixed"
+        },
+        {
+          "signature": "static string Outcome(string context, IntPtr handle, uint error)",
+          "line": 34,
+          "rust": "activation/validation.rs::startup_outcome"
+        },
+        {
+          "signature": "static void Report(List<string> lines, Action<string> emit)",
+          "line": 66,
+          "rust": "activation/validation.rs::report + activation.rs::bounded_report"
+        },
+        {
+          "signature": "internal static void FinalizeComparison(Exception primary, bool impersonating, Func<bool> revert, Action failFast, Action emit, params Action[] cleanup)",
+          "line": 50,
+          "rust": "activation/validation.rs::finalize_checked + activation.rs::finalize_comparison"
+        },
+        {
+          "signature": "internal static void Attempt(List<Exception> failures, Action action)",
+          "line": 42,
+          "rust": "activation/validation.rs::finalize_checked cleanup iteration"
+        },
+        {
+          "signature": "internal static void Finish(Exception primary, List<Exception> failures)",
+          "line": 44,
+          "rust": "activation.rs::finish + activation/validation.rs::finalize_checked"
+        }
+      ],
+      "source_dependencies": [
+        {
+          "source": "tests/security/windows/ActivationAssemblyAccess.cs",
+          "member": "ScientificSecurity.ActivationAssemblyAccess::CheckCleanupValidation()",
+          "rust": "activation/assembly_validation.rs::check_cleanup_validation",
+          "source_sha256": "ca71ab7f3491dfdfcab72a207793fbc7f9e121545e833bf7c925c3a9f858d49b"
+        }
+      ],
+      "obligations": [
+        "Windows x64 56-byte ACTCTX and all nine original field offsets",
+        "fixed executable flags/language/architecture/resource/application and derived directory binding",
+        "exact lpac failure and host success outcome formatting, null/inconsistent success refusal",
+        "successful reversion before both cleanup actions and buffered metadata",
+        "throwing/false reversion invokes fail-fast before all cleanup/output; fatal failure takes precedence",
+        "returning fail-fast still refuses without cleanup/output",
+        "primary/first cleanup/reporting errors retain original-first order for impersonating and host contexts",
+        "12288-byte and 15-line report boundaries validate fully before any emission",
+        "assembly cleanup root and final Attempt/Finish independent-attempt assertion"
+      ],
+      "shared_production_operations": [
+        "activation.rs::finalize_comparison delegates to finalize_checked",
+        "activation/native.rs host and collector observations use FixedPathCall for real CreateActCtxW source storage"
+      ],
+      "test_registration": "windows_contract::activation_parity::actctx_x64_layout_and_fixed_roles_do_not_alias",
+      "execution_limitation": "Original pure validation body passed through its existing portable registration; shared call storage is used by native operations. Ordered stage invocation and actual Windows execution remain separately required. This root does not attest the later fixed-Python LPAC observation.",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/14",
+      "index": 14,
+      "source_line": 232,
+      "invokes": "ScientificSecurity.StartupActivationAccess::CheckFixedDllValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::check_fixed_dll_validation",
+      "source_sha256": "5d00c7386e8e2fd661b52e93c7bf02cae350af7eafdfbaafee40b7cf72b4b66f",
+      "source_members": [
+        {
+          "signature": "public static void CheckFixedDllValidation()",
+          "line": 111,
+          "rust": "activation/dll.rs::check_fixed_dll_validation"
+        },
+        {
+          "signature": "static ActCtx FixedDll(string path)",
+          "line": 19,
+          "rust": "activation/validation.rs::FixedPathCall(HostDll) + activation.rs::ActCtx::fixed"
+        },
+        {
+          "signature": "static void SameDllManifest(DllManifestIdentity first, DllManifestIdentity later)",
+          "line": 39,
+          "rust": "activation/dll.rs::require_same"
+        },
+        {
+          "signature": "static string DllMetadata(DllManifestIdentity manifest, bool created, uint error, bool released)",
+          "line": 44,
+          "rust": "activation/dll.rs::metadata"
+        },
+        {
+          "signature": "static void SafeFixedDll(Action action)",
+          "line": 78,
+          "rust": "activation/dll.rs::sanitize + safe_execute"
+        },
+        {
+          "signature": "static DllManifestIdentity ReadDllManifest(string path)",
+          "line": 23,
+          "rust": "activation/native_dll.rs::manifest + Observation::qualify/readback"
+        },
+        {
+          "signature": "static void ExecuteFixedDll(Func<IDisposable> acquire, Action qualify, DllCreate create, Action<IntPtr> release, Action readback, Action deadline, Action<bool,uint,bool> emit)",
+          "line": 54,
+          "rust": "activation/dll.rs::execute",
+          "signature_layout": "multiline declaration"
+        }
+      ],
+      "obligations": [
+        "56-byte x64 host DLL ACTCTX has flags8/resource2 and zero architecture/language/directory/application/module",
+        "all three handle classes by three error values with independent release/lease close and qualified-only reports",
+        "eight acquisition/qualification/call/release/readback/close/output/deadline failure modes",
+        "mode7 retains three errors with original-first privately owned cause",
+        "complete language/payload-length/digest/image-length/digest equality",
+        "exact successful/failed release metadata and all four inconsistent result refusals",
+        "manifest size and metadata length bounds"
+      ],
+      "native_operation": "revayat_scientific::windows_security::activation::native::observe_fixed_dll",
+      "shared_production_operations": [
+        "actual native CreateActCtxW uses the same dll::execute ownership seam and FixedPathCall(HostDll)",
+        "held Python and exact DLLs/_ctypes.pyd files, root-first existing/plain ancestor checks, four override collision shapes, complete object/byte/resource identities before/after call",
+        "actual ReleaseActCtx completes before readback/close/output and per-process attempt latch never retries"
+      ],
+      "test_registration": "windows_contract::activation_parity::actctx_x64_layout_and_fixed_roles_do_not_alias",
+      "real_operation_registration": "windows_contract::activation_parity::actual_host_activation_context_and_collector_negative_control_release_owned_handles",
+      "execution_limitation": "Full original pure validator and native resource-file owner are implemented; current verification is pending the shared batch. Existing Windows registration copies the real Rust explicit-ID2 PE into the owned fixed layout and exercises the actual resource2 call, release, readback and repeat refusal. This is a host Rust fixture operation, not proof of the historical RegistryLoaderFixture full Python runtime bundle or original failing-call equivalence. Actual Windows run and ordered bootstrap evidence remain required.",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/15",
+      "index": 15,
+      "source_line": 233,
+      "invokes": "ScientificSecurity.StartupRegistryAccess::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::startup_registry::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/16",
+      "index": 16,
+      "source_line": 234,
+      "invokes": "ScientificSecurity.PythonLoaderComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::loader_comparison::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/17",
+      "index": 17,
+      "source_line": 235,
+      "invokes": "ScientificSecurity.RegistryPolicyLease::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::registry_lease::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/18",
+      "index": 18,
+      "source_line": 236,
+      "invokes": "ScientificSecurity.RegistryCausalComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::registry_comparison::check_causal_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/19",
+      "index": 19,
+      "source_line": 237,
+      "invokes": "ScientificSecurity.ManualActivationComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::check_manual_activation_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/20",
+      "index": 20,
+      "source_line": 238,
+      "invokes": "ScientificSecurity.AutomaticResourceComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::automatic::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/21",
+      "index": 21,
+      "source_line": 239,
+      "invokes": "ScientificSecurity.CsrDispatchComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::csr::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/22",
+      "index": 22,
+      "source_line": 240,
+      "invokes": "ScientificSecurity.CsrDispatchComparison::CheckModuleValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::csr::check_module_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/23",
+      "index": 23,
+      "source_line": 241,
+      "invokes": "ScientificSecurity.PythonCsrDispatch::CheckPythonValidation",
+      "arguments": [
+        "state"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::native_pass::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/24",
+      "index": 24,
+      "source_line": 242,
+      "invokes": "ScientificSecurity.PythonActivationPreparation::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::preparation::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/25",
+      "index": 25,
+      "source_line": 243,
+      "invokes": "ScientificSecurity.RegistryStartupComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::registry_comparison::check_startup_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/26",
+      "index": 26,
+      "source_line": 244,
+      "invokes": "ScientificSecurity.RegistryAuthorityComparison::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::registry_comparison::check_authority_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/27",
+      "index": 27,
+      "source_line": 245,
+      "invokes": "ScientificSecurity.SupportedRegistryPolicy::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::registry_comparison::check_supported_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/28",
+      "index": 28,
+      "source_line": 246,
+      "invokes": "ScientificSecurity.SelfActivationFixture::CheckPolicyResultValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::check_policy_result_validation",
+      "source_sha256": "377fd01ea47f28f1cbbf37372468f2037f4b4d1078cfdc486d9139bd4159206f",
+      "source_members": [
+        {
+          "signature": "public static void CheckPolicyResultValidation()",
+          "line": 246,
+          "rust": "activation/self_result.rs::check_policy_result_validation"
+        },
+        {
+          "signature": "internal static string PolicyResult(uint exit, string text, string errors, SelfActivationRole role, bool readable)",
+          "line": 235,
+          "rust": "activation/self_result.rs::policy_result"
+        },
+        {
+          "signature": "static string Result(uint exit, string text, string errors, Action<string> emit, SelfActivationRole role = SelfActivationRole.Original)",
+          "line": 197,
+          "rust": "activation/self_result.rs::result"
+        },
+        {
+          "signature": "static void RequireResult(bool valid, string stage, uint exit, string text, string errors, Action<string> emit, SelfActivationRole role)",
+          "line": 173,
+          "rust": "activation/self_result.rs::refuse"
+        },
+        {
+          "signature": "static bool ObservedPreCall(string text)",
+          "line": 184,
+          "rust": "activation/self_result.rs::observed_pre_call"
+        },
+        {
+          "signature": "static Match Completed(string text, SelfActivationRole role)",
+          "line": 190,
+          "rust": "activation/self_result.rs::completed"
+        },
+        {
+          "signature": "static bool Consistent(Match match)",
+          "line": 192,
+          "rust": "activation/self_result.rs::result consistency guard"
+        },
+        {
+          "signature": "static void RequireHost(string result, SelfActivationRole role = SelfActivationRole.Original)",
+          "line": 261,
+          "rust": "activation/self_result.rs::require_host"
+        },
+        {
+          "signature": "internal static string Label(SelfActivationRole role)",
+          "line": 120,
+          "rust": "activation/self_result.rs::SelfRole::label"
+        }
+      ],
+      "obligations": [
+        "original and explicit-ID2 roles only; manual role rejected",
+        "unreadable result requires exact access-denied exit and empty stdout/stderr",
+        "readable success requires exact completed wire, explicit pre-call receipt, uppercase error grammar and status consistency",
+        "all original four unreadable exit refusals and receipt/stderr/readability/success refusals for both roles",
+        "fixed refusal metadata retains stage/raw exit/stdout UTF16 character count/stderr presence/pre-call receipt predicate without payload",
+        "completed host result must be exact successful role wire"
+      ],
+      "shared_production_operations": [
+        "activation/native_dll.rs::observe_explicit_host_fixture launches only fixed sibling Rust explicit-ID2 fixture through bounded job-owned runtime, validates actual output with policy_result, rechecks held image bytes/object identity, and accepts only after file close",
+        "activation/self_result.rs::complete_host preserves operation-first close failure and forbids acceptance before process/lease cleanup"
+      ],
+      "test_registration": "windows_contract::activation_parity::actctx_x64_layout_and_fixed_roles_do_not_alias",
+      "real_operation_registration": "windows_contract::activation_parity::actual_host_activation_context_and_collector_negative_control_release_owned_handles",
+      "execution_limitation": "Original policy-result validation body and shared wire parser are implemented. Portable/native verification of the latest batch is pending. Existing Windows registration consumes the real Rust fixture output through the bounded host owner; no historical Python, LPAC denial, full self-fixture/source validation, or ordered-stage proof is inferred.",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/29",
+      "index": 29,
+      "source_line": 247,
+      "invokes": "ScientificSecurity.StartupActivationEvents::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::sxs::check_startup_events_validation",
+      "native_operation": "revayat_scientific::windows_security::sxs::native_events::observe_startup_events",
+      "source_sha256": "45a3d80e8a91765fdf819f2994ffa6b6016a728fd9245c6fc6cec1f2dab544b8",
+      "source_members": [
+        {
+          "signature": "public static void CheckValidation()",
+          "line": 16,
+          "rust": "sxs/event_validation.rs::check_startup_events_validation",
+          "obligations": [
+            "all original literal XML/namespace/leaf/attribute/time/image-selection cases",
+            "zero/one/16/17-event enumeration",
+            "owned/invalid/partial EvtNext output and independent close",
+            "sizing status/bytes/property constraints",
+            "strict terminated UTF-16 output",
+            "private cause retained without public source or payload"
+          ]
+        },
+        {
+          "signature": "static void CheckCollection(string xml, string image, DateTime start, DateTime end)",
+          "line": 84,
+          "rust": "sxs/event_validation.rs::check_collection_validation",
+          "obligations": [
+            "three render/classification/release/event-close/query-close error combinations",
+            "flattened original-first error order",
+            "managed copy cleared before native allocation release",
+            "zero/one/16/17-event actual callback collection and handle accounting",
+            "no-match remains inconclusive",
+            "256KiB aggregate render allocation cap permits exactly four 64KiB allocations",
+            "added throwing/null/invalid allocation failures still close event and query"
+          ]
+        },
+        {
+          "signature": "static bool UseNext(Action<Next> fetch, Action<IntPtr> close, Action<IntPtr> consume)",
+          "line": 220,
+          "rust": "sxs/event_collector.rs::use_next"
+        },
+        {
+          "signature": "static void Enumerate(Func<bool> next, Action consume)",
+          "line": 232,
+          "rust": "sxs/event_collector.rs::enumerate"
+        },
+        {
+          "signature": "static uint RequiredBytes(bool success, int error, uint bytes, uint properties)",
+          "line": 239,
+          "rust": "sxs/event_collector.rs::required_bytes"
+        },
+        {
+          "signature": "static string Decode(byte[] bytes, uint used, uint capacity, uint properties)",
+          "line": 241,
+          "rust": "sxs/event_collector.rs::decode"
+        },
+        {
+          "signature": "static string Render(EventApi api, IntPtr item, ref uint total, Action deadline)",
+          "line": 248,
+          "rust": "sxs/event_collector.rs::render"
+        },
+        {
+          "signature": "static void AddFailure(List<Exception> failures, Exception error)",
+          "line": 205,
+          "rust": "sxs/event_collector.rs::flatten"
+        },
+        {
+          "signature": "static void Finish(Exception primary, params Action[] actions)",
+          "line": 211,
+          "rust": "sxs/event_collector.rs::finish"
+        },
+        {
+          "signature": "static XmlElement One(XmlElement parent, string name)",
+          "line": 265,
+          "rust": "sxs/events.rs::one"
+        },
+        {
+          "signature": "static void Leaf(XmlElement element, bool scalar, params string[] attributes)",
+          "line": 273,
+          "rust": "sxs/events.rs::leaf"
+        },
+        {
+          "signature": "static string Classify(string xml, string image, DateTime start, DateTime end)",
+          "line": 285,
+          "rust": "sxs/events.rs::classify_event"
+        },
+        {
+          "signature": "static List<string> Collect(EventApi api, string python, DateTime start, DateTime end, Action deadline, Func<uint> timeout)",
+          "line": 334,
+          "rust": "sxs/event_collector.rs::collect"
+        },
+        {
+          "signature": "static void Collect(string python, DateTime start, DateTime end)",
+          "line": 352,
+          "rust": "sxs/native_events.rs::observe_startup_events + sxs/event_collector.rs::query_text"
+        },
+        {
+          "signature": "internal static void Observe(string python, DateTime start, DateTime end)",
+          "line": 329,
+          "rust": "sxs/native_events.rs::observe_startup_events + sxs.rs::safe"
+        }
+      ],
+      "native_calls": [
+        "EvtQuery(local Application, SideBySide provider, UTC window <=300 seconds, flags=0x201)",
+        "EvtNext(one event, timeout<=1000ms, flags=0)",
+        "EvtRender(EventXml, sizing followed by exact retained capacity)",
+        "EvtClose(each acquired event and query once)"
+      ],
+      "test_registration": "windows_contract::sxs_parity::fixed_event_xml_bounds_namespaces_leaf_nodes_and_owned_image_selection",
+      "real_operation_registration": "windows_contract::activation_parity::actual_host_activation_context_and_collector_negative_control_release_owned_handles",
+      "execution_limitation": "Source validation body and native collector share the same operation seam. Portable callback validation passed. The existing Windows registration now invokes the real local query over its activation-control window; actual Windows execution and ordered bootstrap stage evidence remain required. Empty query results remain inconclusive and prove no visibility or cause.",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/30",
+      "index": 30,
+      "source_line": 248,
+      "invokes": "ScientificSecurity.ActivationAssemblyAccess::CheckValidation",
+      "arguments": [
+        "state"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::native::check_assembly_validation",
+      "portable_contract": "revayat_scientific::windows_security::activation::assembly::check_assembly_contract",
+      "source_sha256": "ca71ab7f3491dfdfcab72a207793fbc7f9e121545e833bf7c925c3a9f858d49b",
+      "source_members": [
+        {
+          "signature": "public static void CheckValidation(string work)",
+          "line": 189,
+          "rust": "activation/assembly_validation.rs::check_assembly_contract + activation/native.rs::check_assembly_validation"
+        },
+        {
+          "signature": "internal static void CheckCleanupValidation()",
+          "line": 169,
+          "rust": "activation/assembly_validation.rs::check_cleanup_validation + activation/assembly.rs::release"
+        },
+        {
+          "signature": "static void CheckReparseValidation(string work)",
+          "line": 278,
+          "rust": "activation/native.rs::check_assembly_validation"
+        },
+        {
+          "signature": "static uint RequireSize(UIntPtr returned, uint minimum)",
+          "line": 59,
+          "rust": "activation/assembly.rs::require_size"
+        },
+        {
+          "signature": "static uint ReadCount(IntPtr buffer, UIntPtr returned, List<string> lines)",
+          "line": 65,
+          "rust": "activation/assembly.rs::read_count"
+        },
+        {
+          "signature": "static uint RequireCount(uint count)",
+          "line": 72,
+          "rust": "activation/assembly.rs::assembly_count + require_profile"
+        },
+        {
+          "signature": "static void RequirePathType(uint type)",
+          "line": 77,
+          "rust": "activation/assembly.rs::require_path_type"
+        },
+        {
+          "signature": "static string ReadPath(IntPtr buffer, uint size, IntPtr pointer, uint bytes)",
+          "line": 88,
+          "rust": "activation/assembly.rs::decode_path"
+        },
+        {
+          "signature": "static string PathMetadata(string path, string python, uint index, uint size, uint type)",
+          "line": 116,
+          "rust": "activation/assembly.rs::path_metadata"
+        },
+        {
+          "signature": "static string Qualify(string path, string python, uint index)",
+          "line": 123,
+          "rust": "activation/assembly.rs::qualify_path"
+        },
+        {
+          "signature": "static string QualifyFile(string path, string python, uint index)",
+          "line": 81,
+          "rust": "activation/native.rs::qualify_file"
+        },
+        {
+          "signature": "static void RequireProfile(string[] labels, uint count)",
+          "line": 133,
+          "rust": "activation/assembly.rs::require_profile + require_profile_names"
+        },
+        {
+          "signature": "static void Release(Exception primary, params Action[] actions)",
+          "line": 163,
+          "rust": "activation/assembly.rs::release"
+        }
+      ],
+      "source_dependencies": [
+        {
+          "source": "tests/security/windows/NativeFixture.cs",
+          "member": "ScientificSecurity.NativeFixture::Plain(string path, bool allowMissing = false)",
+          "source_sha256": "792066649d86f998ae6d30813b55a0faffbb98272188b33284bdd43635169272",
+          "rust": "activation/native.rs::existing_plain",
+          "obligation": "Require absolute existing input and every ancestor; enforce 64-ancestor bound; inspect ancestors from root before any leaf and refuse reparse points. New temporary fixture directory is created atomically under the validated owned parent."
+        }
+      ],
+      "obligations": [
+        "104-byte x64 assembly ABI and all original checked field offsets",
+        "literal returned path and strict pointer/extent/terminator/UTF16 refusal matrices",
+        "count values 0/1/2/3/4/u32::MAX with qualified metadata retained even on count rejection",
+        "invalid count span never logs unqualified metadata",
+        "Win32-file path type 2 only",
+        "all original root/system manifest family and complete unique profile fixtures, including unknown string labels",
+        "exact fixed private-path predicate metadata without path text",
+        "all original private/sibling/dot/non-ASCII/alternate-stream/name/extension/length/relative/index refusals",
+        "independent cleanup order and original-first errors",
+        "real owned plain-file positive control, missing-file refusal, preserved dangling directory link, and intermediate directory link refusal"
+      ],
+      "shared_production_operations": [
+        "activation/native.rs::assemblies uses read_count/require_size/require_path_type/path_metadata/decode_path/qualify_file/require_profile/release around real QueryActCtxW and file opens",
+        "ManifestObservation.assembly_metadata carries fixed class2/class3 metadata without raw paths"
+      ],
+      "test_registrations": [
+        "windows_contract::activation_assembly::assembly_query_paths_are_inside_returned_span_with_strict_terminated_utf16",
+        "windows_contract::activation_assembly::fixed_root_and_system_manifest_families_preserve_index_and_complete_profile"
+      ],
+      "real_operation_registration": "windows_contract::activation_parity::actual_host_activation_context_and_collector_negative_control_release_owned_handles",
+      "execution_limitation": "Portable assembly contract passed. Existing Windows registration now executes the real filesystem link fixture and checks metadata from the real activation query. Actual Windows run and ordered bootstrap stage evidence remain required; host context evidence does not prove LPAC or failing-call equivalence.",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/31",
+      "index": 31,
+      "source_line": 249,
+      "invokes": "ScientificSecurity.StartupTokenAccess::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::policy::token_validation::check_startup_token_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/32",
+      "index": 32,
+      "source_line": 250,
+      "invokes": "ScientificSecurity.ChildActivationFixture::CheckValidation",
+      "arguments": [
+        "state"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::child::check_child_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/33",
+      "index": 33,
+      "source_line": 251,
+      "invokes": "ScientificSecurity.ChildActivationFixture::CheckDllValidation",
+      "arguments": [
+        "PSScriptRoot"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::dll_request::check_dll_request_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/34",
+      "index": 34,
+      "source_line": 252,
+      "invokes": "ScientificSecurity.KernelImage::CheckDefaultActivationValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "source_sha256": "73b3bf61491a37ba97ff4efa40f400aa741b73cf7b565953ff7052954880c39b",
+      "assertion_contract": "Actual fixed default qualifier validates exact console/header/directories/import owner+symbols/lookup-IAT equality/terminator/tail/manifest; all sixteen original mutations execute from existing manifest_ids_languages_payloads_and_disjoint_resource_spans_remain_bound.",
+      "execution_status": "not-run-as-ordered-native-stage",
+      "rust_validator": "revayat_scientific::windows_security::image::check_default_activation_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/35",
+      "index": 35,
+      "source_line": 253,
+      "invokes": "ScientificSecurity.DefaultActivationFixture::CheckValidation",
+      "arguments": [
+        "state"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::default::check_default_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/36",
+      "index": 36,
+      "source_line": 254,
+      "invokes": "ScientificSecurity.SelfActivationFixture::CheckValidation",
+      "arguments": [
+        "state"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::self_host::check_self_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/37",
+      "index": 37,
+      "source_line": 255,
+      "invokes": "ScientificSecurity.SelfActivationFixture::CheckSourceValidation",
+      "arguments": [
+        "PSScriptRoot"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::source::check_self_source_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/38",
+      "index": 38,
+      "source_line": 256,
+      "invokes": "ScientificSecurity.KernelImage::CheckModuleActivationValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "source_sha256": "7901866435a07ee7dd6b73e17c871ba00ff01186581dd3c20c96490cc740d051",
+      "assertion_contract": "Actual module qualifier validates three roles, complete imports/thunks/tails/directories/export/manifest; all eleven common mutations per role, five extra export mutations per DLL, six manifest mutations and absent-manifest cases execute from existing manifest_ids_languages_payloads_and_disjoint_resource_spans_remain_bound.",
+      "execution_status": "not-run-as-ordered-native-stage",
+      "rust_validator": "revayat_scientific::windows_security::image::check_module_activation_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/39",
+      "index": 39,
+      "source_line": 257,
+      "invokes": "ScientificSecurity.ModuleActivationFixture::CheckValidation",
+      "arguments": [
+        "state"
+      ],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::module::check_module_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/40",
+      "index": 40,
+      "source_line": 258,
+      "invokes": "ScientificSecurity.ActivationBoundaryTrace::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::boundary::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/41",
+      "index": 41,
+      "source_line": 259,
+      "invokes": "ScientificSecurity.ActivationBoundaryTrace::CheckModuleCallbackValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::module_callback::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/42",
+      "index": 42,
+      "source_line": 260,
+      "invokes": "ScientificSecurity.ScratchAccess::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::scratch::check_access_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/43",
+      "index": 43,
+      "source_line": 261,
+      "invokes": "ScientificSecurity.ScratchAccess::CheckSupportedValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::scratch::check_supported_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/44",
+      "index": 44,
+      "source_line": 262,
+      "invokes": "ScientificSecurity.ScratchAccess::CheckFileCreationValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::scratch::check_file_creation_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/45",
+      "index": 45,
+      "source_line": 263,
+      "invokes": "ScientificSecurity.ScratchVolumeAccess::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::scratch::check_volume_access_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/46",
+      "index": 46,
+      "source_line": 264,
+      "invokes": "ScientificSecurity.ScratchAttachment::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::scratch::check_attachment_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/47",
+      "index": 47,
+      "source_line": 265,
+      "invokes": "ScientificSecurity.ScratchVolumePolicy::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::scratch::check_volume_policy_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/48",
+      "index": 48,
+      "source_line": 266,
+      "invokes": "ScientificSecurity.StartupImageAccess::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::diagnostic_validation::check_startup_image_access_validation",
+      "source_sha256": "cb6086bb53e0d5bd0e2d7d97517343ced771d8ee97399e5ceeb2fcbe49d8e7e5",
+      "source_members": [
+        {
+          "signature": "public static void CheckValidation()",
+          "line": 195,
+          "obligations": [
+            "x64 pointer/UnicodeString/ObjectAttributes sizes 8/16/48",
+            "runtime/system inventory sizes 3/8",
+            "NTSTATUS uppercase 32-bit format and not-attempted literal",
+            "success/nonzero and failure/null section handle consistency"
+          ]
+        },
+        {
+          "signature": "static void CheckFinalization()",
+          "line": 160,
+          "obligations": [
+            "all independent section/file cleanup attempts with exact ordered error identities",
+            "revert then close then held cleanup then report; primary/cleanup/report error identity retained",
+            "exact 12288 UTF-8 bytes admitted, 12289 rejected before emission",
+            "42-line input rejected before emission; 41-line production ceiling"
+          ]
+        }
+      ],
+      "production_seams": [
+        "startup_image::{require_section_result,section_status,release_image,report_image}",
+        "activation::finalize_comparison",
+        "scratch::{attempt,finish}"
+      ],
+      "test_registration": "windows_contract::activation_parity::finalization_reverts_before_independent_cleanup_and_preserves_failure_order",
+      "execution_limitation": "Portable source validation passed. Fixture bytes are never executed; no actual image-section, debug event, LPAC authority or ordered bootstrap execution is inferred.",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/49",
+      "index": 49,
+      "source_line": 267,
+      "invokes": "ScientificSecurity.TrustedSetup::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::diagnostic_validation::check_trusted_setup_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/50",
+      "index": 50,
+      "source_line": 268,
+      "invokes": "ScientificSecurity.StaticKernelInspection::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::diagnostic_validation::check_static_kernel_inspection_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/51",
+      "index": 51,
+      "source_line": 269,
+      "invokes": "ScientificSecurity.HardwareTrace::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::diagnostic_validation::check_hardware_trace_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/52",
+      "index": 52,
+      "source_line": 270,
+      "invokes": "ScientificSecurity.DebugControl::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::diagnostic_validation::check_debug_control_validation",
+      "source_sha256": "a3911d96b443203c994161f7ed8612ad6317421c683575f95427ed84f07c6b9a",
+      "source_members": [
+        {
+          "signature": "public static void CheckValidation()",
+          "line": 50,
+          "obligations": [
+            "complete DebugContext trap dependency",
+            "separate original NativeFixture no-CRT DebugControlSite PE fixture and six byte/export/section mutations",
+            "Sandbox cleanup dependency retained",
+            "termination consumed only after success and failed request retried with same error identity",
+            "exact DR6/DR7 status predicates, CONTROL/INTEGER comparison, <=512-byte metadata, no stack-address disclosure"
+          ]
+        },
+        {
+          "source": "tests/security/windows/DebugContext.cs",
+          "signature": "internal static void CheckTrapValidation()",
+          "line": 49
+        },
+        {
+          "source": "tests/security/windows/NativeFixture.cs",
+          "signature": "public static void CheckDebugControlValidation()",
+          "line": 215
+        },
+        {
+          "source": "tests/security/windows/Sandbox.cs",
+          "signature": "internal static void CheckCleanupValidation()",
+          "line": 557
+        }
+      ],
+      "production_seams": [
+        "diagnostic_validation::{request_termination,debug_control_status,FixedNativeImage}",
+        "activation::{raw_debug_equal,unchanged_control_integer,owned_trap_status,owned_trap_site,trap_qualifiers}",
+        "scratch::check_cleanup_validation",
+        "native/debug_cleanup.rs calls the same request_termination primitive"
+      ],
+      "test_registration": "windows_contract::activation_parity::debug_context_distinguishes_owned_traps_from_exact_setter_readback",
+      "execution_limitation": "Portable source validation passed. Fixture bytes are never executed; no actual image-section, debug event, LPAC authority or ordered bootstrap execution is inferred.",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    },
+    {
+      "id": "bootstrap::managed/53",
+      "index": 53,
+      "source_line": 271,
+      "invokes": "ScientificSecurity.PrivateCreatorFixture::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::scratch::check_private_creator_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::managed + run_bootstrap_checks"
+    }
+  ],
+  "direct_post_bootstrap_checks": [
+    {
+      "id": "post-bootstrap::RegistryLoaderFixture.CheckValidation",
+      "source_line": 367,
+      "invokes": "ScientificSecurity.RegistryLoaderFixture::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::registry_loader::check_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::direct + run_bootstrap_checks"
+    },
+    {
+      "id": "post-bootstrap::SxsTraceCapture.CheckValidation",
+      "source_line": 368,
+      "invokes": "ScientificSecurity.SxsTraceCapture::CheckValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::sxs::check_capture_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "ordered_controller": "windows_security/native/bootstrap.rs::direct + run_bootstrap_checks"
+    },
+    {
+      "id": "post-bootstrap::StartupActivationAccess.CheckTraceControlValidation",
+      "source_line": 369,
+      "invokes": "ScientificSecurity.StartupActivationAccess::CheckTraceControlValidation",
+      "arguments": [],
+      "source_state": "callable-source-validator-and-ordered-controller-implemented-native-execution-unverified",
+      "rust_validator": "revayat_scientific::windows_security::activation::control::check_trace_control_validation",
+      "validator_status": "source-backed-body-and-shared-operation-seams-implemented",
+      "source_members": [
+        {
+          "source": "tests/security/windows/SxsTraceControlValidation.cs",
+          "member": "ScientificSecurity.StartupActivationAccess::CheckTraceControlValidation()",
+          "line": 17,
+          "rust": "activation/control.rs::check_trace_control_validation",
+          "obligations": [
+            "literal UTF-8 manifest and invalid run identities",
+            "56-byte standalone ACTCTX fields",
+            "three native handle classes by four error values",
+            "nine acquisition/call/readback/release/close/deadline failure modes",
+            "first-before-later cleanup errors",
+            "private failure redaction"
+          ],
+          "source_sha256": "f69a32f6c1d930f1a830439171e910b42f4ba3bfe8f0e420c44c9b95b175ed58"
+        },
+        {
+          "source": "tests/security/windows/SxsTraceControlValidation.cs",
+          "member": "ScientificSecurity.StartupActivationAccess::CheckTraceWriterValidation(byte[])",
+          "line": 96,
+          "rust": "activation/control.rs::check_trace_control_validation + CheckIo::acquire",
+          "obligations": [
+            "eight write/flush/close failure masks",
+            "exact retained byte slice",
+            "write/flush/close order and exactly one close",
+            "no qualified control/call/emission after writer failure",
+            "nested original-first write/close error groups"
+          ],
+          "source_sha256": "f69a32f6c1d930f1a830439171e910b42f4ba3bfe8f0e420c44c9b95b175ed58"
+        },
+        {
+          "source": "tests/security/windows/SxsTraceControlValidation.cs",
+          "member": "ScientificSecurity.StartupActivationAccess::CheckTraceLifecycleValidation()",
+          "line": 129,
+          "rust": "activation/control.rs::check_capture_lifecycle",
+          "obligations": [
+            "seven operation/control/stop/parse failure modes",
+            "failed consumer parsed only after successful stop",
+            "control or stop failure forbids successful-consumer parsing",
+            "primary error retention and safe aggregate errors"
+          ],
+          "source_sha256": "f69a32f6c1d930f1a830439171e910b42f4ba3bfe8f0e420c44c9b95b175ed58"
+        },
+        {
+          "source": "tests/security/windows/SxsTraceSuccess.cs",
+          "member": "ScientificSecurity.SxsTraceSuccess::CheckValidation()",
+          "line": 61,
+          "rust": "sxs/text.rs::check_success_validation",
+          "obligations": [
+            "zero/one/two successful consumer blocks in UTF-8 and UTF-16",
+            "all original malformed framing/reference/terminal/size/encoding fixtures",
+            "private parse error redaction",
+            "aliased consumer/control refused",
+            "collector-positive cannot satisfy failed-consumer classifier"
+          ],
+          "source_sha256": "5d696479dc26bba8a9dd32f53cd612770bb6e89c3c825c99dde359a9212173a2"
+        }
+      ],
+      "shared_production_operations": [
+        {
+          "source": "tests/security/windows/SxsTraceControl.cs",
+          "member": "ScientificSecurity.StartupActivationAccess::ExecuteTraceControl",
+          "rust": "activation/control.rs::execute",
+          "native_caller": "activation/native.rs::observe_collector",
+          "source_sha256": "42915379cebdad4858f60da9817495f5baab9d64ce4c06c1f98d97b8ae0580f2"
+        },
+        {
+          "source": "tests/security/windows/SxsTraceCapture.cs",
+          "member": "ScientificSecurity.SxsTraceCapture::WriteFixed",
+          "rust": "activation/control.rs::write_fixed",
+          "native_caller": "sxs/native_storage.rs::Storage::write",
+          "source_sha256": "d99601a10a29d033158cfb7058d423edbd66bf820b6235dce0476a8aa5e37fc2"
+        },
+        {
+          "source": "tests/security/windows/SxsTraceControl.cs",
+          "member": "ScientificSecurity.StartupActivationAccess::TraceControlBytes",
+          "rust": "activation/control.rs::manifest_bytes",
+          "native_caller": "activation/native.rs::ManifestRole::bytes",
+          "source_sha256": "42915379cebdad4858f60da9817495f5baab9d64ce4c06c1f98d97b8ae0580f2"
+        },
+        {
+          "source": "tests/security/windows/SxsTraceCapture.cs",
+          "member": "ScientificSecurity.SxsTraceCapture::Execute(Action,Action,Action,Action<bool>)",
+          "rust": "sxs.rs::execute_capture",
+          "native_caller": "sxs/native.rs::collect_authority_observed",
+          "source_sha256": "d99601a10a29d033158cfb7058d423edbd66bf820b6235dce0476a8aa5e37fc2"
+        },
+        {
+          "source": "tests/security/windows/SxsTraceSuccess.cs",
+          "member": "ScientificSecurity.SxsTraceSuccess::Parse",
+          "rust": "sxs/text.rs::success_evidence",
+          "native_caller": "sxs/native.rs::Capture::parse",
+          "source_sha256": "5d696479dc26bba8a9dd32f53cd612770bb6e89c3c825c99dde359a9212173a2"
+        }
+      ],
+      "test_registration": "windows_contract::sxs_parity::collector_positive_control_cannot_substitute_for_failed_consumer_evidence",
+      "real_operation_registration": "windows_contract::activation_parity::actual_host_activation_context_and_collector_negative_control_release_owned_handles",
+      "execution_limitation": "Portable validator regression passed, and Windows adapter cross-compiled with Clippy. No ordered bootstrap invocation or stage/direct event outcome is claimed; actual Windows execution remains separately required.",
+      "ordered_controller": "windows_security/native/bootstrap.rs::direct + run_bootstrap_checks"
+    }
+  ],
+  "declaration_closure": {
+    "historical_explicit_static_void_check_count": 114,
+    "historical_implicit_static_void_check_count": 84,
+    "status": "syntax-inventory-authored-semantic-and-native-closure-pending",
+    "missing": "Reviewed semantic call/overload/delegate binding, Rust helper/assertion-product mapping and actual bound Windows execution/report relations remain incomplete. Syntax inventory and historical counts do not establish closure.",
+    "ledger": "tests/native-declaration-census.json",
+    "ledger_sha256": "12602c25685142d711bb0fdbb27650b53ec0ff98d112434d78e5e8a75d86575c",
+    "syntax_summary": {
+      "csharp_files": 105,
+      "callable_declarations": 1873,
+      "static_void_check_named": 198,
+      "root_sites": 57,
+      "invocation_and_creation_sites": 19505,
+      "potential_method_reference_sites": 652
+    }
+  },
+  "controller": {
+    "rust": "crates/revayat-scientific/src/windows_security/native/bootstrap.rs",
+    "entry": "revayat-scientific security-windows --bootstrap-checks",
+    "order": "53 original managed bodies, original line359 runtime clone validation, then three original listed direct checks",
+    "context": "actual NativeRunView with held protected directory, identity checks before/after each body, empty per-run fixture directory after each managed validator",
+    "evidence_limit": "No passed events manufactured from libtest output or marker counts. The complete native experiments, source/helper obligations, actual Windows execution and bound report reconciliation remain required."
+  },
+  "runtime_preparation_validation_roots": [
+    {
+      "id": "runtime-preparation::PythonStartupFixture.CheckValidation",
+      "declaration_ledger_relation": {
+        "ledger": "tests/native-declaration-census.json",
+        "root_id": "post-bootstrap::PythonStartupFixture.CheckValidation",
+        "call_source": "tests/security/windows/Run-WindowsSecurity.ps1",
+        "relation": "same-frozen-invocation-site",
+        "evidence_limit": "Reviewed identity correspondence only; no execution outcome or transitive helper equivalence is inferred."
+      },
+      "source_line": 359,
+      "invokes": "ScientificSecurity.PythonStartupFixture::CheckValidation",
+      "arguments": [
+        "state"
+      ],
+      "source": "tests/security/windows/PythonStartupFixture.cs",
+      "source_sha256": "4b53df92616dc5ab938d741b3ea0fb381e0441c04a37de0097f41d4aef20d594",
+      "rust_validator": "revayat_scientific::windows_security::activation::fixtures::python_startup::check_validation",
+      "ordered_controller": "native/bootstrap.rs direct index0, after managed53 and before the three listed direct checks",
+      "source_state": "source-backed-clone-and-held-file-operations-implemented-native-execution-unverified",
+      "execution_status": "not-run-as-ordered-native-operation",
+      "population_note": "This original reachable validation obligation is retained separately; the53managed IDs and3existing direct IDs are unchanged."
+    }
+  ]
+}

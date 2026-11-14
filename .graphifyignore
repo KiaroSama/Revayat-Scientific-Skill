@@ -26,6 +26,8 @@ secrets.md
 .env.*
 **/.env
 **/.env.*
+.ignoreme
+**/.ignoreme
 .ignoreme/
 **/.ignoreme/
 explain-AI.md
