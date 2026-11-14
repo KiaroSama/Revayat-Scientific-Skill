@@ -528,7 +528,12 @@ fn http_fixture_framed(
                 exchange.write_error = Some(std::io::ErrorKind::TimedOut);
                 break;
             };
-            connection.set_write_timeout(Some(timeout)).unwrap();
+            if let Err(error) = connection.set_write_timeout(Some(timeout)) {
+                // Darwin rejects setsockopt after an early client shutdown,
+                // including the deliberate declared-body-cap refusal.
+                exchange.write_error = Some(error.kind());
+                break;
+            }
             let end = (exchange.body_bytes + 64 * 1024).min(body.len());
             match connection.write(&body[exchange.body_bytes..end]) {
                 Ok(0) => {

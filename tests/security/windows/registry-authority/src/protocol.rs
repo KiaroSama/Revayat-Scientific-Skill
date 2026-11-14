@@ -5,6 +5,9 @@ pub use failure_frame::failure_summary;
 #[path = "protocol_scratch.rs"]
 mod scratch_frame;
 pub use scratch_frame::{SCRATCH_CHECKS, scratch_failure, scratch_kind};
+#[path = "protocol_panic.rs"]
+mod panic_frame;
+pub use panic_frame::{PANIC_CHECKS, PanicPhase, mark_panic_phase, panic_frame, panic_kind};
 
 pub const KEY: &str = r"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide";
 pub const DENIED: u32 = 0xC0000022;
@@ -537,6 +540,7 @@ mod tests {
     #[test]
     fn token_stages_are_closed_and_fit_complete_failure_frames() {
         scratch_frame::check_diagnostics();
+        panic_frame::check_diagnostics();
         for &kind in TOKEN_CHECKS {
             assert!(token_need(true, kind).is_ok());
             let error = token_need(false, kind).expect_err("predicate refused");

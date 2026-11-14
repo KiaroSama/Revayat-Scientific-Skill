@@ -52,6 +52,22 @@ pub enum Stage {
     SxsStorageCreate,
     SxsStoragePolicy,
     SxsStorageDeny,
+    ScratchPrepare,
+    ScratchPrivilege,
+    ScratchState,
+    ScratchCreate,
+    ScratchProvider,
+    ScratchImage,
+    ScratchAttach,
+    ScratchLayout,
+    ScratchFormat,
+    ScratchMount,
+    ScratchQuota,
+    ScratchPrivate,
+    ScratchSeal,
+    ScratchReady,
+    FixtureDiscover,
+    FixtureBuild,
 }
 impl Stage {
     fn label(self) -> &'static str {
@@ -105,6 +121,22 @@ impl Stage {
             Self::SxsStorageCreate => "sxs-storage-create",
             Self::SxsStoragePolicy => "sxs-storage-policy",
             Self::SxsStorageDeny => "sxs-storage-deny",
+            Self::ScratchPrepare => "scratch-prepare",
+            Self::ScratchPrivilege => "scratch-privilege",
+            Self::ScratchState => "scratch-state",
+            Self::ScratchCreate => "scratch-create",
+            Self::ScratchProvider => "scratch-provider",
+            Self::ScratchImage => "scratch-image",
+            Self::ScratchAttach => "scratch-attach",
+            Self::ScratchLayout => "scratch-layout",
+            Self::ScratchFormat => "scratch-format",
+            Self::ScratchMount => "scratch-mount",
+            Self::ScratchQuota => "scratch-quota",
+            Self::ScratchPrivate => "scratch-private",
+            Self::ScratchSeal => "scratch-seal",
+            Self::ScratchReady => "scratch-ready",
+            Self::FixtureDiscover => "fixture-discover",
+            Self::FixtureBuild => "fixture-build",
         }
     }
 }
@@ -178,6 +210,28 @@ pub fn annotate(error: anyhow::Error, stage: Stage, numbers: Numbers) -> anyhow:
 }
 pub fn at(error: anyhow::Error, stage: Stage) -> anyhow::Error {
     annotate(error, stage, Numbers::default())
+}
+/// Retain an authored phase and typed numeric API cause without formatting its raw text.
+pub fn operation(error: anyhow::Error, stage: Stage) -> anyhow::Error {
+    let native_error = error
+        .downcast_ref::<std::io::Error>()
+        .and_then(std::io::Error::raw_os_error)
+        .map(|code| code as u32);
+    #[cfg(windows)]
+    let result = error
+        .downcast_ref::<windows::core::Error>()
+        .map(|error| error.code().0 as u32);
+    #[cfg(not(windows))]
+    let result = None;
+    annotate(
+        error,
+        stage,
+        Numbers {
+            native_error,
+            result,
+            ..Default::default()
+        },
+    )
 }
 pub fn native(stage: Stage, numbers: Numbers) -> anyhow::Error {
     annotate(
@@ -264,6 +318,24 @@ pub fn find<T: Error + Send + Sync + 'static>(error: &anyhow::Error) -> Option<&
     visit(error, 0)
 }
 pub fn check_validation() -> anyhow::Result<()> {
+    let typed = annotate(
+        anyhow::anyhow!("private fixture path and compiler output"),
+        Stage::DebugCreate,
+        Numbers {
+            native_error: Some(5),
+            ..Default::default()
+        },
+    );
+    let sanitized = crate::windows_security::policy::registry_comparison::wire::sanitize(typed);
+    let projected =
+        crate::windows_security::policy::registry_comparison::wire::safe_report(&sanitized);
+    anyhow::ensure!(
+        projected.contains("stage=debug-create")
+            && projected.contains("native_error=0x00000005")
+            && !projected.contains("private fixture")
+            && !projected.contains("compiler output"),
+        "closed native stage was discarded by registry failure projection"
+    );
     let raw = std::io::Error::other("C:\\private-path\\secret event payload");
     let retained = annotate(
         raw.into(),

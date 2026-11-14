@@ -1,5 +1,7 @@
 //! Closed failure metadata for the owner. Unknown child diagnostics stay private.
-use super::{DESCENDANT_CHECKS, NATIVE_CHECKS, RestrictionQuery, SCRATCH_CHECKS, TOKEN_CHECKS};
+use super::{
+    DESCENDANT_CHECKS, NATIVE_CHECKS, RestrictionQuery, SCRATCH_CHECKS, TOKEN_CHECKS, panic_kind,
+};
 
 fn hex(value: &str) -> bool {
     value.len() == 8
@@ -25,6 +27,7 @@ fn event(value: &str) -> bool {
         "identity" => ["control", "decode"].contains(&kind),
         "inventory" => ["control", "decode", "timeout"].contains(&kind),
         "close" => kind == "cleanup",
+        "panic" => panic_kind(kind).is_some(),
         _ => false,
     }
 }

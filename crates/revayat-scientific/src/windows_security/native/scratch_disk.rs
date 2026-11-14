@@ -4,7 +4,11 @@ use super::{
     scratch_access::{self as access, Identity, Owned},
     scratch_layout::{self as layout, VolumeBinding},
 };
+use crate::windows_security::activation::diagnostics::{self, Stage};
 use anyhow::{Context, Result, ensure};
+fn phase<T>(result: Result<T>, stage: Stage) -> Result<T> {
+    result.map_err(|error| diagnostics::operation(error, stage))
+}
 use serde::{Deserialize, Serialize};
 use std::{
     mem::size_of,
@@ -198,8 +202,8 @@ pub(super) fn require_image(
 }
 impl ScratchVolume {
     pub fn prepare(view: &NativeRunView) -> Result<Self> {
-        let mut privilege = access::ManageVolume::acquire()?;
-        let result = Self::prepare_inner(view);
+        let mut privilege = phase(access::ManageVolume::acquire(), Stage::ScratchPrivilege)?;
+        let result = phase(Self::prepare_inner(view), Stage::ScratchPrepare);
         access::combine(result, privilege.close())
     }
     fn prepare_inner(view: &NativeRunView) -> Result<Self> {
@@ -216,7 +220,7 @@ impl ScratchVolume {
             partition: format!("{:?}", GUID::new()?),
         };
         let state = view.state_path().to_owned();
-        let mut state_pin = Owned::open(&state, 0x80, 3, 0x2200000)
+        let mut state_pin = phase(Owned::open(&state, 0x80, 3, 0x2200000), Stage::ScratchState)
             .context("scratch_prepare phase=state-pin desired=0x00000080 share=0x00000003")?;
         ensure!(
             access::object_id(state_pin.0)? == intent.state,
@@ -225,7 +229,10 @@ impl ScratchVolume {
         let image_path = state.join("scratch.vhdx");
         ensure!(!image_path.try_exists()?, "scratch image already exists");
         // Expected VHD/GPT identities are flushed before the first file/device side effect.
-        access::write_json(&state, &host, "scratch-disk.intent", &intent)?;
+        phase(
+            access::write_json(&state, &host, "scratch-disk.intent", &intent),
+            Stage::ScratchState,
+        )?;
         view.require()?;
         let path = super::authority::wide(&image_path);
         let mut descriptor = super::authority::Descriptor::new(&access::private_sddl(&host))?;
@@ -256,9 +263,9 @@ impl ScratchVolume {
         let created = if status.0 == 0 {
             Ok(())
         } else {
-            Err(anyhow::anyhow!(
-                "create fixed scratch VHDX failed winerror={}",
-                status.0
+            Err(diagnostics::operation(
+                std::io::Error::from_raw_os_error(status.0 as i32).into(),
+                Stage::ScratchCreate,
             ))
         };
         let descriptor_cleanup = descriptor.close();
@@ -273,15 +280,18 @@ impl ScratchVolume {
         let result = (|| {
             // Frozen New-VHD completes and closes its creation provider before Capture opens
             // the no-delete metadata pin. An attachment provider is a distinct bound reopen.
-            let qualified = require_virtual(virtual_disk.0, &intent)
-                .context("scratch_prepare phase=creation-provider-identity");
+            let qualified = phase(
+                require_virtual(virtual_disk.0, &intent),
+                Stage::ScratchProvider,
+            )
+            .context("scratch_prepare phase=creation-provider-identity");
             access::combine(
                 qualified,
                 virtual_disk
                     .close()
                     .context("scratch_prepare phase=creation-provider-close"),
             )?;
-            let mut image = Owned::open(&image_path, 0x20080, 3, 0x200000)
+            let mut image = phase(Owned::open(&image_path, 0x20080, 3, 0x200000), Stage::ScratchImage)
                 .context("scratch_prepare phase=image-pin desired=0x00020080 share=0x00000003 creation_provider_closed=True")?;
             let result = (|| {
                 access::require_private(image.0, &host)?;
@@ -289,7 +299,7 @@ impl ScratchVolume {
                     image: access::identity(image.0, false)?,
                 };
                 access::write_json(&state, &host, "scratch-disk.created", &created)?;
-                virtual_disk = open_virtual(&image_path, &intent)
+                virtual_disk = phase(open_virtual(&image_path, &intent), Stage::ScratchProvider)
                     .context("scratch_prepare phase=attachment-provider-open metadata_pin=True")?;
                 require_image(&image_path, image.0, created.image, &host)?;
                 access::write_record(&state, &host, "scratch-disk.attach-intent", b"attach\n")?;
@@ -308,32 +318,39 @@ impl ScratchVolume {
                         None,
                     )
                 };
-                ensure!(
-                    status.0 == 0,
-                    "attach owned scratch VHDX failed winerror={}",
-                    status.0
-                );
+                if status.0 != 0 {
+                    return Err(diagnostics::operation(
+                        std::io::Error::from_raw_os_error(status.0 as i32).into(),
+                        Stage::ScratchAttach,
+                    ));
+                }
                 require_virtual(virtual_disk.0, &intent)
                     .context("scratch_prepare phase=attached-provider-identity")?;
                 require_image(&image_path, image.0, created.image, &host)?;
                 let path = attached_path(virtual_disk.0)?
                     .ok_or_else(|| anyhow::anyhow!("scratch VHDX did not attach"))?;
-                let (mut raw, number) = layout::disk(&path)?;
+                let (mut raw, number) = phase(layout::disk(&path), Stage::ScratchLayout)?;
                 let result = (|| {
                     access::write_record(&state, &host, "scratch-disk.layout-intent", b"gpt\n")?;
-                    let binding = layout::initialize(
-                        raw.0,
-                        number,
-                        layout::guid(&intent.gpt)?,
-                        layout::guid(&intent.partition)?,
+                    let binding = phase(
+                        layout::initialize(
+                            raw.0,
+                            number,
+                            layout::guid(&intent.gpt)?,
+                            layout::guid(&intent.partition)?,
+                        ),
+                        Stage::ScratchLayout,
                     )?;
                     access::write_json(&state, &host, "scratch-disk.volume", &binding)?;
-                    layout::format(&binding, &state)?;
+                    phase(layout::format(&binding, &state), Stage::ScratchFormat)?;
                     let root = layout::choose_drive()?;
                     let mount = Mount { binding, root };
                     access::write_json(&state, &host, "scratch-disk.mount-intent", &mount)?;
-                    layout::mount(&mount.binding, &mount.root)?;
-                    let mut root = Owned::open(&mount.root, 0x20080, 3, 0x2200000)
+                    phase(
+                        layout::mount(&mount.binding, &mount.root),
+                        Stage::ScratchMount,
+                    )?;
+                    let mut root = phase(Owned::open(&mount.root, 0x20080, 3, 0x2200000), Stage::ScratchMount)
                         .context("scratch_prepare phase=mounted-root-pin desired=0x00020080 share=0x00000003")?;
                     let result = (|| {
                         let root_id = access::identity(root.0, true)?;
@@ -343,11 +360,14 @@ impl ScratchVolume {
                             "scratch NT root shape differs"
                         );
                         filesystem(&mount.root)?;
-                        let quota = super::scratch_quota::Quota::new(&mount.root)?;
-                        quota.defaults()?;
-                        quota.owner(&host)?;
+                        let quota = phase(
+                            super::scratch_quota::Quota::new(&mount.root),
+                            Stage::ScratchQuota,
+                        )?;
+                        phase(quota.defaults(), Stage::ScratchQuota)?;
+                        phase(quota.owner(&host), Stage::ScratchQuota)?;
                         quota.owner(view.package_sid())?;
-                        quota.enforce()?;
+                        phase(quota.enforce(), Stage::ScratchQuota)?;
                         drop(quota);
                         let (serial, bytes) = filesystem(&mount.root)?;
                         let private = super::scratch_private::PrivateCreator::prepare(
@@ -377,11 +397,14 @@ impl ScratchVolume {
                             uncertain: false,
                         };
                         let result = (|| {
-                            volume.seal()?;
-                            volume.private.as_mut().unwrap().seal()?;
-                            volume.prepare_folders()?;
+                            phase(volume.seal(), Stage::ScratchSeal)?;
+                            phase(
+                                volume.private.as_mut().unwrap().seal(),
+                                Stage::ScratchPrivate,
+                            )?;
+                            phase(volume.prepare_folders(), Stage::ScratchReady)?;
                             access::write_json(&state, &host, "scratch-disk.ready", &volume.ready)?;
-                            volume.require()?;
+                            phase(volume.require(), Stage::ScratchReady)?;
                             Ok(())
                         })();
                         if let Err(primary) = result {

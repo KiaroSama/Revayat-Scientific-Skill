@@ -1,5 +1,7 @@
 use crate::native::*;
-use crate::protocol::{Failure, KEY, READ, Result, basic, denied, identity, need};
+use crate::protocol::{
+    Failure, KEY, PanicPhase, READ, Result, basic, denied, identity, mark_panic_phase, need,
+};
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
 
@@ -99,6 +101,7 @@ fn counts(handle: &Handle) -> Result<(u32, u32, u64)> {
 }
 
 pub fn machine_baseline() -> Result<String> {
+    mark_panic_phase(PanicPhase::Baseline);
     need(
         [
             "REVAYAT_AUTHORITY_FIXTURE",
@@ -129,6 +132,7 @@ pub fn machine_baseline() -> Result<String> {
 }
 
 pub fn controls() -> Result<(u32, u32)> {
+    mark_panic_phase(PanicPhase::Controls);
     let fixture = std::env::var("REVAYAT_AUTHORITY_FIXTURE").ok();
     let foreign = std::env::var_os("REVAYAT_AUTHORITY_FOREIGN");
     let network = std::env::var("REVAYAT_AUTHORITY_NETWORK").ok();
@@ -143,8 +147,10 @@ pub fn controls() -> Result<(u32, u32)> {
         "start",
     )?;
     detached()?;
+    mark_panic_phase(PanicPhase::Token);
     crate::token::controls()?;
     let start = Instant::now();
+    mark_panic_phase(PanicPhase::Root);
     let (status, root) = open(key, READ, null_mut(), start)?;
     crate::protocol::root_open(status, root.raw as usize)?;
     qualify(&root, key)?;
@@ -152,6 +158,7 @@ pub fn controls() -> Result<(u32, u32)> {
         let (status, handle) = open(key, access, null_mut(), start)?;
         need(denied(status, handle.raw as usize), "mutation")?;
     }
+    mark_panic_phase(PanicPhase::Inventory);
     let before = counts(&root)?;
     let mut names: Vec<String> = Vec::new();
     let accessible = 0;
@@ -203,9 +210,12 @@ pub fn controls() -> Result<(u32, u32)> {
         counts(&root)? == before && names.len() == before.0 as usize,
         "inventory",
     )?;
+    mark_panic_phase(PanicPhase::Token);
     crate::token::controls()?;
     if let Some(path) = foreign {
+        mark_panic_phase(PanicPhase::Foreign);
         foreign_denied(&path)?;
+        mark_panic_phase(PanicPhase::Scratch);
         scratch_control()?;
         network_denied(
             network
@@ -218,6 +228,7 @@ pub fn controls() -> Result<(u32, u32)> {
 }
 
 fn network_denied(value: &str) -> Result<()> {
+    mark_panic_phase(PanicPhase::NetworkConfig);
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream, UdpSocket};
     use std::time::Duration;
     let ports = value
@@ -234,20 +245,35 @@ fn network_denied(value: &str) -> Result<()> {
         IpAddr::V4(Ipv4Addr::LOCALHOST),
         IpAddr::V6(Ipv6Addr::LOCALHOST),
     ];
-    for (host, port) in hosts.into_iter().zip(&ports[..2]) {
+    for (index, (host, port)) in hosts.into_iter().zip(&ports[..2]).enumerate() {
+        mark_panic_phase(if index == 0 {
+            PanicPhase::NetworkTcp4
+        } else {
+            PanicPhase::NetworkTcp6
+        });
         match TcpStream::connect_timeout(&SocketAddr::new(host, *port), Duration::from_secs(1)) {
             Err(error) if error.raw_os_error() == Some(10013) => {}
             _ => return Err(Failure::new("mutation", "control")),
         }
     }
-    for (host, port) in hosts.into_iter().zip(&ports[2..]) {
+    for (index, (host, port)) in hosts.into_iter().zip(&ports[2..]).enumerate() {
         let bind = match host {
             IpAddr::V4(_) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             IpAddr::V6(_) => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
         };
+        mark_panic_phase(if index == 0 {
+            PanicPhase::NetworkUdp4Bind
+        } else {
+            PanicPhase::NetworkUdp6Bind
+        });
         match UdpSocket::bind(SocketAddr::new(bind, 0)) {
             Err(error) if error.raw_os_error() == Some(10013) => {}
             Ok(socket) => {
+                mark_panic_phase(if index == 0 {
+                    PanicPhase::NetworkUdp4Send
+                } else {
+                    PanicPhase::NetworkUdp6Send
+                });
                 match socket.send_to(b"native LPAC denial control", SocketAddr::new(host, *port)) {
                     Err(error) if error.raw_os_error() == Some(10013) => {}
                     _ => return Err(Failure::new("mutation", "control")),

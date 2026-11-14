@@ -2,6 +2,13 @@
 //! for a group containing only our unreaped leader. Inspect only that anchored
 //! group before accepting this result; a real permission failure remains fatal.
 use anyhow::{Context, Result, ensure};
+#[path = "runtime_darwin_state.rs"]
+mod state;
+
+// The short flavor supplies every ownership/state field needed here without
+// the full BSD flavor's effective-UID gate (for example, an exited setuid ps).
+const _: () = assert!(std::mem::size_of::<libc::proc_bsdshortinfo>() == state::SHORT_INFO_BYTES);
+const _: () = assert!(libc::SZOMB == state::ZOMBIE_STATUS);
 
 pub(super) fn stopped_group(leader: u32) -> Result<bool> {
     ensure!(
@@ -22,19 +29,19 @@ pub(super) fn stopped_group(leader: u32) -> Result<bool> {
         count > 0 && (count as usize) < members.len(),
         "Darwin owned group snapshot is unavailable or truncated"
     );
-    let mut anchored = false;
+    let mut snapshot = state::GroupSnapshot::new(leader)?;
     for &pid in &members[..count as usize] {
         ensure!(pid > 1, "Darwin owned group contains an invalid identity");
-        // SAFETY: proc_bsdinfo is a C output record with valid zero initialization.
-        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        // SAFETY: the short BSD output record has valid zero initialization.
+        let mut info: libc::proc_bsdshortinfo = unsafe { std::mem::zeroed() };
         let size = std::mem::size_of_val(&info);
         // SAFETY: the live typed record is writable for its exact ABI size.
         let returned = unsafe {
             libc::proc_pidinfo(
                 pid,
-                libc::PROC_PIDTBSDINFO,
+                libc::PROC_PIDT_SHORTBSDINFO,
                 1, // Include zombies; arg=0 cannot inspect our retained anchor.
-                (&mut info as *mut libc::proc_bsdinfo).cast(),
+                (&mut info as *mut libc::proc_bsdshortinfo).cast(),
                 size.try_into()?,
             )
         };
@@ -45,21 +52,13 @@ pub(super) fn stopped_group(leader: u32) -> Result<bool> {
             }
             return Err(error).context("Darwin owned group status unavailable");
         }
-        ensure!(
-            returned as usize == size,
-            "Darwin owned group status is truncated"
-        );
-        ensure!(
-            info.pbi_pid == pid as u32,
-            "Darwin process identity differs"
-        );
-        if info.pbi_pgid == leader {
-            if info.pbi_status != libc::SZOMB {
-                return Ok(false);
-            }
-            anchored |= pid as u32 == leader;
-        }
+        snapshot.observe(
+            pid,
+            returned,
+            info.pbsi_pid,
+            info.pbsi_pgid,
+            info.pbsi_status,
+        )?;
     }
-    ensure!(anchored, "Darwin owned group lost its unreaped leader");
-    Ok(true)
+    snapshot.finish()
 }

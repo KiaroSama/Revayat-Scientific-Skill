@@ -1,5 +1,10 @@
 #[cfg(unix)]
+#[path = "../src/runtime_darwin_state.rs"]
+mod darwin_state;
+
+#[cfg(unix)]
 mod unix {
+    use super::darwin_state;
     use revayat_scientific::runtime::owner::Accounting;
 
     #[test]
@@ -109,6 +114,36 @@ mod unix {
 
     #[test]
     fn missing_duplicate_foreign_parent_or_crashed_owner_is_not_cleanup() {
+        use darwin_state::{GroupSnapshot, SHORT_INFO_BYTES, ZOMBIE_STATUS};
+        assert_eq!(SHORT_INFO_BYTES, 64);
+        assert_eq!(ZOMBIE_STATUS, 5);
+        let member = |requested, returned, pid, pgid, status| {
+            let mut snapshot = GroupSnapshot::new(42).unwrap();
+            snapshot.observe(requested, returned, pid, pgid, status)?;
+            snapshot.finish()
+        };
+        assert!(member(42, 64, 42, 42, 5).unwrap());
+        for size in [-1, 0, 63, 65] {
+            assert!(member(42, size, 42, 42, 5).is_err());
+        }
+        assert!(member(42, 64, 43, 42, 5).is_err());
+        assert!(member(1, 64, 1, 42, 5).is_err());
+        assert!(member(42, 64, 42, 43, 5).is_err());
+        assert!(member(43, 64, 43, 43, 5).is_err());
+        for status in [0, 1, 2, 3, 4, 6, u32::MAX] {
+            assert!(!member(42, 64, 42, 42, status).unwrap());
+        }
+        assert!(GroupSnapshot::new(0).is_err());
+        assert!(GroupSnapshot::new(1).is_err());
+        assert!(GroupSnapshot::new(i32::MAX as u32 + 1).is_err());
+        let mut snapshot = GroupSnapshot::new(42).unwrap();
+        snapshot.observe(42, 64, 42, 42, 5).unwrap();
+        snapshot.observe(43, 64, 43, 42, 2).unwrap();
+        assert!(!snapshot.finish().unwrap());
+        let mut snapshot = GroupSnapshot::new(42).unwrap();
+        snapshot.observe(42, 64, 42, 42, 5).unwrap();
+        snapshot.observe(43, 64, 43, 43, 2).unwrap();
+        assert!(snapshot.finish().unwrap());
         let mut owners = Accounting::new();
         owners.register("root", None).unwrap();
         assert!(owners.register("child", Some("unknown")).is_err());

@@ -112,6 +112,9 @@ fn event(value: &str) -> bool {
     let Some((phase, kind)) = value.split_once(':') else {
         return false;
     };
+    if phase == "panic" {
+        return protocol::panic_kind(kind).is_some();
+    }
     if phase == "token" && protocol::TOKEN_CHECKS.contains(&kind)
         || phase == "descendant" && protocol::DESCENDANT_CHECKS.contains(&kind)
     {
@@ -408,6 +411,7 @@ impl std::error::Error for PrivateFailure {}
 pub fn sanitize(error: anyhow::Error) -> anyhow::Error {
     if error.is::<PrivateFailure>()
         || error.is::<ReceiptFailure>()
+        || error.is::<crate::windows_security::activation::diagnostics::AuthoredFailure>()
         || error.is::<crate::windows_security::sxs::PrivateFailure>()
         || error.is::<std::sync::Arc<crate::windows_security::sxs::PrivateFailure>>()
     {
@@ -491,6 +495,8 @@ pub fn safe_report(error: &anyhow::Error) -> String {
             out.push_str("fixed entry diagnostic failed after qualified cleanup; ");
             visit(qualified.original(), depth + 1, out);
             return;
+        } else if error.is::<crate::windows_security::activation::diagnostics::AuthoredFailure>() {
+            crate::windows_security::activation::diagnostics::summary(error)
         } else if error.is::<ReceiptFailure>()
             || error.is::<PrivateFailure>()
             || error.is::<crate::windows_security::sxs::PrivateFailure>()

@@ -127,11 +127,9 @@ impl Owned {
         let path = wide(path.as_ref());
         let handle =
             unsafe { CreateFileW(path.as_ptr(), access, share, null(), 3, flags, null_mut()) };
-        ensure!(
-            !handle.is_null() && handle as isize != -1,
-            "open bound scratch object winerror={}",
-            std::io::Error::last_os_error().raw_os_error().unwrap_or(-1)
-        );
+        if handle.is_null() || handle as isize == -1 {
+            return Err(std::io::Error::last_os_error()).context("open bound scratch object");
+        }
         Ok(Self(handle))
     }
     pub fn close(&mut self) -> Result<()> {

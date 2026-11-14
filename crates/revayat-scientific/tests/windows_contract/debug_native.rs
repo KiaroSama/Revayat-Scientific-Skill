@@ -39,9 +39,11 @@ fn actual_fixed_explicit_id2_pairs_csr_only_with_real_os_profile_and_restoration
     };
     let work = tempfile::tempdir().unwrap();
     let result = (|| {
-        let mut tools = RustTools::discover(work.path())?;
+        let mut tools = RustTools::discover(work.path())
+            .map_err(|error| diagnostics::operation(error, diagnostics::Stage::FixtureDiscover))?;
         let result = (|| {
-            let mut fixture = CompiledIndependentId2::build(&mut tools, work.path())?;
+            let mut fixture = CompiledIndependentId2::build(&mut tools, work.path())
+                .map_err(|error| diagnostics::operation(error, diagnostics::Stage::FixtureBuild))?;
             let observed =
                 revayat_scientific::windows_security::native::observe_explicit_id2_dispatch(
                     &mut fixture,

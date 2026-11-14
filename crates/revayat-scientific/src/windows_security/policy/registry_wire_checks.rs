@@ -23,6 +23,23 @@ fn refused(text: &str) -> Result<()> {
     Ok(())
 }
 pub fn check_validation() -> Result<()> {
+    for phase in protocol::PANIC_CHECKS {
+        let frame = format!(
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=panic:{phase}\n"
+        );
+        accepted(&frame)?;
+        let failed = validate_wire(101, None, Some(&frame)).unwrap_err();
+        ensure!(
+            failed.to_string().contains("primary_exit=0x00000065")
+                && failed
+                    .to_string()
+                    .contains(&format!("errors=panic:{phase}")),
+            "actual panic exit must remain fatal with its closed operation"
+        );
+    }
+    refused(
+        "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=panic:private-sentinel\n",
+    )?;
     let wire = "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=00000007 errors=descendant:transport,root:control,close:cleanup\n";
     let error = validate_wire(1, Some("private-stdout-sentinel"), Some(wire)).unwrap_err();
     ensure!(
