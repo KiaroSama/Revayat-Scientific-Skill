@@ -99,6 +99,9 @@ pub(super) fn execute(
         let executed = match runtime::run_supervised(&spec) {
             Ok(executed) => executed,
             Err(error) => {
+                if let Some(completed) = runtime::retained_command_output(&error) {
+                    failure_diagnostics(artifact, completed);
+                }
                 let detail = discovery_failure_summary(&error);
                 eprintln!(
                     "test-diagnostic: harness={} owned_execution={detail}",
@@ -113,6 +116,8 @@ pub(super) fn execute(
                     error: None,
                 });
                 partial.cleanup_complete = false;
+                // Earlier separately completed groups retain their actual outcomes.
+                // No current uncertain execution is parsed into a case result.
                 if partial.exit == Some(0) {
                     partial.exit = None;
                 }

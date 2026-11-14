@@ -205,6 +205,7 @@ impl Interactive {
                 }
                 Event::Complete(response) => {
                     ensure!(self.response.is_none(), "duplicate runtime completion");
+                    validate_response(&response, &self.spec)?;
                     self.response = Some(response);
                 }
             }
@@ -342,52 +343,138 @@ pub fn run(spec: &CommandSpec, input: Option<&[u8]>) -> Result<CommandOutput> {
         );
         wait_response(owner.socket.as_ref(), owner.deadline)?;
     }
-    let primary = {
-        let response = owner
-            .response
-            .as_ref()
-            .context("runtime completion missing")?;
-        if let Some(idle) = response.deadline_idle {
-            Err(DeadlineExceeded {
-                idle,
-                limit: if idle {
-                    owner.spec.idle_timeout.unwrap_or(spec.timeout)
-                } else {
-                    spec.timeout
-                },
-            }
-            .into())
-        } else if response.error.as_deref() == Some("not-found") {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "owned external tool is missing",
-            )
-            .into())
-        } else if let Some(category) = &response.error {
-            Err(anyhow::anyhow!(match category.as_str() {
-                "output-limit" =>
-                    format!("tool diagnostics exceeded {} byte limit", spec.max_output),
-                "input" => "tool did not consume its bounded input".into(),
-                "spawn" => "cannot start owned external tool".into(),
-                "cancelled" => "runtime caller cancelled or disconnected".into(),
-                label if valid_operation_label(label) =>
-                    format!("owned runtime operation failed ({label})"),
-                _ => "owned runtime operation failed".into(),
-            }))
-        } else {
-            Ok(())
-        }
-    };
-    super::super::with_cleanup(primary, owner.finish())?;
+    let cleanup = owner.finish();
     let response = owner
         .response
         .take()
         .context("runtime completion missing")?;
-    Ok(CommandOutput {
-        code: response.code.context("runtime child exit missing")?,
-        stdout: response.stdout,
-        stderr: response.stderr,
-    })
+    completed_result(response, &owner.spec, cleanup)
+}
+
+fn completed_result(
+    response: Response,
+    spec: &CommandSpec,
+    cleanup: Result<()>,
+) -> Result<CommandOutput> {
+    let complete = response.cleanup_complete;
+    let primary = (|| {
+        validate_response(&response, spec)?;
+        let primary = primary_result(&response, spec);
+        match response.code {
+            Some(code) => {
+                let output = CommandOutput {
+                    code,
+                    stdout: response.stdout,
+                    stderr: response.stderr,
+                };
+                // With code present, a primary error is exclusively a closed late
+                // cleanup category. Preserve completed bytes without reporting success.
+                super::super::with_command_cleanup(Ok(output), primary)
+            }
+            None => {
+                primary?;
+                anyhow::bail!("runtime child exit missing")
+            }
+        }
+    })();
+    let cleanup = cleanup.and_then(|()| {
+        ensure!(complete, "runtime companion cleanup incomplete");
+        Ok(())
+    });
+    super::super::with_command_cleanup(primary, cleanup)
+}
+
+fn validate_response(response: &Response, spec: &CommandSpec) -> Result<()> {
+    ensure!(
+        response
+            .stdout
+            .len()
+            .checked_add(response.stderr.len())
+            .is_some_and(|length| length <= spec.max_output),
+        "ownership response exceeds diagnostic budget"
+    );
+    if let Some(category) = response.error.as_deref() {
+        ensure!(
+            matches!(
+                category,
+                "output-limit" | "input" | "not-found" | "spawn" | "cancelled"
+            ) || valid_operation_label(category),
+            "invalid runtime completion category"
+        );
+    }
+    if response.code.is_some() {
+        ensure!(
+            response.deadline_idle.is_none(),
+            "completed runtime response contradicts deadline"
+        );
+        ensure!(
+            match (response.cleanup_complete, response.error.as_deref()) {
+                (true, None) => true,
+                (false, Some(category)) => valid_operation_label(category),
+                _ => false,
+            },
+            "completed runtime response contradicts cleanup result"
+        );
+    } else {
+        ensure!(
+            response.stdout.is_empty() && response.stderr.is_empty() && response.error.is_some(),
+            "incomplete runtime response has captures or lacks a cause"
+        );
+        if response.deadline_idle.is_some() {
+            ensure!(
+                response.error.as_deref().is_some_and(valid_operation_label),
+                "runtime deadline contradicts operation category"
+            );
+        }
+    }
+    ensure!(
+        response.deadline_idle != Some(true) || spec.idle_timeout.is_some(),
+        "runtime idle deadline was not requested"
+    );
+    Ok(())
+}
+
+fn primary_result(response: &Response, spec: &CommandSpec) -> Result<()> {
+    if let Some(idle) = response.deadline_idle {
+        let deadline = anyhow::Error::new(DeadlineExceeded {
+            idle,
+            limit: if idle {
+                spec.idle_timeout.unwrap_or(spec.timeout)
+            } else {
+                spec.timeout
+            },
+        });
+        Err(
+            if !response.cleanup_complete
+                && let Some(category) = response
+                    .error
+                    .as_deref()
+                    .filter(|label| valid_operation_label(label))
+            {
+                deadline.context(format!("owned runtime operation failed ({category})"))
+            } else {
+                deadline
+            },
+        )
+    } else if response.error.as_deref() == Some("not-found") {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "owned external tool is missing",
+        )
+        .into())
+    } else if let Some(category) = &response.error {
+        Err(anyhow::anyhow!(match category.as_str() {
+            "output-limit" => format!("tool diagnostics exceeded {} byte limit", spec.max_output),
+            "input" => "tool did not consume its bounded input".into(),
+            "spawn" => "cannot start owned external tool".into(),
+            "cancelled" => "runtime caller cancelled or disconnected".into(),
+            label if valid_operation_label(label) =>
+                format!("owned runtime operation failed ({label})"),
+            _ => "owned runtime operation failed".into(),
+        }))
+    } else {
+        Ok(())
+    }
 }
 
 fn valid_operation_label(label: &str) -> bool {
@@ -472,6 +559,7 @@ mod tests {
     // Exercise the actual incremental decoder, without spawning an unrelated process.
     #[test]
     fn complete_then_eof_and_fragmented_frames_preserve_cleanup_result() {
+        super::retained_checks::check_completed_retention();
         super::transport_checks::check_backpressure().unwrap();
         fn decode(bytes: &[u8], eof: bool) -> Result<bool> {
             let mut pending = bytes.to_vec();
@@ -504,3 +592,7 @@ mod tests {
 #[cfg(test)]
 #[path = "runtime_transport_checks.rs"]
 mod transport_checks;
+
+#[cfg(test)]
+#[path = "runtime_retained_checks.rs"]
+mod retained_checks;

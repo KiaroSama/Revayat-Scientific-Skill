@@ -1,4 +1,5 @@
 use anyhow::Result;
+use revayat_scientific::migration::execution::discovery_failure_summary;
 use revayat_scientific::runtime::{self, CommandSpec, DeadlineExceeded, OperationLog};
 use std::{
     fs,
@@ -6,6 +7,22 @@ use std::{
     time::{Duration, Instant},
 };
 const TOOL: &str = env!("CARGO_BIN_EXE_revayat-test-tool");
+fn require_verified_cleanup(error: &anyhow::Error) {
+    assert!(
+        error.downcast_ref::<runtime::CleanupFailure>().is_none(),
+        "expected deadline/overflow has incomplete cleanup: {}",
+        discovery_failure_summary(error)
+    );
+}
+fn expected_deadline(error: &anyhow::Error) -> &DeadlineExceeded {
+    require_verified_cleanup(error);
+    error.downcast_ref::<DeadlineExceeded>().unwrap_or_else(|| {
+        panic!(
+            "expected typed deadline: {}",
+            discovery_failure_summary(error)
+        )
+    })
+}
 
 #[test]
 fn test_idle_deadline_is_distinct_from_wall_deadline() -> Result<()> {
@@ -14,7 +31,7 @@ fn test_idle_deadline_is_distinct_from_wall_deadline() -> Result<()> {
     spec.idle_timeout = Some(Duration::from_millis(150));
     let start = Instant::now();
     let error = runtime::run(&spec).unwrap_err();
-    let deadline = error.downcast_ref::<DeadlineExceeded>().unwrap();
+    let deadline = expected_deadline(&error);
     assert!(deadline.idle);
     assert_eq!(deadline.limit, Duration::from_millis(150));
     assert!(start.elapsed() < Duration::from_secs(3));
@@ -151,9 +168,7 @@ fn test_timeout_terminates_descendant_after_launcher_exits() -> Result<()> {
     spec.timeout = Duration::from_secs(1);
     let start = Instant::now();
     let error = runtime::run(&spec).unwrap_err();
-    let deadline = error
-        .downcast_ref::<DeadlineExceeded>()
-        .expect("a pipe-holding descendant must reach the original wall deadline");
+    let deadline = expected_deadline(&error);
     assert!(!deadline.idle);
     assert_eq!(deadline.limit, Duration::from_secs(1));
     let pid = fs::read_to_string(path)?.parse()?;
@@ -178,12 +193,23 @@ fn global_cli_timeout_reaps_nested_native_runtime_and_grandchildren() -> Result<
     command.args.push(pid.as_os_str().into());
     command.cwd = Some(temp.path().to_owned());
     command.timeout = Duration::from_secs(12);
-    let output = runtime::run(&command)?;
+    let output = runtime::run(&command).map_err(|error| {
+        anyhow::anyhow!(
+            "global timeout owner failed: {}",
+            discovery_failure_summary(&error)
+        )
+    })?;
     assert_eq!(
         output.code,
         124,
         "{}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    let diagnostic = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        diagnostic.contains("command timed out; owned process tree terminated")
+            && !diagnostic.contains("owned cleanup could not be verified"),
+        "public global timeout did not positively verify owned process-tree cleanup"
     );
     let pid = fs::read_to_string(pid)?.parse()?;
     assert!(not_alive(pid));
@@ -220,12 +246,10 @@ fn bounded_stdin_preserves_bytes_and_obeys_the_same_deadline() -> Result<()> {
     assert_eq!(output.stdout, input);
     let mut blocked = CommandSpec::new(TOOL).args(["silent"]);
     blocked.timeout = Duration::from_millis(100);
-    assert!(
-        runtime::run_with_input(&blocked, &vec![b'x'; 1024 * 1024])
-            .unwrap_err()
-            .downcast_ref::<DeadlineExceeded>()
-            .is_some()
-    );
+    let error = runtime::run_with_input(&blocked, &vec![b'x'; 1024 * 1024]).unwrap_err();
+    let deadline = expected_deadline(&error);
+    assert!(!deadline.idle);
+    assert_eq!(deadline.limit, Duration::from_millis(100));
     Ok(())
 }
 
@@ -280,6 +304,23 @@ fn secondary_cleanup_failure_keeps_typed_primary_deadline() {
     assert!(error.downcast_ref::<runtime::CleanupFailure>().is_some());
     let retained =
         runtime::retained_command_output(&error).expect("completed bytes survive failed recovery");
+    assert_eq!(retained.code, 7);
+    assert_eq!(retained.stdout, original_stdout);
+    assert_eq!(retained.stderr, original_stderr);
+    for projection in [
+        error.to_string(),
+        format!("{error:#}"),
+        format!("{error:?}"),
+    ] {
+        assert!(!projection.contains("PRIVATE_RETAINED_OUTPUT_CANARY"));
+    }
+    let error = runtime::with_command_cleanup(
+        Err(error),
+        Err(anyhow::anyhow!("controlled later owner failure")),
+    )
+    .unwrap_err();
+    let retained = runtime::retained_command_output(&error)
+        .expect("a later owner failure must not erase already retained completed bytes");
     assert_eq!(retained.code, 7);
     assert_eq!(retained.stdout, original_stdout);
     assert_eq!(retained.stderr, original_stderr);
@@ -363,10 +404,13 @@ fn diagnostic_overflow_reaps_the_producer_without_returning_partial_success() ->
     spec.max_output = 16 * 1024;
     let started = Instant::now();
     let error = runtime::run(&spec).unwrap_err();
+    require_verified_cleanup(&error);
     assert!(
         error
             .to_string()
-            .contains("diagnostics exceeded 16384 byte limit")
+            .contains("diagnostics exceeded 16384 byte limit"),
+        "{}",
+        discovery_failure_summary(&error)
     );
     assert!(started.elapsed() < Duration::from_secs(3));
     Ok(())

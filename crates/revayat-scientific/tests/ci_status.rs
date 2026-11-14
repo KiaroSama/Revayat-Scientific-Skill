@@ -435,6 +435,16 @@ fn http_fixture(code: &str, extra: &str, body: Vec<u8>) -> (String, HttpServer) 
     let length = body.len();
     http_fixture_framed(code, extra, body, HttpFraming::Length(length))
 }
+fn http_fixture_socket_timeout(
+    deadline: std::time::Instant,
+    now: std::time::Instant,
+) -> Option<std::time::Duration> {
+    // Whole positive milliseconds avoid zero/sub-resolution socket timeouts.
+    // Round down: configuring the socket must never extend the fixture deadline.
+    let remaining = deadline.checked_duration_since(now)?;
+    let millis = u64::try_from(remaining.as_millis()).ok()?;
+    (millis > 0).then(|| std::time::Duration::from_millis(millis))
+}
 fn http_fixture_framed(
     code: &str,
     extra: &str,
@@ -488,11 +498,9 @@ fn http_fixture_framed(
                 std::time::Instant::now() < deadline,
                 "HTTP fixture request deadline exceeded"
             );
-            connection
-                .set_read_timeout(Some(
-                    deadline.saturating_duration_since(std::time::Instant::now()),
-                ))
-                .unwrap();
+            let timeout = http_fixture_socket_timeout(deadline, std::time::Instant::now())
+                .expect("HTTP fixture request deadline exceeded");
+            connection.set_read_timeout(Some(timeout)).unwrap();
             let n = connection.read(&mut buffer).unwrap();
             if n == 0 {
                 break;
@@ -515,11 +523,12 @@ fn http_fixture_framed(
                 exchange.write_error = Some(std::io::ErrorKind::TimedOut);
                 break;
             }
-            connection
-                .set_write_timeout(Some(
-                    deadline.saturating_duration_since(std::time::Instant::now()),
-                ))
-                .unwrap();
+            let Some(timeout) = http_fixture_socket_timeout(deadline, std::time::Instant::now())
+            else {
+                exchange.write_error = Some(std::io::ErrorKind::TimedOut);
+                break;
+            };
+            connection.set_write_timeout(Some(timeout)).unwrap();
             let end = (exchange.body_bytes + 64 * 1024).min(body.len());
             match connection.write(&body[exchange.body_bytes..end]) {
                 Ok(0) => {
@@ -551,6 +560,24 @@ fn http_fixture_framed(
 }
 #[test]
 fn test_http_timeout_cap_utf8_and_secret_safe_errors() {
+    let now = std::time::Instant::now();
+    assert_eq!(
+        http_fixture_socket_timeout(now, now),
+        None,
+        "an exhausted socket budget must never reach set_timeout as zero"
+    );
+    assert_eq!(
+        http_fixture_socket_timeout(now + std::time::Duration::from_nanos(999_999), now),
+        None
+    );
+    assert_eq!(
+        http_fixture_socket_timeout(now + std::time::Duration::from_nanos(1_999_999), now),
+        Some(std::time::Duration::from_millis(1))
+    );
+    assert_eq!(
+        http_fixture_socket_timeout(now + std::time::Duration::from_secs(5), now),
+        Some(std::time::Duration::from_secs(5))
+    );
     assert!(ci::GitHub::new(String::new()).is_err());
     assert!(ci::GitHub::new("private token".into()).is_err());
     let mut api = ci::GitHub::new("private-test-token".into()).unwrap();

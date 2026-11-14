@@ -442,6 +442,70 @@ fn operation_category(error: &anyhow::Error) -> String {
     }
 }
 
+fn completed_response(
+    result: Result<CommandOutput>,
+    cleanup: Result<()>,
+    cleanup_complete: bool,
+    termination_signal: Option<i32>,
+) -> Response {
+    // A later ancestor/container failure must not erase an actually observed
+    // owned status/group/reap stage. Unknown categories supply no such evidence.
+    let original_category = result
+        .as_ref()
+        .err()
+        .map(operation_category)
+        .filter(|category| !category.starts_with("operation-unknown"));
+    let result = super::with_command_cleanup(result, cleanup);
+    match result {
+        Ok(output) => Response {
+            code: Some(output.code),
+            stdout: output.stdout,
+            stderr: output.stderr,
+            deadline_idle: None,
+            termination_signal,
+            cleanup_complete,
+            error: (!cleanup_complete).then(|| "operation-unknown".into()),
+        },
+        Err(error) => {
+            let retained = super::retained_command_output(&error);
+            let text = error.to_string();
+            let category = if let Some(original) = original_category {
+                original
+            } else if retained.is_some() {
+                // A missing cleanup resource is not a missing executable when
+                // the command already completed. Preserve only the closed operation label.
+                operation_category(&error)
+            } else if text.starts_with("tool diagnostics exceeded") {
+                "output-limit".into()
+            } else if text.starts_with("tool did not consume") {
+                "input".into()
+            } else if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            {
+                "not-found".into()
+            } else if text.starts_with("cannot start owned") {
+                "spawn".into()
+            } else if text.starts_with("runtime caller cancelled") {
+                "cancelled".into()
+            } else {
+                operation_category(&error)
+            };
+            Response {
+                code: retained.map(|output| output.code),
+                stdout: retained.map_or_else(Vec::new, |output| output.stdout.clone()),
+                stderr: retained.map_or_else(Vec::new, |output| output.stderr.clone()),
+                deadline_idle: error
+                    .downcast_ref::<DeadlineExceeded>()
+                    .map(|value| value.idle),
+                termination_signal,
+                cleanup_complete: cleanup_complete && retained.is_none(),
+                error: Some(category),
+            }
+        }
+    }
+}
+
 pub fn companion() -> Result<PathBuf> {
     let candidate = if let Some(path) = std::env::var_os(OWNER) {
         PathBuf::from(path)
@@ -631,7 +695,6 @@ pub fn cli() -> Result<()> {
     };
     let own_cleanup_complete = owned.cleanup_complete && container_cleanup.is_ok();
     let termination_signal = owned.termination_signal;
-    let result = super::with_cleanup(owned.result, container_cleanup);
     // Cleanup commands run directly inside this guardian, not recursively through
     // a new ContainerScope/owner. Leave that mode active through scope Drop too.
     let done = (|| -> Result<()> {
@@ -651,47 +714,12 @@ pub fn cli() -> Result<()> {
         Ok(())
     };
     let cleanup_complete = own_cleanup_complete && done.is_ok() && root_result.is_ok();
-    let response = match result {
-        Ok(output) => Response {
-            code: Some(output.code),
-            stdout: output.stdout,
-            stderr: output.stderr,
-            deadline_idle: None,
-            termination_signal,
-            cleanup_complete,
-            error: None,
-        },
-        Err(error) => {
-            let text = error.to_string();
-            let category = if text.starts_with("tool diagnostics exceeded") {
-                "output-limit".into()
-            } else if text.starts_with("tool did not consume") {
-                "input".into()
-            } else if error
-                .downcast_ref::<std::io::Error>()
-                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-            {
-                "not-found".into()
-            } else if text.starts_with("cannot start owned") {
-                "spawn".into()
-            } else if text.starts_with("runtime caller cancelled") {
-                "cancelled".into()
-            } else {
-                operation_category(&error)
-            };
-            Response {
-                code: None,
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                deadline_idle: error
-                    .downcast_ref::<DeadlineExceeded>()
-                    .map(|value| value.idle),
-                termination_signal,
-                cleanup_complete,
-                error: Some(category),
-            }
-        }
-    };
+    let response = completed_response(
+        owned.result,
+        container_cleanup,
+        cleanup_complete,
+        termination_signal,
+    );
     lifeline.set_nonblocking(false)?;
     lifeline.set_write_timeout(Some(Duration::from_secs(2)))?;
     // Caller death may close the response endpoint; cleanup above still ran.
