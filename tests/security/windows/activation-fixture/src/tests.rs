@@ -1,5 +1,7 @@
 //! Portable format/ABI/receipt assertions, never an actual activation operation.
 use super::*;
+#[path = "../../native-fixtures/independent_id2.rs"]
+mod independent_id2;
 #[test]
 fn explicit_id2_context_keeps_only_module_resource_flags_and_exact_x64_layout() {
     use std::mem::{offset_of, size_of};
@@ -86,6 +88,42 @@ fn explicit_receipt_preserves_pre_call_then_consistent_fixed_result_without_raw_
     );
     assert!(result(true, 5).is_none() && result(false, 0).is_none());
     assert!(PRE_CALL.len() + result(false, u32::MAX).unwrap().len() <= 128);
+    for command in [
+        "\"D:\\owned work\\control.exe\"\0",
+        "\"D:\\control.exe\" \t\0",
+    ] {
+        let units = command.encode_utf16().collect::<Vec<_>>();
+        assert!(independent_id2::no_arguments(|index| units
+            .get(index)
+            .copied()));
+    }
+    for command in [
+        "",
+        "\0",
+        "D:\\control.exe\0",
+        "\"\"\0",
+        "\"D:\\control.exe\0",
+        "\"D:\\control.exe\"",
+        "\"D:\\control.exe\" --oracle\0",
+        "\"D:\\control.exe\" x\0",
+        "\"D:\\control.exe\"\"\0",
+        "\"D:\\control.exe\"x\0",
+    ] {
+        let units = command.encode_utf16().collect::<Vec<_>>();
+        assert!(!independent_id2::no_arguments(|index| units
+            .get(index)
+            .copied()));
+    }
+    let mut calls = 0;
+    assert!(!independent_id2::no_arguments(|index| {
+        calls += 1;
+        Some(if index == 0 {
+            u16::from(b'"')
+        } else {
+            u16::from(b'x')
+        })
+    }));
+    assert_eq!(calls, 32767);
 }
 #[test]
 fn fixture_captures_error_immediately_and_build_links_only_the_fixed_binary_resource() {
@@ -105,4 +143,17 @@ fn fixture_captures_error_immediately_and_build_links_only_the_fixed_binary_reso
     assert!(build.contains("cargo::rustc-link-arg-bin=startup-explicit-id2=/MANIFEST:NO"));
     assert!(build.contains("cargo::rustc-link-arg-bin=startup-explicit-id2=/ALLOWISOLATION:NO"));
     assert!(!build.contains("Command::") && !build.contains("cargo::rustc-link-arg="));
+    let independent = include_str!("../../native-fixtures/independent_id2.rs");
+    assert!(independent.contains("#![cfg_attr(not(test), no_std)]"));
+    assert!(independent.contains("#![cfg_attr(not(test), no_main)]"));
+    assert!(!independent.contains("std::"));
+    let independent = independent.split_whitespace().collect::<String>();
+    let (_, after) = independent
+        .split_once("lethandle=unsafe{abi::CreateActCtxW(&context)};")
+        .unwrap();
+    assert!(
+        after.starts_with(
+            "leterror=ifhandleasusize==usize::MAX{unsafe{abi::GetLastError()}}else{0};"
+        )
+    );
 }

@@ -1,5 +1,6 @@
 //! Fixed explicit-ID2 pipe transport. Handles remain owned through real child/job destruction.
 use super::*;
+use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
 #[link(name = "kernel32")]
 unsafe extern "system" {
     fn CreatePipe(
@@ -162,13 +163,27 @@ impl Transport {
         Ok(owner)
     }
     pub fn require_pre_call(&mut self) -> Result<()> {
-        self.output.drain()?;
-        self.error.drain()?;
-        ensure!(
-            self.output.bytes == b"EXPLICIT_ID2_BEFORE_CALL\n" && self.error.bytes.is_empty(),
-            "explicit CSR call precedes its exact pre-call receipt"
-        );
-        Ok(())
+        let result = (|| {
+            self.output.drain()?;
+            self.error.drain()?;
+            ensure!(
+                self.output.bytes == b"EXPLICIT_ID2_BEFORE_CALL\n" && self.error.bytes.is_empty(),
+                "explicit CSR call precedes its exact pre-call receipt"
+            );
+            Ok(())
+        })();
+        result.map_err(|error| {
+            diagnostics::annotate(
+                error,
+                Stage::DebugTransport,
+                Numbers {
+                    stdout_bytes: Some(self.output.bytes.len() as u32),
+                    stderr_bytes: Some(self.error.bytes.len() as u32),
+                    exact_prefix: Some(self.output.bytes == b"EXPLICIT_ID2_BEFORE_CALL\n"),
+                    ..Default::default()
+                },
+            )
+        })
     }
     pub fn finish(&mut self) -> Result<()> {
         let result = (|| {

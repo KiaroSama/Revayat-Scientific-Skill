@@ -98,7 +98,12 @@ pub(super) fn execute(
         // A returned output includes direct wait, capture joins and owned tree/container finalization.
         let executed = match runtime::run_supervised(&spec) {
             Ok(executed) => executed,
-            Err(_) => {
+            Err(error) => {
+                let detail = discovery_failure_summary(&error);
+                eprintln!(
+                    "test-diagnostic: harness={} owned_execution={detail}",
+                    artifact.target
+                );
                 let mut partial = combined.unwrap_or_else(|| BinaryExecution {
                     target: artifact.target.clone(),
                     mapping_target: artifact.mapping_target.clone(),
@@ -111,7 +116,9 @@ pub(super) fn execute(
                 if partial.exit == Some(0) {
                     partial.exit = None;
                 }
-                partial.error = Some("test execution or owned cleanup incomplete".into());
+                partial.error = Some(format!(
+                    "test execution or owned cleanup incomplete; {detail}"
+                ));
                 // Do not reclaim the journal while an uncertain child could still access it.
                 if let Some(capture) = capture {
                     capture.retain();

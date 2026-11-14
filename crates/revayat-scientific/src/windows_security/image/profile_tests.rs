@@ -7,6 +7,7 @@ fn both_reviewed_profiles_bind_all_literal_bytes_edges_imports_and_separate_site
     super::super::validation::check_checkpoint_validation().unwrap();
     super::super::validation::check_child_activation_validation().unwrap();
     super::super::validation::check_self_activation_validation().unwrap();
+    super::super::validation::check_independent_id2_validation().unwrap();
     for p in PROFILES {
         let b = fixture(p);
         let image = PeImage::parse(&b, 1).unwrap();

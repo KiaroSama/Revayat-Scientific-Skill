@@ -260,10 +260,11 @@ fn network_denied(value: &str) -> Result<()> {
 }
 
 fn scratch_control() -> Result<()> {
+    use crate::protocol::scratch_failure;
     use std::io::{Read, Seek, SeekFrom, Write};
     use std::os::windows::fs::OpenOptionsExt;
     let path = std::env::current_dir()
-        .map_err(|_| Failure::new("mutation", "native"))?
+        .map_err(|error| scratch_failure("scratch-cwd", Some(&error)))?
         .join("native-create-only-control");
     // Create-only, no sharing, no reparse following, delete the exact owned
     // object on close. A collision is fatal and never causes pathname cleanup.
@@ -275,30 +276,43 @@ fn scratch_control() -> Result<()> {
         .share_mode(0)
         .custom_flags(0x04200000)
         .open(&path)
-        .map_err(|_| Failure::new("mutation", "native"))?;
+        .map_err(|error| scratch_failure("scratch-create", Some(&error)))?;
     let expected = b"native owned scratch control\0\r\n";
-    file.write_all(expected)
-        .and_then(|_| file.flush())
-        .and_then(|_| file.sync_all())
-        .map_err(|_| Failure::new("mutation", "native"))?;
-    file.seek(SeekFrom::Start(0))
-        .map_err(|_| Failure::new("mutation", "native"))?;
     let mut actual = [0u8; 32];
-    let count = file
-        .read(&mut actual)
-        .map_err(|_| Failure::new("mutation", "native"))?;
-    need(
-        count == expected.len() && actual[..count] == expected[..],
-        "mutation",
-    )?;
+    let operation = (|| {
+        file.write_all(expected)
+            .map_err(|error| scratch_failure("scratch-write", Some(&error)))?;
+        file.flush()
+            .map_err(|error| scratch_failure("scratch-flush", Some(&error)))?;
+        file.sync_all()
+            .map_err(|error| scratch_failure("scratch-sync", Some(&error)))?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| scratch_failure("scratch-seek", Some(&error)))?;
+        let count = file
+            .read(&mut actual)
+            .map_err(|error| scratch_failure("scratch-read", Some(&error)))?;
+        need(
+            count == expected.len() && actual[..count] == expected[..],
+            "mutation",
+        )
+    })();
     actual.fill(0);
     use std::os::windows::io::IntoRawHandle;
     let mut owned = Handle::new(file.into_raw_handle(), false);
-    owned.close()?;
-    need(
-        matches!(std::fs::symlink_metadata(path),Err(error) if error.kind()==std::io::ErrorKind::NotFound),
-        "mutation",
-    )
+    let closed = owned.close();
+    match (operation, closed) {
+        (Err(mut primary), Err(cleanup)) => {
+            primary.events.extend(cleanup.events);
+            return Err(primary);
+        }
+        (Err(error), _) | (_, Err(error)) => return Err(error),
+        _ => {}
+    }
+    match std::fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(scratch_failure("scratch-retire", Some(&error))),
+        Ok(_) => Err(scratch_failure("scratch-retire", None)),
+    }
 }
 
 fn foreign_denied(path: &std::ffi::OsStr) -> Result<()> {

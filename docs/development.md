@@ -45,6 +45,9 @@ The legacy `deps`/`examples` layout remains recognized explicitly. Final executa
 paths stay at `target/<profile>`; fixed companions resolve to that same profile,
 without searching arbitrary ancestors. Separate custom intermediate build roots
 are refused by this collector rather than admitted as unrelated target artifacts.
+Path-adversarial fixtures resolve only their newly created, empty temporary root
+before creating test inputs. This supports macOS's system temporary-directory
+alias while retaining production rejection of linked inputs and linked ancestors.
 
 The Gitleaks workflow added on main is retained with a Rust controller and native
 Git adapter. It verifies the pinned scanner archive, captures scanner output

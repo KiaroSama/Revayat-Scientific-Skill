@@ -31,13 +31,27 @@ fn actual_owned_authority_entry_debug_state_is_restored_before_natural_exit() {
 }
 #[test]
 fn actual_fixed_explicit_id2_pairs_csr_only_with_real_os_profile_and_restoration() {
-    let executable = std::env::current_exe().unwrap();
-    let fixture = revayat_scientific::executable_paths::binary_directory(&executable)
-        .unwrap()
-        .join("startup-explicit-id2.exe");
-    let proof =
-        revayat_scientific::windows_security::native::observe_explicit_id2_dispatch(&fixture)
-            .unwrap_or_else(|error| panic!("{}", diagnostics::summary(&error)));
+    use revayat_scientific::{
+        runtime,
+        windows_security::activation::fixtures::{
+            build::RustTools, native_producers::CompiledIndependentId2,
+        },
+    };
+    let work = tempfile::tempdir().unwrap();
+    let result = (|| {
+        let mut tools = RustTools::discover(work.path())?;
+        let result = (|| {
+            let mut fixture = CompiledIndependentId2::build(&mut tools, work.path())?;
+            let observed =
+                revayat_scientific::windows_security::native::observe_explicit_id2_dispatch(
+                    &mut fixture,
+                );
+            runtime::with_cleanup(observed, fixture.close())
+        })();
+        runtime::with_cleanup(result, tools.close())
+    })();
+    let proof = runtime::with_cleanup(result, work.close().map_err(Into::into))
+        .unwrap_or_else(|error| panic!("{}", diagnostics::summary(&error)));
     assert!(
         proof.creation_bound
             && proof.entry_captured

@@ -7,6 +7,32 @@ use std::path::Path;
 #[path = "support/windows_junction.rs"]
 mod windows_junction;
 
+/// Resolve only a newly created, empty fixture root, before any adversarial paths exist.
+fn owned_fixture_directory() -> (tempfile::TempDir, std::path::PathBuf) {
+    let owner = tempfile::tempdir().unwrap();
+    let original = owner.path();
+    let metadata = std::fs::symlink_metadata(original).unwrap();
+    assert!(metadata.is_dir() && !metadata.file_type().is_symlink());
+    assert!(std::fs::read_dir(original).unwrap().next().is_none());
+    let identity = revayat_scientific::identity::path_object_id(original).unwrap();
+    // macOS's system temporary directory may be spelled through /var -> /private/var.
+    // Preserve Windows's DOS spelling for the validators that deliberately require it.
+    #[cfg(unix)]
+    let physical = original.canonicalize().unwrap();
+    #[cfg(not(unix))]
+    let physical = original.to_path_buf();
+    assert_eq!(
+        revayat_scientific::identity::path_object_id(&physical).unwrap(),
+        identity
+    );
+    assert_eq!(
+        revayat_scientific::identity::path_object_id(original).unwrap(),
+        identity
+    );
+    plain_path(&physical).unwrap();
+    (owner, physical)
+}
+
 fn frame() -> Receipt {
     Receipt::new(Phase::Capture, Fault::Timeout)
 }

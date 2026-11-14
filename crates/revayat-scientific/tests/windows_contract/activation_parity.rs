@@ -13,14 +13,14 @@ fn actctx_x64_layout_and_fixed_roles_do_not_alias() {
     csr::check_validation().unwrap();
     csr::check_module_validation().unwrap();
     preparation::check_validation().unwrap();
-    let validation_work = tempfile::tempdir().unwrap();
-    native_pass::check_validation(validation_work.path()).unwrap();
-    fixtures::child::check_child_validation(validation_work.path()).unwrap();
+    let (_validation_work, validation_root) = super::owned_fixture_directory();
+    native_pass::check_validation(&validation_root).unwrap();
+    fixtures::child::check_child_validation(&validation_root).unwrap();
     fixtures::dll_request::check_dll_request_validation().unwrap();
-    fixtures::default::check_default_validation(validation_work.path()).unwrap();
-    fixtures::self_host::check_self_validation(validation_work.path()).unwrap();
+    fixtures::default::check_default_validation(&validation_root).unwrap();
+    fixtures::self_host::check_self_validation(&validation_root).unwrap();
     fixtures::source::check_self_source_validation().unwrap();
-    fixtures::module::check_module_validation(validation_work.path()).unwrap();
+    fixtures::module::check_module_validation(&validation_root).unwrap();
     boundary::check_validation().unwrap();
     module_callback::check_validation().unwrap();
     if size_of::<usize>() == 8 {

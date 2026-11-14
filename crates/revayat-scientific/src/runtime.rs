@@ -28,6 +28,9 @@ pub mod owner;
 mod unix;
 
 pub const MAX_DIAGNOSTICS: usize = 32 * 1024 * 1024;
+#[path = "runtime_completed.rs"]
+mod completed;
+pub use completed::{retained_command_output, with_command_cleanup};
 
 #[derive(Clone, Debug)]
 pub struct CommandSpec {
@@ -482,7 +485,7 @@ fn run_input_owned(
         }
         Ok(())
     });
-    with_cleanup(result, finalization)
+    with_command_cleanup(result, finalization)
 }
 
 pub struct OperationLog {

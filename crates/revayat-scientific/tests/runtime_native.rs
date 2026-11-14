@@ -264,6 +264,32 @@ fn secondary_cleanup_failure_keeps_typed_primary_deadline() {
         runtime::with_cleanup(Ok(7), Err(anyhow::anyhow!("controlled cleanup failure"))).is_err()
     );
     assert_eq!(runtime::with_cleanup(Ok(7), Ok(())).unwrap(), 7);
+    let mut command = CommandSpec::new(TOOL).args(["diagnostics"]);
+    command.env.insert(
+        "REVAYAT_TEST_ENV".into(),
+        "PRIVATE_RETAINED_OUTPUT_CANARY".into(),
+    );
+    let output = runtime::run(&command).unwrap();
+    let original_stdout = output.stdout.clone();
+    let original_stderr = output.stderr.clone();
+    let error = runtime::with_command_cleanup(
+        Ok(output),
+        Err(anyhow::anyhow!("controlled recovery failure")),
+    )
+    .unwrap_err();
+    assert!(error.downcast_ref::<runtime::CleanupFailure>().is_some());
+    let retained =
+        runtime::retained_command_output(&error).expect("completed bytes survive failed recovery");
+    assert_eq!(retained.code, 7);
+    assert_eq!(retained.stdout, original_stdout);
+    assert_eq!(retained.stderr, original_stderr);
+    for projection in [
+        error.to_string(),
+        format!("{error:#}"),
+        format!("{error:?}"),
+    ] {
+        assert!(!projection.contains("PRIVATE_RETAINED_OUTPUT_CANARY"));
+    }
 }
 
 #[test]

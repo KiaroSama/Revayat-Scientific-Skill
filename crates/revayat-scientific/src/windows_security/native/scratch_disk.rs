@@ -4,7 +4,7 @@ use super::{
     scratch_access::{self as access, Identity, Owned},
     scratch_layout::{self as layout, VolumeBinding},
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::{
     mem::size_of,
@@ -172,6 +172,30 @@ pub(super) fn open_virtual(path: &Path, intent: &Intent) -> Result<Owned> {
     }
     Ok(handle)
 }
+pub(super) fn require_image(
+    path: &Path,
+    held: super::Handle,
+    id: Identity,
+    host: &str,
+) -> Result<()> {
+    crate::windows_security::plain_path(path)?;
+    access::require_private(held, host)?;
+    ensure!(
+        access::identity(held, false)? == id,
+        "scratch held image identity changed"
+    );
+    let mut current = Owned::open(path, 0x20080, 3, 0x200000)
+        .context("scratch_image phase=path-bind desired=0x00020080 share=0x00000003")?;
+    let result = (|| {
+        access::require_private(current.0, host)?;
+        ensure!(
+            access::identity(current.0, false)? == id,
+            "scratch image pathname identity changed"
+        );
+        Ok(())
+    })();
+    access::combine(result, current.close())
+}
 impl ScratchVolume {
     pub fn prepare(view: &NativeRunView) -> Result<Self> {
         let mut privilege = access::ManageVolume::acquire()?;
@@ -192,7 +216,8 @@ impl ScratchVolume {
             partition: format!("{:?}", GUID::new()?),
         };
         let state = view.state_path().to_owned();
-        let mut state_pin = Owned::open(&state, 0x80, 3, 0x2200000)?;
+        let mut state_pin = Owned::open(&state, 0x80, 3, 0x2200000)
+            .context("scratch_prepare phase=state-pin desired=0x00000080 share=0x00000003")?;
         ensure!(
             access::object_id(state_pin.0)? == intent.state,
             "scratch state pin belongs to a different run"
@@ -246,14 +271,27 @@ impl ScratchVolume {
             return access::combine(Err(primary), virtual_disk.close());
         }
         let result = (|| {
-            require_virtual(virtual_disk.0, &intent)?;
-            let mut image = Owned::open(&image_path, 0x20080, 3, 0x200000)?;
+            // Frozen New-VHD completes and closes its creation provider before Capture opens
+            // the no-delete metadata pin. An attachment provider is a distinct bound reopen.
+            let qualified = require_virtual(virtual_disk.0, &intent)
+                .context("scratch_prepare phase=creation-provider-identity");
+            access::combine(
+                qualified,
+                virtual_disk
+                    .close()
+                    .context("scratch_prepare phase=creation-provider-close"),
+            )?;
+            let mut image = Owned::open(&image_path, 0x20080, 3, 0x200000)
+                .context("scratch_prepare phase=image-pin desired=0x00020080 share=0x00000003 creation_provider_closed=True")?;
             let result = (|| {
                 access::require_private(image.0, &host)?;
                 let created = Created {
                     image: access::identity(image.0, false)?,
                 };
                 access::write_json(&state, &host, "scratch-disk.created", &created)?;
+                virtual_disk = open_virtual(&image_path, &intent)
+                    .context("scratch_prepare phase=attachment-provider-open metadata_pin=True")?;
+                require_image(&image_path, image.0, created.image, &host)?;
                 access::write_record(&state, &host, "scratch-disk.attach-intent", b"attach\n")?;
                 let parameters = ATTACH_VIRTUAL_DISK_PARAMETERS {
                     Version: ATTACH_VIRTUAL_DISK_VERSION_1,
@@ -275,6 +313,9 @@ impl ScratchVolume {
                     "attach owned scratch VHDX failed winerror={}",
                     status.0
                 );
+                require_virtual(virtual_disk.0, &intent)
+                    .context("scratch_prepare phase=attached-provider-identity")?;
+                require_image(&image_path, image.0, created.image, &host)?;
                 let path = attached_path(virtual_disk.0)?
                     .ok_or_else(|| anyhow::anyhow!("scratch VHDX did not attach"))?;
                 let (mut raw, number) = layout::disk(&path)?;
@@ -292,7 +333,8 @@ impl ScratchVolume {
                     let mount = Mount { binding, root };
                     access::write_json(&state, &host, "scratch-disk.mount-intent", &mount)?;
                     layout::mount(&mount.binding, &mount.root)?;
-                    let mut root = Owned::open(&mount.root, 0x20080, 3, 0x2200000)?;
+                    let mut root = Owned::open(&mount.root, 0x20080, 3, 0x2200000)
+                        .context("scratch_prepare phase=mounted-root-pin desired=0x00020080 share=0x00000003")?;
                     let result = (|| {
                         let root_id = access::identity(root.0, true)?;
                         let native_root = access::name(root.0)?;

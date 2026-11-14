@@ -262,6 +262,24 @@ fn failed_execution_report_retains_cases_and_exit_even_if_publication_fails() {
             expected
         );
     }
+    let cleanup = anyhow::anyhow!("private /manuscript/path secret payload")
+        .context("owned runtime operation failed (operation-group-cleanup-os-3)");
+    let cleanup = anyhow::Error::new(revayat_scientific::runtime::CleanupFailure(cleanup));
+    let summary = discovery_failure_summary(&cleanup);
+    assert!(summary.contains("cleanup_uncertain=true"));
+    assert!(summary.contains("cleanup_detail=[stage=unknown runtime=group-cleanup os_error=3]"));
+    assert!(!summary.contains("manuscript"));
+    assert!(!summary.contains("secret payload"));
+    let mut nested = cleanup;
+    for _ in 0..8 {
+        nested = anyhow::Error::new(revayat_scientific::runtime::CleanupFailure(nested));
+    }
+    assert_eq!(
+        discovery_failure_summary(&nested)
+            .matches("cleanup_detail=[")
+            .count(),
+        3
+    );
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("results.json");
     let mut failed = report();

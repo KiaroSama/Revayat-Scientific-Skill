@@ -27,9 +27,10 @@ pub use imports::qualify_registry_authority;
 #[path = "image/validation.rs"]
 mod validation;
 pub use validation::{
-    activation_worker_validation_fixture, check_activation_worker_validation,
-    check_checkpoint_validation, check_child_activation_validation,
-    check_default_activation_validation, check_identity_validation, check_import_validation,
+    INDEPENDENT_ID2_MANIFEST, activation_worker_validation_fixture,
+    check_activation_worker_validation, check_checkpoint_validation,
+    check_child_activation_validation, check_default_activation_validation,
+    check_identity_validation, check_import_validation, check_independent_id2_validation,
     check_manifest_validation, check_module_activation_validation, check_observation_validation,
     check_python_dispatch_identity, check_registry_loader_validation,
     check_self_activation_validation, check_static_validation, check_validation,

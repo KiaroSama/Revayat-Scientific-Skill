@@ -25,6 +25,9 @@ pub use child_fixture::{check_child_activation_validation, child_activation_vali
 #[path = "self_fixture.rs"]
 mod self_fixture;
 pub use self_fixture::{check_self_activation_validation, self_activation_validation_fixture};
+#[path = "independent_id2.rs"]
+mod independent_id2;
+pub use independent_id2::{INDEPENDENT_ID2_MANIFEST, check_independent_id2_validation};
 #[path = "csr_export_checks.rs"]
 mod csr_export_checks;
 pub(super) use csr_export_checks::check_csr_export_validation;

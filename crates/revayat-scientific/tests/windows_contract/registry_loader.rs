@@ -37,13 +37,13 @@ fn scratch_entry_failure_is_bounded_and_private() {
 }
 #[test]
 fn positive_write_preserves_exact_bytes() {
-    let directory = tempfile::tempdir().unwrap();
+    let (_directory, root) = owned_fixture_directory();
     revayat_scientific::windows_security::activation::fixtures::python_startup::check_validation(
-        directory.path(),
+        &root,
     )
     .unwrap();
-    plain_path(directory.path()).unwrap();
-    let path = directory.path().join("write-control");
+    plain_path(&root).unwrap();
+    let path = root.join("write-control");
     let bytes = b"\0fixed\r\n\xff";
     std::fs::write(&path, bytes).unwrap();
     assert_eq!(std::fs::read(path).unwrap(), bytes);

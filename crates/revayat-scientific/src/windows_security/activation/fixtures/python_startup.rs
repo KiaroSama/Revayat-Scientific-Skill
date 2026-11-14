@@ -218,5 +218,6 @@ pub fn check_validation(work: &Path) -> Result<()> {
         })();
         crate::runtime::with_cleanup(files, directories)
     })();
-    crate::runtime::with_cleanup(operation, cleanup)
+    crate::runtime::with_cleanup(operation, cleanup)?;
+    super::runtime_data::check_validation(work)
 }

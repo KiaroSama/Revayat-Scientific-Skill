@@ -87,9 +87,9 @@ fn progress(
 }
 
 pub(super) fn assert_original_preparation_contract(journal: &mut SiteJournal) {
-    let directory = tempfile::tempdir().unwrap();
-    let source = directory.path().join("source فارسی");
-    let destination = directory.path().join("destination");
+    let (directory, root) = owned_fixture_directory();
+    let source = root.join("source فارسی");
+    let destination = root.join("destination");
     std::fs::create_dir_all(source.join("empty")).unwrap();
     std::fs::create_dir_all(source.join("nested")).unwrap();
     std::fs::create_dir(&destination).unwrap();
@@ -163,7 +163,7 @@ pub(super) fn assert_original_preparation_contract(journal: &mut SiteJournal) {
     let items = (0..257).map(|_| {
         produced.set(produced.get() + 1);
         Ok(preparation::SourceEntry {
-            path: directory.path().join("not-executed.txt"),
+            path: root.join("not-executed.txt"),
             is_directory: false,
             is_reparse_point: false,
         })
@@ -256,8 +256,8 @@ fn diagnostics_precede_independent_admission() {
 }
 #[test]
 fn scratch_observer_is_not_admission() {
-    let directory = tempfile::tempdir().unwrap();
-    plain_path(directory.path()).unwrap();
+    let (_directory, root) = owned_fixture_directory();
+    plain_path(&root).unwrap();
     assert!(authority::child_record(b"plain_path=true\n").is_err());
 }
 #[test]
@@ -437,15 +437,15 @@ fn failure_projection_preserves_exit_order_and_privacy() {
 }
 #[test]
 fn streaming_copy_refuses_reparse_source() {
-    let directory = tempfile::tempdir().unwrap();
-    let source = directory.path().join("source");
+    let (_directory, root) = owned_fixture_directory();
+    let source = root.join("source");
     std::fs::write(&source, b"content").unwrap();
-    let link = directory.path().join("link");
+    let link = root.join("link");
     #[cfg(unix)]
     std::os::unix::fs::symlink(&source, &link).unwrap();
     #[cfg(windows)]
     {
-        let target = directory.path().join("junction-target");
+        let target = root.join("junction-target");
         std::fs::create_dir(&target).unwrap();
         super::windows_junction::create(&link, &target).unwrap();
         use std::os::windows::fs::MetadataExt;
@@ -473,7 +473,7 @@ fn streaming_copy_refuses_reparse_source() {
         );
     }
     preparation::assert_source_path(&source).unwrap();
-    preparation::assert_source_path(&directory.path().join("not-created/../not-created")).unwrap();
+    preparation::assert_source_path(&root.join("not-created/../not-created")).unwrap();
 
     let produced = Cell::new(0);
     let entries = (0..257).map(|_| {
@@ -486,7 +486,7 @@ fn streaming_copy_refuses_reparse_source() {
     });
     let mut observations = Vec::new();
     preparation::assert_source_tree_stream(
-        directory.path(),
+        &root,
         "python-lib",
         || Ok(entries),
         |phase, state, count| {

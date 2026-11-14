@@ -115,6 +115,9 @@ pub struct Numbers {
     pub count: Option<u32>,
     pub bytes: Option<u32>,
     pub properties: Option<u32>,
+    pub stdout_bytes: Option<u32>,
+    pub stderr_bytes: Option<u32>,
+    pub exact_prefix: Option<bool>,
     pub dr6: Option<u64>,
     pub dr7: Option<u64>,
 }
@@ -141,10 +144,15 @@ impl fmt::Display for AuthoredFailure {
             ("count", self.numbers.count),
             ("bytes", self.numbers.bytes),
             ("properties", self.numbers.properties),
+            ("stdout_bytes", self.numbers.stdout_bytes),
+            ("stderr_bytes", self.numbers.stderr_bytes),
         ] {
             if let Some(value) = value {
                 write!(f, " {name}=0x{value:08X}")?;
             }
+        }
+        if let Some(exact) = self.numbers.exact_prefix {
+            write!(f, " exact_prefix={}", if exact { "True" } else { "False" })?;
         }
         for (name, value) in [("raw_dr6", self.numbers.dr6), ("raw_dr7", self.numbers.dr7)] {
             if let Some(value) = value {
@@ -289,6 +297,37 @@ pub fn check_validation() -> anyhow::Result<()> {
             .is_some_and(|error| error.to_string().contains("private-path")),
         "private diagnostic original was not retained"
     );
+    for exact in [false, true] {
+        let error = annotate(
+            anyhow::anyhow!("private child output must never be formatted"),
+            Stage::DebugTransport,
+            Numbers {
+                stdout_bytes: Some(if exact { 25 } else { 0 }),
+                stderr_bytes: Some(0),
+                exact_prefix: Some(exact),
+                ..Default::default()
+            },
+        );
+        let nested = at(error, Stage::DebugDispatchTarget);
+        let report = summary(&nested);
+        anyhow::ensure!(
+            report.contains("stage=debug-dispatch-target")
+                && report.contains("stage=debug-transport")
+                && report.contains(if exact {
+                    "stdout_bytes=0x00000019"
+                } else {
+                    "stdout_bytes=0x00000000"
+                })
+                && report.contains("stderr_bytes=0x00000000")
+                && report.contains(if exact {
+                    "exact_prefix=True"
+                } else {
+                    "exact_prefix=False"
+                })
+                && !report.contains("private child output"),
+            "closed pre-call transport diagnostic differs"
+        );
+    }
     let mut nested = error;
     for _ in 0..40 {
         nested = Failures {

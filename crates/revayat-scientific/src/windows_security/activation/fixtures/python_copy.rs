@@ -69,7 +69,12 @@ impl Budget {
                 io::missing(&destination)?;
                 fs::create_dir(&destination)?;
             } else {
-                self.copy_file(path, &destination)?;
+                crate::windows_security::activation::fixtures::runtime_data::copy_member(
+                    input,
+                    output,
+                    relative,
+                    |length| self.reserve(length),
+                )?;
                 if self.files.is_multiple_of(256) {
                     preparation::runtime_progress(
                         "copy-python-trees",

@@ -1,5 +1,5 @@
 //! Closed failure metadata for the owner. Unknown child diagnostics stay private.
-use super::{DESCENDANT_CHECKS, NATIVE_CHECKS, RestrictionQuery, TOKEN_CHECKS};
+use super::{DESCENDANT_CHECKS, NATIVE_CHECKS, RestrictionQuery, SCRATCH_CHECKS, TOKEN_CHECKS};
 
 fn hex(value: &str) -> bool {
     value.len() == 8
@@ -20,7 +20,8 @@ fn event(value: &str) -> bool {
         }
         "start" => kind == "control",
         "root" => ["control", "control-name", "control-open", "control-handle"].contains(&kind),
-        "mutation" | "report" => ["control", "native"].contains(&kind),
+        "mutation" => ["control", "native"].contains(&kind) || SCRATCH_CHECKS.contains(&kind),
+        "report" => ["control", "native"].contains(&kind),
         "identity" => ["control", "decode"].contains(&kind),
         "inventory" => ["control", "decode", "timeout"].contains(&kind),
         "close" => kind == "cleanup",
@@ -69,8 +70,11 @@ pub fn failure_summary(frame: &str) -> Option<String> {
                 if !hex(code)
                     || !events.split(',').any(|value| {
                         value
-                            .strip_prefix("descendant:")
-                            .is_some_and(|kind| NATIVE_CHECKS.contains(&kind))
+                            .strip_prefix("mutation:")
+                            .is_some_and(|kind| SCRATCH_CHECKS.contains(&kind))
+                            || value
+                                .strip_prefix("descendant:")
+                                .is_some_and(|kind| NATIVE_CHECKS.contains(&kind))
                     })
                 {
                     return None;

@@ -187,6 +187,9 @@ fn binaries(root: &Path, profile: &str, timeout: Duration) -> Result<Vec<Artifac
 
 /// Authored discovery stages and numeric OS errors only; never child diagnostics or paths.
 pub fn discovery_failure_summary(error: &anyhow::Error) -> String {
+    failure_summary(error, 0)
+}
+fn failure_summary(error: &anyhow::Error, depth: usize) -> String {
     let stages = [
         (
             "test artifact has an unsupported Cargo layout",
@@ -277,6 +280,13 @@ pub fn discovery_failure_summary(error: &anyhow::Error) -> String {
     }
     if error.downcast_ref::<runtime::CleanupFailure>().is_some() {
         result.push_str(" cleanup_uncertain=true");
+    }
+    if depth < 3
+        && let Some(cleanup) = error.downcast_ref::<runtime::CleanupFailure>()
+    {
+        result.push_str(" cleanup_detail=[");
+        result.push_str(&failure_summary(&cleanup.0, depth + 1));
+        result.push(']');
     }
     result
 }

@@ -113,13 +113,18 @@ pub fn execute<'a>(
         (Err(error), _) | (_, Err(error)) => return Err(error),
         _ => {}
     }
+    let startup_changed = values[0].exit != values[1].exit;
+    let event_access_changed = values[0].opened != values[1].opened;
+    // Original finally clears every retained baseline before the final differential is emitted.
+    drop(values);
     emit(&format!(
-        "WINDOWS_DEFAULT_DACL_DIFFERENTIAL startup_changed={} production_grant=False cause_claimed=False",
-        if values[0].exit != values[1].exit {
+        "WINDOWS_DEFAULT_DACL_DIFFERENTIAL startup_changed={} event_access_changed={} baseline_restored=True key_restored=True target_admitted=False production_grant=False cause_claimed=False",
+        if startup_changed { "True" } else { "False" },
+        if event_access_changed {
             "True"
         } else {
             "False"
-        }
+        },
     ))
 }
 

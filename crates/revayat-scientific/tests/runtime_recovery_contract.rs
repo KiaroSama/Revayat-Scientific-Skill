@@ -24,6 +24,28 @@ fn recovery_receives_only_matching_bound_proof_after_real_process_finalization()
     .unwrap();
     assert_eq!(output.code, 7);
     assert_eq!(calls.get(), 1);
+    let mut command = spec("diagnostics");
+    command.env.insert(
+        "REVAYAT_TEST_ENV".into(),
+        "PRIVATE_RECOVERY_OUTPUT_CANARY".into(),
+    );
+    let error = run_with_recovery(&command, &binding, |proof| {
+        proof.require_binding(&binding)?;
+        anyhow::bail!("controlled recovery failure")
+    })
+    .unwrap_err();
+    assert!(error.downcast_ref::<runtime::CleanupFailure>().is_some());
+    let retained = runtime::retained_command_output(&error)
+        .expect("actual completed worker diagnostics survive recovery failure");
+    assert_eq!(retained.code, 7);
+    assert!(
+        retained
+            .stdout
+            .starts_with(b"PRIVATE_RECOVERY_OUTPUT_CANARY\n")
+    );
+    assert!(retained.stdout.ends_with(&[255]));
+    assert_eq!(retained.stderr, [254]);
+    assert!(!format!("{error:?}").contains("PRIVATE_RECOVERY_OUTPUT_CANARY"));
 }
 
 #[test]

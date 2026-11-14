@@ -5,7 +5,7 @@ use super::{
     scratch_disk::{self as disk, Created, Intent, Mount, Ready},
     scratch_layout as layout,
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use std::path::Path;
 use windows::Win32::{
     Foundation::HANDLE,
@@ -112,8 +112,14 @@ pub fn recover_scratch(
         return Ok(());
     }
     crate::windows_security::plain_path(&image_path)?;
-    let mut image = Owned::open(&image_path, 0x30080, 3, 0x200000)?;
     let mut privilege = access::ManageVolume::acquire()?;
+    // DELETE is deliberately absent while the virtual-disk provider can still hold the file.
+    let mut image = match Owned::open(&image_path, 0x20080, 3, 0x200000).context(
+        "scratch_recovery phase=image-pin desired=0x00020080 share=0x00000003 before_detach=True",
+    ) {
+        Ok(image) => image,
+        Err(primary) => return access::combine(Err(primary), privilege.close()),
+    };
     let result = (|| {
         access::require_private(image.0, &host)?;
         let id = access::identity(image.0, false)?;
@@ -121,8 +127,10 @@ pub fn recover_scratch(
             ensure!(id == created.image, "scratch image identity was replaced");
         }
         let created = Created { image: id };
-        let mut virtual_disk = disk::open_virtual(&image_path, &intent)?;
+        let mut virtual_disk = disk::open_virtual(&image_path, &intent)
+            .context("scratch_recovery phase=provider-open metadata_pin=True")?;
         let result = (|| {
+            disk::require_image(&image_path, image.0, id, &host)?;
             let mount: Option<Mount> =
                 access::read_json(state, &host, "scratch-disk.mount-intent")?;
             let volume: Option<layout::VolumeBinding> =
@@ -161,7 +169,8 @@ pub fn recover_scratch(
                                 "scratch ready/mount records differ"
                             );
                             if layout::mounted(&mount.root)?.is_some() {
-                                let mut root = Owned::open(&mount.root, 0x80, 3, 0x2200000)?;
+                                let mut root = Owned::open(&mount.root, 0x80, 3, 0x2200000)
+                                    .context("scratch_recovery phase=mounted-root-pin desired=0x00000080 share=0x00000003")?;
                                 let result = (|| {
                                     ensure!(
                                         access::identity(root.0, true)? == ready.root_id
@@ -211,7 +220,12 @@ pub fn recover_scratch(
             }
             Ok(())
         })();
-        access::combine(result, virtual_disk.close())?;
+        access::combine(
+            result,
+            virtual_disk
+                .close()
+                .context("scratch_recovery phase=provider-close"),
+        )?;
         if let Some(detached) = detached {
             ensure!(
                 detached.image == id,
@@ -224,11 +238,23 @@ pub fn recover_scratch(
             }
             access::write_json(state, &host, "scratch-disk.detached", &created)?;
         }
-        ensure!(
-            access::identity(image.0, false)? == id,
-            "scratch image changed before bound removal"
-        );
-        super::scratch_private::mark_delete(image.0)
+        disk::require_image(&image_path, image.0, id, &host)?;
+        image
+            .close()
+            .context("scratch_recovery phase=metadata-pin-close after_detach=True")?;
+        let mut deletion = Owned::open(&image_path, 0x30080, 3, 0x200000)
+            .context("scratch_recovery phase=delete-open desired=0x00030080 share=0x00000003 provider_closed=True metadata_pin_closed=True")?;
+        let removed = (|| {
+            // Reopening never adopts a replacement, even when its bytes or private policy match.
+            crate::windows_security::plain_path(&image_path)?;
+            access::require_private(deletion.0, &host)?;
+            ensure!(
+                access::identity(deletion.0, false)? == id,
+                "detached scratch deletion object differs from bound image"
+            );
+            super::scratch_private::mark_delete(deletion.0)
+        })();
+        access::combine(removed, deletion.close())
     })();
     access::combine(access::combine(result, image.close()), privilege.close())?;
     ensure!(

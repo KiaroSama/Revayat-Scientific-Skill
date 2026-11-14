@@ -43,6 +43,12 @@ installation as an external test subject. The Rust factories discover and pin
 the real compiler, MSVC linker/SDK and runtime, then copy and qualify the full
 base without executing the prepared copy. These factories still need the full
 native coordinator; the ordinary installed document tools require no Python.
+Independent startup/debug controls and the four-constant CPython registry-loader
+extension are compiled from pinned Rust sources using the held compiler/SDK and
+the genuine runtime's own import library. The separate explicit-ID2 CSR control
+also uses a compiled Rust entry without CRT startup, with its exact manifest,
+imports and held inputs checked through observation and cleanup. Compilation and
+PE qualification alone do not establish that its required native events occurred.
 `--bootstrap-checks` runs the original 53 validator bodies in order, followed by
 the original runtime-clone helper and three direct checks, inside the bound private run. Its flushed markers alone
 are not an execution report for the complete native experiments or coverage census.
@@ -60,5 +66,9 @@ The maps retain 583 original public test IDs, 37 upstream checks, 41 standalone 
 Portable registry-authority collection now has source-authored raw oracle capture: only the actual registry library carrier receives an owned journal directory. The collector accepts its 41 post-assertion observations only after successful harness execution, the carrier's Passed outcome and owned process cleanup, then binds the same-run identity and census digest. It publishes `oracle-debug.json` or `oracle-release.json` beside the execution report. The public aggregate accepts repeated `--event-report PATH` inputs for all required operation populations; missing reports or unclosed contracts fail naturally. No hosted oracle journal/report has yet been verified, and the remaining operation populations are not complete.
 
 The source-authored Windows recovery path keeps native run state outside the controller worker. An opaque runtime capability permits profile recovery only after actual owned-job accounting reaches zero, the direct child is waited and capture threads join. Exit status alone is not recovery authority. Failed or uncertain finalization retains durable state and fails; profile recovery does not certify complete lease, trace, volume or full native-suite cleanup. These paths and their Windows regressions still require hosted execution.
+
+If recovery fails after a worker completed, its bounded diagnostics remain
+available while the recovery failure stays fatal. The collector records closed
+runtime failure categories without promoting incomplete execution to passed cases.
 
 Keep evidence local and content-free where practical. Never publish source text, environment secrets, private absolute paths, token values or raw credential-bearing HTTP errors. Persistent recovery journals contain local paths needed for deliberate recovery and are not release artifacts.

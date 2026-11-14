@@ -462,6 +462,35 @@ fn child_acl_insertion_preserves_aces_and_event_mapping_matches_original_vectors
     default_control::check_child_validation().unwrap();
     default_control::check_control_validation().unwrap();
     default_control::comparison::check_validation().unwrap();
+    let baseline = acl(&[], 0);
+    let mut records = Vec::new();
+    default_control::comparison::execute(
+        |condition| {
+            let changed = condition == default_control::comparison::Condition::UserAllow;
+            Ok(default_control::comparison::Observation {
+                condition,
+                baseline: Some(baseline.clone()),
+                opened: changed,
+                exit: if changed { 0 } else { 0xc0150002 },
+            })
+        },
+        || {
+            Ok(default_control::comparison::Lease {
+                restore: Box::new(|| Ok(())),
+                defer: Box::new(|| anyhow::bail!("clean comparison unexpectedly deferred")),
+            })
+        },
+        |record| {
+            records.push(record.to_owned());
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(records.len(), 4);
+    assert_eq!(
+        records.last().unwrap(),
+        "WINDOWS_DEFAULT_DACL_DIFFERENTIAL startup_changed=True event_access_changed=True baseline_restored=True key_restored=True target_admitted=False production_grant=False cause_claimed=False"
+    );
     let user = sid(5, &[21, 1, 2, 3, 500]);
     let package = package();
     for (input, expected) in [

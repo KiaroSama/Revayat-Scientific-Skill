@@ -201,8 +201,24 @@ fn run_owned(cli: &Cli) -> Result<i32> {
         command.args.push("--owned-run".into());
         command.args.extend(owner.worker_arguments());
         let binding = owner.recovery_binding().to_owned();
-        let output =
-            revayat::runtime::run_with_recovery(&command, &binding, |proof| owner.recover(proof))?;
+        let output = match revayat::runtime::run_with_recovery(&command, &binding, |proof| {
+            owner.recover(proof)
+        }) {
+            Ok(output) => output,
+            Err(error) => {
+                // This fixed owned security worker already produces bounded public diagnostics.
+                // Report its completed bytes even when later recovery fails; the error remains fatal.
+                let reporting =
+                    if let Some(output) = revayat::runtime::retained_command_output(&error) {
+                        let stdout = io::stdout().write_all(&output.stdout).map_err(Into::into);
+                        let stderr = io::stderr().write_all(&output.stderr).map_err(Into::into);
+                        revayat::runtime::with_cleanup(stdout, stderr)
+                    } else {
+                        Ok(())
+                    };
+                return revayat::runtime::with_cleanup(Err(error), reporting);
+            }
+        };
         io::stdout().write_all(&output.stdout)?;
         io::stderr().write_all(&output.stderr)?;
         return Ok(output.code);

@@ -1,6 +1,12 @@
 //! Fixed image admission and suspended owned diagnostic launch.
 use super::*;
 use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
+use crate::windows_security::activation::fixtures::native_producers::CompiledIndependentId2;
+#[derive(Clone, Copy)]
+enum ImageKind {
+    Authority,
+    IndependentId2,
+}
 /// The only permitted subject is the same-profile built registry-authority sibling, fixed --oracle.
 pub fn observe_authority_entry(image: &Path) -> Result<EntryProof> {
     observe_authority_entry_observed(image, |_| Ok(()))
@@ -9,14 +15,18 @@ pub fn observe_authority_entry_observed(
     image: &Path,
     observe: impl FnMut(DebugBoundary) -> Result<()>,
 ) -> Result<EntryProof> {
-    observe_fixed(image, false, observe)
+    observe_fixed(image, ImageKind::Authority, observe)
 }
-pub fn observe_explicit_id2_dispatch(image: &Path) -> Result<EntryProof> {
-    observe_fixed(image, true, |_| Ok(()))
+pub fn observe_explicit_id2_dispatch(fixture: &mut CompiledIndependentId2) -> Result<EntryProof> {
+    let mut held = fixture.hold()?;
+    // The producer's actual source/tool/image descriptors remain held through
+    // observation, real job/process cleanup and exact completed transport/EOF.
+    let result = observe_fixed(held.image(), ImageKind::IndependentId2, |_| Ok(()));
+    crate::runtime::with_cleanup(result, held.verify())
 }
 fn observe_fixed(
     image: &Path,
-    dispatch: bool,
+    kind: ImageKind,
     mut observe: impl FnMut(DebugBoundary) -> Result<()>,
 ) -> Result<EntryProof> {
     require_host()?;
@@ -24,22 +34,35 @@ fn observe_fixed(
         size_of::<Event>() == 176 && size_of::<Region>() == 48 && size_of::<Creation>() == 72,
         "debug x64 ABI differs"
     );
-    let executable = std::env::current_exe()?;
-    let parent = crate::executable_paths::binary_directory(&executable)?;
-    let expected = parent.join(if dispatch {
-        "startup-explicit-id2.exe"
-    } else {
-        "registry-authority.exe"
-    });
     plain_path(image)?;
-    ensure!(
-        image == expected,
-        "debug subject path is not the fixed authority sibling"
-    );
-    ensure!(
-        identity::path_object_id(image)? == identity::path_object_id(&expected)?,
-        "debug subject is not same-profile authority"
-    );
+    let parent = match kind {
+        ImageKind::Authority => {
+            let executable = std::env::current_exe()?;
+            let parent = crate::executable_paths::binary_directory(&executable)?;
+            let expected = parent.join("registry-authority.exe");
+            ensure!(
+                image == expected,
+                "debug subject path is not the fixed authority sibling"
+            );
+            ensure!(
+                identity::path_object_id(image)? == identity::path_object_id(&expected)?,
+                "debug subject is not same-profile authority"
+            );
+            parent.to_path_buf()
+        }
+        ImageKind::IndependentId2 => {
+            ensure!(
+                image.file_name().and_then(|name| name.to_str())
+                    == Some("startup-independent-id2.exe"),
+                "debug subject is not the compiled independent ID2 role"
+            );
+            image
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("compiled ID2 image lacks owned directory"))?
+                .to_path_buf()
+        }
+    };
+    let dispatch = matches!(kind, ImageKind::IndependentId2);
     let identity = identity::file_identity(image, Some(8 * 1024 * 1024))?;
     let mut held = OpenOptions::new()
         .read(true)
@@ -61,10 +84,9 @@ fn observe_fixed(
         "debug held image fingerprint differs"
     );
     let parsed = PeImage::parse(&bytes, 1)?;
-    if dispatch {
-        parsed.qualify_explicit_id2()?;
-    } else {
-        parsed.qualify_rust_authority()?;
+    match kind {
+        ImageKind::Authority => parsed.qualify_rust_authority()?,
+        ImageKind::IndependentId2 => parsed.qualify_independent_id2()?,
     }
     let (entry, image_size) = (parsed.entry, parsed.image_size);
     bytes.fill(0);
