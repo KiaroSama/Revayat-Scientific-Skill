@@ -16,7 +16,12 @@ fn inputs() -> (PathBuf, PathBuf) {
 #[test]
 fn actual_standard_sxs_collector_is_owned_stopped_reaped_and_control_qualified() {
     let (authority, volume) = inputs();
-    let proof = collect_authority(&authority, &volume).unwrap();
+    let proof = collect_authority(&authority, &volume).unwrap_or_else(|error| {
+        panic!(
+            "{}",
+            revayat_scientific::windows_security::activation::diagnostics::summary(&error)
+        )
+    });
     assert!(
         proof.starter_reaped
             && proof.session_stopped

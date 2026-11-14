@@ -173,6 +173,14 @@ impl Payload {
                         "revayat-scientific"
                     },
                 ),
+                #[cfg(windows)]
+                (
+                    binary
+                        .parent()
+                        .context("distribution executable lacks parent")?
+                        .join("revayat-quota-worker.exe"),
+                    "revayat-quota-worker.exe",
+                ),
                 #[cfg(unix)]
                 (
                     binary

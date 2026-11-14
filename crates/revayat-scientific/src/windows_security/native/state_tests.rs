@@ -271,8 +271,33 @@ fn owned_worker_binds_intent_before_actual_profile_create_and_never_claims_outer
     assert!(
         state.find("write_private(\"profile.receipt\"").unwrap() < state.find("Ok(owner)").unwrap()
     );
-    let recovery = include_str!("recovery.rs")
+    assert!(state.contains("super::recovery::recover_run(self, proof)"));
+    let recovery_source = include_str!("recovery.rs");
+    let coordinator = recovery_source
+        .split_once("pub fn recover_run(")
+        .unwrap()
+        .1
         .split_once("pub fn recover_profile(")
+        .unwrap()
+        .0;
+    assert!(
+        coordinator
+            .find("MachineLease::recover(owner, proof)")
+            .unwrap()
+            < coordinator
+                .find("finish_profile_recovery(owner, proof)")
+                .unwrap()
+    );
+    let compatibility = recovery_source
+        .split_once("pub fn recover_profile(")
+        .unwrap()
+        .1
+        .split_once("fn finish_profile_recovery(")
+        .unwrap()
+        .0;
+    assert!(compatibility.contains("recover_run(owner, proof)"));
+    let recovery = include_str!("recovery.rs")
+        .split_once("fn finish_profile_recovery(")
         .unwrap()
         .1;
     assert!(

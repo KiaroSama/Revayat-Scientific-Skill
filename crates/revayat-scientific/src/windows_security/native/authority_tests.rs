@@ -188,6 +188,51 @@ fn actual_creation_calls_capture_before_any_followup_statement() {
             .is_err()
     );
     assert!(authority_environment(root, scratch, &"x".repeat(32767), foreign, "1,2,3,4").is_err());
+    let launch_source = include_str!("authority_launch.rs");
+    assert!(immediate_capture(
+        launch_source,
+        "CreateProcessAsUserW(",
+        "created",
+        "CreateProcessAsUserW"
+    ));
+    let target = Path::new(r"C:\owned image directory\revayat-quota-worker.exe");
+    let arguments = vec![
+        "--quota-primary".into(),
+        "D:\\".into(),
+        r"C:\owned subject\AC".into(),
+    ];
+    let command = super::authority_launch::command_line(target, &arguments).unwrap();
+    #[link(name = "shell32")]
+    unsafe extern "system" {
+        fn CommandLineToArgvW(command: *const u16, count: *mut i32) -> *mut *mut u16;
+    }
+    let mut count = 0;
+    // SAFETY: the shared encoder returns a live NUL-terminated command line.
+    let raw = unsafe { CommandLineToArgvW(command.as_ptr(), &mut count) };
+    assert!(!raw.is_null() && count == 4);
+    let mut observed = Vec::new();
+    for index in 0..count as usize {
+        // SAFETY: the successful Windows API owns exactly count argument pointers.
+        let argument = unsafe { *raw.add(index) };
+        let length = (0..32767)
+            .find(|&offset| unsafe { *argument.add(offset) } == 0)
+            .unwrap();
+        observed.push(
+            String::from_utf16(unsafe { std::slice::from_raw_parts(argument, length) }).unwrap(),
+        );
+    }
+    // SAFETY: CommandLineToArgvW returned one LocalAlloc allocation.
+    assert!(unsafe { super::LocalFree(raw.cast()) }.is_null());
+    assert_eq!(
+        observed,
+        [target.to_str().unwrap().to_owned()]
+            .into_iter()
+            .chain(arguments)
+            .collect::<Vec<_>>()
+    );
+    for invalid in ["", "quote\"", "nul\0", &"x".repeat(32767)] {
+        assert!(super::authority_launch::command_line(target, &[invalid.into()]).is_err());
+    }
     let source = format!(
         "{}\n{}",
         include_str!("authority.rs"),

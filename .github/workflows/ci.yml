@@ -127,6 +127,7 @@ jobs:
             target/release/revayat-scientific.exe
             target/release/revayat-process-owner
             target/release/registry-authority.exe
+            target/release/revayat-quota-worker.exe
             dist/revayat-scientific.skill
   scientific:
     runs-on: ubuntu-latest

@@ -18,6 +18,29 @@ mod creation;
 mod tests;
 use abi::*;
 use creation::{creation_result, retain_cleanup};
+#[path = "authority_completion.rs"]
+mod authority_completion;
+#[path = "authority_launch.rs"]
+mod authority_launch;
+#[path = "authority_machine_run.rs"]
+mod authority_machine_run;
+#[path = "authority_policy.rs"]
+mod authority_policy;
+#[path = "authority_quota_run.rs"]
+mod authority_quota_run;
+#[path = "quota_plan.rs"]
+mod quota_plan;
+#[path = "registry_scope.rs"]
+mod registry_scope;
+#[path = "registry_session.rs"]
+mod registry_session;
+pub(super) use authority_completion::{NativeTreeRetired, SuspendedWorker};
+pub(super) use registry_scope::{
+    LeaseBinding, LeaseKind, LeaseResourceWriter, LeaseScope, RestoreAuthorization,
+    RestoreTransaction,
+};
+pub(super) use registry_session::NativeProfileBinding;
+pub use registry_session::{run_machine_authority_session, run_machine_quota_session};
 
 pub(super) fn wide(value: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
     value.as_ref().encode_wide().chain(Some(0)).collect()
@@ -292,6 +315,14 @@ struct Attributes {
     initialized: bool,
 }
 impl Attributes {
+    fn close(&mut self) {
+        if self.initialized {
+            self.initialized = false;
+            unsafe { DeleteProcThreadAttributeList(self.data.as_mut_ptr().cast()) };
+        }
+        self.data.fill(0);
+        self.data.clear();
+    }
     fn new() -> Result<Self> {
         Self::with_count(3)
     }
@@ -347,9 +378,7 @@ impl Attributes {
 }
 impl Drop for Attributes {
     fn drop(&mut self) {
-        if self.initialized {
-            unsafe { DeleteProcThreadAttributeList(self.data.as_mut_ptr().cast()) };
-        }
+        self.close();
     }
 }
 fn pipe() -> Result<(Owned, Owned)> {

@@ -242,6 +242,18 @@ fn failed_execution_report_retains_cases_and_exit_even_if_publication_fails() {
             "owned runtime operation failed (operation-group-cleanup-os-private)",
             "stage=cargo-run",
         ),
+        (
+            "ownership protocol deadline exceeded",
+            "stage=cargo-run runtime=transport-deadline",
+        ),
+        (
+            "tool diagnostics exceeded 16777216 byte limit",
+            "stage=cargo-run runtime=output-limit limit=16777216",
+        ),
+        (
+            "tool diagnostics exceeded private-sentinel byte limit",
+            "stage=cargo-run",
+        ),
     ] {
         assert_eq!(
             discovery_failure_summary(
@@ -506,6 +518,7 @@ fn debug_artifacts_and_reports_cannot_be_reused_as_release_evidence() {
         "revayat-scientific",
         "revayat-process-owner",
         "registry-authority.exe",
+        "revayat-quota-worker.exe",
     ] {
         let installed = root
             .join("installed/debug/build/pkg/0123456789abcdef/out")

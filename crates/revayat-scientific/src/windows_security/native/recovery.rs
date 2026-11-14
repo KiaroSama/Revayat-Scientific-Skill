@@ -1,4 +1,4 @@
-//! Profile-only recovery after the trusted runtime's actual outer-tree finalization.
+//! Durable policy and profile recovery after actual outer-tree finalization.
 use super::state::NativeRunOwner;
 use super::*;
 use crate::runtime::ReapedProcessTree;
@@ -7,9 +7,25 @@ unsafe extern "system" {
     fn DeleteAppContainerProfile(name: *const u16) -> i32;
 }
 
+/// Whole-worker recovery restores durable machine intent before profile deletion.
+pub fn recover_run(owner: &mut NativeRunOwner, proof: &ReapedProcessTree) -> Result<()> {
+    proof.require_binding(owner.recovery_binding())?;
+    let restored = super::registry_machine::MachineLease::recover(owner, proof)
+        .and_then(|()| super::scratch_recovery::recover_scratch(owner, proof));
+    match restored {
+        Ok(()) => finish_profile_recovery(owner, proof),
+        Err(primary) => crate::runtime::with_cleanup(Err(primary), owner.close()),
+    }
+}
+
+/// Compatibility entry point; durable policy recovery always precedes profile deletion.
+pub fn recover_profile(owner: &mut NativeRunOwner, proof: &ReapedProcessTree) -> Result<()> {
+    recover_run(owner, proof)
+}
+
 /// The proof binds the trusted fixed controller invocation, not an arbitrary command or gate pass.
 /// Other lease/session/volume recovery must finish separately before any state-directory removal.
-pub fn recover_profile(owner: &mut NativeRunOwner, proof: &ReapedProcessTree) -> Result<()> {
+fn finish_profile_recovery(owner: &mut NativeRunOwner, proof: &ReapedProcessTree) -> Result<()> {
     use crate::windows_security::preparation::{bootstrap_progress, invoke_bootstrap_recovery};
     // Rust links the recovery code ahead of execution. The legacy recovery-compile
     // phase now validates the real bound durable recovery context before deletion.

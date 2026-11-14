@@ -108,12 +108,34 @@ Official latest scanner releases still match the reviewed pins:
 [actionlint 1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12).
 A focused 12-crate release check found compatible [ZIP 9.5.1](https://github.com/zip-rs/zip2/releases/tag/v9.5.1)
 and a meaningful but breaking [HarfRust 0.16/read-fonts 0.47 pair](https://github.com/harfbuzz/harfrust/releases/tag/0.16.0).
-These observations do not claim a dependency upgrade, successful audit or tested
-API migration. The guessed Fontations changelog path returned 404; its standalone
-API delta was not reviewed.
+The follow-up compares the exact [Fontations release sources](https://github.com/googlefonts/fontations/tree/73fab6938e44c6bd9f3afe2f4eda1cd66a603eec/read-fonts)
+with 0.46. Its FontRef/TableProvider, Unicode name and horizontal advance APIs,
+and the HarfRust Font/ShaperFont/shape calls used here retain their signatures.
+The paired release bounds shaping work and corrects cursive and mark offsets;
+it does not require admitting Type 1 fonts or adding the optional C API/Skrifa
+dependencies. The static Vazirmatn files and OFL remain unchanged.
+
+The [ZIP source comparison](https://github.com/zip-rs/zip2/compare/v9.5.0...v9.5.1)
+fixes raw-copy encryption/data-descriptor flags and streaming descriptors. The
+DOCX reader already rejects encrypted entries and its rewrite uses a seekable
+writer, so this is a compatible maintenance update without a demonstrated
+affected admitted document. The HarfRust/ZIP MIT and Fontations MIT/Apache notice
+files are byte-identical at these releases. The three updates are adopted in
+the lockfile; the regenerated inventory retains all 644 complete notices for
+334 packages and records the new lock hash and versions.
+
+Focused verification passes 128 existing font, PDF layout, DOCX and package
+tests, plus the existing Poppler Persian form-appearance test. Extended cases
+cover bounded malformed tables, combining marks, mixed Persian/Latin/numerals,
+exact logical text and actual painted mark differences. They exposed an
+existing admission gap: a lazy `hmtx` view accepted an empty metrics table.
+Font delivery now requires all horizontal metric records needed by the declared
+glyph count. No imported font or test corpus was needed. These observations
+cover the exercised paths; they are not a complete font fidelity or security
+audit, and native Windows/macOS confirmation remains separate.
 
 No GitHub service/rate-limit block occurred. ZIP registry old-history extraction
 was trimmed; the new release was cross-checked against its official release/tag
-and actual patch. No external runtime code, model, corpus, fonts or test data was
+and actual patch. No external application, model, corpus, fonts or test data was
 imported. This is selected-source review and guidance adoption, not a complete
 history, security or translation-quality certification.

@@ -6,12 +6,25 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::os::windows::{fs::OpenOptionsExt, io::IntoRawHandle};
 
+#[derive(Clone, Copy)]
+enum Role {
+    Registry,
+    Quota,
+}
 pub(super) struct AuthorityImage {
     held: Option<File>,
     identity: Fingerprint,
+    role: Role,
 }
 impl AuthorityImage {
     pub(super) fn open(path: &Path, expected: &Fingerprint) -> Result<Self> {
+        Self::open_role(path, expected, Role::Registry)
+    }
+    /// Separate fixed subject admission; the registry role never selects this path.
+    pub(super) fn open_quota(path: &Path, expected: &Fingerprint) -> Result<Self> {
+        Self::open_role(path, expected, Role::Quota)
+    }
+    fn open_role(path: &Path, expected: &Fingerprint, role: Role) -> Result<Self> {
         plain_path(path)?;
         let held = OpenOptions::new()
             .read(true)
@@ -21,6 +34,7 @@ impl AuthorityImage {
         let mut owner = Self {
             held: Some(held),
             identity: expected.clone(),
+            role,
         };
         let result = owner.require(path);
         if let Err(primary) = result {
@@ -36,6 +50,12 @@ impl AuthorityImage {
     }
     pub(super) fn require(&mut self, path: &Path) -> Result<()> {
         plain_path(path)?;
+        if matches!(self.role, Role::Quota) {
+            ensure!(
+                path.file_name() == Some(std::ffi::OsStr::new("revayat-quota-worker.exe")),
+                "quota subject is not the fixed admitted executable"
+            );
+        }
         let identity = self.identity.clone();
         let held = self.file()?;
         let metadata = held.metadata()?;

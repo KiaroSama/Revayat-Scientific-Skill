@@ -18,6 +18,19 @@ cargo test --locked --workspace --all-targets -- --test-threads=1
 revayat-scientific security-windows --authority-image target/debug/registry-authority.exe
 ```
 
+The explicit `--machine-authority` diagnostic holds one profile across original,
+temporary and restored SideBySide registry observations. `--machine-quota` adds
+the fixed `revayat-quota-worker.exe` actor, physical NTFS scratch and per-owner
+quotas to that same session. Build the complete workspace binaries first. The
+composed mode consumes the final actor's retirement once and independently
+restores both policy leases before the restored negative control. Whole-worker
+recovery remains responsible for detaching the disk and deleting the profile.
+These source paths still require actual Windows execution; the quota record
+certifies its own subset and does not certify the complete kernel suite.
+`--bootstrap-checks` runs the original 53 validator bodies in order, followed by
+the three direct checks, inside the bound private run. Its flushed markers alone
+are not an execution report for the complete native experiments or coverage census.
+
 The Rust registry authority and its Rust oracle remove the interpreter dependency, not the original diagnostic obligations. Ordered bootstrap, token/DACL, image/activation/CSR/loader, SxS, scratch/quota, private-creation and recovery behavior still require source-reviewed Rust counterparts and actual appropriate hosted evidence. Actual primary/descendant registry proofs, restricted native token/job controls, ACL/private storage and reparse/junction checks remain required. The authority must not fall back to an ordinary unrestricted process or accept missing evidence. These observations do not certify arbitrary Microsoft Word/OPC behavior or kernel policy.
 
 ## Scientific and portable tiers

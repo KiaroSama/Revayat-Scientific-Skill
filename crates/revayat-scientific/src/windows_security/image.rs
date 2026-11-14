@@ -6,7 +6,12 @@ use std::collections::BTreeSet;
 mod profiles;
 #[path = "image/static_view.rs"]
 mod static_view;
-pub use profiles::ActivationSites;
+pub use profiles::{
+    ActivationSites, BoundarySites, check_activation_boundary_validation,
+    check_activation_profiles, check_csr_dispatch_validation,
+    check_module_callback_profile_validation, qualify_module_callback_host,
+    qualify_module_callback_path,
+};
 #[path = "image/activation.rs"]
 mod activation;
 #[path = "image/subjects.rs"]
@@ -21,10 +26,14 @@ pub use imports::qualify_registry_authority;
 mod validation;
 pub use validation::{
     activation_worker_validation_fixture, check_activation_worker_validation,
-    check_checkpoint_validation, check_default_activation_validation, check_identity_validation,
-    check_import_validation, check_manifest_validation, check_module_activation_validation,
-    check_observation_validation, check_static_validation, check_validation,
-    static_validation_fixture,
+    check_checkpoint_validation, check_child_activation_validation,
+    check_default_activation_validation, check_identity_validation, check_import_validation,
+    check_manifest_validation, check_module_activation_validation, check_observation_validation,
+    check_python_dispatch_identity, check_registry_loader_validation,
+    check_self_activation_validation, check_static_validation, check_validation,
+    child_activation_validation_fixture, module_activation_validation_fixture,
+    python_dispatch_validation_fixtures, qualify_python_dispatch_image, qualify_registry_loader,
+    self_activation_validation_fixture, static_validation_fixture,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

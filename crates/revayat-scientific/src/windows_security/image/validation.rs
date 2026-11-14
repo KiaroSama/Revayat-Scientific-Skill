@@ -10,12 +10,30 @@ pub use static_checks::{check_identity_validation, check_static_validation};
 #[path = "import_checks.rs"]
 mod import_checks;
 pub use import_checks::check_import_validation;
+#[path = "registry_loader.rs"]
+mod registry_loader;
+pub use registry_loader::{check_registry_loader_validation, qualify_registry_loader};
 #[path = "observation_checks.rs"]
 mod observation_checks;
 pub use observation_checks::{check_checkpoint_validation, check_observation_validation};
 #[path = "worker_checks.rs"]
 mod worker_checks;
 pub use worker_checks::check_activation_worker_validation;
+#[path = "child_fixture.rs"]
+mod child_fixture;
+pub use child_fixture::{check_child_activation_validation, child_activation_validation_fixture};
+#[path = "self_fixture.rs"]
+mod self_fixture;
+pub use self_fixture::{check_self_activation_validation, self_activation_validation_fixture};
+#[path = "csr_export_checks.rs"]
+mod csr_export_checks;
+pub(super) use csr_export_checks::check_csr_export_validation;
+#[path = "python_dispatch_checks.rs"]
+mod python_dispatch_checks;
+pub use python_dispatch_checks::{
+    check_python_dispatch_identity, python_dispatch_validation_fixtures,
+    qualify_python_dispatch_image,
+};
 
 /// Original managed stage8 root, including all reachable pure assertion helpers.
 pub fn check_validation() -> Result<()> {
@@ -47,6 +65,10 @@ pub fn static_validation_fixture() -> Vec<u8> {
 }
 pub fn activation_worker_validation_fixture() -> Vec<u8> {
     worker()
+}
+/// Original literal parser fixture; never an executable/native observation.
+pub fn module_activation_validation_fixture(dll: bool, manifest: bool) -> Vec<u8> {
+    module_activation(dll, manifest)
 }
 
 pub fn check_default_activation_validation() -> Result<()> {

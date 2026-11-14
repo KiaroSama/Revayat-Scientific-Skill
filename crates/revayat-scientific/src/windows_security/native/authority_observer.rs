@@ -1,6 +1,12 @@
 //! Narrow observer for the existing suspended, qualified authority. No arbitrary process hook.
 use super::*;
 pub(crate) trait AuthorityObserver {
+    fn default_policy(&mut self, _primary: &[u8], _duplicate: &[u8]) -> Result<()> {
+        Ok(())
+    }
+    fn registry_status(&mut self, _status: i32) -> Result<()> {
+        Ok(())
+    }
     fn prepare(&mut self, package: &str) -> Result<()>;
     fn before_create(&mut self) -> Result<()>;
     fn token_metadata(&mut self, record: &str) -> Result<()> {

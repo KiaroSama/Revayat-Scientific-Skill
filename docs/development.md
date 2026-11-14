@@ -18,10 +18,12 @@ cargo run --locked --bin revayat-scientific -- migration-check
 cargo run --locked --bin revayat-scientific -- validate
 ```
 
-Build all binaries before invoking development commands: Unix commands require
-the adjacent `revayat-process-owner`. Building only the CLI with `cargo run`
-does not build that companion. The status-publishing CI jobs explicitly build
-both binaries for this reason. Development and test profiles use level-one
+Build all binaries with `cargo build --locked --workspace --bins` before invoking
+development commands: Unix commands require adjacent `revayat-process-owner`, and
+Windows packages require adjacent `revayat-quota-worker.exe` for the fixed native
+quota role. Building only the CLI with `cargo run` does not build its platform
+sibling. The status-publishing CI jobs explicitly build workspace binaries.
+Development and test profiles use level-one
 optimization for bounded parsing and repeated payload hashing, and strip symbols
 so the combined native payload remains under its unchanged 64 MiB admission
 limit. To debug with symbols, use a separate Cargo profile; that executable

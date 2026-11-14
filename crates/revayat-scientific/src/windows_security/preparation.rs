@@ -222,8 +222,21 @@ fn reparse(metadata: &Metadata) -> bool {
 /// Resolve to an absolute path without following any selected link. Retain parent
 /// components so an existing protected-path check cannot be bypassed with link/../leaf.
 pub fn assert_source_path(path: &Path) -> PreparationResult<()> {
+    // GetFullPathNameW (used by absolute on Windows) removes parent components.
+    // Inspect the supplied prefixes first so junction/../leaf cannot erase the
+    // junction before the reparse check sees it.
+    assert_plain_ancestors(path)?;
     let absolute = std::path::absolute(path).map_err(io_error)?;
-    for ancestor in absolute.ancestors() {
+    if absolute != path {
+        assert_plain_ancestors(&absolute)?;
+    }
+    Ok(())
+}
+fn assert_plain_ancestors(path: &Path) -> PreparationResult<()> {
+    for ancestor in path.ancestors() {
+        if ancestor.as_os_str().is_empty() {
+            continue;
+        }
         match fs::symlink_metadata(ancestor) {
             Ok(metadata) if reparse(&metadata) => {
                 return Err(refusal(

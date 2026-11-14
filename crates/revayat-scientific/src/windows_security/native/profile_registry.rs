@@ -244,6 +244,14 @@ impl ProfileRegistry {
         self.prepared = true;
         Ok(())
     }
+    /// Recheck effective read/mutation controls after suspended token preparation.
+    pub fn require_readonly(&self, process: Handle, package: &str) -> Result<()> {
+        ensure!(
+            self.prepared && !self.closed,
+            "profile registry is not sealed"
+        );
+        self.controls(process, package, true)
+    }
     fn collect(&mut self, index: usize, depth: usize) -> Result<()> {
         ensure!(
             depth <= 32,

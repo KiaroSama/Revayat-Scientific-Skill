@@ -1,5 +1,6 @@
 //! Fixed image admission and suspended owned diagnostic launch.
 use super::*;
+use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
 /// The only permitted subject is the same-profile built registry-authority sibling, fixed --oracle.
 pub fn observe_authority_entry(image: &Path) -> Result<EntryProof> {
     observe_authority_entry_observed(image, |_| Ok(()))
@@ -156,26 +157,45 @@ fn observe_fixed(
         transport,
     };
     let execution = (|| {
-        ensure!(
-            success != 0 && !child.process.is_null() && !child.thread.is_null(),
-            "create fixed debug child failed winerror={error:?}"
-        );
+        if success == 0 || child.process.is_null() || child.thread.is_null() {
+            return Err(diagnostics::native(
+                Stage::DebugCreate,
+                Numbers {
+                    native_error: error,
+                    result: Some(success as u32),
+                    ..Default::default()
+                },
+            ));
+        }
         let process = duplicate(owner.process)?;
         owner.original_process = std::mem::replace(&mut owner.process, process);
         let thread = duplicate(owner.thread)?;
         owner.original_thread = std::mem::replace(&mut owner.thread, thread);
         standard.close()?;
-        ensure!(
-            unsafe { AssignProcessToJobObject(owner.job.handle, owner.process) } != 0,
-            "debug child job attachment failed"
-        );
+        let attached = unsafe { AssignProcessToJobObject(owner.job.handle, owner.process) };
+        if attached == 0 {
+            return Err(diagnostics::native(
+                Stage::DebugAttach,
+                Numbers {
+                    native_error: Some(unsafe { GetLastError() }),
+                    result: Some(attached as u32),
+                    ..Default::default()
+                },
+            ));
+        }
         owner.job.state.advance(Lifecycle::Suspended)?;
         owner.job.state.advance(Lifecycle::Attached)?;
         owner.job.state.advance(Lifecycle::Qualified)?;
-        ensure!(
-            unsafe { NtResumeProcess(owner.process) } == 0,
-            "debug child resume failed"
-        );
+        let resumed = unsafe { NtResumeProcess(owner.process) };
+        if resumed != 0 {
+            return Err(diagnostics::native(
+                Stage::DebugResume,
+                Numbers {
+                    result: Some(resumed as u32),
+                    ..Default::default()
+                },
+            ));
+        }
         owner.job.state.advance(Lifecycle::Running)?;
         owner.run(&mut observe)
     })();

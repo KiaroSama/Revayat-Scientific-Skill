@@ -9,6 +9,20 @@ fn actctx_x64_layout_and_fixed_roles_do_not_alias() {
     check_fixed_dll_validation().unwrap();
     check_policy_result_validation().unwrap();
     check_manual_activation_validation().unwrap();
+    automatic::check_validation().unwrap();
+    csr::check_validation().unwrap();
+    csr::check_module_validation().unwrap();
+    preparation::check_validation().unwrap();
+    let validation_work = tempfile::tempdir().unwrap();
+    native_pass::check_validation(validation_work.path()).unwrap();
+    fixtures::child::check_child_validation(validation_work.path()).unwrap();
+    fixtures::dll_request::check_dll_request_validation().unwrap();
+    fixtures::default::check_default_validation(validation_work.path()).unwrap();
+    fixtures::self_host::check_self_validation(validation_work.path()).unwrap();
+    fixtures::source::check_self_source_validation().unwrap();
+    fixtures::module::check_module_validation(validation_work.path()).unwrap();
+    boundary::check_validation().unwrap();
+    module_callback::check_validation().unwrap();
     if size_of::<usize>() == 8 {
         assert_eq!(size_of::<ActCtx>(), 56);
         assert_eq!(
@@ -455,7 +469,7 @@ fn actual_host_activation_context_and_collector_negative_control_release_owned_h
         &events_start,
         &events_end,
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("{}", diagnostics::summary(&error)));
     let summary = lines.last().unwrap();
     assert!(summary.starts_with("WINDOWS_SXS_EVENTS phase=modified-preflight scanned_count="));
     assert!(summary.ends_with("producer_verified=False cause_claimed=False"));

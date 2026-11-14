@@ -297,8 +297,25 @@ impl Failure {
                         })
                 })
                 .map_or_else(String::new, |error| format!(" native_error={error:08X}"));
+        let root_status = self
+            .native_error
+            .filter(|_| {
+                role == "primary"
+                    && self.restrictions.is_none()
+                    && self
+                        .events
+                        .iter()
+                        .take(8)
+                        .any(|event| *event == ("root", "control-open"))
+            })
+            .map_or_else(String::new, |status| format!(" nt_status={status:08X}"));
+        let native = if root_status.is_empty() {
+            native
+        } else {
+            String::new()
+        };
         format!(
-            "REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}{restrictions}{native}\n"
+            "REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}{restrictions}{native}{root_status}\n"
         )
     }
 }
@@ -309,6 +326,19 @@ pub fn need(value: bool, phase: &'static str) -> Result<()> {
     } else {
         Err(Failure::new(phase, "control"))
     }
+}
+
+/// Preserve only the exact fixed root-open status, never the selected key name.
+pub fn root_open(status: u32, handle: usize) -> Result<()> {
+    if status != 0 {
+        let mut failure = Failure::new("root", "control-open");
+        failure.native_error = Some(status);
+        return Err(failure);
+    }
+    if handle == 0 || handle == usize::MAX {
+        return Err(Failure::new("root", "control-handle"));
+    }
+    Ok(())
 }
 
 pub fn token_fields(kind: u32, elevated: u32, filtered: u32) -> bool {
@@ -352,6 +382,19 @@ pub fn record(role: &str, subkeys: u32, accessible: u32) -> Result<String> {
     Ok(format!(
         "{{\"accessible\":{accessible},\"capabilities\":0,\"granted_access\":131097,\"lpac\":true,\"mutation_denied\":true,\"no_reparse\":true,\"read\":true,\"read_surface_approved\":false,\"restricted\":true,\"role\":\"{role}\",\"subkeys\":{subkeys},\"version\":1,\"x64\":true}}\n"
     ))
+}
+
+/// A primary-only negative control. It cannot stand in for either positive authority record.
+pub fn machine_baseline_record(status: u32, handle: usize) -> Result<String> {
+    need(denied(status, handle), "root")?;
+    Ok("WINDOWS_REGISTRY_MACHINE_BASELINE role=primary desired_access=0x00020019 status=0xC0000022 opened=False lpac=True descendant_observed=False cause_claimed=False\n".into())
+}
+
+pub fn require_machine_baseline(bytes: &[u8]) -> Result<()> {
+    need(
+        bytes == machine_baseline_record(DENIED, 0)?.as_bytes(),
+        "report",
+    )
 }
 
 pub fn fixture_name(name: &str) -> bool {
@@ -519,6 +562,43 @@ mod tests {
         assert_eq!(failure_summary(&refusal.wire("primary")), Some(
             "events=descendant:control-create-process child_exit=C0000022 native_error=00000005".into()
         ));
+        assert!(root_open(0, 4).is_ok());
+        for handle in [0, usize::MAX] {
+            let failure = root_open(0, handle).unwrap_err();
+            assert_eq!(failure.events, [("root", "control-handle")]);
+            assert!(!failure.wire("primary").contains("nt_status="));
+        }
+        for status in [1, 0xC0000022, 0xC0000034, 0xC000003A, 0xC0000275, u32::MAX] {
+            let failure = root_open(status, 0).unwrap_err();
+            assert_eq!(failure.events, [("root", "control-open")]);
+            let wire = failure.wire("primary");
+            assert_eq!(
+                failure_summary(&wire),
+                Some(format!(
+                    "events=root:control-open child_exit=none nt_status={status:08X}"
+                ))
+            );
+            assert!(!wire.contains("native_error="));
+            assert!(!failure.wire("descendant").contains("nt_status="));
+        }
+        for body in [
+            "root:control-open nt_status=c0000022",
+            "root:control-open nt_status=C00000222",
+            "root:control-open nt_status=private-sentinel",
+            "root:control-open nt_status=00000000",
+            "root:control-handle nt_status=C0000022",
+            "root:control nt_status=C0000022",
+            "token:control nt_status=C0000022",
+            "root:control-private nt_status=C0000022",
+            "root:control-open nt_status=C0000022 native_error=00000005",
+        ] {
+            assert!(
+                failure_summary(&format!(
+                    "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors={body}\n"
+                ))
+                .is_none()
+            );
+        }
         for value in [true, false] {
             let error = token_need(value, "private-sentinel").expect_err("unknown stage");
             assert_eq!(error.events, vec![("token", "control")]);

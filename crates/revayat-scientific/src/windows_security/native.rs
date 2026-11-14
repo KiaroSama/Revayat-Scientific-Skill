@@ -10,6 +10,21 @@ use std::ptr::{null, null_mut};
 use std::time::{Duration, Instant};
 
 type Handle = *mut c_void;
+#[path = "native/native_quota.rs"]
+pub(crate) mod native_quota;
+/// Only the explicit fixed quota-worker binary dispatches this native entry.
+/// Host-side token preparation and lifecycle authority remain separate.
+pub fn quota_worker_main() -> i32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        native_quota::worker_main()
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        eprintln!("Native quota controls require Windows x64.");
+        1
+    }
+}
 #[path = "native/authority.rs"]
 mod authority;
 #[path = "native/debug.rs"]
@@ -22,14 +37,35 @@ pub use debug::{
 };
 #[path = "native/network.rs"]
 mod network;
-pub use authority::{run_owned_registry_authority, run_registry_authority};
+pub use authority::{
+    run_machine_authority_session, run_machine_quota_session, run_owned_registry_authority,
+    run_registry_authority,
+};
 #[path = "native/recovery.rs"]
 mod recovery;
 #[path = "native/state.rs"]
 mod state;
 pub(crate) use authority::{AuthorityObserver, run_observed, run_sxs_tool};
-pub use recovery::recover_profile;
-pub use state::{NativeRunOwner, NativeRunView};
+pub use recovery::{recover_profile, recover_run};
+pub use state::{NativeRunOwner, NativeRunView, run_bootstrap_checks};
+#[path = "native/dos_path.rs"]
+mod dos_path;
+#[path = "native/scratch_access.rs"]
+mod scratch_access;
+#[path = "native/scratch_disk.rs"]
+mod scratch_disk;
+#[path = "native/scratch_layout.rs"]
+mod scratch_layout;
+#[path = "native/scratch_lease.rs"]
+mod scratch_lease;
+#[path = "native/scratch_private.rs"]
+mod scratch_private;
+#[path = "native/scratch_quota.rs"]
+mod scratch_quota;
+#[path = "native/scratch_recovery.rs"]
+mod scratch_recovery;
+pub use scratch_disk::ScratchVolume;
+pub use scratch_recovery::recover_scratch;
 #[path = "native/registry_machine.rs"]
 pub mod registry_machine;
 const KILL_ON_CLOSE: u32 = 0x2000;
@@ -233,6 +269,10 @@ impl WindowsJob {
         Ok(owner)
     }
     pub fn terminate(&mut self) -> Result<()> {
+        self.request_termination()?;
+        self.reap()
+    }
+    fn request_termination(&mut self) -> Result<()> {
         ensure!(!self.handle.is_null(), "job is closed");
         // SAFETY: exclusive live job; termination includes every contained descendant.
         ensure!(
@@ -240,7 +280,7 @@ impl WindowsJob {
             "terminate job: {}",
             std::io::Error::last_os_error()
         );
-        self.reap()
+        Ok(())
     }
     fn reap(&mut self) -> Result<()> {
         let start = Instant::now();
@@ -279,6 +319,10 @@ impl WindowsJob {
     /// Explicitly kill/reap descendants even after the direct child exited.
     pub fn finish(&mut self) -> Result<()> {
         self.terminate()?;
+        self.close_retired()
+    }
+    fn close_retired(&mut self) -> Result<()> {
+        let reaped = self.state == Lifecycle::Reaped;
         let handle = std::mem::replace(&mut self.handle, null_mut());
         // SAFETY: exclusively owned job closed once; raw handle is invalidated first.
         ensure!(
@@ -286,6 +330,7 @@ impl WindowsJob {
             "close job: {}",
             std::io::Error::last_os_error()
         );
+        ensure!(reaped, "job closed without qualified accounting reap");
         self.state = Lifecycle::Closed;
         Ok(())
     }

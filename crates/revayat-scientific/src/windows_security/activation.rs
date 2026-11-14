@@ -61,11 +61,24 @@ pub fn require_absent_thread_token(opened: bool, error: u32, token: usize) -> Re
     Ok(())
 }
 pub mod assembly;
+pub mod automatic;
+pub mod boundary;
+pub mod boundary_software;
 pub mod capture;
 pub mod control;
+pub mod csr;
+pub mod diagnostics;
 pub mod dispatch;
 pub mod dll;
 pub mod dll_request;
+pub mod entry;
+pub mod event_lifecycle;
+pub mod fixtures;
+pub mod launch_roles;
+pub mod module_callback;
+pub mod native_pass;
+pub mod pass_resources;
+pub mod preparation;
 pub mod sweep;
 pub use dll::check_fixed_dll_validation;
 pub use sweep::check_manual_activation_validation;

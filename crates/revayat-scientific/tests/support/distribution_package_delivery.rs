@@ -1,6 +1,17 @@
 // Public delivery cases stay in the integration-suite root through include!.
 include!("distribution_package_commands.rs");
 include!("distribution_package_acl.rs");
+#[cfg(windows)]
+fn assert_quota_companion_layout(executable: &Path, directory: &Path) -> Result<()> {
+    let worker = executable.parent().unwrap().join("revayat-quota-worker.exe");
+    assert_eq!(fs::read(&worker)?, fs::read(env!("CARGO_BIN_EXE_revayat-quota-worker"))?);
+    let refused = delivery_command(&worker, directory, &["--arbitrary-program"], None)?;
+    assert!(!refused.success());
+    assert!(refused.stdout.is_empty());
+    let expected: &[u8] = if cfg!(target_arch = "x86_64") { b"WINDOWS_QUOTA_FAILURE phase=native kind=control_or_cleanup\n" } else { b"Native quota controls require Windows x64.\n" };
+    assert_eq!(refused.stderr, expected);
+    Ok(())
+}
 #[test]
 fn test_metadata_and_references() -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
@@ -70,6 +81,8 @@ fn test_install_launchers_replacement_and_logs() -> Result<()> {
     assert!(target.join("LICENSE").is_file());
     #[cfg(unix)]
     assert_companion_layout(&executable, &f.root)?;
+    #[cfg(windows)]
+    assert_quota_companion_layout(&executable, &f.root)?;
     fs::write(target.join("local-note.txt"), b"preserve on replacement")?;
     let refused = delivery_command(binary, &f.root,
         &["install", "--dest", target.to_str().unwrap()], Some(&f.repo))?;
@@ -110,7 +123,7 @@ fn test_archive_is_self_contained() -> Result<()> {
     let binary = f.root.join("native-binary");
     fs::write(&binary, b"synthetic executable payload")?;
     let target = f.repo.join("bundle.skill");
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
         let error = d::package(&f.source, &f.repo, &target, Some(&binary)).unwrap_err();
         assert!(error.to_string().contains("required companion"));
@@ -119,7 +132,7 @@ fn test_archive_is_self_contained() -> Result<()> {
         assert!(d::package(&f.source, &f.repo, &target, Some(&binary)).is_err());
         assert_eq!(fs::read(&target)?, b"approved previous archive");
         fs::remove_file(&target)?;
-        let companion = f.root.join("revayat-process-owner");
+        let companion = f.root.join(if cfg!(windows) { "revayat-quota-worker.exe" } else { "revayat-process-owner" });
         let outside = f.root.join("foreign-owner");
         fs::write(&outside, b"unrelated owner bytes")?;
         link(&outside, &companion);
@@ -145,9 +158,10 @@ fn test_archive_is_self_contained() -> Result<()> {
     file.read_to_end(&mut bytes)?;
     assert_eq!(bytes, b"synthetic executable payload");
     drop(file);
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     {
-        let mut file = archive.by_name(&format!("{NAME}/bin/revayat-process-owner"))?;
+        let companion = if cfg!(windows) { "revayat-quota-worker.exe" } else { "revayat-process-owner" };
+        let mut file = archive.by_name(&format!("{NAME}/bin/{companion}"))?;
         assert_eq!(file.unix_mode().unwrap() & 0o777, 0o755);
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
@@ -190,6 +204,8 @@ fn test_archive_is_self_contained() -> Result<()> {
     let executable = extracted.join(NAME).join("bin").join(if cfg!(windows) { "revayat-scientific.exe" } else { "revayat-scientific" });
     #[cfg(unix)]
     assert_companion_layout(&executable, &f.root)?;
+    #[cfg(windows)]
+    assert_quota_companion_layout(&executable, &f.root)?;
     let fixtures = repository.join("tests/fixtures");
     let document = fixtures.join("journal.tex");
     let terms = fixtures.join("terms-empty.tsv");

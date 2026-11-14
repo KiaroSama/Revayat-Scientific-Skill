@@ -106,7 +106,7 @@ impl PeImage<'_> {
         }
         Ok(())
     }
-    fn activation_role(&self, dll: bool, manifest: bool) -> Result<()> {
+    pub(super) fn activation_role(&self, dll: bool, manifest: bool) -> Result<()> {
         ensure!(
             self.bytes.len() <= 1048576
                 && self.entry != 0
@@ -125,7 +125,7 @@ impl PeImage<'_> {
         }
         Ok(())
     }
-    fn activation_descriptor(&self, row: usize, expected: &[&str]) -> Result<String> {
+    pub(super) fn activation_descriptor(&self, row: usize, expected: &[&str]) -> Result<String> {
         let lookup = u32_at(self.bytes, row)?;
         let owner = u32_at(self.bytes, row + 12)?;
         let address = u32_at(self.bytes, row + 16)?;

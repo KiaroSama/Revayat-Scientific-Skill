@@ -160,13 +160,31 @@ fn actual_native_pdf_glyphs_recover_logical_persian_without_actualtext() {
 }
 #[test]
 fn pdf_actualtext_remains_exact_for_logical_and_visual_metadata() {
-    for value in ["این نتیجه معتبر نیست", "تسین ربتعم هجیتن نیا"]
-    {
+    for value in [
+        "این نتیجه معتبر نیست",
+        "تسین ربتعم هجیتن نیا",
+        "پژوهشِ عِلْمی: x = −2.5 kg؛ 0123 و ۱۲۳",
+        "می‌توان شَدّۀ فارسی را با café و A\u{0301} مقایسه کرد",
+    ] {
         let f = authored_pdf(value, true, 0);
         assert_eq!(
             revayat_scientific::pdf::pdf_text(&f.source).unwrap().trim(),
             value
         );
+        let document = revayat_scientific::pdf::open_pdf(&f.source, false).unwrap();
+        let page = common::pages(&document)[0];
+        let content = Content::decode(&document.get_page_content(page)).unwrap();
+        let positions: Vec<_> = content
+            .operations
+            .iter()
+            .filter(|operation| operation.operator == "Tm")
+            .collect();
+        assert!(!positions.is_empty());
+        for position in positions {
+            assert_eq!(position.operands.len(), 6);
+            assert!(position.operands[4].as_float().unwrap().is_finite());
+            assert!(position.operands[5].as_float().unwrap().is_finite());
+        }
     }
 }
 #[test]

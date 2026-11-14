@@ -1,5 +1,6 @@
 //! Actual Windows Event Log adapter. An empty query is inconclusive, never visibility evidence.
 use super::event_collector::{EventApi, Next, Rendered, collect, query_text};
+use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
 use anyhow::{Result, ensure};
 use std::{
     collections::BTreeMap,
@@ -64,10 +65,15 @@ pub fn utc_now() -> Result<String> {
     } else {
         None
     };
-    ensure!(
-        success != 0,
-        "fixed SxS event clock conversion failed winerror={error:?}"
-    );
+    if success == 0 {
+        return Err(diagnostics::native(
+            Stage::EvtClock,
+            Numbers {
+                native_error: error,
+                ..Default::default()
+            },
+        ));
+    }
     Ok(format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:07}Z",
         time.year,
@@ -118,10 +124,15 @@ impl EventApi for NativeEvents {
         } else {
             None
         };
-        ensure!(
-            !handle.is_null() && handle as usize != usize::MAX,
-            "fixed SxS event query failed winerror={error:?}"
-        );
+        if handle.is_null() || handle as usize == usize::MAX {
+            return Err(diagnostics::native(
+                Stage::EvtQuery,
+                Numbers {
+                    native_error: error,
+                    ..Default::default()
+                },
+            ));
+        }
         Ok(handle as usize)
     }
     fn next(&mut self, query: usize, timeout: u32, value: &mut Next) -> Result<()> {
@@ -149,6 +160,19 @@ impl EventApi for NativeEvents {
             error,
             handle: handle as usize,
         };
+        if success == 0 && error != 259
+            || success != 0 && (returned != 1 || handle.is_null() || handle as usize == usize::MAX)
+        {
+            return Err(diagnostics::native(
+                Stage::EvtNext,
+                Numbers {
+                    native_error: Some(error),
+                    result: Some(success as u32),
+                    count: Some(returned),
+                    ..Default::default()
+                },
+            ));
+        }
         Ok(())
     }
     fn render(&mut self, item: usize, capacity: u32, data: usize) -> Result<Rendered> {
@@ -182,12 +206,42 @@ impl EventApi for NativeEvents {
         } else {
             0
         };
-        Ok(Rendered {
+        let rendered = Rendered {
             success: success != 0,
             error,
             bytes: used,
             properties,
-        })
+        };
+        let valid = if capacity == 0 {
+            success == 0
+                && error == 122
+                && (4..=65536).contains(&used)
+                && used.is_multiple_of(2)
+                && properties == 0
+        } else {
+            success != 0
+                && used >= 4
+                && used <= capacity
+                && used.is_multiple_of(2)
+                && properties == 0
+        };
+        if !valid {
+            return Err(diagnostics::native(
+                if capacity == 0 {
+                    Stage::EvtSize
+                } else {
+                    Stage::EvtRender
+                },
+                Numbers {
+                    native_error: Some(error),
+                    result: Some(success as u32),
+                    bytes: Some(used),
+                    properties: Some(properties),
+                    ..Default::default()
+                },
+            ));
+        }
+        Ok(rendered)
     }
     fn allocate(&mut self, capacity: u32) -> Result<usize> {
         ensure!(
@@ -195,7 +249,9 @@ impl EventApi for NativeEvents {
             "event allocation size differs"
         );
         let mut buffer = Vec::<u16>::new();
-        buffer.try_reserve_exact(capacity as usize / 2)?;
+        buffer
+            .try_reserve_exact(capacity as usize / 2)
+            .map_err(|error| diagnostics::at(error.into(), Stage::EvtAllocate))?;
         buffer.resize(capacity as usize / 2, 0);
         let data = buffer.as_mut_ptr() as usize;
         ensure!(
@@ -238,11 +294,26 @@ impl EventApi for NativeEvents {
         } else {
             None
         };
-        ensure!(
-            success != 0,
-            "fixed SxS event handle close failed winerror={error:?}"
-        );
+        if success == 0 {
+            return Err(diagnostics::native(
+                Stage::EvtClose,
+                Numbers {
+                    native_error: error,
+                    ..Default::default()
+                },
+            ));
+        }
         Ok(())
+    }
+    fn classify(
+        &mut self,
+        xml: &str,
+        image: &str,
+        start: &str,
+        end: &str,
+    ) -> Result<Option<String>> {
+        super::classify_event(xml, image, start, end)
+            .map_err(|error| diagnostics::at(error, Stage::EvtClassify))
     }
 }
 /// Queries the real local Application log after the caller has restored its intervention.
@@ -261,7 +332,8 @@ pub fn observe_startup_events(image: &Path, start: &str, end: &str) -> Result<Ve
         let image = image
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("event image is not Unicode"))?;
-        let query = query_text(start, end)?;
+        let query =
+            query_text(start, end).map_err(|error| diagnostics::at(error, Stage::EvtClock))?;
         let mut api = NativeEvents {
             query: query.encode_utf16().chain(Some(0)).collect(),
             buffers: BTreeMap::new(),

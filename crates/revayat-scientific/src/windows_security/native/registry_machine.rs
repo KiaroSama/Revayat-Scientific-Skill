@@ -1,6 +1,10 @@
 //! One fixed SideBySide DACL lease. Only an outer owned-tree proof can retire its durable intent.
 //! A held named mutex prevents concurrent cooperating leases; read/compare/write is not atomic CAS.
-use super::{Handle, NativeRunOwner};
+use super::authority::LeaseScope;
+use super::authority::{
+    LeaseResourceWriter, NativeProfileBinding, NativeTreeRetired, RestoreAuthorization,
+};
+use super::{Handle, NativeRunOwner, NativeRunView};
 use crate::{
     identity::{self, ObjectId},
     runtime::ReapedProcessTree,
@@ -13,6 +17,7 @@ use crate::{
     },
 };
 use anyhow::{Result, ensure};
+use sha2::{Digest, Sha256};
 use std::{
     ffi::c_void,
     fs::{self, File, OpenOptions},
@@ -124,22 +129,26 @@ struct NativeIo {
     receipt_id: Option<ObjectId>,
     closed: bool,
     supported: bool,
+    resource: Option<LeaseResourceWriter>,
 }
 impl NativeIo {
     fn new(owner: &NativeRunOwner) -> Result<Self> {
+        Self::new_view(&owner.view)
+    }
+    fn new_view(view: &NativeRunView) -> Result<Self> {
         crate::windows_security::activation::native::require_host()?;
-        owner.view.require()?;
+        view.require()?;
         ensure!(
             !RECOVERY_BLOCKED.load(Ordering::SeqCst) && !SUPPORTED_ACTIVE.load(Ordering::SeqCst),
             "registry lease recovery is blocked or supported policy already active"
         );
-        let state = owner.state_path().to_owned();
-        let state_id = owner.state_identity();
+        let state = view.state_path().to_owned();
+        let state_id = view.state_identity();
         ensure!(
             state.is_absolute()
                 && state.ancestors().count() < 64
                 && state.file_name().and_then(|s| s.to_str())
-                    == Some(format!("security-windows-{}", owner.run_id()).as_str()),
+                    == Some(format!("security-windows-{}", view.run_id()).as_str()),
             "registry lease state binding differs"
         );
         plain_path(&state)?;
@@ -167,6 +176,7 @@ impl NativeIo {
             receipt_id: None,
             closed: false,
             supported: false,
+            resource: None,
         };
         let opened = (|| {
             let mutex: Vec<u16> = MUTEX.encode_utf16().chain(Some(0)).collect();
@@ -304,7 +314,18 @@ impl RegistryIo for NativeIo {
             self.receipt_id = Some(identity::object_id(&file)?);
             Ok(())
         })();
-        combine(result, close_file(file))
+        combine(result, close_file(file))?;
+        if let Some(resource) = &self.resource {
+            let identity = self.receipt_id.ok_or_else(|| {
+                anyhow::anyhow!("durable machine receipt lacks its held identity")
+            })?;
+            let mut hash = Sha256::new();
+            hash.update(receipt);
+            hash.update(identity.volume.to_le_bytes());
+            hash.update(identity.index.to_le_bytes());
+            resource.bind_resource(&format!("{:x}", hash.finalize()))?;
+        }
+        Ok(())
     }
     fn read(&mut self) -> Result<Vec<u8>> {
         ensure!(
@@ -470,6 +491,7 @@ impl Drop for NativeIo {
 pub struct MachineLease {
     lease: RegistryLease<NativeIo>,
     binding: String,
+    session: Option<LeaseScope>,
 }
 #[path = "registry_surface.rs"]
 mod surface;
@@ -489,13 +511,83 @@ impl MachineLease {
         Ok(Self {
             lease,
             binding: owner.recovery_binding().into(),
+            session: None,
         })
     }
+    pub(in crate::windows_security::native) fn begin_session(
+        binding: &NativeProfileBinding<'_>,
+    ) -> Result<Self> {
+        binding.require()?;
+        let package = package_bytes(binding.view().package_sid())?;
+        let mut random = [0u8; 16];
+        getrandom::fill(&mut random)
+            .map_err(|_| anyhow::anyhow!("native registry lease nonce unavailable"))?;
+        let nonce = random
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        random.fill(0);
+        let mut io = NativeIo::new_view(binding.view())?;
+        let session = match binding.scope().bind_lease() {
+            Ok(session) => session,
+            Err(primary) => {
+                let mut io = io;
+                return combine(Err(primary), io.close());
+            }
+        };
+        io.resource = Some(session.writer());
+        let lease = match RegistryLease::begin(io, binding.view().run_id(), &package, &nonce) {
+            Ok(lease) => lease,
+            Err(error) => {
+                session.uncertain();
+                return Err(error);
+            }
+        };
+        Ok(Self {
+            lease,
+            binding: String::new(),
+            session: Some(session),
+        })
+    }
+    pub(in crate::windows_security::native) fn finish_observation(
+        &mut self,
+        proof: NativeTreeRetired,
+    ) -> Result<()> {
+        let session = self.session.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("native observation cannot retire an outer-owned lease")
+        })?;
+        let restoring = match proof.restore(session) {
+            Ok(restoring) => restoring,
+            Err(primary) => return combine(Err(primary), self.defer()),
+        };
+        if let Err(primary) = self.lease.finish(true) {
+            return combine(Err(primary), self.defer());
+        }
+        restoring.complete()
+    }
+    pub(in crate::windows_security::native) fn restore_authorized(
+        &mut self,
+        authorization: &RestoreAuthorization<'_>,
+    ) -> Result<()> {
+        let binding = self.session.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("native transaction cannot restore an outer-owned lease")
+        })?;
+        authorization.require_lease(binding)?;
+        self.lease.finish(true)?;
+        authorization.complete_lease(binding)
+    }
     pub fn finish(&mut self, proof: &ReapedProcessTree) -> Result<()> {
+        ensure!(
+            self.session.is_none(),
+            "native session lease requires its exact consumed observation proof"
+        );
         proof.require_binding(&self.binding)?;
         self.lease.finish(true)
     }
     pub fn defer(&mut self) -> Result<()> {
+        if let Some(session) = &self.session {
+            session.uncertain();
+        }
         RECOVERY_BLOCKED.store(true, Ordering::SeqCst);
         self.lease.defer()
     }

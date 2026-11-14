@@ -353,31 +353,12 @@ fn require_owner_identity(
     duplicate: bool,
     strict: bool,
 ) -> Result<()> {
-    ensure!(
-        user == expected && kind == if duplicate { 2 } else { 1 },
-        "SxS canary user/type differs"
-    );
-    ensure!(
-        !duplicate || level == 2,
-        "SxS canary impersonation level differs"
-    );
-    ensure!(
-        !strict || owner == expected,
-        "SxS canary default owner differs"
-    );
-    Ok(())
+    super::canary::identity(expected, user, owner, kind, level, duplicate, strict)
 }
 fn check_owner(token: Raw, expected: &[u8], duplicate: bool, strict: bool) -> Result<()> {
-    require_owner_identity(
-        expected,
-        &sid(token, 1)?,
-        &sid(token, 4)?,
-        scalar(token, 8)?,
-        if duplicate { scalar(token, 9)? } else { 0 },
-        duplicate,
-        strict,
-    )
+    canary_owner::check_owner(token, expected, duplicate, strict)
 }
+
 pub(crate) fn current_user_sid() -> Result<String> {
     require_host()?;
     let mut raw = null_mut();
@@ -406,55 +387,9 @@ pub(super) fn host_user() -> Result<Vec<u8>> {
     finish(result, primary.close().err().into_iter().collect())
 }
 pub(super) fn owner<T>(body: impl FnOnce(&[u8]) -> Result<T>) -> Result<T> {
-    require_host()?;
-    let mut primary = open(unsafe { GetCurrentProcess() })?;
-    let mut copy = Handle(null_mut());
-    let result = (|| {
-        let user = sid(primary.0, 1)?;
-        ensure!(
-            user != [1, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0],
-            "SxS canary host cannot be SYSTEM"
-        );
-        check_owner(primary.0, &user, false, false)?;
-        copy = duplicate(primary.0, true)?;
-        check_owner(copy.0, &user, true, false)?;
-        let mut input = Query {
-            words: vec![0; 32],
-            length: 256,
-        };
-        let pointer = input.words.as_ptr() as usize + 8;
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                user.as_ptr(),
-                input.words.as_mut_ptr().cast::<u8>().add(8),
-                user.len(),
-            );
-            input.words.as_mut_ptr().cast::<usize>().write(pointer);
-        }
-        let success = unsafe { SetTokenInformation(copy.0, 4, input.words.as_mut_ptr().cast(), 8) };
-        let code = if success == 0 {
-            unsafe { GetLastError() }
-        } else {
-            0
-        };
-        ensure!(
-            success != 0,
-            "SxS canary default-owner update failed winerror={code}"
-        );
-        check_owner(copy.0, &user, true, true)?;
-        scoped(copy.0, || {
-            let mut thread = effective()?;
-            let checked = check_owner(thread.0, &user, true, true);
-            finish(checked, thread.close().err().into_iter().collect())?;
-            body(&user)
-        })
-    })();
-    let errors = [copy.close(), primary.close()]
-        .into_iter()
-        .filter_map(Result::err)
-        .collect();
-    finish(result, errors)
+    canary_owner::owner(body)
 }
+
 pub(super) fn sid_text(bytes: &[u8]) -> Result<String> {
     let mut words = vec![0u32; bytes.len().div_ceil(4)];
     unsafe {
@@ -498,3 +433,6 @@ pub(crate) use context::{observe_startup_token, with_authority};
 #[cfg(test)]
 #[path = "native_identity_tests.rs"]
 mod tests;
+
+#[path = "native_canary.rs"]
+mod canary_owner;

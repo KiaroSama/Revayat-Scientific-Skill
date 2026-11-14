@@ -5,6 +5,11 @@ use super::{
 };
 use anyhow::{Result, ensure};
 use std::sync::Arc;
+#[path = "thread_dispatch_capture.rs"]
+mod dispatch_capture;
+#[path = "thread_metadata.rs"]
+mod metadata;
+pub use metadata::ObservationState;
 
 pub trait ContextIo {
     fn read(&mut self, handle: usize) -> Result<Vec<u8>>;
@@ -80,6 +85,14 @@ pub struct ResourceThreads<I: ContextIo> {
     raw_eax: Option<u32>,
     uncertainty: Option<RetainedFailure>,
     initial: bool,
+    base_equal: bool,
+    capture_trap: Option<[u64; 2]>,
+    call_trap: Option<[u64; 2]>,
+    peer_trap: Option<[u64; 2]>,
+    software_trap: Option<[u64; 2]>,
+    dispatch_refusal: Option<String>,
+    setter_refusal: Option<String>,
+    prior_dead_retired: usize,
 }
 impl<I: ContextIo> ResourceThreads<I> {
     pub fn new(pid: u32, creator: u32, io: I) -> Result<Self> {
@@ -108,6 +121,14 @@ impl<I: ContextIo> ResourceThreads<I> {
             raw_eax: None,
             uncertainty: None,
             initial: false,
+            base_equal: false,
+            capture_trap: None,
+            call_trap: None,
+            peer_trap: None,
+            software_trap: None,
+            dispatch_refusal: None,
+            setter_refusal: None,
+            prior_dead_retired: 0,
         })
     }
     pub fn io_mut(&mut self) -> &mut I {
@@ -141,7 +162,7 @@ impl<I: ContextIo> ResourceThreads<I> {
         self.epoch = false;
         self.qualified_stop = false;
         ensure!(
-            pid == self.pid && !self.destroyed,
+            pid == self.pid && (!self.destroyed || draining),
             "resource event process differs"
         );
         if !draining {
@@ -240,6 +261,9 @@ impl<I: ContextIo> ResourceThreads<I> {
             "resource retirement lifetime differs"
         );
         value.retired = true;
+        if !self.captured && !self.process_dead {
+            self.prior_dead_retired += 1;
+        }
         if let Some(bytes) = &mut value.baseline {
             bytes.fill(0);
         }
@@ -319,14 +343,18 @@ impl<I: ContextIo> ResourceThreads<I> {
                 u64_at(baseline, 112) | u64::from(sites[0] != 0) | (u64::from(sites[1] != 0) << 2);
             ensure!(
                 self.site == 0 && raw_debug_equal(baseline, &bytes)?
-                    || peer_configuration(u64_at(&bytes, 104), u64_at(&bytes, 112), control)
+                    || self.site != 0
+                        && peer_configuration(u64_at(&bytes, 104), u64_at(&bytes, 112), control)
                     || self.captured
                         && self.restored
                         && !self.failed
                         && raw_debug_equal(baseline, &bytes)?,
-                "resource software control ownership differs"
+                "fixed resource observation refused check=software-control-ownership {} raw_dr7=0x{:016X}",
+                super::trap_qualifiers(u64_at(&bytes, 104)),
+                u64_at(&bytes, 112)
             );
             self.initial = true;
+            self.software_trap = Some([u64_at(&bytes, 104), u64_at(&bytes, 112)]);
             Ok(())
         })();
         bytes.fill(0);
@@ -341,7 +369,7 @@ impl<I: ContextIo> ResourceThreads<I> {
                 && !self.captured
                 && self.site == 0
                 && site != 0,
-            "resource arm state differs"
+            "fixed resource observation refused check=arm-state"
         );
         self.site = site;
         for index in 0..self.generations.len() {
@@ -407,15 +435,17 @@ impl<I: ContextIo> ResourceThreads<I> {
                 "resource capture debug ownership differs"
             );
             self.captured = true;
+            self.capture_trap = Some([u64_at(&bytes, 104), u64_at(&bytes, 112)]);
             self.creator_capture = id == self.creator;
             self.raw_eax = Some(u64_at(&bytes, 120) as u32);
+            self.base_equal = image_base.is_none_or(|base| u64_at(&bytes, 176) == base);
             self.qualified_stop = true;
             self.restore_all()?;
             self.restored = true;
             if let Some(image_base) = image_base {
                 ensure!(
                     u64_at(&bytes, 176) == image_base,
-                    "resource captured image base differs"
+                    "fixed resource observation refused check=first-base-equality"
                 );
             }
             Ok(())
@@ -445,10 +475,10 @@ impl<I: ContextIo> ResourceThreads<I> {
         }
         Ok(())
     }
-    fn transition(&self, index: usize, bytes: &[u8]) -> Result<()> {
+    fn transition(&self, index: usize, bytes: &[u8], restore: bool) -> Result<()> {
         let value = &self.generations[index];
         let state = value.dispatch_state.ok_or_else(|| {
-            anyhow::anyhow!("resource dispatch transition has no confirmed baseline")
+            anyhow::anyhow!("fixed resource observation refused check=dispatch-transition-baseline")
         })?;
         ensure!(
             (0..4).all(|i| u64_at(bytes, 72 + i * 8) == state[i]),
@@ -471,10 +501,9 @@ impl<I: ContextIo> ResourceThreads<I> {
             && self.kind == 1
             && self.event_thread != value.id
             && peer_configuration(u64_at(bytes, 104), u64_at(bytes, 112), state[5]);
-        ensure!(
-            exact || trap || peer,
-            "resource dispatch control/status changed outside qualified transition"
-        );
+        if !(exact || trap || peer) {
+            anyhow::bail!("{}", self.transition_refusal(index, bytes, restore));
+        }
         Ok(())
     }
     fn apply(&mut self, index: usize, restore: bool) -> Result<()> {
@@ -491,8 +520,11 @@ impl<I: ContextIo> ResourceThreads<I> {
         let result = (|| {
             context(&before)?;
             let sites = if let Some(pair) = &self.pair {
-                if restore || pair.started() {
-                    self.transition(index, &before)?;
+                let started = pair.started();
+                let sites = pair.sites(index as u32);
+                if restore || started {
+                    self.transition(index, &before, restore)?;
+                    self.remember_peer(index, &before);
                 } else {
                     ensure!(
                         raw_debug_equal(
@@ -502,7 +534,7 @@ impl<I: ContextIo> ResourceThreads<I> {
                         "resource arm baseline differs"
                     );
                 }
-                pair.sites(index as u32)
+                sites
             } else {
                 let baseline = self.generations[index].baseline.as_ref().unwrap();
                 if restore {
@@ -556,10 +588,10 @@ impl<I: ContextIo> ResourceThreads<I> {
             self.generations[index].changed = true;
             self.io.write(handle, &desired)?;
             after = self.io.read(handle)?;
-            ensure!(
-                raw_debug_equal(&desired, &after)? && unchanged_control_integer(&before, &after)?,
-                "resource setter readback differs"
-            );
+            if !raw_debug_equal(&desired, &after)? || !unchanged_control_integer(&before, &after)? {
+                let refusal = self.setter_refusal(index, &before, &desired, &after, restore)?;
+                anyhow::bail!("{refusal}");
+            }
             self.generations[index].dispatch_state =
                 Some(std::array::from_fn(|i| u64_at(&after, 72 + i * 8)));
             if restore {
@@ -572,6 +604,13 @@ impl<I: ContextIo> ResourceThreads<I> {
         after.fill(0);
         if let Err(error) = result {
             self.failed = true;
+            if self.dispatch_refusal.is_none()
+                && error.to_string().starts_with(
+                    "fixed resource observation refused check=dispatch-transition-control",
+                )
+            {
+                self.dispatch_refusal = Some(error.to_string());
+            }
             let retained = RetainedFailure(Arc::new(error));
             if self.generations[index].changed && self.uncertainty.is_none() {
                 self.uncertainty = Some(retained.clone());
@@ -596,93 +635,6 @@ impl<I: ContextIo> ResourceThreads<I> {
             }
         }
         self.finish_cleanup(errors)
-    }
-    pub fn capture_dispatch(
-        &mut self,
-        id: u32,
-        first: bool,
-        exception: u64,
-        target: impl FnOnce() -> Result<()>,
-    ) -> Result<()> {
-        ensure!(
-            self.epoch
-                && self.kind == 1
-                && self.event_thread == id
-                && !self.cleanup
-                && !self.failed
-                && !self.captured
-                && self.pair.is_some()
-                && !self.process_dead,
-            "resource dispatch capture state differs"
-        );
-        let index = self.live(id)?;
-        self.io.deadline()?;
-        let mut bytes = self.io.read(self.generations[index].handle)?;
-        let result = (|| {
-            context(&bytes)?;
-            let pair = self.pair.as_ref().unwrap();
-            let sites = pair.sites(index as u32);
-            let slot = match u64_at(&bytes, 104) & 0xe00f {
-                1 => 0usize,
-                2 => 1,
-                _ => anyhow::bail!("resource dispatch trap cause is foreign"),
-            };
-            ensure!(
-                first
-                    && self.generations[index].changed
-                    && sites[slot] != 0
-                    && exception == sites[slot]
-                    && u64_at(&bytes, 248) == sites[slot],
-                "resource dispatch trap site differs"
-            );
-            let baseline = self.generations[index].baseline.as_ref().unwrap();
-            ensure!(
-                (0..4).all(|i| u64_at(&bytes, 72 + i * 8)
-                    == if i < 2 {
-                        sites[i]
-                    } else {
-                        u64_at(baseline, 72 + i * 8)
-                    }),
-                "resource dispatch trap address ownership differs"
-            );
-            let control =
-                u64_at(baseline, 112) | u64::from(sites[0] != 0) | (u64::from(sites[1] != 0) << 2);
-            ensure!(
-                owned_trap_status(
-                    u64_at(&bytes, 104),
-                    u64_at(&bytes, 112),
-                    control,
-                    slot as u32
-                ),
-                "resource dispatch trap control differs"
-            );
-            if !pair.started() {
-                ensure!(slot == 0, "resource dispatch return precedes call");
-                self.pair.as_mut().unwrap().begin(index as u32, &bytes)?;
-                target()?;
-                self.qualified_stop = true;
-                for i in 0..self.generations.len() {
-                    if !self.generations[i].dead && !self.generations[i].retired {
-                        self.apply(i, false)?;
-                    }
-                }
-            } else {
-                ensure!(slot == 1, "resource dispatch repeated call");
-                self.pair.as_mut().unwrap().end(index as u32, &bytes)?;
-                self.qualified_stop = true;
-                self.captured = true;
-                self.creator_capture = id == self.creator;
-                self.raw_eax = Some(self.pair.as_ref().unwrap().result()?);
-                self.restore_all()?;
-                self.restored = true;
-            }
-            Ok(())
-        })();
-        bytes.fill(0);
-        if result.is_err() {
-            self.failed = true;
-        }
-        result
     }
     pub fn destroyed(&mut self) -> Result<()> {
         ensure!(

@@ -40,6 +40,7 @@ fn preamble_stops_at_each_boundary() {
 }
 #[test]
 fn operation_close_and_report_failures_are_fatal() {
+    startup_registry::check_validation().unwrap();
     let mut value = Receipt::new(Phase::Token, Fault::Native);
     value.retain(Phase::Close, Fault::Cleanup);
     value.retain(Phase::Report, Fault::Native);

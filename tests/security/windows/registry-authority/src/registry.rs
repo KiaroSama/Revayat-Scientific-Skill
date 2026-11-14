@@ -14,10 +14,9 @@ fn deadline(start: Instant) -> Result<()> {
 fn open(name: &str, access: u32, root: Raw, start: Instant) -> Result<(u32, Handle)> {
     deadline(start)?;
     let text = wide(name);
-    need(
-        !name.contains('\0') && text.len() > 1 && text.len() <= 513,
-        "root",
-    )?;
+    if name.contains('\0') || text.len() <= 1 || text.len() > 513 {
+        return Err(Failure::new("root", "control-name"));
+    }
     let name = Unicode {
         length: ((text.len() - 1) * 2) as u16,
         maximum: (text.len() * 2) as u16,
@@ -99,6 +98,36 @@ fn counts(handle: &Handle) -> Result<(u32, u32, u64)> {
     Ok((keys, values, modified))
 }
 
+pub fn machine_baseline() -> Result<String> {
+    need(
+        [
+            "REVAYAT_AUTHORITY_FIXTURE",
+            "REVAYAT_AUTHORITY_FOREIGN",
+            "REVAYAT_AUTHORITY_NETWORK",
+        ]
+        .iter()
+        .all(|name| std::env::var_os(name).is_none()),
+        "start",
+    )?;
+    detached()?;
+    crate::token::controls()?;
+    let started = Instant::now();
+    let (status, mut key) = open(KEY, READ, null_mut(), started)?;
+    let record = crate::protocol::machine_baseline_record(status, key.raw as usize);
+    let cleanup = key.close();
+    let record = match (record, cleanup) {
+        (Ok(record), Ok(())) => record,
+        (Err(mut primary), Err(_)) => {
+            primary.events.push(("close", "cleanup"));
+            return Err(primary);
+        }
+        (Err(error), _) | (_, Err(error)) => return Err(error),
+    };
+    crate::token::controls()?;
+    deadline(started)?;
+    Ok(record)
+}
+
 pub fn controls() -> Result<(u32, u32)> {
     let fixture = std::env::var("REVAYAT_AUTHORITY_FIXTURE").ok();
     let foreign = std::env::var_os("REVAYAT_AUTHORITY_FOREIGN");
@@ -117,7 +146,7 @@ pub fn controls() -> Result<(u32, u32)> {
     crate::token::controls()?;
     let start = Instant::now();
     let (status, root) = open(key, READ, null_mut(), start)?;
-    need(status == 0, "root")?;
+    crate::protocol::root_open(status, root.raw as usize)?;
     qualify(&root, key)?;
     for access in [2, 4, 0x10000, 0x40000, 0x80000] {
         let (status, handle) = open(key, access, null_mut(), start)?;

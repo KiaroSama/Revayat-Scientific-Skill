@@ -10,9 +10,12 @@ use std::path::{Component, Path};
 pub mod activation;
 pub mod diagnostic_validation;
 pub mod image;
+pub mod loader_comparison;
 pub mod policy;
 pub mod preparation;
+pub mod quota_controls;
 pub mod scratch;
+pub mod startup_registry;
 pub mod sxs;
 
 #[cfg(windows)]

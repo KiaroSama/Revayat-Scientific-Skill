@@ -610,34 +610,43 @@ fn test_real_tesseract_searchable_derivative() {
 #[test]
 #[ignore = "requires Poppler"]
 fn persian_form_appearance_is_shaped_embedded_and_logical() {
-    let x = Fixture::new();
-    let mut d = document(1);
-    let id = textfield(&mut d, "Quantity");
-    x.save(d);
-    let value = "گزارش علمی ۱۲۳ فارسی";
-    p::fill_pdf(
-        &x.source,
-        &x.output,
-        &fields(json!({"Quantity":value})),
-        &[],
-    )
-    .unwrap();
-    let d = p::open_pdf(&x.output, false).unwrap();
-    assert_eq!(f::stored_value(&d, id).unwrap().as_deref(), Some(value));
-    let ap = n::resolved(&d, d.get_dictionary(id).unwrap().get(b"AP").unwrap())
-        .unwrap()
-        .as_dict()
+    let mut pictures = Vec::new();
+    for value in ["گزارش علمی ۱۲۳ فارسی", "گزارش عِلْمی ۱۲۳ فارسی"]
+    {
+        let x = Fixture::new();
+        let mut d = document(1);
+        let id = textfield(&mut d, "Quantity");
+        x.save(d);
+        p::fill_pdf(
+            &x.source,
+            &x.output,
+            &fields(json!({"Quantity":value})),
+            &[],
+        )
         .unwrap();
-    let stream = n::resolved(&d, ap.get(b"N").unwrap())
-        .unwrap()
-        .as_stream()
-        .unwrap();
-    let content = Content::decode(&c::decoded(stream).unwrap()).unwrap();
-    assert!(content.operations.iter().any(|o| o.operator == "BDC"));
-    assert!(d.objects.values().any(|o| {
-        o.as_dict().is_ok_and(|f| {
-            f.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"CIDFontType2")
-        })
-    }));
-    assert_ne!(render(&x.source, 1), render(&x.output, 1));
+        let d = p::open_pdf(&x.output, false).unwrap();
+        assert_eq!(f::stored_value(&d, id).unwrap().as_deref(), Some(value));
+        let ap = n::resolved(&d, d.get_dictionary(id).unwrap().get(b"AP").unwrap())
+            .unwrap()
+            .as_dict()
+            .unwrap();
+        let stream = n::resolved(&d, ap.get(b"N").unwrap())
+            .unwrap()
+            .as_stream()
+            .unwrap();
+        let content = Content::decode(&c::decoded(stream).unwrap()).unwrap();
+        assert!(content.operations.iter().any(|o| o.operator == "BDC"));
+        assert!(d.objects.values().any(|o| {
+            o.as_dict().is_ok_and(|f| {
+                f.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"CIDFontType2")
+            })
+        }));
+        let painted = render(&x.output, 1);
+        assert_ne!(render(&x.source, 1), painted);
+        pictures.push(painted);
+    }
+    assert_ne!(
+        pictures[0], pictures[1],
+        "combining marks must change the real painted appearance"
+    );
 }

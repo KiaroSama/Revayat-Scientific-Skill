@@ -27,6 +27,15 @@ pub trait EventApi {
     fn read(&mut self, data: usize, bytes: &mut [u8]) -> Result<()>;
     fn release(&mut self, data: usize, capacity: u32) -> Result<()>;
     fn close(&mut self, handle: usize) -> Result<()>;
+    fn classify(
+        &mut self,
+        xml: &str,
+        image: &str,
+        start: &str,
+        end: &str,
+    ) -> Result<Option<String>> {
+        classify_event(xml, image, start, end)
+    }
     /// Read-only audit hook after the complete managed copy has been cleared, before release.
     fn decoded_bytes_cleared(&mut self, _bytes: &[u8]) {}
 }
@@ -201,7 +210,7 @@ pub fn collect(
                     deadline()?;
                     ensure!(scanned < 16, "fixed SxS event evidence contract failed");
                     let xml = render(api, handle, &mut total, &mut deadline)?;
-                    *pending.borrow_mut() = classify_event(&xml, image, start, end)?;
+                    *pending.borrow_mut() = api.classify(&xml, image, start, end)?;
                     scanned += 1;
                     Ok(())
                 })

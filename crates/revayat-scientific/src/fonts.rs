@@ -56,8 +56,19 @@ pub fn font_identity(path: &Path, weight: u16, version: &str) -> Result<Value> {
     ensure!(!tags.contains(b"fvar".as_slice()), "static font required");
     let face = read_fonts::FontRef::new(&data).context("invalid TrueType font")?;
     let _ = face.head()?;
-    let _ = face.hhea()?;
-    let _ = face.hmtx()?;
+    let hhea = face.hhea()?;
+    let hmtx = face.hmtx()?;
+    let glyphs = usize::from(face.maxp()?.num_glyphs());
+    let metrics = usize::from(hhea.number_of_h_metrics());
+    // These table views are lazy: parsing hmtx alone also succeeds for an
+    // empty table. Require the records needed by every declared glyph.
+    ensure!(
+        metrics > 0
+            && metrics <= glyphs
+            && hmtx.h_metrics().len() == metrics
+            && hmtx.left_side_bearings().len() >= glyphs - metrics,
+        "font has incomplete horizontal glyph metrics"
+    );
     ensure!(
         face.os2()?.us_weight_class() == weight,
         "font weight does not match its requested role"
@@ -99,10 +110,9 @@ pub fn font_identity(path: &Path, weight: u16, version: &str) -> Result<Value> {
         "font version differs from requested release"
     );
     ensure!(
-        face.maxp()?.num_glyphs() > 0
-            && "0123456789".chars().all(|c| face
-                .cmap()
-                .is_ok_and(|cmap| cmap.map_codepoint(c).is_some())),
+        "0123456789".chars().all(|c| face
+            .cmap()
+            .is_ok_and(|cmap| cmap.map_codepoint(c).is_some())),
         "font lacks required numeral glyphs"
     );
     Ok(json!({"family":family,"weight":weight,"version":version,"sha256":digest(&data)}))

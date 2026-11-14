@@ -1,57 +1,29 @@
 //! Strict standard-tool text decoding and separate failed-consumer/collector-positive contracts.
-use super::{PrivateFailure, safe};
 use anyhow::{Result, ensure};
 use regex::Regex;
+#[path = "evidence_codec_validation.rs"]
+mod codec_validation;
+#[path = "evidence.rs"]
+mod evidence;
+#[path = "evidence_fixture.rs"]
+mod fixture;
+#[path = "evidence_length_validation.rs"]
+mod length_validation;
+#[path = "evidence_selection_validation.rs"]
+mod selection_validation;
+#[path = "evidence_stream_validation.rs"]
+mod stream;
+#[path = "evidence_validation.rs"]
+mod validation;
+use evidence::check_stage as check;
+pub use evidence::{EvidenceRead, LengthPhase, read_owned, require_length};
+pub use validation::{check_evidence_validation, check_reporting_validation};
 
 const BEGIN: &str = "Begin Activation Context Generation.";
 const END: &str = "End Activation Context Generation.";
 const UNRESOLVED: &str = "ERROR: Cannot resolve reference ";
-fn check(value: bool, stage: &'static str) -> Result<()> {
-    if !value {
-        return Err(PrivateFailure {
-            stage,
-            original: anyhow::anyhow!("fixed SxS evidence predicate rejected"),
-        }
-        .into());
-    }
-    Ok(())
-}
 pub fn decode_lines(bytes: &[u8]) -> Result<Vec<String>> {
-    check(
-        (2..=1048576).contains(&bytes.len()),
-        "evidence-length-input-shape",
-    )?;
-    let text = if bytes.starts_with(&[255, 254]) {
-        check(bytes.len().is_multiple_of(2), "evidence-length-utf16-shape")?;
-        let mut units = bytes[2..]
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-            .collect::<Vec<_>>();
-        let decoded = String::from_utf16(&units).map_err(|e| safe(e.into(), "evidence-utf16"));
-        units.fill(0);
-        decoded?
-    } else if bytes.starts_with(&[239, 187, 191]) {
-        std::str::from_utf8(&bytes[3..])
-            .map_err(|e| safe(e.into(), "evidence-utf8"))?
-            .to_owned()
-    } else {
-        check(false, "evidence-bom")?;
-        unreachable!()
-    };
-    check(!text.contains('\0'), "evidence-nul")?;
-    let normalized = text.replace("\r\n", "\n");
-    let lines = normalized
-        .split('\n')
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    check(lines.len() <= 4096, "evidence-line-count")?;
-    for line in &lines {
-        check(line.encode_utf16().count() <= 2048, "evidence-line-width")?;
-        check(!line.contains('\r'), "evidence-cr")?;
-    }
-    Ok(lines)
+    evidence::decode_optional(Some(bytes))
 }
 pub fn known_dependency(identity: &str) -> bool {
     Regex::new(r#"\A(?:Microsoft\.Windows\.Common-Controls|Microsoft\.VC(?:80|90|100|110|120|140)\.CRT)(?:,[A-Za-z]+="[A-Za-z0-9.*_-]{1,64}"){0,6}\.?\z"#)
@@ -112,7 +84,10 @@ impl Flags {
     }
 }
 pub fn failure_evidence(bytes: &[u8], manifest: &str) -> Result<String> {
-    let lines = decode_lines(bytes)?;
+    failure_evidence_optional(Some(bytes), manifest)
+}
+fn failure_evidence_optional(bytes: Option<&[u8]>, manifest: &str) -> Result<String> {
+    let lines = evidence::decode_optional(bytes)?;
     let (mut inside, mut selected) = (false, false);
     let (mut blocks, mut matches, mut fields) = (0, 0, 0);
     let mut flags = Flags::default();
@@ -134,7 +109,16 @@ pub fn failure_evidence(bytes: &[u8], manifest: &str) -> Result<String> {
             inside = false;
             if selected {
                 matches += 1;
-                check(matches == 1, "evidence-selected-count")?;
+                if let Err(original) = check(matches == 1, "evidence-selected-count") {
+                    // The first result and both flag strings contain only fixed boolean projections.
+                    let stage = format!(
+                        "evidence-selected-count selected_observed=2 total_matches=unknown first_qualified=True first_flags=[{}] second_qualified=False second_flags=[{}] second_unsupported={} further_blocks_examined=False",
+                        result.as_deref().unwrap_or(""),
+                        flags.output(),
+                        boolean(flags.unsupported)
+                    );
+                    return Err(evidence::private(original, stage));
+                }
                 check(fields == 1, "evidence-manifest-count")?;
                 check(!flags.unsupported, "evidence-unsupported")?;
                 check(

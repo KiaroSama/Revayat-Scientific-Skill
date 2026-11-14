@@ -486,7 +486,9 @@ const SHORT_EDGES: &[u32] = &[
     0x25C47, 0x25C40, 0x25C4E, 0x25C5F, 0x25C26, 0x25C26, 0x25BF2, 0x25C40, 0x25C93, 0x25C26,
     0x25C26,
 ];
-pub(super) const PROFILES: &[Profile] = &[
+// The original selector returns the same static profile object. A const slice
+// may be promoted separately at each use, so its reference identity is not stable.
+pub(super) static PROFILES: &[Profile] = &[
     Profile {
         identity: "phase=image-identity module=kernel32.dll sha256=347f1ac1b7dbec710cf06fb3f67d131bceebbc19076bc77daacd31cfe452b496 pe_timestamp=4227614027 image_size=823296 file_size=836208",
         entry: 0x2E1D0,

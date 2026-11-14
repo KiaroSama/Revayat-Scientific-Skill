@@ -419,6 +419,11 @@ fn streaming_copy_refuses_reparse_source() {
         let target = directory.path().join("junction-target");
         std::fs::create_dir(&target).unwrap();
         super::windows_junction::create(&link, &target).unwrap();
+        use std::os::windows::fs::MetadataExt;
+        assert_ne!(
+            std::fs::symlink_metadata(&link).unwrap().file_attributes() & 0x400,
+            0
+        );
     }
     assert!(plain_path(&link).is_err());
     assert!(plain_path(&source).is_ok());
@@ -427,6 +432,10 @@ fn streaming_copy_refuses_reparse_source() {
         link.join("missing-child"),
         link.join("../source"),
     ] {
+        assert!(
+            preparation::assert_source_path(&selected).is_err(),
+            "reparse source spelling was accepted: {selected:?}"
+        );
         assert_eq!(
             preparation::assert_source_path(&selected)
                 .unwrap_err()

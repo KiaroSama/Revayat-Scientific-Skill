@@ -49,10 +49,16 @@ pub fn main() {
     std::panic::set_hook(Box::new(|_| {}));
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     let descendant = args.len() == 1 && args[0] == "--descendant";
+    let baseline = args.len() == 1 && args[0] == "--machine-baseline";
     let role = if descendant { "descendant" } else { "primary" };
     let mut observed_exit = None;
-    let result =
-        need(args.is_empty() || descendant, "start").and_then(|_| run(role, &mut observed_exit));
+    let result = need(args.is_empty() || descendant || baseline, "start").and_then(|_| {
+        if baseline {
+            registry::machine_baseline()
+        } else {
+            run(role, &mut observed_exit)
+        }
+    });
     let result = clean(result).and_then(|wire| {
         let mut output = std::io::stdout().lock();
         output

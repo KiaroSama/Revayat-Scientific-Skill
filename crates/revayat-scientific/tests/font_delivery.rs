@@ -190,6 +190,31 @@ fn test_identity_refuses_renamed_weight_fd_wrong_version_and_bad_font() {
         fs::write(&f, bad).unwrap();
         assert!(fonts::font_identity(&f, 400, "33.003").is_err());
     }
+    // Exercise the actual bounded table readers as well as the outer font
+    // directory admission. These mutations use our already licensed font.
+    let original = pdf_font::REGULAR;
+    let count = u16::from_be_bytes(original[4..6].try_into().unwrap()) as usize;
+    for tag in [b"head", b"hhea", b"hmtx", b"name"] {
+        let row = original[12..12 + count * 16]
+            .as_chunks::<16>()
+            .0
+            .iter()
+            .position(|row| &row[..4] == tag)
+            .expect("required bundled table")
+            * 16
+            + 12;
+        for (field, value) in [(row + 8, u32::MAX), (row + 12, 0)] {
+            let mut malformed = original.to_vec();
+            malformed[field..field + 4].copy_from_slice(&value.to_be_bytes());
+            fs::write(&f, malformed).unwrap();
+            assert!(
+                fonts::font_identity(&f, 400, "33.003").is_err(),
+                "malformed {tag:?} table field {field} accepted"
+            );
+        }
+    }
+    fs::write(&f, original).unwrap();
+    assert!(fonts::font_identity(&f, 400, "33.003").is_ok());
 }
 #[test]
 fn test_partial_cache_offline_and_bad_archives_do_not_publish() {

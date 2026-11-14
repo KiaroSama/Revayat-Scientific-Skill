@@ -1,14 +1,11 @@
 //! Private storage created with its final DACL, actual-user default owner, and exact LPAC denials.
-use super::{
-    native_identity as tokens,
-    storage::{Completion, creation_completion, native_path, require_policy},
-};
+use super::{capture::storage_step, native_identity as tokens, storage::require_policy};
+use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
 use crate::{
     identity::{self, ObjectId},
     windows_security::{activation::native::require_host, plain_path},
 };
 use anyhow::{Result, ensure};
-use registry_authority::native::{Attributes, Unicode};
 use std::{
     ffi::c_void,
     fs::{File, OpenOptions},
@@ -23,27 +20,6 @@ use std::{
     time::{Duration, Instant},
 };
 type Raw = *mut c_void;
-#[repr(C)]
-struct IoStatus {
-    status: usize,
-    information: usize,
-}
-#[link(name = "ntdll")]
-unsafe extern "system" {
-    fn NtCreateFile(
-        handle: *mut Raw,
-        access: u32,
-        attributes: *const Attributes,
-        io: *mut IoStatus,
-        allocation: Raw,
-        flags: u32,
-        share: u32,
-        disposition: u32,
-        options: u32,
-        ea: Raw,
-        ea_length: u32,
-    ) -> i32;
-}
 #[link(name = "kernel32")]
 unsafe extern "system" {
     fn QueryDosDeviceW(device: *const u16, target: *mut u16, capacity: u32) -> u32;
@@ -137,10 +113,15 @@ fn policy(path: &Path, directory: bool, owner: &[u8], package: &[u8]) -> Result<
         )
     };
     let result = (|| {
-        ensure!(
-            status == 0 && !raw.is_null() && unsafe { IsValidSecurityDescriptor(raw) } != 0,
-            "fixed SxS storage security readback failed winerror={status}"
-        );
+        if status != 0 || raw.is_null() || unsafe { IsValidSecurityDescriptor(raw) } == 0 {
+            return Err(diagnostics::native(
+                Stage::SxsStoragePolicy,
+                Numbers {
+                    native_error: Some(status),
+                    ..Default::default()
+                },
+            ));
+        }
         let length = unsafe { GetSecurityDescriptorLength(raw) };
         ensure!(
             (20..=65536).contains(&length),
@@ -185,99 +166,6 @@ fn drive(root: &Path) -> Result<String> {
     ensure!(root.is_dir(), "fixed SxS storage volume is absent");
     Ok(text.to_owned())
 }
-fn create(folder: &str, descriptor: &mut [u8], created: &mut bool) -> Result<File> {
-    let device = wide(&folder[..2]);
-    let mut mapping = [0u16; 512];
-    let length = unsafe { QueryDosDeviceW(device.as_ptr(), mapping.as_mut_ptr(), 512) };
-    let code = if length == 0 {
-        unsafe { GetLastError() }
-    } else {
-        0
-    };
-    ensure!(
-        (3..=512).contains(&length),
-        "fixed SxS volume mapping failed winerror={code}"
-    );
-    let path = native_path(folder, &mapping[..length as usize])?;
-    let name = wide(path);
-    let text = Unicode {
-        length: ((name.len() - 1) * 2) as u16,
-        maximum: (name.len() * 2) as u16,
-        buffer: name.as_ptr(),
-    };
-    let attributes = Attributes {
-        length: 48,
-        root: null_mut(),
-        name: &text,
-        flags: 0x1040,
-        descriptor: descriptor.as_mut_ptr().cast(),
-        qos: null_mut(),
-    };
-    let mut aligned_descriptor = vec![0u64; descriptor.len().div_ceil(8)];
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            descriptor.as_ptr(),
-            aligned_descriptor.as_mut_ptr().cast(),
-            descriptor.len(),
-        );
-    }
-    let attributes = Attributes {
-        descriptor: aligned_descriptor.as_mut_ptr().cast(),
-        ..attributes
-    };
-    let mut raw = null_mut();
-    let mut io = IoStatus {
-        status: usize::MAX,
-        information: 0,
-    };
-    // All output/backing storage remains live until exact synchronous completion or process abort.
-    let returned = unsafe {
-        NtCreateFile(
-            &mut raw,
-            0x120080,
-            &attributes,
-            &mut io,
-            null_mut(),
-            0x80,
-            0,
-            2,
-            0x21,
-            null_mut(),
-            0,
-        )
-    };
-    // Never inspect completion storage after STATUS_PENDING or free it while the kernel may write it.
-    if returned == 0x103 {
-        std::process::abort();
-    }
-    *created = returned == 0;
-    let result = creation_completion(
-        returned,
-        io.status as u32 as i32,
-        io.information as u64,
-        raw as usize,
-    );
-    if matches!(result, Ok(Completion::Pending)) {
-        std::process::abort();
-    }
-    aligned_descriptor.fill(0);
-    let file = if raw.is_null() || raw as usize == usize::MAX {
-        None
-    } else {
-        Some(unsafe { File::from_raw_handle(raw) })
-    };
-    match result {
-        Ok(Completion::Created) => {
-            file.ok_or_else(|| anyhow::anyhow!("fixed SxS directory handle absent"))
-        }
-        _ => tokens::finish(
-            Err(result
-                .err()
-                .unwrap_or_else(|| anyhow::anyhow!("fixed SxS creation incomplete"))),
-            file.map(close).transpose().err().into_iter().collect(),
-        ),
-    }
-}
 pub(super) struct Storage {
     pub run: String,
     pub folder: PathBuf,
@@ -290,7 +178,7 @@ pub(super) struct Storage {
 }
 impl Storage {
     pub fn prepare(root: &Path, package: &str) -> Result<Self> {
-        let root = drive(root)?;
+        let root = drive(root).map_err(|error| diagnostics::at(error, Stage::SxsStorageDrive))?;
         let mut nonce = [0u8; 16];
         getrandom::fill(&mut nonce).map_err(|_| anyhow::anyhow!("fixed SxS nonce unavailable"))?;
         let run = nonce
@@ -309,34 +197,40 @@ impl Storage {
             closed: false,
         };
         let result = (|| {
-            ensure!(
-                std::fs::symlink_metadata(&owner.folder)
-                    .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
-                "fixed SxS storage already exists or cannot be qualified absent"
-            );
+            storage_step(0, || {
+                ensure!(
+                    std::fs::symlink_metadata(&owner.folder)
+                        .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
+                    "fixed SxS storage already exists or cannot be qualified absent"
+                );
+                Ok(())
+            })?;
             let user = tokens::sid_text(&owner.owner)?;
             let mut sd = descriptor(&format!(
                 "O:{user}D:P(D;OICI;FA;;;{package})(D;OICI;0xc0000;;;S-1-3-4)(A;OICI;FA;;;{user})(A;OICI;FA;;;SY)"
             ))?;
-            require_policy(&sd, true, &owner.owner, &owner.package)?;
-            let created = create(
-                owner
-                    .folder
-                    .to_str()
-                    .ok_or_else(|| anyhow::anyhow!("invalid SxS folder encoding"))?,
-                &mut sd,
-                &mut owner.created,
-            );
+            let creation = storage_step(2, || {
+                super::storage_policy::create_sealed(&mut sd, &owner.owner, &owner.package, |sd| {
+                    storage_step(3, || {
+                        creation::create(
+                            owner
+                                .folder
+                                .to_str()
+                                .ok_or_else(|| anyhow::anyhow!("invalid SxS folder encoding"))?,
+                            sd,
+                            &mut owner.created,
+                            &mut owner.directory,
+                        )
+                    })
+                })
+            });
             sd.fill(0);
-            let file = created?;
-            let identity = identity::object_id(&file);
-            if let Ok(id) = &identity {
-                owner.directory = Some(*id);
-            }
-            tokens::finish(identity, close(file).err().into_iter().collect())?;
-            policy(&owner.folder, true, &owner.owner, &owner.package)?;
-            owner.write("canary", b"fixed SxS host control")?;
-            owner.write("capture.etl", b"")?;
+            creation?;
+            storage_step(5, || {
+                policy(&owner.folder, true, &owner.owner, &owner.package)
+            })?;
+            storage_step(4, || owner.write("canary", super::seed::CANARY))?;
+            storage_step(7, || owner.write("capture.etl", b""))?;
             owner.require_seed()?;
             Ok(())
         })();
@@ -396,27 +290,41 @@ impl Storage {
                 .share_mode(0)
                 .custom_flags(0x00200000)
                 .open(&path)?;
-            crate::windows_security::activation::control::write_fixed(
-                bytes,
-                || Ok(file),
-                |file, bytes| {
-                    // Retain the created identity even if writing/flushing/closing later fails.
-                    let id = identity::object_id(file)?;
-                    self.files.push((name, id));
-                    ensure!(
-                        file.metadata()?.len() == 0,
-                        "SxS seed is not empty at creation"
-                    );
-                    file.write_all(bytes)?;
-                    Ok(())
-                },
-                |file| {
-                    file.flush()?;
-                    file.sync_all()?;
-                    Ok(())
-                },
-                close,
-            )
+            if bytes.is_empty() {
+                super::seed::create(
+                    || Ok(file),
+                    |file| {
+                        self.files.push((name, identity::object_id(file)?));
+                        Ok(file.metadata()?.len())
+                    },
+                    |file| {
+                        file.flush()?;
+                        file.sync_all()?;
+                        Ok(())
+                    },
+                    close,
+                )
+            } else {
+                crate::windows_security::activation::control::write_fixed(
+                    bytes,
+                    || Ok(file),
+                    |file, bytes| {
+                        self.files.push((name, identity::object_id(file)?));
+                        ensure!(
+                            file.metadata()?.len() == 0,
+                            "SxS canary is not empty at creation"
+                        );
+                        file.write_all(bytes)?;
+                        Ok(())
+                    },
+                    |file| {
+                        file.flush()?;
+                        file.sync_all()?;
+                        Ok(())
+                    },
+                    close,
+                )
+            }
         });
         result?;
         self.require(name)?;
@@ -450,13 +358,54 @@ impl Storage {
         })();
         tokens::finish(result, close(file).err().into_iter().collect())
     }
-    pub fn require_seed(&self) -> Result<()> {
+    pub fn require_empty(&self, name: &'static str) -> Result<()> {
+        let path = self.path(name)?;
+        super::seed::read(
+            || self.require(name).map(|_| ()),
+            || {
+                Ok(OpenOptions::new()
+                    .read(true)
+                    .share_mode(0)
+                    .custom_flags(0x00200000)
+                    .open(&path)?)
+            },
+            |file| {
+                let expected = self
+                    .files
+                    .iter()
+                    .find(|(member, _)| *member == name)
+                    .ok_or_else(|| anyhow::anyhow!("fixed SxS seed was not created"))?
+                    .1;
+                ensure!(
+                    identity::object_id(file)? == expected,
+                    "fixed SxS seed identity differs"
+                );
+                Ok(file.metadata()?.len())
+            },
+            close,
+        )
+    }
+    pub fn require_absent(&self, name: &'static str) -> Result<()> {
+        self.identity()?;
         ensure!(
-            self.read("canary", 64)? == b"fixed SxS host control"
-                && self.read("capture.etl", 0)?.is_empty(),
-            "SxS canary or ETL seed changed"
+            std::fs::symlink_metadata(self.path(name)?)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound),
+            "fixed SxS output already exists or absence is uncertain"
         );
         Ok(())
+    }
+    pub fn require_seed(&self) -> Result<()> {
+        storage_step(5, || policy(&self.folder, true, &self.owner, &self.package))?;
+        storage_step(6, || {
+            policy(&self.path("canary")?, false, &self.owner, &self.package)
+        })?;
+        storage_step(4, || {
+            let mut bytes = self.read("canary", 64)?;
+            let result = super::seed::require_canary(&bytes);
+            bytes.fill(0);
+            result
+        })?;
+        storage_step(7, || self.require_empty("capture.etl"))
     }
     pub fn deny(&self, process: Raw, package: &str) -> Result<()> {
         self.require_seed()?;
@@ -496,10 +445,17 @@ impl Storage {
                     };
                     let code = unsafe { GetLastError() };
                     let result = (|| {
-                        ensure!(
-                            raw as usize == usize::MAX && code == 5,
-                            "actual LPAC SxS storage denial differs winerror={code}"
-                        );
+                        if raw as usize != usize::MAX || code != 5 {
+                            return Err(diagnostics::native(
+                                Stage::SxsStorageDeny,
+                                Numbers {
+                                    native_error: Some(code),
+                                    result: Some(u32::from(raw as usize != usize::MAX)),
+                                    count: Some(*access),
+                                    ..Default::default()
+                                },
+                            ));
+                        }
                         Ok(())
                     })();
                     let errors = if !raw.is_null() && raw as usize != usize::MAX {
@@ -566,3 +522,8 @@ impl Drop for Storage {
         let _ = self.close();
     }
 }
+
+#[path = "native_storage_create.rs"]
+mod creation;
+#[path = "native_evidence.rs"]
+mod evidence;

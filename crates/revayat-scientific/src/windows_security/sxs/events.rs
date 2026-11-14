@@ -6,7 +6,7 @@ const NS: &str = "http://schemas.microsoft.com/win/2004/08/events/event";
 fn check(value: bool) -> Result<()> {
     if !value {
         return Err(PrivateFailure {
-            stage: "event-evidence",
+            stage: "event-evidence".into(),
             original: anyhow::anyhow!("fixed SxS event evidence contract failed"),
         }
         .into());

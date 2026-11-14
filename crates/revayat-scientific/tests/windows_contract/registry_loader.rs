@@ -1,6 +1,19 @@
 use super::*;
 #[test]
 fn reusable_policy_helpers_do_not_launch_children() {
+    activation::fixtures::registry_loader::check_validation().unwrap();
+    revayat_scientific::windows_security::loader_comparison::check_validation().unwrap();
+    let baseline = registry_authority::protocol::machine_baseline_record(0xC0000022, 0).unwrap();
+    registry_authority::protocol::require_machine_baseline(baseline.as_bytes()).unwrap();
+    for (status, handle) in [(0, 0), (1, 0), (0xC0000022, 4), (u32::MAX, 0)] {
+        assert!(registry_authority::protocol::machine_baseline_record(status, handle).is_err());
+    }
+    assert!(
+        registry_authority::protocol::require_machine_baseline(
+            format!("{baseline}extra").as_bytes()
+        )
+        .is_err()
+    );
     policy::registry_comparison::check_startup_validation().unwrap();
     policy::registry_comparison::check_causal_validation().unwrap();
     policy::registry_comparison::check_authority_validation().unwrap();
@@ -25,6 +38,10 @@ fn scratch_entry_failure_is_bounded_and_private() {
 #[test]
 fn positive_write_preserves_exact_bytes() {
     let directory = tempfile::tempdir().unwrap();
+    revayat_scientific::windows_security::activation::fixtures::python_startup::check_validation(
+        directory.path(),
+    )
+    .unwrap();
     plain_path(directory.path()).unwrap();
     let path = directory.path().join("write-control");
     let bytes = b"\0fixed\r\n\xff";

@@ -1,79 +1,14 @@
 //! Exact private SxS storage predicates and fixed synchronous creation result.
-use crate::windows_security::policy::{Acl, Descriptor};
 use anyhow::{Result, ensure};
+#[path = "storage_creation.rs"]
+pub mod creation;
+pub use creation::check_validation;
 
-/// Four rules only: concrete package deny, OWNER RIGHTS deny, actual user allow, SYSTEM allow.
+/// Four final rules; the original first failing predicate is retained.
 pub fn require_policy(bytes: &[u8], directory: bool, owner: &[u8], package: &[u8]) -> Result<()> {
-    let descriptor = Descriptor::parse(bytes)?;
-    ensure!(
-        descriptor.owner == Some(owner),
-        "fixed SxS storage policy rejected predicate=owner"
-    );
-    ensure!(
-        descriptor.control & 4 != 0,
-        "fixed SxS storage policy rejected predicate=rules"
-    );
-    let acl = Acl::parse(
-        descriptor
-            .dacl
-            .ok_or_else(|| anyhow::anyhow!("fixed SxS storage DACL absent"))?,
-    )?;
-    ensure!(
-        acl.aces.len() == 4,
-        "fixed SxS storage policy rejected predicate=rules"
-    );
-    ensure!(
-        !directory || descriptor.control & 0x1000 != 0,
-        "fixed SxS storage policy rejected predicate=protected"
-    );
-    let owner_rights = [1, 1, 0, 0, 0, 0, 0, 3, 4, 0, 0, 0];
-    let system = [1, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0];
-    ensure!(
-        owner != package
-            && owner != system
-            && owner != owner_rights
-            && package != system
-            && package != owner_rights,
-        "fixed SxS storage policy rejected predicate=distinct"
-    );
-    let expected = [
-        (package, 1, 0x1f01ff),
-        (&owner_rights[..], 1, 0xc0000),
-        (owner, 0, 0x1f01ff),
-        (&system[..], 0, 0x1f01ff),
-    ];
-    let mut seen = [false; 4];
-    let mut allow = false;
-    for ace in &acl.aces {
-        ensure!(
-            matches!(ace.kind, 0 | 1) && !(allow && ace.kind == 1),
-            "fixed SxS storage policy rejected predicate=canonical"
-        );
-        allow |= ace.kind == 0;
-        ensure!(
-            ace.flags == if directory { 3 } else { 16 },
-            "fixed SxS storage policy rejected predicate=inheritance"
-        );
-        let index = expected
-            .iter()
-            .position(|(sid, _, _)| ace.sid().is_ok_and(|actual| actual == *sid))
-            .ok_or_else(|| {
-                anyhow::anyhow!("fixed SxS storage policy rejected predicate=distinct")
-            })?;
-        ensure!(
-            !seen[index] && ace.kind == expected[index].1 && ace.mask()? == expected[index].2,
-            "fixed SxS storage policy rejected predicate=rules"
-        );
-        seen[index] = true;
-    }
-    ensure!(
-        seen.iter().all(|value| *value),
-        "fixed SxS storage policy rejected predicate=distinct"
-    );
-    Ok(())
+    super::storage_policy::require(bytes, directory, owner, package)
 }
-/// No drive aliases, alternate mappings, system volume or arbitrary path components are accepted.
-pub fn native_path(folder: &str, mapping: &[u16]) -> Result<String> {
+pub(crate) fn validate_folder(folder: &str) -> Result<()> {
     let bytes = folder.as_bytes();
     ensure!(
         bytes.len() == 45
@@ -84,6 +19,11 @@ pub fn native_path(folder: &str, mapping: &[u16]) -> Result<String> {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b)),
         "invalid fixed SxS storage folder"
     );
+    Ok(())
+}
+/// No drive aliases, alternate mappings, system volume or arbitrary path components are accepted.
+pub fn native_path(folder: &str, mapping: &[u16]) -> Result<String> {
+    validate_folder(folder)?;
     ensure!(
         (3..=512).contains(&mapping.len())
             && mapping.ends_with(&[0, 0])

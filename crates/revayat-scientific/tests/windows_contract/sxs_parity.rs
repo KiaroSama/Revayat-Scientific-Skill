@@ -45,6 +45,9 @@ fn session_bytes() -> Vec<u8> {
 
 #[test]
 fn strict_trace_codecs_reject_missing_bom_malformed_text_and_private_payloads() {
+    check_evidence_validation().unwrap();
+    check_reporting_validation().unwrap();
+    check_capture_validation().unwrap();
     let text = block(
         MANIFEST,
         "ERROR: Cannot resolve reference Microsoft.Windows.Common-Controls,type=\"win32\",version=\"6.0.0.0\".\nERROR: Activation Context generation failed.",

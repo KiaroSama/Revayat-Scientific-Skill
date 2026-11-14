@@ -1,5 +1,6 @@
 //! Fixed System32 sxstrace child with exact HANDLE_LIST, resource bounds and independent reaping.
 use super::*;
+use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
 use crate::windows_security::activation::native::require_host;
 use std::os::windows::{fs::OpenOptionsExt, io::IntoRawHandle};
 #[link(name = "kernel32")]
@@ -11,26 +12,12 @@ pub(super) fn arguments(folder: &Path, parse: bool) -> Result<Vec<String>> {
     let folder = folder
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("SxS tool folder encoding differs"))?;
-    let bytes = folder.as_bytes();
-    ensure!(
-        bytes.len() == 45
-            && (b'D'..=b'Z').contains(&bytes[0])
-            && &bytes[1..13] == b":\\sxs-trace-"
-            && bytes[13..]
-                .iter()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b)),
-        "SxS fixed tool folder differs"
-    );
-    let mut args = vec![
-        if parse { "parse" } else { "trace" }.to_owned(),
-        format!("-logfile:{folder}\\capture.etl"),
-    ];
-    args.push(if parse {
-        format!("-outfile:{folder}\\capture.txt")
-    } else {
-        "-nostop".to_owned()
-    });
-    Ok(args)
+    crate::windows_security::sxs::storage::validate_folder(folder)?;
+    Ok(crate::windows_security::sxs::capture::tool_arguments(
+        &format!("{folder}\\capture.etl"),
+        &format!("{folder}\\capture.txt"),
+        parse,
+    ))
 }
 #[derive(Default)]
 struct Discard {
@@ -132,9 +119,15 @@ fn directory(system: bool) -> Result<std::path::PathBuf> {
     Ok(path)
 }
 /// A nonzero exit, any stderr bytes, uncertain cleanup, or a surviving child is always failure.
-pub(crate) fn run(folder: &Path, parse: bool, reaped: &mut bool) -> Result<()> {
+pub(crate) fn run(
+    folder: &Path,
+    parse: bool,
+    reaped: &mut bool,
+    mut remaining: impl FnMut() -> Result<f64>,
+) -> Result<()> {
     require_host()?;
     let args = arguments(folder, parse)?;
+    ensure!(remaining()? > 0.0, "SxS fixed tool deadline expired");
     plain_path(folder)?;
     let system = directory(true)?;
     let windows = directory(false)?;
@@ -246,7 +239,19 @@ pub(crate) fn run(folder: &Path, parse: bool, reaped: &mut bool) -> Result<()> {
         creation_succeeded = success != 0;
         process = Owned::creation_output(info.process);
         thread = Owned::creation_output(info.thread);
-        creation?;
+        creation.map_err(|error| {
+            let code = error
+                .downcast_ref::<super::creation::CreationFailure>()
+                .and_then(|value| value.code);
+            diagnostics::annotate(
+                error,
+                Stage::SxsToolCreate,
+                Numbers {
+                    native_error: code,
+                    ..Default::default()
+                },
+            )
+        })?;
         job.state.advance(Lifecycle::Suspended)?;
         ensure!(
             unsafe { AssignProcessToJobObject(job.handle, process.0) } != 0,
@@ -259,10 +264,16 @@ pub(crate) fn run(folder: &Path, parse: bool, reaped: &mut bool) -> Result<()> {
             "SxS fixed tool membership differs"
         );
         job.state.advance(Lifecycle::Qualified)?;
-        ensure!(
-            unsafe { NtResumeProcess(process.0) } == 0,
-            "SxS fixed tool resume failed"
-        );
+        let resume = unsafe { NtResumeProcess(process.0) };
+        if resume != 0 {
+            return Err(diagnostics::native(
+                Stage::SxsToolResume,
+                Numbers {
+                    result: Some(resume as u32),
+                    ..Default::default()
+                },
+            ));
+        }
         job.state.advance(Lifecycle::Running)?;
         stdin.close()?;
         stdout_writer.close()?;
@@ -273,7 +284,7 @@ pub(crate) fn run(folder: &Path, parse: bool, reaped: &mut bool) -> Result<()> {
             let wait = unsafe { WaitForSingleObject(process.0, 10) };
             ensure!(wait == 0 || wait == 258, "SxS fixed tool wait failed");
             ensure!(
-                started.elapsed() <= Duration::from_secs(10),
+                started.elapsed() <= Duration::from_secs(10) && remaining()? > 0.0,
                 "SxS fixed tool wall deadline exceeded"
             );
             if wait == 0 {
@@ -288,11 +299,23 @@ pub(crate) fn run(folder: &Path, parse: bool, reaped: &mut bool) -> Result<()> {
         job.terminate()?;
         output.drain(&stdout)?;
         error.drain(&stderr)?;
-        ensure!(
-            code == 0 && error.bytes == 0 && output.eof && error.eof,
-            "SxS fixed tool completion differs exit32={code:08X} stderr_present={}",
-            error.bytes != 0
-        );
+        crate::windows_security::sxs::capture::require_sxs_completion(
+            code,
+            error.bytes != 0,
+            remaining()?,
+            started.elapsed().as_secs_f64(),
+        )?;
+        if !(output.eof && error.eof) {
+            return Err(diagnostics::native(
+                Stage::SxsToolExit,
+                Numbers {
+                    result: Some(code),
+                    bytes: Some(error.bytes as u32),
+                    count: Some(u32::from(output.eof) | (u32::from(error.eof) << 1)),
+                    ..Default::default()
+                },
+            ));
+        }
         ensure!(
             crate::identity::path_object_id(&image)? == identity
                 && crate::identity::object_id(&held)? == identity,

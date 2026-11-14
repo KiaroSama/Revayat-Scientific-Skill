@@ -18,7 +18,8 @@ fn event(value: &str) -> bool {
             DESCENDANT_CHECKS.contains(&kind)
                 || ["control", "native", "transport", "timeout"].contains(&kind)
         }
-        "start" | "root" => kind == "control",
+        "start" => kind == "control",
+        "root" => ["control", "control-name", "control-open", "control-handle"].contains(&kind),
         "mutation" | "report" => ["control", "native"].contains(&kind),
         "identity" => ["control", "decode"].contains(&kind),
         "inventory" => ["control", "decode", "timeout"].contains(&kind),
@@ -53,6 +54,13 @@ pub fn failure_summary(frame: &str) -> Option<String> {
                 if !events
                     .split(',')
                     .any(|value| value == "token:control-restrictions-query")
+                {
+                    return None;
+                }
+            } else if let Some(status) = field.strip_prefix("nt_status=") {
+                if !hex(status)
+                    || status == "00000000"
+                    || !events.split(',').any(|value| value == "root:control-open")
                 {
                     return None;
                 }

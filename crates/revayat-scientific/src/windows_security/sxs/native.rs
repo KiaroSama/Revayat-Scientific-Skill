@@ -1,8 +1,10 @@
 //! One fixed standard-tool capture around the existing qualified LPAC authority lifecycle.
 //! Host collector evidence proves recording, never child visibility or an original failing call.
 use super::{
-    SessionSnapshot, native_identity::finish, native_session::SessionOwner, native_storage::Storage,
+    SessionSnapshot, StorageLifecycle, capture, native_identity::finish,
+    native_session::SessionOwner, native_storage::Storage,
 };
+use crate::windows_security::activation::diagnostics::{self, Stage};
 use crate::windows_security::{
     activation::native::{ManifestRole, observe_manifest, require_host},
     native::{AuthorityObserver, run_observed, run_sxs_tool},
@@ -38,6 +40,7 @@ struct Capture<'a, F> {
     authority_reaped: bool,
     session: SessionOwner,
     storage: Option<Storage>,
+    lifecycle: StorageLifecycle,
     package: Option<String>,
     bound: Option<SessionSnapshot>,
     attempted: bool,
@@ -129,44 +132,55 @@ impl<F: FnMut(Boundary) -> Result<()>> Capture<'_, F> {
             .storage
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("SxS storage unavailable"))?;
-        let logfile = storage.require("capture.etl")?;
-        let length = std::fs::metadata(&logfile)?.len();
-        ensure!(
-            (1..=8_388_608).contains(&length),
-            "SxS ETL length outside bound"
-        );
-        storage.write("capture.txt", b"")?;
-        ensure!(
-            storage.read("capture.txt", 0)?.is_empty(),
-            "SxS parse seed is not empty"
-        );
+        capture::at_parse(0, || storage.require("capture.etl").map(|_| ()))?;
+        capture::at_parse(1, || {
+            storage.require_evidence_length("capture.etl", 8_388_608)
+        })?;
+        let parsing_started = Instant::now();
+        let remaining = || Ok(10.0 - parsing_started.elapsed().as_secs_f64());
+        let storage = std::cell::RefCell::new(storage);
+        capture::at_parse(2, || {
+            super::seed::prepare_text(
+                remaining,
+                || storage.borrow().require_absent("capture.txt"),
+                || storage.borrow_mut().write("capture.txt", b""),
+                || storage.borrow().require_empty("capture.txt"),
+            )
+        })?;
         let mut parser_reaped = true;
-        let parsing = run_sxs_tool(&storage.folder, true, &mut parser_reaped);
+        let parsing = capture::at_parse(3, || {
+            run_sxs_tool(
+                &storage.borrow().folder,
+                true,
+                &mut parser_reaped,
+                remaining,
+            )
+        });
         self.reaped &= parser_reaped;
         parsing?;
         ensure!(parser_reaped, "SxS parser was not reaped");
-        let mut bytes = storage.read("capture.txt", 1_048_576)?;
+        capture::at_parse(4, || storage.borrow().require("capture.txt").map(|_| ()))?;
         let subject = self
             .subject
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("SxS actual authority subject was not bound"))?
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("SxS authority path encoding differs"))?;
-        let control = storage.path("collector.manifest")?;
-        let result = if success {
-            super::success_evidence(
-                &bytes,
-                subject,
-                control
-                    .to_str()
-                    .ok_or_else(|| anyhow::anyhow!("SxS control path encoding differs"))?,
-            )
-        } else {
-            super::failure_evidence(&bytes, subject)
-        };
-        bytes.fill(0);
-        result
+        let control = storage.borrow().path("collector.manifest")?;
+        let control = control
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("SxS control path encoding differs"))?;
+        capture::at_parse(5, || {
+            storage.borrow().read_evidence("capture.txt", |bytes| {
+                if success {
+                    super::success_evidence(bytes, subject, control)
+                } else {
+                    super::failure_evidence(bytes, subject)
+                }
+            })
+        })
     }
+
     fn close(&mut self) -> Result<()> {
         let mut errors = Vec::new();
         // Never delete live collector/parser storage. The outer owner must recover uncertain state.
@@ -201,8 +215,21 @@ impl<F: FnMut(Boundary) -> Result<()>> AuthorityObserver for Capture<'_, F> {
             "SxS authority preparation repeated"
         );
         self.package = Some(package.to_owned());
-        self.storage = Some(Storage::prepare(self.volume, package)?);
-        self.storage()?.require_seed()?;
+        let storage = &mut self.storage;
+        let lifecycle = &mut self.lifecycle;
+        capture::boundary(0, || {
+            lifecycle.prepare(|| {
+                *storage = Some(
+                    Storage::prepare(self.volume, package)
+                        .map_err(|error| diagnostics::at(error, Stage::SxsStorage))?,
+                );
+                storage
+                    .as_ref()
+                    .unwrap()
+                    .require_seed()
+                    .map_err(|error| diagnostics::at(error, Stage::SxsStorage))
+            })
+        })?;
         (self.observe)(Boundary::AfterStorage)
     }
     fn before_create(&mut self) -> Result<()> {
@@ -224,17 +251,55 @@ impl<F: FnMut(Boundary) -> Result<()>> AuthorityObserver for Capture<'_, F> {
             "SxS actual authority image binding differs"
         );
         self.subject = Some(image.to_owned());
-        self.storage()?.deny(process, package)?;
+        let storage = self
+            .storage
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("SxS storage unavailable"))?;
+        capture::boundary(1, || self.lifecycle.seal(|| storage.require_seed()))?;
+        capture::boundary(2, || self.lifecycle.enter(|| storage.require_seed()))?;
+        let started = Instant::now();
+        storage
+            .deny(process, package)
+            .map_err(|error| diagnostics::at(error, Stage::SxsStorage))?;
         self.denied = true;
         (self.observe)(Boundary::AfterDenial)?;
-        let logfile = self.logfile()?;
-        self.session.preabsent(&logfile)?;
-        self.attempted = true;
-        let folder = self.storage()?.folder.clone();
-        run_sxs_tool(&folder, false, &mut self.reaped)?;
-        ensure!(self.reaped, "SxS starter was not reaped");
-        self.bound = Some(self.session.bind(&logfile)?);
-        (self.observe)(Boundary::AfterBind)?;
+        {
+            let current = std::cell::RefCell::new(&mut *self);
+            capture::start_sequence(
+                || Ok(10.0 - started.elapsed().as_secs_f64()),
+                || {
+                    let mut current = current.borrow_mut();
+                    let logfile = current.logfile()?;
+                    current
+                        .session
+                        .preabsent(&logfile)
+                        .map_err(|error| diagnostics::at(error, Stage::SxsBind))?;
+                    current.attempted = true;
+                    Ok(())
+                },
+                || {
+                    let mut current = current.borrow_mut();
+                    let folder = current.storage()?.folder.clone();
+                    run_sxs_tool(&folder, false, &mut current.reaped, || {
+                        Ok(10.0 - started.elapsed().as_secs_f64())
+                    })
+                    .map_err(|error| diagnostics::at(error, Stage::SxsStart))
+                },
+                || Ok(current.borrow().reaped),
+                || {
+                    let mut current = current.borrow_mut();
+                    let logfile = current.logfile()?;
+                    current.bound = Some(
+                        current
+                            .session
+                            .bind(&logfile)
+                            .map_err(|error| diagnostics::at(error, Stage::SxsBind))?,
+                    );
+                    (current.observe)(Boundary::AfterBind)
+                },
+            )?;
+        }
+
         self.deadline()?;
         (self.observe)(Boundary::BeforeAuthorityResume)
     }
@@ -254,8 +319,9 @@ pub fn collect_authority_observed(
         observe,
         subject: None,
         authority_reaped: true,
-        session: SessionOwner::acquire()?,
+        session: SessionOwner::acquire().map_err(|error| diagnostics::at(error, Stage::SxsBind))?,
         storage: None,
+        lifecycle: StorageLifecycle::default(),
         package: None,
         bound: None,
         attempted: false,
@@ -276,21 +342,33 @@ pub fn collect_authority_observed(
         super::execute_capture(
             || {
                 // run_observed reaps the authority and descendants before returning an error.
-                let result = run_observed(authority, &mut **capture_ref.borrow_mut())
-                    .map_err(|error| super::safe(error, "authority"));
+                let result =
+                    run_observed(authority, &mut **capture_ref.borrow_mut()).map_err(|error| {
+                        diagnostics::at(super::safe(error, "authority"), Stage::SxsAuthority)
+                    });
                 completed.set(result.is_ok());
                 result.map(|_| ())
             },
             || {
-                capture_ref.borrow_mut().control()?;
+                capture_ref
+                    .borrow_mut()
+                    .control()
+                    .map_err(|error| diagnostics::at(error, Stage::SxsControl))?;
                 qualified.set(true);
                 Ok(())
             },
-            || capture_ref.borrow_mut().stop(),
+            || {
+                capture_ref
+                    .borrow_mut()
+                    .stop()
+                    .map_err(|error| diagnostics::at(error, Stage::SxsStop))
+            },
             |success| {
                 let mut current = capture_ref.borrow_mut();
                 if current.bound.is_some() {
-                    evidence = current.parse(success)?;
+                    evidence = current
+                        .parse(success)
+                        .map_err(|error| diagnostics::at(error, Stage::SxsParse))?;
                 }
                 Ok(())
             },

@@ -57,9 +57,9 @@ cargo run --locked --release --bin revayat-scientific -- install --agent codex
 
 Use `--agent all` for detected hosts, `--scope project --path <directory>` for a project, or `--dest <final-skill-directory>` for another host. Existing installations require `--force` and an unambiguous Revayat identity. All targets are staged before activation; previous copies remain in `skill-backups`. See [installation](docs/installation.md).
 
-Native executables and `.skill` archives are produced by the target-specific CI jobs; current rewrite acceptance remains unverified. On Linux/macOS, keep `bin/revayat-scientific` and `bin/revayat-process-owner` together from the same build and revision. Windows uses `bin/revayat-scientific.exe` without that companion. A native archive also contains `SKILL.md`, references, allowed assets, agent metadata, license and notices. An installed payload needs no language interpreter, but external document engines remain separate.
+Native executables and `.skill` archives are produced by the target-specific CI jobs; current rewrite acceptance remains unverified. On Linux/macOS, keep `bin/revayat-scientific` and `bin/revayat-process-owner` together from the same build and revision. Windows packages keep `bin/revayat-scientific.exe` with `bin/revayat-quota-worker.exe`, the fixed native quota worker. A native archive also contains `SKILL.md`, references, allowed assets, agent metadata, license and notices. An installed payload needs no language interpreter, but external document engines remain separate.
 
-Build all binaries with the command above before installing, packaging or using source commands. `cargo run --bin revayat-scientific` alone does not rebuild its Unix sibling. A missing, linked or nonregular companion is refused; adjacency and collected bytes are checked, not a signed same-build/version handshake.
+Build all binaries with the command above before installing, packaging or using source commands. `cargo run --bin revayat-scientific` alone does not rebuild its platform sibling. A missing, linked or nonregular companion is refused; adjacency and collected bytes are checked, not a signed same-build/version handshake.
 
 Claude Code plugin installation:
 

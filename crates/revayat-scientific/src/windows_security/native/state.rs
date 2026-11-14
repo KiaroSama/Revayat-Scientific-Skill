@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::fs;
 use std::{ffi::OsString, path::PathBuf};
+#[path = "bootstrap.rs"]
+mod bootstrap;
 #[path = "state_io.rs"]
 mod io;
+pub use bootstrap::run_bootstrap_checks;
 #[cfg(test)]
 use io::private_sddl;
 use io::{Pin, anchors, create_private, private, write_new};
@@ -186,7 +189,7 @@ impl NativeRunOwner {
         ]
     }
     pub fn recover(&mut self, proof: &crate::runtime::ReapedProcessTree) -> Result<()> {
-        super::recovery::recover_profile(self, proof)
+        super::recovery::recover_run(self, proof)
     }
     pub fn close(&mut self) -> Result<()> {
         if self.closed {
@@ -220,6 +223,20 @@ impl Drop for NativeRunOwner {
     }
 }
 impl NativeRunView {
+    pub(super) fn state_path(&self) -> &Path {
+        &self.state
+    }
+    pub(in crate::windows_security::native) fn quota_canary(&self) -> Result<PathBuf> {
+        self.require()?;
+        let path = self.state.join("quota-host-canary");
+        write_new(
+            &path,
+            &self.manifest.host,
+            b"fixed protected quota canary\n",
+        )?;
+        self.require()?;
+        Ok(path)
+    }
     pub fn from_arguments(args: &[OsString]) -> Result<Self> {
         ensure!(
             args.len() == 4,

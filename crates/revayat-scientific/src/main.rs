@@ -56,6 +56,15 @@ fn dispatch(cli: &Cli) -> Result<i32> {
                     image: Option<PathBuf>,
                     #[arg(long, hide = true, num_args = 4)]
                     owned_run: Vec<std::ffi::OsString>,
+                    /// Compare original, temporary and restored machine registry policy.
+                    #[arg(long, conflicts_with = "machine_quota")]
+                    machine_authority: bool,
+                    /// Include the real fixed NTFS/quota actor in the same disposable profile.
+                    #[arg(long, conflicts_with = "machine_authority")]
+                    machine_quota: bool,
+                    /// Run the original ordered 53 validators and three direct checks.
+                    #[arg(long)]
+                    bootstrap_checks: bool,
                 }
                 let options = Options::try_parse_from(
                     std::iter::once("security-windows".to_owned()).chain(args.iter().cloned()),
@@ -71,8 +80,16 @@ fn dispatch(cli: &Cli) -> Result<i32> {
                 let view = revayat::windows_security::native::NativeRunView::from_arguments(
                     &options.owned_run,
                 )?;
-                let report =
-                    revayat::windows_security::native::run_owned_registry_authority(&image, &view)?;
+                if options.bootstrap_checks {
+                    revayat::windows_security::native::run_bootstrap_checks(&view)?;
+                }
+                let report = if options.machine_quota {
+                    revayat::windows_security::native::run_machine_quota_session(&image, &view)?
+                } else if options.machine_authority {
+                    revayat::windows_security::native::run_machine_authority_session(&image, &view)?
+                } else {
+                    revayat::windows_security::native::run_owned_registry_authority(&image, &view)?
+                };
                 println!("{report}");
                 Ok(0)
             }

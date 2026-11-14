@@ -227,6 +227,35 @@ pub fn discovery_failure_summary(error: &anyhow::Error) -> String {
     let mut result = format!("stage={stage}");
     for cause in error.chain() {
         let message = cause.to_string();
+        for (text, category) in [
+            ("cannot start owned external tool", "spawn"),
+            ("cannot start Unix runtime companion", "companion-spawn"),
+            ("owned external tool is missing", "missing-tool"),
+            ("ownership protocol deadline exceeded", "transport-deadline"),
+            ("ownership protocol disconnected", "transport-disconnected"),
+            (
+                "runtime companion response deadline exceeded",
+                "response-deadline",
+            ),
+            (
+                "runtime companion disconnected without complete cleanup frame",
+                "completion-disconnected",
+            ),
+            ("ownership response exceeds byte limit", "response-limit"),
+            ("runtime companion cleanup incomplete", "cleanup-incomplete"),
+            ("runtime caller cancelled or disconnected", "cancelled"),
+        ] {
+            if message == text {
+                result.push_str(&format!(" runtime={category}"));
+            }
+        }
+        if let Some(limit) = message
+            .strip_prefix("tool diagnostics exceeded ")
+            .and_then(|value| value.strip_suffix(" byte limit"))
+            .and_then(|value| value.parse::<u32>().ok())
+        {
+            result.push_str(&format!(" runtime=output-limit limit={limit}"));
+        }
         for operation in ["status-query", "group-cleanup", "child-reap", "unknown"] {
             let prefix = format!("owned runtime operation failed (operation-{operation}");
             if message == format!("{prefix})") {

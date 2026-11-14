@@ -1,6 +1,7 @@
 //! Fixed OS-image binding and one actual stopped-process CSR IAT pointer qualification.
 use super::*;
 use crate::windows_security::{
+    activation::diagnostics::{self, Numbers, Stage},
     activation::dispatch::{DispatchRegion, DispatchTarget},
     image::ActivationSites,
     sxs::ordinal_path_equal,
@@ -44,7 +45,9 @@ impl DispatchImages {
         }
     }
     pub fn load(&mut self, process: Handle, file: Handle, base: u64) -> Result<Option<[u64; 2]>> {
-        let Some((name, mut bytes)) = system_image(file)? else {
+        let Some((name, mut bytes)) = system_image(file)
+            .map_err(|error| diagnostics::at(error, Stage::DebugSystemIdentity))?
+        else {
             return Ok(None);
         };
         let result = (|| {
@@ -52,15 +55,22 @@ impl DispatchImages {
             match name.as_str() {
                 "kernel32.dll" => {
                     ensure!(self.kernel.is_none(), "CSR kernel32 load repeated");
-                    let sites = image.require_activation_profile()?;
-                    executable(process, base, sites.csr_call, 7)?;
-                    executable(process, base, sites.csr_post, 5)?;
+                    let sites = image
+                        .require_activation_profile()
+                        .map_err(|error| diagnostics::at(error, Stage::DebugKernelProfile))?;
+                    executable(process, base, sites.csr_call, 7)
+                        .map_err(|error| diagnostics::at(error, Stage::DebugExecutable))?;
+                    executable(process, base, sites.csr_post, 5)
+                        .map_err(|error| diagnostics::at(error, Stage::DebugExecutable))?;
                     self.kernel = Some(Kernel { base, sites });
                 }
                 "ntdll.dll" => {
                     ensure!(self.ntdll.is_none(), "CSR ntdll load repeated");
-                    let target = image.csr_dispatch_export()?;
-                    executable(process, base, (target - base) as u32, 1)?;
+                    let target = image
+                        .csr_dispatch_export()
+                        .map_err(|error| diagnostics::at(error, Stage::DebugNtdllExport))?;
+                    executable(process, base, (target - base) as u32, 1)
+                        .map_err(|error| diagnostics::at(error, Stage::DebugExecutable))?;
                     self.ntdll = Some((base, target));
                 }
                 _ => anyhow::bail!("unsupported CSR image role"),
@@ -77,7 +87,7 @@ impl DispatchImages {
             Ok(None)
         })();
         bytes.fill(0);
-        result
+        result.map_err(|error| diagnostics::at(error, Stage::DebugDispatchLoad))
     }
     pub fn require_unload(&self, base: u64) -> Result<()> {
         ensure!(
@@ -96,41 +106,52 @@ impl DispatchImages {
             .ntdll
             .ok_or_else(|| anyhow::anyhow!("CSR ntdll image absent"))?;
         let address = kernel.base + u64::from(kernel.sites.csr_iat);
-        self.target.read(
-            address,
-            kernel.base,
-            expected,
-            || {
-                let region = query(process, address)?;
-                Ok(DispatchRegion {
-                    address: region.address as u64,
-                    allocation: region.allocation as u64,
-                    size: region.size as u64,
-                    state: region.state,
-                    kind: region.kind,
-                    protect: region.protect,
-                })
-            },
-            |bytes| {
-                let mut returned = 0;
-                let success = unsafe {
-                    ReadProcessMemory(
-                        process,
-                        address as Handle,
-                        bytes.as_mut_ptr().cast(),
-                        8,
-                        &mut returned,
-                    )
-                };
-                let error = if success == 0 {
-                    unsafe { GetLastError() }
-                } else {
-                    0
-                };
-                ensure!(success != 0, "CSR IAT read failed winerror={error}");
-                Ok(returned)
-            },
-        )?;
+        self.target
+            .read(
+                address,
+                kernel.base,
+                expected,
+                || {
+                    let region = query(process, address)?;
+                    Ok(DispatchRegion {
+                        address: region.address as u64,
+                        allocation: region.allocation as u64,
+                        size: region.size as u64,
+                        state: region.state,
+                        kind: region.kind,
+                        protect: region.protect,
+                    })
+                },
+                |bytes| {
+                    let mut returned = 0;
+                    let success = unsafe {
+                        ReadProcessMemory(
+                            process,
+                            address as Handle,
+                            bytes.as_mut_ptr().cast(),
+                            8,
+                            &mut returned,
+                        )
+                    };
+                    let error = if success == 0 {
+                        unsafe { GetLastError() }
+                    } else {
+                        0
+                    };
+                    if success == 0 {
+                        return Err(diagnostics::native(
+                            Stage::DebugDispatchTarget,
+                            Numbers {
+                                native_error: Some(error),
+                                count: Some(returned as u32),
+                                ..Default::default()
+                            },
+                        ));
+                    }
+                    Ok(returned)
+                },
+            )
+            .map_err(|error| diagnostics::at(error, Stage::DebugDispatchTarget))?;
         self.target_equal = true;
         Ok(())
     }
@@ -140,10 +161,17 @@ fn query(process: Handle, address: u64) -> Result<Region> {
     let returned = unsafe {
         abi::VirtualQueryEx(process, address as Handle, &mut region, size_of::<Region>())
     };
-    ensure!(
-        returned == size_of::<Region>(),
-        "CSR loaded-image region query differs"
-    );
+    if returned != size_of::<Region>() {
+        let error = unsafe { GetLastError() };
+        return Err(diagnostics::native(
+            Stage::DebugExecutable,
+            Numbers {
+                native_error: Some(error),
+                bytes: Some(returned as u32),
+                ..Default::default()
+            },
+        ));
+    }
     Ok(region)
 }
 fn executable(process: Handle, base: u64, rva: u32, length: u64) -> Result<()> {

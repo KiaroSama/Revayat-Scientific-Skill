@@ -1,5 +1,6 @@
 //! Debug observation completion, restoration, retirement and exhaustive owned cleanup.
 use super::*;
+use crate::windows_security::activation::diagnostics::{self, Numbers, Stage};
 impl Owner {
     fn retire(&mut self, observe: &mut impl FnMut(DebugBoundary) -> Result<()>) -> Result<()> {
         if self.retirement_attempted {
@@ -17,7 +18,7 @@ impl Owner {
                         errors.push(error);
                     }
                 }
-                Err(error) => errors.push(error),
+                Err(error) => errors.push(diagnostics::at(error, Stage::DebugEvent)),
             }
         }
         if errors.is_empty() {
@@ -64,14 +65,30 @@ impl Owner {
                 return Err(Failures { errors }.into());
             }
         }
-        observe(DebugBoundary::BeforeExitWait)?;
-        ensure!(
-            unsafe { WaitForSingleObject(self.process, 2000) } == 0,
-            "debug child natural exit was not signaled"
-        );
-        self.retire(observe)?;
+        observe(DebugBoundary::BeforeExitWait)
+            .map_err(|error| diagnostics::at(error, Stage::DebugExitWait))?;
+        let wait = unsafe { WaitForSingleObject(self.process, 2000) };
+        if wait != 0 {
+            let error = if wait == u32::MAX {
+                unsafe { GetLastError() }
+            } else {
+                0
+            };
+            return Err(diagnostics::native(
+                Stage::DebugExitWait,
+                Numbers {
+                    native_error: Some(error),
+                    result: Some(wait),
+                    ..Default::default()
+                },
+            ));
+        }
+        self.retire(observe)
+            .map_err(|error| diagnostics::at(error, Stage::DebugRetire))?;
         if let Some(transport) = &mut self.transport {
-            transport.finish()?;
+            transport
+                .finish()
+                .map_err(|error| diagnostics::at(error, Stage::DebugTransport))?;
         }
         let generations = self.generations.as_mut().unwrap();
         self.files.require_clean()?;

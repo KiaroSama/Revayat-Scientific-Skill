@@ -21,9 +21,10 @@ Resolve once:
 - `REVAYAT` — the native executable: `$SKILL_DIR/bin/revayat-scientific` on Unix,
   or `$SKILL_DIR/bin/revayat-scientific.exe` on Windows. For a source plugin checkout,
   build with `cargo build --locked --release --workspace --bins` and resolve `target/release`.
-  Linux/macOS also require executable `revayat-process-owner` beside it, from the same
-  build and revision. Keep both files together; `cargo run --bin revayat-scientific`
-  alone does not rebuild the sibling. Windows does not require that Unix companion.
+  Linux/macOS also require executable `revayat-process-owner` beside it; Windows
+  packages require `revayat-quota-worker.exe`, the fixed native quota worker.
+  Keep each platform's files together from the same build and revision;
+  `cargo run --bin revayat-scientific` alone does not rebuild the sibling.
   Missing/linked/nonregular companions are refused, not replaced with unowned spawning;
   this is not a signed same-build/version compatibility check.
 - `LEVEL` — `journal` for papers and theses; `system-docs` for technical books,

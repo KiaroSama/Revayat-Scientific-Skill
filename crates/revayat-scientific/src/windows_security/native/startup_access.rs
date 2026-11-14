@@ -1,69 +1,14 @@
 //! Fixed read-only SideBySide observations, never child attempted-object or admission evidence.
 use super::*;
-use crate::windows_security::{
-    activation::{Failures, native::require_host},
-    sxs::with_authority,
+use crate::windows_security::startup_registry::{
+    self, ACCESS, KEY_PATH, ObjectAttributes as Attributes, closed, finish, fixed_attributes,
+    fixed_name,
 };
-use registry_authority::native::{Attributes, Unicode};
+use crate::windows_security::{activation::native::require_host, sxs::with_authority};
 use std::cell::RefCell;
-const KEY_PATH: &str = r"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide";
-const ACCESS: u32 = 0x20019;
 #[link(name = "ntdll")]
 unsafe extern "system" {
     fn NtOpenKey(key: *mut Handle, access: u32, attributes: *const Attributes) -> i32;
-}
-fn fixed_name(text: *const u16) -> Unicode {
-    Unicode {
-        length: 140,
-        maximum: 142,
-        buffer: text,
-    }
-}
-fn fixed_attributes(name: *const Unicode) -> Attributes {
-    Attributes {
-        length: 48,
-        root: null_mut(),
-        name,
-        flags: 0x40,
-        descriptor: null_mut(),
-        qos: null_mut(),
-    }
-}
-fn valid(handle: Handle) -> bool {
-    !handle.is_null() && handle as usize != usize::MAX
-}
-fn outcome(label: &str, status: i32, key: Handle) -> Result<String> {
-    ensure!(
-        matches!(label, "host" | "lpac")
-            && if status >= 0 {
-                valid(key)
-            } else {
-                key.is_null()
-            },
-        "fixed registry-access contract is invalid"
-    );
-    Ok(format!(
-        "WINDOWS_STARTUP_REGISTRY context={label} label=sxs-policy desired_access=0x00020019 status=0x{:08X} opened={} child_equivalence_claimed=False cause_claimed=False",
-        status as u32,
-        if status >= 0 { "True" } else { "False" }
-    ))
-}
-fn closed(status: i32) -> Result<()> {
-    ensure!(status >= 0, "close fixed registry read handle failed");
-    Ok(())
-}
-fn finish<T>(result: Result<T>, cleanup: Result<()>) -> Result<T> {
-    match (result, cleanup) {
-        (result, Ok(())) => result,
-        (Ok(_), Err(cleanup)) => Err(Failures {
-            errors: vec![cleanup],
-        }
-        .into()),
-        (Err(primary), Err(cleanup)) => Err(Failures {
-            errors: vec![primary, cleanup],
-        }
-        .into()),
-    }
 }
 fn observe_one(
     label: &str,
@@ -73,23 +18,19 @@ fn observe_one(
     open: impl FnOnce(&mut Handle) -> Result<i32>,
     close: impl FnOnce(Handle) -> Result<()>,
 ) -> Result<i32> {
-    let mut key = null_mut();
-    let result = (|| {
-        deadline()?;
-        qualify()?;
-        let status = open(&mut key)?;
-        qualify()?;
-        deadline()?;
-        record(outcome(label, status, key)?)?;
-        ensure!(
-            label != "host" || status >= 0,
-            "host fixed registry positive control failed"
-        );
-        Ok(status)
-    })();
-    let owned = std::mem::replace(&mut key, null_mut());
-    let cleanup = if valid(owned) { close(owned) } else { Ok(()) };
-    finish(result, cleanup)
+    startup_registry::observe_one(
+        label,
+        record,
+        deadline,
+        qualify,
+        |key| {
+            let mut native = null_mut();
+            let result = open(&mut native);
+            *key = native as usize;
+            result
+        },
+        |key| close(key as Handle),
+    )
 }
 fn observe_fixed(
     label: &str,
@@ -147,6 +88,12 @@ pub(super) fn observe_child(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::windows_security::{
+        activation::Failures, startup_registry::UnicodeString as Unicode,
+    };
+    fn outcome(label: &str, status: i32, key: Handle) -> Result<String> {
+        startup_registry::outcome(label, status, key as usize)
+    }
     use std::{
         cell::{Cell, RefCell},
         mem::{offset_of, size_of},

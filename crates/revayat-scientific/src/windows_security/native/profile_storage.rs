@@ -344,6 +344,22 @@ pub(super) struct Storage {
     uncertain: bool,
 }
 impl Storage {
+    pub(super) fn existing_ac(name: &str, package: &str) -> Result<PathBuf> {
+        validate_name(name)?;
+        ensure!(
+            derived_sid(name)? == package,
+            "owned profile name/SID differs"
+        );
+        let (_, expected) = profile_paths(&local_app_data()?, name)?;
+        let text = wide(package);
+        let mut raw = null_mut();
+        // SAFETY: the fixed live package SID and writable native allocation output.
+        let status = unsafe { GetAppContainerFolderPath(text.as_ptr(), &mut raw) };
+        let folder = task_path(status, raw)?;
+        require_folder(&expected, &folder)?;
+        crate::windows_security::plain_path(&folder)?;
+        Ok(folder)
+    }
     fn for_root(root: PathBuf) -> Self {
         Self {
             name: String::new(),

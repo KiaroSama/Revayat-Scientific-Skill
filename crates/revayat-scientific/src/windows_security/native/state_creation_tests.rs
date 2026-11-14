@@ -391,27 +391,10 @@ pub(super) fn native_private_child(parent: &Pin, name: &str, user: &str) -> Resu
     use registry_authority::native::{Attributes, Unicode};
     use std::os::windows::io::AsRawHandle;
 
-    #[repr(C)]
-    struct IoStatus {
-        status: usize,
-        information: usize,
-    }
-    #[link(name = "ntdll")]
-    unsafe extern "system" {
-        fn NtCreateFile(
-            handle: *mut Handle,
-            access: u32,
-            attributes: *const Attributes,
-            io: *mut IoStatus,
-            allocation: Handle,
-            flags: u32,
-            share: u32,
-            disposition: u32,
-            options: u32,
-            ea: Handle,
-            ea_length: u32,
-        ) -> i32;
-    }
+    use crate::windows_security::sxs::{
+        native_file_abi::NtCreateFile,
+        storage::creation::{IoStatus, IoValue},
+    };
     parent.require()?;
     let path = parent.path.join(name);
     let name = wide(name);
@@ -436,7 +419,9 @@ pub(super) fn native_private_child(parent: &Pin, name: &str, user: &str) -> Resu
     };
     let mut raw = null_mut();
     let mut io = IoStatus {
-        status: usize::MAX,
+        value: IoValue {
+            pointer: usize::MAX,
+        },
         information: 0,
     };
     let returned = unsafe {
@@ -454,19 +439,19 @@ pub(super) fn native_private_child(parent: &Pin, name: &str, user: &str) -> Resu
             0,
         )
     };
-    if returned == 0x103 || io.status as u32 == 0x103 {
+    if returned == 0x103 || io.status() as u32 == 0x103 {
         std::process::abort();
     }
     let result = (|| {
         ensure!(
             returned == 0
-                && io.status as u32 == 0
+                && io.status() as u32 == 0
                 && io.information == 2
                 && !raw.is_null()
                 && raw as isize != -1,
             "native private child returned={:08X} completed={:08X} information={}",
             returned as u32,
-            io.status as u32,
+            io.status() as u32,
             io.information
         );
         let mut pin = Pin::open(&path, true)?;

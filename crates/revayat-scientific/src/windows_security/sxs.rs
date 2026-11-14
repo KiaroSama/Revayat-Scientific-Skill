@@ -41,15 +41,20 @@ pub use session::{
     SESSION_CAPACITY, SESSION_NAME, SessionSnapshot, require_enumeration, select_session,
 };
 pub use text::{
-    check_success_validation, decode_lines, failure_evidence, known_dependency, success_evidence,
+    EvidenceRead, LengthPhase, check_evidence_validation, check_reporting_validation,
+    check_success_validation, decode_lines, failure_evidence, known_dependency, read_owned,
+    require_length, success_evidence,
 };
 
 /// The raw cause remains private and is deliberately not an Error::source or Debug field.
 pub struct PrivateFailure {
-    pub stage: &'static str,
+    stage: std::borrow::Cow<'static, str>,
     original: anyhow::Error,
 }
 impl PrivateFailure {
+    pub fn stage(&self) -> &str {
+        &self.stage
+    }
     pub fn original(&self) -> &anyhow::Error {
         &self.original
     }
@@ -70,11 +75,17 @@ impl fmt::Debug for PrivateFailure {
 }
 impl std::error::Error for PrivateFailure {}
 pub(crate) fn safe(error: anyhow::Error, stage: &'static str) -> anyhow::Error {
+    safe_stage(error, stage)
+}
+pub(crate) fn safe_stage(
+    error: anyhow::Error,
+    stage: impl Into<std::borrow::Cow<'static, str>>,
+) -> anyhow::Error {
     if error.is::<PrivateFailure>() {
         error
     } else {
         PrivateFailure {
-            stage,
+            stage: stage.into(),
             original: error,
         }
         .into()
@@ -168,3 +179,17 @@ impl StorageLifecycle {
         action()
     }
 }
+
+#[path = "sxs/canary.rs"]
+pub mod canary;
+#[path = "sxs/capture.rs"]
+pub mod capture;
+#[path = "sxs/seed.rs"]
+pub mod seed;
+#[path = "sxs/storage_policy.rs"]
+pub mod storage_policy;
+pub use capture::check_capture_validation;
+
+#[cfg(windows)]
+#[path = "sxs/native_file_abi.rs"]
+pub(crate) mod native_file_abi;

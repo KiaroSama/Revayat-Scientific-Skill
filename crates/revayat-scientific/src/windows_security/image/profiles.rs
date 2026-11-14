@@ -3,6 +3,18 @@ use super::*;
 #[path = "profiles_data.rs"]
 mod data;
 use data::PROFILES;
+#[path = "csr.rs"]
+mod csr;
+pub use csr::check_csr_dispatch_validation;
+#[path = "boundary_checks.rs"]
+mod boundary_checks;
+pub use boundary_checks::check_activation_boundary_validation;
+#[path = "module_callback_checks.rs"]
+mod module_callback_checks;
+pub use module_callback_checks::{
+    check_activation_profiles, check_module_callback_profile_validation,
+    qualify_module_callback_host, qualify_module_callback_path,
+};
 struct Symbol {
     index: u32,
     record: u32,
@@ -44,7 +56,18 @@ pub struct ActivationSites {
     pub csr_post: u32,
     pub csr_iat: u32,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BoundarySites {
+    pub worker: u32,
+    pub registry: u32,
+    pub funnel: u32,
+}
 fn select(identity: &str) -> Result<&'static Profile> {
+    select_nullable(Some(identity))
+}
+fn select_nullable(identity: Option<&str>) -> Result<&'static Profile> {
+    let identity =
+        identity.ok_or_else(|| anyhow::anyhow!("fixed kernel32 identity is unsupported"))?;
     PROFILES
         .iter()
         .find(|profile| profile.identity == identity)
@@ -233,6 +256,15 @@ fn require_worker(image: &PeImage<'_>, profile: &Profile) -> Result<()> {
     );
     Ok(())
 }
+fn activation_boundary_profile(image: &PeImage<'_>, profile: &Profile) -> Result<BoundarySites> {
+    require_worker(image, profile)?;
+    activation_boundary_bytes(image, profile)?;
+    Ok(BoundarySites {
+        worker: profile.worker,
+        registry: profile.code[62],
+        funnel: profile.code[13],
+    })
+}
 // Original RequireModuleCallbackProfile order: identity is selected by the
 // caller, then worker export, activation boundary, and callback. CSR dispatch
 // predicates belong exclusively to dispatch_sites and are not a prerequisite.
@@ -258,7 +290,7 @@ fn dispatch_sites(image: &PeImage<'_>, profile: &Profile) -> Result<[u32; 3]> {
         record != 0
             && record <= u64::from(u32::MAX - 2)
             && record == u64_at(image.bytes, image.map(slot, 8)?)?
-            && image.text(record as u32 + 2, 129, false)? == "CsrClientCallServer",
+            && image.text(record as u32 + 2, 64, false)? == "CsrClientCallServer",
         "CSR imported target differs"
     );
     ensure!(
@@ -278,7 +310,7 @@ fn dispatch_sites(image: &PeImage<'_>, profile: &Profile) -> Result<[u32; 3]> {
     Ok([profile.code[7], profile.code[8], slot])
 }
 impl PeImage<'_> {
-    fn full_executable(&self, rva: u32, length: u32) -> bool {
+    pub(super) fn full_executable(&self, rva: u32, length: u32) -> bool {
         length != 0
             && self
                 .sections
@@ -322,6 +354,15 @@ impl PeImage<'_> {
     pub fn require_module_callback_profile(&self) -> Result<()> {
         let profile = select(&self.kernel32_identity()?)?;
         module_callback_profile(self, profile)
+    }
+    pub fn module_callback_site(&self) -> Result<u32> {
+        self.require_module_callback_profile()?;
+        Ok(select(&self.kernel32_identity()?)?.callback[63])
+    }
+    /// Original boundary-only qualifier. Callback/import and CSR byte products
+    /// are separate roles and are not prerequisites for these three sites.
+    pub fn require_activation_boundary_profile(&self) -> Result<BoundarySites> {
+        activation_boundary_profile(self, select(&self.kernel32_identity()?)?)
     }
     pub fn csr_dispatch_export(&self) -> Result<u64> {
         let (rva, size) = self.directory(0)?;
@@ -379,12 +420,20 @@ impl PeImage<'_> {
     }
 }
 impl KernelImage<'_> {
+    /// Exact subject/full-hash/worker/boundary qualification for the held image.
+    pub fn require_activation_boundary_profile(&self) -> Result<BoundarySites> {
+        activation_boundary_profile(&self.pe, select(&self.kernel32_identity()?)?)
+    }
     /// Subject-bound original RequireModuleCallbackProfile. Call this on the
     /// same held image used by the owner; successful byte qualification alone
     /// does not attest that Windows loaded it or bind a later load event.
     pub fn require_module_callback_profile(&self) -> Result<()> {
         let profile = select(&self.kernel32_identity()?)?;
         module_callback_profile(&self.pe, profile)
+    }
+    pub fn module_callback_site(&self) -> Result<u32> {
+        self.require_module_callback_profile()?;
+        Ok(select(&self.kernel32_identity()?)?.callback[63])
     }
 }
 #[cfg(test)]
