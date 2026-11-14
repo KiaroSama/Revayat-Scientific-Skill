@@ -177,6 +177,7 @@ fn observe_fixed(
         base: 0,
         dispatch: dispatch.then(debug_dispatch::DispatchImages::new),
         pending_dispatch: None,
+        dispatch_armed: false,
         transport,
     };
     let execution = (|| {

@@ -194,39 +194,60 @@ pub(super) fn initialize(
     };
     ioctl(handle, IOCTL_DISK_CREATE_DISK, bytes(&create), &mut [])?;
     ioctl(handle, IOCTL_DISK_UPDATE_PROPERTIES, &[], &mut [])?;
-    // Win32 requires MSR arrival before SET_DRIVE_LAYOUT_EX, not an assumed sleep.
+    // IOCTL_DISK_CREATE_DISK initializes an empty GPT on raw Win32 handles; accept
+    // either an empty GPT (synthesizing MSR explicitly) or an OS-created single MSR.
     let deadline = Instant::now() + Duration::from_secs(10);
     let (mut header, entries) = loop {
         let (header, entries) = layout(handle)?;
-        if header.PartitionStyle == 1
-            && unsafe { header.Anonymous.Gpt }.DiskId == gpt
-            && entries.iter().any(|entry| {
-                entry.PartitionStyle == PARTITION_STYLE_GPT
-                    && unsafe { entry.Anonymous.Gpt }.PartitionType == MSR
-            })
-        {
+        if header.PartitionStyle == 1 && unsafe { header.Anonymous.Gpt }.DiskId == gpt {
             break (header, entries);
         }
         ensure!(
             Instant::now() < deadline,
-            "scratch GPT/MSR arrival exceeded deadline"
+            "scratch GPT header arrival exceeded deadline"
         );
         std::thread::sleep(Duration::from_millis(20));
     };
-    ensure!(
-        entries.len() == 1
-            && entries[0].PartitionStyle == PARTITION_STYLE_GPT
-            && unsafe { entries[0].Anonymous.Gpt }.PartitionType == MSR,
-        "new scratch GPT contains an unexpected partition"
-    );
     let info = unsafe { header.Anonymous.Gpt };
     let end = info
         .StartingUsableOffset
         .checked_add(info.UsableLength)
         .ok_or_else(|| anyhow::anyhow!("scratch GPT capacity overflow"))?;
-    let start = entries[0]
+    let msr = if entries.is_empty() {
+        let msr_start = info
+            .StartingUsableOffset
+            .max(MIB)
+            .checked_add(MIB - 1)
+            .ok_or_else(|| anyhow::anyhow!("scratch MSR alignment overflow"))?
+            / MIB
+            * MIB;
+        let mut msr = PARTITION_INFORMATION_EX {
+            PartitionStyle: PARTITION_STYLE_GPT,
+            StartingOffset: msr_start,
+            PartitionLength: 16 * MIB,
+            PartitionNumber: 1,
+            RewritePartition: true,
+            ..Default::default()
+        };
+        msr.Anonymous.Gpt = PARTITION_INFORMATION_GPT {
+            PartitionType: MSR,
+            PartitionId: GUID::new()?,
+            ..Default::default()
+        };
+        msr
+    } else {
+        let valid_msr = entries.len() == 1
+            && entries[0].PartitionStyle == PARTITION_STYLE_GPT
+            && unsafe { entries[0].Anonymous.Gpt }.PartitionType == MSR;
+        ensure!(
+            valid_msr,
+            "new scratch GPT contains an unexpected partition"
+        );
+        entries[0]
+    };
+    let start = msr
         .StartingOffset
-        .checked_add(entries[0].PartitionLength)
+        .checked_add(msr.PartitionLength)
         .ok_or_else(|| anyhow::anyhow!("scratch MSR extent overflow"))?
         .max(info.StartingUsableOffset)
         .max(MIB);
@@ -244,7 +265,7 @@ pub(super) fn initialize(
         PartitionStyle: PARTITION_STYLE_GPT,
         StartingOffset: start,
         PartitionLength: length,
-        PartitionNumber: entries[0]
+        PartitionNumber: msr
             .PartitionNumber
             .checked_add(1)
             .ok_or_else(|| anyhow::anyhow!("scratch partition number overflow"))?,
@@ -262,8 +283,7 @@ pub(super) fn initialize(
     let mut aligned = vec![0u64; size.div_ceil(8)];
     let data = unsafe { std::slice::from_raw_parts_mut(aligned.as_mut_ptr().cast::<u8>(), size) };
     data[..offset].copy_from_slice(&bytes(&header)[..offset]);
-    data[offset..offset + size_of::<PARTITION_INFORMATION_EX>()]
-        .copy_from_slice(bytes(&entries[0]));
+    data[offset..offset + size_of::<PARTITION_INFORMATION_EX>()].copy_from_slice(bytes(&msr));
     data[offset + size_of::<PARTITION_INFORMATION_EX>()..].copy_from_slice(bytes(&entry));
     ioctl(handle, IOCTL_DISK_SET_DRIVE_LAYOUT_EX, data, &mut [])?;
     ioctl(handle, IOCTL_DISK_UPDATE_PROPERTIES, &[], &mut [])?;
@@ -456,7 +476,7 @@ pub(super) fn format(binding: &VolumeBinding, state: &Path) -> Result<()> {
     let mut pin = Owned::open(&tool, 0x80, 1, 0x200000)?;
     let id = access::identity(pin.0, false)?;
     let mut spec = crate::runtime::CommandSpec::new(&tool).args([
-        binding.volume.as_str(),
+        binding.volume.trim_end_matches('\\'),
         "/FS:NTFS",
         "/Q",
         "/Y",

@@ -357,6 +357,9 @@ fn project(prefix: Option<&AuthoredFailure>, error: &anyhow::Error) -> String {
         } else if let Some(value) = error.downcast_ref::<QualifiedFailure>() {
             lines.push("fixed activation cleanup_qualified=True diagnostic_failed=True".into());
             visit(value.original(), depth + 1, lines);
+        } else if let Some(value) = error.downcast_ref::<super::threads::RetainedFailure>() {
+            lines.push("fixed activation retained_uncertainty=True".into());
+            visit(value.original(), depth + 1, lines);
         } else if let Some(value) = error.downcast_ref::<std::io::Error>() {
             lines.push(format!(
                 "fixed native I/O failure native_error={:?}",
@@ -406,6 +409,9 @@ pub fn find<T: Error + Send + Sync + 'static>(error: &anyhow::Error) -> Option<&
             return visit(value.original(), depth + 1);
         }
         if let Some(value) = error.downcast_ref::<QualifiedFailure>() {
+            return visit(value.original(), depth + 1);
+        }
+        if let Some(value) = error.downcast_ref::<super::threads::RetainedFailure>() {
             return visit(value.original(), depth + 1);
         }
         None

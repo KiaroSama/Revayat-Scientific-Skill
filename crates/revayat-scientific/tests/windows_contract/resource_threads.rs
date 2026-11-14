@@ -111,6 +111,54 @@ fn real_registry_seam_arms_all_generations_disarms_call_and_restores_exact_basel
         value.destroyed().unwrap();
         assert_eq!(value.io_mut().closed, [12, 13]);
     }
+    let mut io = Io::default();
+    for handle in [11, 12] {
+        io.contexts.insert(handle, vec![0; CONTEXT_SIZE]);
+    }
+    let mut value = ResourceThreads::new(7, 11, io).unwrap();
+    value.stop(7, 11, 3, false).unwrap();
+    value.enroll(11, &mut 11, false).unwrap();
+    value.arm(0x5000).unwrap();
+    value.continued().unwrap();
+    value.stop(7, 12, 2, false).unwrap();
+    value.enroll(12, &mut 12, true).unwrap();
+    value.continued().unwrap();
+    for handle in [11, 12] {
+        let ctx = value.io_mut().contexts.get_mut(&handle).unwrap();
+        put(ctx, 104, 0xfffe07f0);
+        put(ctx, 112, 0x401);
+    }
+    value.stop(7, 11, 1, false).unwrap();
+    value.software(11, true).unwrap();
+    value.continued().unwrap();
+    {
+        let ctx = value.io_mut().contexts.get_mut(&11).unwrap();
+        put(ctx, 104, 0xffff0ff1);
+        put(ctx, 112, 0x401);
+        put(ctx, 248, 0x5000);
+    }
+    value.stop(7, 11, 1, false).unwrap();
+    value
+        .arm_dispatch_at_entry(11, true, 0x5000, 0x8000, 0x8007)
+        .unwrap();
+    value.continued().unwrap();
+    for handle in [11, 12] {
+        assert_eq!(get(&value.io_mut().contexts[&handle], 72), 0x8000);
+        assert_eq!(get(&value.io_mut().contexts[&handle], 80), 0x8007);
+        assert_eq!(get(&value.io_mut().contexts[&handle], 112), 5);
+    }
+    trap(&mut value, 11, false);
+    value.stop(7, 11, 1, false).unwrap();
+    value.capture_dispatch(11, true, 0x8000, || Ok(())).unwrap();
+    value.continued().unwrap();
+    trap(&mut value, 11, true);
+    value.stop(7, 11, 1, false).unwrap();
+    value.capture_dispatch(11, true, 0x8007, || Ok(())).unwrap();
+    assert!(value.captured() && value.capture_restored() && !value.failed());
+    value.continued().unwrap();
+    value.stop(7, 11, 5, false).unwrap();
+    value.continued().unwrap();
+    value.destroyed().unwrap();
 }
 #[test]
 fn foreign_peer_or_selected_trap_never_gets_overwritten_and_failure_stays_sticky() {

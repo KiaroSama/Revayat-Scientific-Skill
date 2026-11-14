@@ -5,7 +5,8 @@ use std::{fs, path::Path};
 #[test]
 fn cross_target_archives_select_exact_companion_and_executable_modes() {
     let temp = tempfile::tempdir().unwrap();
-    let source = temp.path().join("source");
+    let root = temp.path().canonicalize().unwrap();
+    let source = root.join("source");
     fs::create_dir(&source).unwrap();
     fs::write(
         source.join("SKILL.md"),
@@ -29,7 +30,7 @@ fn cross_target_archives_select_exact_companion_and_executable_modes() {
             "revayat-process-owner",
         ),
     ] {
-        let binaries = temp.path().join(target);
+        let binaries = root.join(target);
         fs::create_dir(&binaries).unwrap();
         let binary = binaries.join(main);
         fs::write(&binary, b"target-main").unwrap();
@@ -48,8 +49,8 @@ fn cross_target_archives_select_exact_companion_and_executable_modes() {
         ];
         expected.sort();
         assert_eq!(actual, expected);
-        let output = temp.path().join(format!("{target}.zip"));
-        package_for_target(&source, temp.path(), &output, &binary, target).unwrap();
+        let output = root.join(format!("{target}.zip"));
+        package_for_target(&source, &root, &output, &binary, target).unwrap();
         let mut zip = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
         for name in [main, companion] {
             let entry = zip

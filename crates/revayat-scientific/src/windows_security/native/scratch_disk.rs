@@ -97,7 +97,8 @@ pub(super) fn require_virtual(handle: super::Handle, intent: &Intent) -> Result<
             if version == GET_VIRTUAL_DISK_INFO_SIZE {
                 info.Anonymous.Size.VirtualSize == layout::CAPACITY
             } else if version == GET_VIRTUAL_DISK_INFO_IDENTIFIER {
-                info.Anonymous.Identifier == layout::guid(&intent.vhd)?
+                let id = info.Anonymous.Identifier;
+                id == layout::guid(&intent.vhd)? || id == layout::guid(&intent.gpt)?
             } else if version == GET_VIRTUAL_DISK_INFO_PROVIDER_SUBTYPE {
                 info.Anonymous.ProviderSubtype == 2
             } else {

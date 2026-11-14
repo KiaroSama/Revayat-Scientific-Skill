@@ -57,6 +57,7 @@ struct Owner {
     base: u64,
     dispatch: Option<debug_dispatch::DispatchImages>,
     pending_dispatch: Option<[u64; 2]>,
+    dispatch_armed: bool,
     transport: Option<debug_capture::Transport>,
 }
 impl Owner {
@@ -187,9 +188,7 @@ impl Owner {
             close(thread as Handle)?;
         }
         enrolled?;
-        if self.dispatch.is_none() {
-            self.generations.as_mut().unwrap().arm(site)?;
-        }
+        self.generations.as_mut().unwrap().arm(site)?;
         self.creation = true;
         Ok(())
     }
@@ -249,15 +248,21 @@ impl Owner {
                     ensure!(!self.initial, "debug initial breakpoint repeated");
                     generations.software(event.tid, true)?;
                     self.initial = true;
-                    if let Some([call, post]) = self.pending_dispatch.take() {
-                        generations.arm_dispatch(call, post)?;
-                    }
                 } else {
                     ensure!(
                         code == 0x80000004 && self.initial,
                         "debug exception is outside fixed entry observation"
                     );
-                    if let Some(dispatch) = &mut self.dispatch {
+                    if self.dispatch.is_some() && !self.dispatch_armed {
+                        let Some([call, post]) = self.pending_dispatch.take() else {
+                            return Err(crate::windows_security::activation::diagnostics::at(
+                                anyhow::anyhow!("CSR dispatch images did not load before entry"),
+                                crate::windows_security::activation::diagnostics::Stage::DebugDispatchLoad,
+                            ));
+                        };
+                        generations.arm_dispatch_at_entry(event.tid, true, words[2], call, post)?;
+                        self.dispatch_armed = true;
+                    } else if let Some(dispatch) = &mut self.dispatch {
                         generations.capture_dispatch(event.tid, true, words[2], || {
                             self.transport
                                 .as_mut()
@@ -299,12 +304,9 @@ impl Owner {
                         unsafe { event.data.words[1] },
                     )?
                 {
-                    if self.initial {
-                        generations.arm_dispatch(call, post)?;
-                    } else {
-                        // Loader CSR calls precede the initial breakpoint and are not the fixture.
-                        self.pending_dispatch = Some([call, post]);
-                    }
+                    let fresh = !self.dispatch_armed && self.pending_dispatch.is_none();
+                    ensure!(fresh, "CSR dispatch sites repeated");
+                    self.pending_dispatch = Some([call, post]);
                 }
             }
             8 => {}

@@ -329,9 +329,12 @@ fn catalog_denied(failure: &Failure) -> bool {
                 .collect::<std::result::Result<Vec<_>, _>>();
             words.is_ok_and(|words| {
                 words.len() == crate::protocol::NetworkDiagnostic::WORDS
+                    && words[0] == 1
+                    && words[1] == 0x0101
                     && words[6..12].iter().all(|word| *word == 5)
                     && words[18] == u32::MAX
-                    && words[19] == 10107
+                    && matches!(words[19], 5 | 8 | 10107)
+                    && words[20] == 0
             })
         })
 }
@@ -502,7 +505,14 @@ mod tests {
             value.network_diag = crate::protocol::NetworkDiagnostic::measured(words).map(Box::new);
             value
         };
-        assert!(catalog_denied(&failure(words)));
+        for code in [5, 8, 10107] {
+            let mut variant = words;
+            variant[19] = code;
+            assert!(catalog_denied(&failure(variant)));
+        }
+        let mut nonzero_bytes = words;
+        nonzero_bytes[20] = 64;
+        assert!(!catalog_denied(&failure(nonzero_bytes)));
         for index in (6..12).chain([18, 19]) {
             let mut changed = words;
             changed[index] = 0;

@@ -28,7 +28,12 @@ struct Generation {
     changed: bool,
 }
 #[derive(Clone)]
-struct RetainedFailure(Arc<anyhow::Error>);
+pub(crate) struct RetainedFailure(Arc<anyhow::Error>);
+impl RetainedFailure {
+    pub(crate) fn original(&self) -> &anyhow::Error {
+        &self.0
+    }
+}
 impl std::fmt::Debug for RetainedFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("retained resource cleanup uncertainty")
@@ -475,6 +480,66 @@ impl<I: ContextIo> ResourceThreads<I> {
         }
         Ok(())
     }
+    pub fn arm_dispatch_at_entry(
+        &mut self,
+        id: u32,
+        first: bool,
+        exception: u64,
+        call: u64,
+        post: u64,
+    ) -> Result<()> {
+        let valid_state = self.epoch
+            && self.kind == 1
+            && self.event_thread == id
+            && id == self.creator
+            && first
+            && self.initial
+            && !self.cleanup
+            && !self.process_dead
+            && !self.failed
+            && !self.captured
+            && self.pair.is_none()
+            && self.site != 0
+            && exception == self.site;
+        ensure!(valid_state, "resource entry-to-dispatch state differs");
+        let index = self.live(id)?;
+        let mut bytes = self.io.read(self.generations[index].handle)?;
+        let checked = (|| {
+            context(&bytes)?;
+            let baseline = self.generations[index].baseline.as_ref().unwrap();
+            let valid_trap = self.generations[index].changed
+                && u64_at(&bytes, 248) == self.site
+                && u64_at(&bytes, 72) == self.site
+                && u64_at(&bytes, 80) == 0
+                && u64_at(&bytes, 88) == u64_at(baseline, 88)
+                && u64_at(&bytes, 96) == u64_at(baseline, 96)
+                && owned_trap_status(
+                    u64_at(&bytes, 104),
+                    u64_at(&bytes, 112),
+                    u64_at(baseline, 112) | 1,
+                    0,
+                );
+            ensure!(valid_trap, "resource entry trap before dispatch differs");
+            Ok(())
+        })();
+        bytes.fill(0);
+        if let Err(error) = checked {
+            self.failed = true;
+            return Err(super::diagnostics::at(
+                error,
+                super::diagnostics::Stage::DebugCaptureState,
+            ));
+        }
+        self.qualified_stop = true;
+        self.pair = Some(CsrPair::new(call, post)?);
+        self.site = call;
+        for i in 0..self.generations.len() {
+            if !self.generations[i].dead && !self.generations[i].retired {
+                self.apply(i, false)?;
+            }
+        }
+        Ok(())
+    }
     fn transition(&self, index: usize, bytes: &[u8], restore: bool) -> Result<()> {
         let value = &self.generations[index];
         let state = value.dispatch_state.ok_or_else(|| {
@@ -522,7 +587,7 @@ impl<I: ContextIo> ResourceThreads<I> {
             let sites = if let Some(pair) = &self.pair {
                 let started = pair.started();
                 let sites = pair.sites(index as u32);
-                if restore || started {
+                if restore || started || self.generations[index].dispatch_state.is_some() {
                     self.transition(index, &before, restore)?;
                     self.remember_peer(index, &before);
                 } else {
