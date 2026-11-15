@@ -81,7 +81,6 @@ unsafe extern "system" {
         descriptor: *mut Handle,
     ) -> u32;
     fn GetSecurityDescriptorLength(descriptor: Handle) -> u32;
-    fn SetKernelObjectSecurity(handle: Handle, fields: u32, descriptor: Handle) -> i32;
 }
 
 pub(super) fn combine<T>(result: Result<T>, cleanup: Result<()>) -> Result<T> {
@@ -320,28 +319,6 @@ pub(super) fn security(handle: Handle, fields: u32) -> Result<Vec<u8>> {
             Err(anyhow::anyhow!("scratch descriptor release failed"))
         },
     )
-}
-pub(super) fn set_security(path: &Path, sddl: &str, fields: u32) -> Result<()> {
-    let mut descriptor = Descriptor::new(sddl)?;
-    let access = (if fields & 0x11 != 0 { 0x00080000 } else { 0 })
-        | (if fields & 4 != 0 { 0x00040000 } else { 0 });
-    let mut take = ManageVolume::acquire_optional("SeTakeOwnershipPrivilege")?;
-    let result = (|| {
-        let mut restore = ManageVolume::acquire_optional("SeRestorePrivilege")?;
-        let result = (|| {
-            let mut target = Owned::open(path, access, 3, 0x02200000)?;
-            let result = if unsafe { SetKernelObjectSecurity(target.0, fields, descriptor.0) } != 0
-            {
-                Ok(())
-            } else {
-                Err(native_error("set scratch policy"))
-            };
-            combine(result, target.close())
-        })();
-        combine(result, restore.as_mut().map_or(Ok(()), ManageVolume::close))
-    })();
-    let result = combine(result, take.as_mut().map_or(Ok(()), ManageVolume::close));
-    combine(result, descriptor.close())
 }
 pub(super) fn private_sddl(host: &str) -> String {
     let system = if host == "S-1-5-18" {
