@@ -127,7 +127,8 @@ pub fn recover_scratch(
             ensure!(id == created.image, "scratch image identity was replaced");
         }
         let created = Created { image: id };
-        let mut virtual_disk = disk::open_virtual(&image_path, &intent)
+        let initial_id = access::read_record(state, &host, "scratch-disk.layout-intent")?.is_none();
+        let mut virtual_disk = disk::open_virtual(&image_path, &intent, initial_id)
             .context("scratch_recovery phase=provider-open metadata_pin=True")?;
         let result = (|| {
             disk::require_image(&image_path, image.0, id, &host)?;

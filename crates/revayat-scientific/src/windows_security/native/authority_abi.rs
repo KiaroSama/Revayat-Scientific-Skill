@@ -79,6 +79,7 @@ unsafe extern "system" {
         size: u32,
         returned: *mut u32,
     ) -> i32;
+    pub(super) fn SetTokenInformation(token: Handle, class: i32, data: Handle, size: u32) -> i32;
     pub(super) fn AdjustTokenPrivileges(
         token: Handle,
         disable: i32,

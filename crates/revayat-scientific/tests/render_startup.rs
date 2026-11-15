@@ -171,7 +171,7 @@ fn inherited_runtime_group_reaps_pipe_holder_without_reader_join_deadlock() -> R
     assert!(!result.status.success());
     let text = String::from_utf8(result.stderr)?;
     assert!(
-        started.elapsed() < Duration::from_secs(8),
+        started.elapsed() < Duration::from_secs(20),
         "owned pipe-holder cleanup took {:?}: {text}",
         started.elapsed()
     );

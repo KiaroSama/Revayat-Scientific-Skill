@@ -414,7 +414,7 @@ fn remove_privileges(process: Handle) -> Result<()> {
     let mut raw = null_mut();
     // SAFETY: owned suspended process; returned token immediately owned.
     ensure!(
-        unsafe { OpenProcessToken(process, 0x28, &mut raw) } != 0,
+        unsafe { OpenProcessToken(process, 0xa8, &mut raw) } != 0,
         "open suspended worker token"
     );
     let mut token = Owned::checked(raw)?;
@@ -477,6 +477,51 @@ fn remove_privileges(process: Handle) -> Result<()> {
     )?;
     data.fill(0);
     remove.fill(0);
+    let mut user_size = 0;
+    unsafe { GetTokenInformation(token.0, 1, null_mut(), 0, &mut user_size) };
+    // TOKEN_USER header plus at least a minimal SID (12 bytes) must fit.
+    let sid_offset = size_of::<SidAttributes>() as u32;
+    ensure!(
+        (sid_offset + 12..=65536).contains(&user_size),
+        "invalid worker token user size"
+    );
+    let mut user_buf = vec![0usize; (user_size as usize).div_ceil(size_of::<usize>())];
+    let user_cap = user_size;
+    ensure!(
+        unsafe {
+            GetTokenInformation(
+                token.0,
+                1,
+                user_buf.as_mut_ptr().cast(),
+                user_cap,
+                &mut user_size,
+            )
+        } != 0
+            && user_size <= user_cap,
+        "read worker token user"
+    );
+    // TokenDefaultOwner expects a TOKEN_OWNER wrapper holding a pointer to the
+    // live SID that trails the TOKEN_USER header inside this buffer.
+    let base = user_buf.as_ptr() as usize;
+    let sid_ptr = user_buf[0] as Handle;
+    ensure!(
+        (base + sid_offset as usize..base + user_size as usize).contains(&(sid_ptr as usize)),
+        "worker token user SID escapes buffer"
+    );
+    let mut owner = sid_ptr;
+    // SAFETY: bounded live SID in owned allocation; token opened with ADJUST_DEFAULT (0xa8).
+    ensure!(
+        unsafe {
+            SetTokenInformation(
+                token.0,
+                4,
+                (&mut owner as *mut Handle).cast(),
+                size_of::<Handle>() as u32,
+            )
+        } != 0,
+        "set worker default owner to token user"
+    );
+    user_buf.fill(0);
     token.close()
 }
 fn metadata_unknown(stage: &str, code: u32) -> String {

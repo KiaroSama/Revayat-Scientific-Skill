@@ -497,10 +497,11 @@ fn protect_image(path: &Path, package_sid: &str) -> Result<()> {
     super::package_sid(package_sid)?;
     plain_path(path)?;
     ensure!(path.is_file(), "prepared image must exist");
+    let user = super::sxs::current_user_sid()?;
     // Medium mandatory integrity plus package mutation deny protect the image
     // independently of its writable low-integrity parent scratch directory.
     let sddl = format!(
-        "D:P(D;;0x000d0116;;;{package_sid})(A;;FA;;;SY)(A;;FA;;;OW)(A;;0x1200a9;;;{package_sid})S:(ML;;NW;;;ME)"
+        "D:P(D;;0x000d0116;;;{package_sid})(A;;FA;;;SY)(A;;FA;;;OW)(A;;FA;;;{user})(A;;0x1200a9;;;{package_sid})S:(ML;;NW;;;ME)"
     );
     apply_policy(path, &sddl)
 }

@@ -215,8 +215,9 @@ fn run_profile(
         input.require(image)?;
         target_image.require(&target)?;
         restricted = restricted_primary()?;
+        let user = crate::windows_security::sxs::current_user_sid()?;
         descriptor = Descriptor::new(&format!(
-            "D:P(A;;GA;;;SY)(A;;GA;;;OW)(A;;GA;;;{sid})S:(ML;;NW;;;LW)"
+            "D:P(A;;GA;;;SY)(A;;GA;;;OW)(A;;GA;;;{user})(A;;GA;;;{sid})S:(ML;;NW;;;LW)"
         ))?;
         let process_security = Security {
             size: size_of::<Security>() as u32,

@@ -81,7 +81,7 @@ unsafe extern "system" {
         descriptor: *mut Handle,
     ) -> u32;
     fn GetSecurityDescriptorLength(descriptor: Handle) -> u32;
-    fn SetFileSecurityW(path: *const u16, fields: u32, descriptor: Handle) -> i32;
+    fn SetKernelObjectSecurity(handle: Handle, fields: u32, descriptor: Handle) -> i32;
 }
 
 pub(super) fn combine<T>(result: Result<T>, cleanup: Result<()>) -> Result<T> {
@@ -323,12 +323,24 @@ pub(super) fn security(handle: Handle, fields: u32) -> Result<Vec<u8>> {
 }
 pub(super) fn set_security(path: &Path, sddl: &str, fields: u32) -> Result<()> {
     let mut descriptor = Descriptor::new(sddl)?;
-    let path = wide(path);
-    let result = if unsafe { SetFileSecurityW(path.as_ptr(), fields, descriptor.0) } != 0 {
-        Ok(())
-    } else {
-        Err(native_error("set scratch policy"))
-    };
+    let access = (if fields & 0x11 != 0 { 0x00080000 } else { 0 })
+        | (if fields & 4 != 0 { 0x00040000 } else { 0 });
+    let mut take = ManageVolume::acquire_optional("SeTakeOwnershipPrivilege")?;
+    let result = (|| {
+        let mut restore = ManageVolume::acquire_optional("SeRestorePrivilege")?;
+        let result = (|| {
+            let mut target = Owned::open(path, access, 3, 0x02200000)?;
+            let result = if unsafe { SetKernelObjectSecurity(target.0, fields, descriptor.0) } != 0
+            {
+                Ok(())
+            } else {
+                Err(native_error("set scratch policy"))
+            };
+            combine(result, target.close())
+        })();
+        combine(result, restore.as_mut().map_or(Ok(()), ManageVolume::close))
+    })();
+    let result = combine(result, take.as_mut().map_or(Ok(()), ManageVolume::close));
     combine(result, descriptor.close())
 }
 pub(super) fn private_sddl(host: &str) -> String {
@@ -624,6 +636,13 @@ pub(super) struct ManageVolume {
 }
 impl ManageVolume {
     pub fn acquire() -> Result<Self> {
+        Self::acquire_inner("SeManageVolumePrivilege", false)?
+            .ok_or_else(|| anyhow::anyhow!("host volume privilege unavailable"))
+    }
+    pub(super) fn acquire_optional(privilege: &str) -> Result<Option<Self>> {
+        Self::acquire_inner(privilege, true)
+    }
+    fn acquire_inner(privilege: &str, optional: bool) -> Result<Option<Self>> {
         crate::windows_security::activation::native::require_host()?;
         #[link(name = "kernel32")]
         unsafe extern "system" {
@@ -650,7 +669,7 @@ impl ManageVolume {
         );
         let mut token = Owned::checked(token)?;
         let result = (|| {
-            let name = wide("SeManageVolumePrivilege");
+            let name = wide(privilege);
             let mut state = PrivilegeState {
                 count: 1,
                 attributes: 2,
@@ -682,6 +701,10 @@ impl ManageVolume {
                 previous,
                 changed: previous.count == 1,
             };
+            if optional && success != 0 && error == 1300 {
+                owner.close()?;
+                return Ok(None);
+            }
             if success == 0 || error != 0 || returned > 16 {
                 return combine(
                     Err(anyhow::anyhow!(
@@ -690,7 +713,7 @@ impl ManageVolume {
                     owner.close(),
                 );
             }
-            Ok(owner)
+            Ok(Some(owner))
         })();
         combine(result, token.close())
     }

@@ -358,7 +358,7 @@ impl<'profile> VolumeLease<'profile> {
             access::identity(self.image.0, false)? == self.created.image,
             "scratch lease image object changed"
         );
-        super::scratch_disk::require_virtual(self.virtual_disk.0, &self.intent)?;
+        super::scratch_disk::require_virtual(self.virtual_disk.0, &self.intent, false)?;
         let path = super::scratch_disk::attached_path(self.virtual_disk.0)?
             .ok_or_else(|| anyhow::anyhow!("scratch lease volume is detached"))?;
         let (mut raw, number) = scratch_layout::disk(&path)?;

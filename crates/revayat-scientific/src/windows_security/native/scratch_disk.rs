@@ -72,7 +72,11 @@ fn storage() -> VIRTUAL_STORAGE_TYPE {
         VendorId: GUID::from_u128(0xec984aec_a0f9_47e9_901f_71415a66345b),
     }
 }
-pub(super) fn require_virtual(handle: super::Handle, intent: &Intent) -> Result<()> {
+pub(super) fn require_virtual(
+    handle: super::Handle,
+    intent: &Intent,
+    check_initial_id: bool,
+) -> Result<()> {
     for version in [
         GET_VIRTUAL_DISK_INFO_SIZE,
         GET_VIRTUAL_DISK_INFO_IDENTIFIER,
@@ -98,7 +102,11 @@ pub(super) fn require_virtual(handle: super::Handle, intent: &Intent) -> Result<
                 info.Anonymous.Size.VirtualSize == layout::CAPACITY
             } else if version == GET_VIRTUAL_DISK_INFO_IDENTIFIER {
                 let id = info.Anonymous.Identifier;
-                id == layout::guid(&intent.vhd)? || id == layout::guid(&intent.gpt)?
+                if check_initial_id {
+                    id == layout::guid(&intent.vhd)?
+                } else {
+                    id != GUID::zeroed()
+                }
             } else if version == GET_VIRTUAL_DISK_INFO_PROVIDER_SUBTYPE {
                 info.Anonymous.ProviderSubtype == 2
             } else {
@@ -141,7 +149,7 @@ pub(super) fn attached_path(handle: super::Handle) -> Result<Option<String>> {
         .ok_or_else(|| anyhow::anyhow!("scratch physical path is unterminated"))?;
     Ok(Some(String::from_utf16(&output[..end])?))
 }
-pub(super) fn open_virtual(path: &Path, intent: &Intent) -> Result<Owned> {
+pub(super) fn open_virtual(path: &Path, intent: &Intent, check_initial_id: bool) -> Result<Owned> {
     crate::windows_security::plain_path(path)?;
     let path = super::authority::wide(path);
     let parameters = OPEN_VIRTUAL_DISK_PARAMETERS {
@@ -171,7 +179,7 @@ pub(super) fn open_virtual(path: &Path, intent: &Intent) -> Result<Owned> {
         status.0
     );
     let mut handle = Owned::checked(handle.0)?;
-    let result = require_virtual(handle.0, intent);
+    let result = require_virtual(handle.0, intent, check_initial_id);
     if let Err(primary) = result {
         return access::combine(Err(primary), handle.close());
     }
@@ -282,7 +290,7 @@ impl ScratchVolume {
             // Frozen New-VHD completes and closes its creation provider before Capture opens
             // the no-delete metadata pin. An attachment provider is a distinct bound reopen.
             let qualified = phase(
-                require_virtual(virtual_disk.0, &intent),
+                require_virtual(virtual_disk.0, &intent, true),
                 Stage::ScratchProvider,
             )
             .context("scratch_prepare phase=creation-provider-identity");
@@ -300,8 +308,11 @@ impl ScratchVolume {
                     image: access::identity(image.0, false)?,
                 };
                 access::write_json(&state, &host, "scratch-disk.created", &created)?;
-                virtual_disk = phase(open_virtual(&image_path, &intent), Stage::ScratchProvider)
-                    .context("scratch_prepare phase=attachment-provider-open metadata_pin=True")?;
+                virtual_disk = phase(
+                    open_virtual(&image_path, &intent, true),
+                    Stage::ScratchProvider,
+                )
+                .context("scratch_prepare phase=attachment-provider-open metadata_pin=True")?;
                 require_image(&image_path, image.0, created.image, &host)?;
                 access::write_record(&state, &host, "scratch-disk.attach-intent", b"attach\n")?;
                 let parameters = ATTACH_VIRTUAL_DISK_PARAMETERS {
@@ -325,7 +336,7 @@ impl ScratchVolume {
                         Stage::ScratchAttach,
                     ));
                 }
-                require_virtual(virtual_disk.0, &intent)
+                require_virtual(virtual_disk.0, &intent, true)
                     .context("scratch_prepare phase=attached-provider-identity")?;
                 require_image(&image_path, image.0, created.image, &host)?;
                 let path = attached_path(virtual_disk.0)?
@@ -459,7 +470,7 @@ impl ScratchVolume {
             access::identity(self.image.0, false)? == self.created.image,
             "scratch VHDX image identity changed"
         );
-        require_virtual(self.virtual_disk.0, &self.intent)?;
+        require_virtual(self.virtual_disk.0, &self.intent, false)?;
         let path = attached_path(self.virtual_disk.0)?
             .ok_or_else(|| anyhow::anyhow!("scratch VHDX is detached"))?;
         let (mut disk, number) = layout::disk(&path)?;
@@ -642,8 +653,14 @@ pub(super) fn require_root_seal(root: super::Handle, intent: &Intent) -> Result<
             actual.owner == expected.owner
                 && actual.group.is_some()
                 && actual.control & 0x1004 == 0x1004
-                && actual.dacl == expected.dacl
-                && actual.sacl == expected.sacl,
+                && crate::windows_security::policy::serialized_acl_equal(
+                    actual.dacl,
+                    expected.dacl,
+                )?
+                && crate::windows_security::policy::serialized_acl_equal(
+                    actual.sacl,
+                    expected.sacl,
+                )?,
             "scratch writable root policy differs"
         );
         Ok(())
