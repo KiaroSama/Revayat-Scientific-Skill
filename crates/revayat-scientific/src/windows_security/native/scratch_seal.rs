@@ -109,8 +109,10 @@ const FILTERS: [&str; 24] = [
 
 /// Volume evidence: file-system flags into `result` when no NTSTATUS was recorded, the
 /// attached minifilter census into `bytes` (closed name set, never raw names; replaces the
-/// deny mask, which is zero on the formatter default root), and `count` 0x4000 when a fresh
-/// child directory on the same volume accepts a backup-intent WRITE_DAC open.
+/// deny mask, which is zero on the formatter default root). `count` gains 0x8000/0x4000 when
+/// a fresh child on the scratch volume is created/accepts a backup-intent WRITE_DAC open, and
+/// 0x20000/0x10000 for the same control on the system temp volume; the scratch child's open
+/// error lands in `dr6` bits 32-47.
 fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers) {
     let mut flags = 0u32;
     // SAFETY: query-only call on the live held root; null buffers are allowed with size 0.
@@ -177,14 +179,35 @@ fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers
     } else {
         (known as u32) | ((total as u32) << 24)
     });
-    let child = path.join("rvy-dacl-probe");
-    if std::fs::create_dir(&child).is_ok() {
-        if let Ok(mut probe) = Owned::open(&child, 0x00040000, 7, 0x02200000) {
-            numbers.count = Some(numbers.count.unwrap_or(0) | 0x4000);
-            let _ = probe.close();
+    let mut bits = 0u32;
+    let mut error = 0u64;
+    for (parent, opened, created) in [
+        (path.to_path_buf(), 0x4000, 0x8000),
+        (std::env::temp_dir(), 0x10000, 0x20000),
+    ] {
+        let child = parent.join(format!("rvy-dacl-probe-{}", std::process::id()));
+        if std::fs::create_dir(&child).is_err() {
+            continue;
+        }
+        bits |= created;
+        match Owned::open(&child, 0x00040000, 7, 0x02200000) {
+            Ok(mut probe) => {
+                bits |= opened;
+                let _ = probe.close();
+            }
+            Err(failure) if opened == 0x4000 => {
+                let code = failure
+                    .downcast_ref::<std::io::Error>()
+                    .and_then(std::io::Error::raw_os_error)
+                    .map_or(0xFFFF, |code| code as u64 & 0xFFFF);
+                error = code;
+            }
+            Err(_) => {}
         }
         let _ = std::fs::remove_dir(&child);
     }
+    numbers.count = Some(numbers.count.unwrap_or(0) | bits);
+    numbers.dr6 = Some(numbers.dr6.unwrap_or(0) | (error << 32));
 }
 #[link(name = "advapi32")]
 unsafe extern "system" {

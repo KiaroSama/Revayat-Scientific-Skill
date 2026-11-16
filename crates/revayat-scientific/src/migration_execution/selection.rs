@@ -326,13 +326,11 @@ mod tests {
                 .unwrap(),
             cases
         );
-        for platform in ["windows"] {
-            assert!(
-                select_equipped_cases("scientific", platform, Some("standalone_security"), &cases)
-                    .unwrap()
-                    .is_empty()
-            );
-        }
+        assert!(
+            select_equipped_cases("scientific", "windows", Some("standalone_security"), &cases)
+                .unwrap()
+                .is_empty()
+        );
         let mut missing = cases.clone();
         missing.remove("tex_output_ordinary_pdf");
         assert!(
