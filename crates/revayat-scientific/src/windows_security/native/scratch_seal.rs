@@ -112,7 +112,9 @@ const FILTERS: [&str; 24] = [
 /// deny mask, which is zero on the formatter default root). `count` gains 0x8000/0x4000 when
 /// a fresh child on the scratch volume is created/accepts a backup-intent WRITE_DAC open, and
 /// 0x20000/0x10000 for the same control on the system temp volume; the scratch child's open
-/// error lands in `dr6` bits 32-47.
+/// error lands in `dr6` bits 32-47. 0x40000 marks the scratch child accepting WRITE_OWNER;
+/// 0x800000 marks a control census of the temp volume, with 0x100000/0x200000/0x400000 for
+/// WdFilter/bfs/fsdepends attached there.
 fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers) {
     let mut flags = 0u32;
     // SAFETY: query-only call on the live held root; null buffers are allowed with size 0.
@@ -131,6 +133,63 @@ fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers
     if numbers.result.is_none() {
         numbers.result = Some(if queried { flags } else { 0xFFFF_FFFF });
     }
+    let (known, total, status) = filter_census(path);
+    numbers.bytes = Some(if total == 0 && status < 0 && status as u32 != 0x80070103 {
+        0xFFFF_FFFF
+    } else {
+        (known as u32) | ((total as u32) << 24)
+    });
+    let mut bits = 0u32;
+    let mut error = 0u64;
+    for (parent, opened, created) in [
+        (path.to_path_buf(), 0x4000, 0x8000),
+        (std::env::temp_dir(), 0x10000, 0x20000),
+    ] {
+        let child = parent.join(format!("rvy-dacl-probe-{}", std::process::id()));
+        if std::fs::create_dir(&child).is_err() {
+            continue;
+        }
+        bits |= created;
+        match Owned::open(&child, 0x00040000, 7, 0x02200000) {
+            Ok(mut probe) => {
+                bits |= opened;
+                let _ = probe.close();
+            }
+            Err(failure) if opened == 0x4000 => {
+                let code = failure
+                    .downcast_ref::<std::io::Error>()
+                    .and_then(std::io::Error::raw_os_error)
+                    .map_or(0xFFFF, |code| code as u64 & 0xFFFF);
+                error = code;
+            }
+            Err(_) => {}
+        }
+        // Same child, WRITE_OWNER only: a selective WRITE_DAC refusal mirrors the root pattern.
+        if opened == 0x4000
+            && let Ok(mut probe) = Owned::open(&child, 0x00080000, 7, 0x02200000)
+        {
+            bits |= 0x40000;
+            let _ = probe.close();
+        }
+        let _ = std::fs::remove_dir(&child);
+    }
+    // Control volume stack: WdFilter/bfs/fsdepends presence and a census-ran marker.
+    if let Some(root) = std::env::temp_dir().ancestors().last() {
+        let (control, _, status) = filter_census(root);
+        if status >= 0 || status as u32 == 0x80070103 {
+            bits |= 0x800000
+                | (u32::from(control & 1 != 0) << 20)
+                | (u32::from(control & (1 << 9) != 0) << 21)
+                | (u32::from(control & (1 << 19) != 0) << 22);
+        }
+    }
+    numbers.count = Some(numbers.count.unwrap_or(0) | bits);
+    numbers.dr6 = Some(numbers.dr6.unwrap_or(0) | (error << 32));
+}
+
+/// Attached minifilter census for the volume of `path`: known-name mask, instance total and
+/// the terminal FilterVolumeInstanceFind status.
+fn filter_census(path: &Path) -> (u64, u64, i32) {
     let name = wide(path);
     let mut buffer = vec![0u64; 512];
     let (mut known, mut total, mut find) = (0u64, 0u64, null_mut());
@@ -174,40 +233,7 @@ fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers
     if !find.is_null() && find as isize != -1 {
         unsafe { FilterVolumeInstanceFindClose(find) };
     }
-    numbers.bytes = Some(if total == 0 && status < 0 && status as u32 != 0x80070103 {
-        0xFFFF_FFFF
-    } else {
-        (known as u32) | ((total as u32) << 24)
-    });
-    let mut bits = 0u32;
-    let mut error = 0u64;
-    for (parent, opened, created) in [
-        (path.to_path_buf(), 0x4000, 0x8000),
-        (std::env::temp_dir(), 0x10000, 0x20000),
-    ] {
-        let child = parent.join(format!("rvy-dacl-probe-{}", std::process::id()));
-        if std::fs::create_dir(&child).is_err() {
-            continue;
-        }
-        bits |= created;
-        match Owned::open(&child, 0x00040000, 7, 0x02200000) {
-            Ok(mut probe) => {
-                bits |= opened;
-                let _ = probe.close();
-            }
-            Err(failure) if opened == 0x4000 => {
-                let code = failure
-                    .downcast_ref::<std::io::Error>()
-                    .and_then(std::io::Error::raw_os_error)
-                    .map_or(0xFFFF, |code| code as u64 & 0xFFFF);
-                error = code;
-            }
-            Err(_) => {}
-        }
-        let _ = std::fs::remove_dir(&child);
-    }
-    numbers.count = Some(numbers.count.unwrap_or(0) | bits);
-    numbers.dr6 = Some(numbers.dr6.unwrap_or(0) | (error << 32));
+    (known, total, status)
 }
 #[link(name = "advapi32")]
 unsafe extern "system" {
