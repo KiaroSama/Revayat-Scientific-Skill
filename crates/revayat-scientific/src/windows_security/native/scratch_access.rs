@@ -320,6 +320,23 @@ pub(super) fn security(handle: Handle, fields: u32) -> Result<Vec<u8>> {
         },
     )
 }
+/// Failure-only DACL postcondition. The caller retains the setter's primary error.
+pub(super) fn dacl_matches(handle: Handle, expected: Handle) -> Result<bool> {
+    use crate::windows_security::policy::{Descriptor as Relative, serialized_acl_equal};
+    let actual = security(handle, 4)?;
+    let length = unsafe { GetSecurityDescriptorLength(expected) } as usize;
+    ensure!(
+        (20..=65536).contains(&length),
+        "scratch expected policy exceeds bound"
+    );
+    // SAFETY: the caller retains its validated descriptor allocation for this synchronous query.
+    let expected = unsafe { std::slice::from_raw_parts(expected.cast::<u8>(), length) };
+    serialized_acl_equal(
+        Relative::parse(&actual)?.dacl,
+        Relative::parse(expected)?.dacl,
+    )
+}
+
 pub(super) fn private_sddl(host: &str) -> String {
     let system = if host == "S-1-5-18" {
         String::new()

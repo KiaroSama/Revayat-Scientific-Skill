@@ -436,6 +436,7 @@ pub fn check_validation() -> anyhow::Result<()> {
             Numbers {
                 native_error: Some(5),
                 properties: Some(fields),
+                count: Some(0xF),
                 ..Default::default()
             },
         );
@@ -444,6 +445,7 @@ pub fn check_validation() -> anyhow::Result<()> {
             report.contains(&format!("stage={label} "))
                 && report.contains("native_error=0x00000005")
                 && report.contains(&format!("properties=0x{fields:08X}"))
+                && report.contains("count=0x0000000F")
                 && !report.contains("Access is denied"),
             "scratch seal step or numeric fields were lost or exposed raw text"
         );

@@ -562,20 +562,7 @@ impl ScratchVolume {
                 Stage::ScratchSealDacl,
             ),
         ] {
-            set_root_security(root, &sddl, fields).map_err(|error| {
-                let native_error = diagnostics::find::<std::io::Error>(&error)
-                    .and_then(std::io::Error::raw_os_error)
-                    .map(|status| status as u32);
-                diagnostics::annotate(
-                    error,
-                    stage,
-                    diagnostics::Numbers {
-                        native_error,
-                        properties: Some(fields),
-                        ..Default::default()
-                    },
-                )
-            })?;
+            set_root_security(root, self.root.0, &sddl, fields, stage)?;
         }
         self.require_seal()
     }
@@ -652,7 +639,13 @@ pub(super) fn filesystem(root: &str) -> Result<(u32, u64)> {
     Ok((serial, total))
 }
 
-fn set_root_security(path: &Path, sddl: &str, fields: u32) -> Result<()> {
+fn set_root_security(
+    path: &Path,
+    root: super::Handle,
+    sddl: &str,
+    fields: u32,
+    stage: Stage,
+) -> Result<()> {
     #[link(name = "advapi32")]
     unsafe extern "system" {
         fn GetSecurityDescriptorOwner(
@@ -685,6 +678,10 @@ fn set_root_security(path: &Path, sddl: &str, fields: u32) -> Result<()> {
     let mut descriptor = super::authority::Descriptor::new(sddl)?;
     let mut wide_path = super::authority::wide(path);
     let mut take = access::ManageVolume::acquire_optional("SeTakeOwnershipPrivilege")?;
+    let mut numbers = diagnostics::Numbers {
+        properties: Some(fields),
+        ..Default::default()
+    };
     let result = (|| {
         let mut restore = access::ManageVolume::acquire_optional("SeRestorePrivilege")?;
         let result = (|| {
@@ -728,6 +725,17 @@ fn set_root_security(path: &Path, sddl: &str, fields: u32) -> Result<()> {
             if status == 0 {
                 Ok(())
             } else {
+                if fields & 4 != 0 {
+                    // Failure-only evidence: available take/restore privileges, readback, DACL match.
+                    // Readback is never recovery or admission and cannot replace the setter error.
+                    let readback = access::dacl_matches(root, descriptor.0).ok();
+                    numbers.count = Some(
+                        u32::from(take.is_some())
+                            | (u32::from(restore.is_some()) << 1)
+                            | (u32::from(readback.is_some()) << 2)
+                            | (u32::from(readback == Some(true)) << 3),
+                    );
+                }
                 Err(std::io::Error::from_raw_os_error(status as i32)).context("set scratch policy")
             }
         })();
@@ -740,7 +748,12 @@ fn set_root_security(path: &Path, sddl: &str, fields: u32) -> Result<()> {
         result,
         take.as_mut().map_or(Ok(()), access::ManageVolume::close),
     );
-    access::combine(result, descriptor.close())
+    access::combine(result, descriptor.close()).map_err(|error| {
+        numbers.native_error = diagnostics::find::<std::io::Error>(&error)
+            .and_then(std::io::Error::raw_os_error)
+            .map(|code| code as u32);
+        diagnostics::annotate(error, stage, numbers)
+    })
 }
 
 fn root_policy(intent: &Intent) -> String {
