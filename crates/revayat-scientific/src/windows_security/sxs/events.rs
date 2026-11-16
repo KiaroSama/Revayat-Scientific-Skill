@@ -115,6 +115,7 @@ pub fn classify_event(xml: &str, image: &str, start: &str, end: &str) -> Result<
         ParsingOptions {
             allow_dtd: false,
             nodes_limit: 2048,
+            ..Default::default()
         },
     )
     .map_err(|e| safe(e.into(), "event-evidence"))?;

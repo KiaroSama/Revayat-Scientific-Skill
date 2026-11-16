@@ -1,7 +1,7 @@
 //! Resource-only span edits for HTML, CSS and XML SVG.
 use crate::html::{HtmlNode, ParsedHtml, member};
 use anyhow::{Context, Result, bail, ensure};
-use cssparser::{ParseError, Parser, ParserInput, Token};
+use cssparser::{ParseError, Parser, Token};
 use std::{collections::BTreeSet, ops::Range};
 
 type Edit = (Range<usize>, String);
@@ -216,8 +216,7 @@ pub(super) fn html(text: &str, rewrite: &mut dyn FnMut(&str) -> Result<String>) 
 
 pub(super) fn css(text: &str, rewrite: &mut dyn FnMut(&str) -> Result<String>) -> Result<String> {
     crate::resource_preflight::css_urls(text)?;
-    let mut input = ParserInput::new(text);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(text);
     let mut edits = Vec::new();
     css_tokens(&mut parser, rewrite, &mut edits, false, false).map_err(|error| {
         anyhow::anyhow!("container CSS URL rewrite requires static syntax: {error:?}")
@@ -230,12 +229,12 @@ fn quoted(value: &str) -> String {
     out
 }
 fn css_tokens<'i>(
-    parser: &mut Parser<'i, '_>,
+    parser: &mut Parser<'i>,
     rewrite: &mut dyn FnMut(&str) -> Result<String>,
     edits: &mut Vec<Edit>,
     image_strings: bool,
     target_attribute: bool,
-) -> std::result::Result<(), ParseError<'i, String>> {
+) -> std::result::Result<(), ParseError<String>> {
     let mut import = false;
     while !parser.is_exhausted() {
         let start = parser.position().byte_index();
@@ -257,21 +256,19 @@ fn css_tokens<'i>(
             Token::AtKeyword(name) if name.eq_ignore_ascii_case("charset") => {
                 let encoding = parser.expect_string()?.to_string();
                 if !encoding.eq_ignore_ascii_case("utf-8") {
-                    return Err(
-                        parser.new_custom_error("container CSS encoding must be UTF-8".to_owned())
-                    );
+                    return Err(ParseError::custom(
+                        "container CSS encoding must be UTF-8".to_owned(),
+                    ));
                 }
                 None
             }
             Token::UnquotedUrl(url) => Some(format!(
                 "url({})",
-                quoted(&rewrite(&url).map_err(|error| parser.new_custom_error(error.to_string()))?)
+                quoted(&rewrite(&url).map_err(|error| ParseError::custom(error.to_string()))?)
             )),
-            Token::QuotedString(url) if imported || image_strings => {
-                Some(quoted(&rewrite(&url).map_err(|error| {
-                    parser.new_custom_error(error.to_string())
-                })?))
-            }
+            Token::QuotedString(url) if imported || image_strings => Some(quoted(
+                &rewrite(&url).map_err(|error| ParseError::custom(error.to_string()))?,
+            )),
             Token::Function(name)
                 if name.eq_ignore_ascii_case("url") || name.eq_ignore_ascii_case("src") =>
             {
@@ -284,14 +281,13 @@ fn css_tokens<'i>(
                     "{}({})",
                     name,
                     quoted(
-                        &rewrite(&value)
-                            .map_err(|error| parser.new_custom_error(error.to_string()))?
+                        &rewrite(&value).map_err(|error| ParseError::custom(error.to_string()))?
                     )
                 ))
             }
             Token::Function(name) => {
                 if name.eq_ignore_ascii_case("attr") && !target_attribute {
-                    return Err(parser.new_custom_error(
+                    return Err(ParseError::custom(
                         "container CSS attribute URL requires reviewed static CSS".to_owned(),
                     ));
                 }

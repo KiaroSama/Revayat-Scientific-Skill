@@ -4,7 +4,7 @@
 //! Malformed URL tokens and unsupported dynamic image sources require static CSS.
 use crate::html::{ParsedHtml, member};
 use anyhow::{Result, bail, ensure};
-use cssparser::{ParseError, Parser, ParserInput, Token};
+use cssparser::{ParseError, Parser, Token};
 #[path = "resource_html5.rs"]
 mod html5;
 pub(crate) use html5::require_agreement as require_html5_agreement;
@@ -13,8 +13,7 @@ const MAX_CSS_TOKENS: usize = 2_000_000;
 const MAX_CSS_DEPTH: usize = 128;
 
 pub fn css_urls(text: &str) -> Result<Vec<String>> {
-    let mut input = ParserInput::new(text);
-    let mut parser = Parser::new(&mut input);
+    let mut parser = Parser::new(text);
     let mut urls = Vec::new();
     css_tokens(&mut parser, &mut urls, 0, &mut 0, false).map_err(|error| {
         anyhow::anyhow!("CSS URL preflight requires reviewed static CSS: {error:?}")
@@ -22,20 +21,20 @@ pub fn css_urls(text: &str) -> Result<Vec<String>> {
     Ok(urls)
 }
 fn css_tokens<'i>(
-    parser: &mut Parser<'i, '_>,
+    parser: &mut Parser<'i>,
     urls: &mut Vec<String>,
     depth: usize,
     steps: &mut usize,
     quoted_urls: bool,
-) -> Result<(), ParseError<'i, String>> {
+) -> Result<(), ParseError<String>> {
     if depth > MAX_CSS_DEPTH {
-        return Err(parser.new_custom_error("CSS nesting exceeds 128"));
+        return Err(ParseError::custom("CSS nesting exceeds 128"));
     }
     let mut import = false;
     while !parser.is_exhausted() {
         *steps += 1;
         if *steps > MAX_CSS_TOKENS {
-            return Err(parser.new_custom_error("CSS token budget exceeded"));
+            return Err(ParseError::custom("CSS token budget exceeded"));
         }
         let token = parser.next()?.clone();
         let import_value = import;
@@ -59,8 +58,9 @@ fn css_tokens<'i>(
             }
             Token::Function(name) => {
                 if quoted_urls && member("var env attr", &name.to_ascii_lowercase()) {
-                    return Err(parser
-                        .new_custom_error("dynamic image string requires reviewed static CSS"));
+                    return Err(ParseError::custom(
+                        "dynamic image string requires reviewed static CSS",
+                    ));
                 }
                 let image_strings = member(
                     "image image-set -webkit-image-set",
@@ -76,21 +76,19 @@ fn css_tokens<'i>(
                 })?;
             }
             token if token.is_parse_error() => {
-                return Err(parser.new_custom_error("malformed CSS URL or string"));
+                return Err(ParseError::custom("malformed CSS URL or string"));
             }
             _ => (),
         }
         if urls.len() > 2048 {
-            return Err(parser.new_custom_error("CSS resource count exceeds 2048"));
+            return Err(ParseError::custom("CSS resource count exceeds 2048"));
         }
     }
     Ok(())
 }
 /// Namespace names are identifiers, not fetched resources. Consume precisely
 /// their grammar, so an invalid block cannot hide later live resource rules.
-pub(crate) fn namespace_prelude<'i>(
-    parser: &mut Parser<'i, '_>,
-) -> Result<(), ParseError<'i, String>> {
+pub(crate) fn namespace_prelude<'i>(parser: &mut Parser<'i>) -> Result<(), ParseError<String>> {
     let _ = parser.try_parse(|parser| parser.expect_ident_cloned());
     match parser.next()?.clone() {
         Token::QuotedString(_) | Token::UnquotedUrl(_) => (),
@@ -102,9 +100,9 @@ pub(crate) fn namespace_prelude<'i>(
             })?;
         }
         _ => {
-            return Err(
-                parser.new_custom_error("namespace requires a static namespace name".to_owned())
-            );
+            return Err(ParseError::custom(
+                "namespace requires a static namespace name".to_owned(),
+            ));
         }
     }
     if !parser.is_exhausted() {
@@ -268,6 +266,7 @@ pub fn svg_urls(bytes: &[u8]) -> Result<Vec<String>> {
         roxmltree::ParsingOptions {
             allow_dtd: false,
             nodes_limit: 100_000,
+            ..Default::default()
         },
     )?;
     ensure!(
