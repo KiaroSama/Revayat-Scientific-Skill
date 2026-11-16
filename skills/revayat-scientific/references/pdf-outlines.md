@@ -1,35 +1,38 @@
-# Outline preservation during PDF merge
+# PDF outline and page-link preservation
 
-The built-in `pdf merge` operation preserves supported outline hierarchy, titles,
-local destinations, URI actions, emphasis, colors and expansion state. It remaps
-local page references to the corresponding copied pages. Original PDF-space
-coordinates, zoom values and standard XYZ/Fit destination arguments are retained,
-including null coordinates and rotated or cropped target pages. URLs are retained
-as data; they are never fetched or executed.
+The Rust PDF implementation preserves raw supported destination arrays through
+`lopdf` object copying. It does not round-trip destinations through viewer-space
+coordinates. Merge and page extraction validate navigation again after writing.
 
-The implementation deliberately does not use a simple three-column TOC as a
-lossless outline representation. That representation omits destinations, actions
-and presentation attributes. Reconstructing coordinates from page numbers also
-loses precise targets. `scripts/pdf_outlines.py` plans the supported objects,
-rewrites only local page references and verifies outline semantics after the
-staged output is reopened, before replacing an existing delivery.
+```sh
+revayat-scientific pdf merge merged.pdf first.pdf second.pdf
+revayat-scientific pages source.pdf selected.pdf 2-5
+```
 
-Supported local destinations are XYZ, Fit, FitH, FitV, FitR, FitB, FitBH and FitBV.
-Grouping entries without actions are retained. URI actions retain their URI and
-IsMap flag. Named destinations, remote/launch or other advanced actions, chained
-actions, conflicting Dest/action entries and unsupported destination encodings
-are refused before publication rather than silently stripped. Make an explicitly
-reviewed derivative when those advanced features require reconciliation.
+Supported local fits are `XYZ`, `Fit`, `FitH`, `FitV`, `FitR`, `FitB`, `FitBH` and
+`FitBV`, with their exact numeric/null argument counts. Destination page references
+are remapped for each input copy, including repeated occurrences of one source.
+Page rotation and CropBox offsets do not change destination coordinates. A link to
+a page outside an extracted range is refused before publishing the derivative.
 
-Merge remains a page-oriented transformation, not a lossless archive of all
-source-document metadata or identities. Keep the originals. Source signature,
-form, attachment, encryption and publication safeguards remain in effect.
+Outline hierarchy, titles, colors, style flags, collapsed counts and supported
+URI actions are copied as data. URI `IsMap` is retained; no URL is opened. Documents
+without outlines do not acquire fabricated bookmarks. Top-level outline lists are
+joined while their children retain source relationships. Shared page resources and
+original content stream bytes retain one object identity within each copied source.
 
-Technical references:
-- [PyMuPDF detailed table of contents](https://pymupdf.readthedocs.io/en/latest/document.html#Document.get_toc)
-- [PyMuPDF low-level PDF object APIs](https://pymupdf.readthedocs.io/en/latest/document.html#Document.xref_get_key)
-- [PyMuPDF page insertion](https://pymupdf.readthedocs.io/en/latest/document.html#Document.insert_pdf)
+The verifier reads raw link annotations as well as outline dictionaries. Ambiguous
+`Dest` plus `A`, unresolved annotations, named/remote destinations, unsupported fit
+arguments, advanced actions, `Next` chains and cycles require a reviewed separate
+copy. An unsupported action is an error rather than silently dropped navigation.
 
-Regression coverage: `tests/test_pdf_outline_preservation.py` uses real PDFs,
-all quarter-turn rotations, offset CropBoxes, destination variants, repeated
-inputs, unchanged page rasters and failure-preservation controls.
+After staging, the helper checks page count, MediaBox, CropBox, rotation, outline order,
+styles, local targets, destination tails and link rectangles/actions. A failed
+reopened check preserves both source bytes and any previous destination. These are
+structural and authored pixel-regression guarantees; they do not certify arbitrary
+PDF conformance, external URLs, signatures or semantic correctness of the document.
+
+Native regression targets are `pdf_outlines`, `pdf_links`, `pdf_admission` and
+`pdf_page_integrity`. Real Poppler tests compare source and derivative pixels for
+rotated/cropped pages. Scientific CI executes them with `--include-ignored`; an
+unexecuted optional integration test is reported as ignored, not passed.

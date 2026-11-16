@@ -1,0 +1,13 @@
+**
+!crates/
+!crates/revayat-scientific/
+!crates/revayat-scientific/src/
+!crates/revayat-scientific/src/bin/
+!crates/revayat-scientific/src/bin/revayat-tex-entry.rs
+!crates/revayat-scientific/src/bin/revayat-sandbox-probe.rs
+!crates/revayat-scientific/src/bin/security_helper/
+!crates/revayat-scientific/src/bin/security_helper/mod.rs
+!skills/
+!skills/revayat-scientific/
+!skills/revayat-scientific/assets/
+!skills/revayat-scientific/assets/Dockerfile.tex

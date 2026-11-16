@@ -124,5 +124,5 @@ lexicon belong there, with a required `forbidden_fa` calque for the checker.
 Retain that file with the job for resumption. Never copy job-private terms into this skill.
 
 ```bash
-scripts/check-fa.py doc.tex --level system-docs --terms terms.tsv --manifest manifest.txt --strict
+revayat-scientific lint doc.tex --level system-docs --terms terms.tsv --manifest manifest.txt --strict
 ```

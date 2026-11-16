@@ -1,4 +1,22 @@
 use std::cell::Cell;
+#[path = "protocol_failure.rs"]
+mod failure_frame;
+pub use failure_frame::failure_summary;
+#[path = "protocol_scratch.rs"]
+mod scratch_frame;
+pub use scratch_frame::{SCRATCH_CHECKS, scratch_failure, scratch_kind};
+#[path = "protocol_panic.rs"]
+mod panic_frame;
+pub use panic_frame::{PANIC_CHECKS, PanicPhase, mark_panic_phase, panic_frame, panic_kind};
+#[path = "protocol_network.rs"]
+mod network_frame;
+pub use network_frame::{
+    NETWORK_CHECKS, NetworkOperation, network_denial, network_failure, network_finish,
+    network_kind, network_ports, network_socket, network_startup,
+};
+#[path = "protocol_network_diagnostic.rs"]
+mod network_diagnostic;
+pub use network_diagnostic::NetworkDiagnostic;
 
 pub const KEY: &str = r"\Registry\MACHINE\Software\Microsoft\Windows\CurrentVersion\SideBySide";
 pub const DENIED: u32 = 0xC0000022;
@@ -238,6 +256,7 @@ pub struct Failure {
     pub child_exit: Option<u32>,
     pub restrictions: Option<RestrictionQuery>,
     pub native_error: Option<u32>,
+    pub network_diag: Option<Box<NetworkDiagnostic>>,
 }
 
 thread_local! { static CLEANUP_FAILED: Cell<bool> = const { Cell::new(false) }; }
@@ -250,55 +269,8 @@ pub fn take_cleanup_failure() -> bool {
     CLEANUP_FAILED.with(|value| value.replace(false))
 }
 
-impl Failure {
-    pub fn new(phase: &'static str, kind: &'static str) -> Self {
-        Self {
-            events: vec![(phase, kind)],
-            child_exit: None,
-            restrictions: None,
-            native_error: None,
-        }
-    }
-
-    pub fn wire(&self, role: &str) -> String {
-        let code = self
-            .child_exit
-            .map_or_else(|| "none".into(), |value| format!("{value:08X}"));
-        let events = self
-            .events
-            .iter()
-            .take(8)
-            .map(|(phase, kind)| format!("{phase}:{kind}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let restrictions = self
-            .restrictions
-            .filter(|_| {
-                self.native_error.is_none()
-                    && self
-                        .events
-                        .iter()
-                        .take(8)
-                        .any(|event| *event == ("token", "control-restrictions-query"))
-            })
-            .map_or_else(String::new, |query| {
-                format!(" restrictions={}", query.wire())
-            });
-        let native =
-            self.native_error
-                .filter(|_| {
-                    role == "primary"
-                        && self.restrictions.is_none()
-                        && self.events.iter().take(8).any(|(phase, kind)| {
-                            *phase == "descendant" && NATIVE_CHECKS.contains(kind)
-                        })
-                })
-                .map_or_else(String::new, |error| format!(" native_error={error:08X}"));
-        format!(
-            "REGISTRY_AUTHORITY_FAILURE role={role} child_exit={code} errors={events}{restrictions}{native}\n"
-        )
-    }
-}
+#[path = "protocol_failure_wire.rs"]
+mod failure_wire;
 
 pub fn need(value: bool, phase: &'static str) -> Result<()> {
     if value {
@@ -306,6 +278,19 @@ pub fn need(value: bool, phase: &'static str) -> Result<()> {
     } else {
         Err(Failure::new(phase, "control"))
     }
+}
+
+/// Preserve only the exact fixed root-open status, never the selected key name.
+pub fn root_open(status: u32, handle: usize) -> Result<()> {
+    if status != 0 {
+        let mut failure = Failure::new("root", "control-open");
+        failure.native_error = Some(status);
+        return Err(failure);
+    }
+    if handle == 0 || handle == usize::MAX {
+        return Err(Failure::new("root", "control-handle"));
+    }
+    Ok(())
 }
 
 pub fn token_fields(kind: u32, elevated: u32, filtered: u32) -> bool {
@@ -351,6 +336,61 @@ pub fn record(role: &str, subkeys: u32, accessible: u32) -> Result<String> {
     ))
 }
 
+/// A primary-only negative control. It cannot stand in for either positive authority record.
+pub fn machine_baseline_record(status: u32, handle: usize) -> Result<String> {
+    need(denied(status, handle), "root")?;
+    Ok("WINDOWS_REGISTRY_MACHINE_BASELINE role=primary desired_access=0x00020019 status=0xC0000022 opened=False lpac=True descendant_observed=False cause_claimed=False\n".into())
+}
+
+pub fn require_machine_baseline(bytes: &[u8]) -> Result<()> {
+    need(
+        bytes == machine_baseline_record(DENIED, 0)?.as_bytes(),
+        "report",
+    )
+}
+
+pub fn fixture_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let Some((head, nonce)) = lower.rsplit_once("\\software\\revayatnativeauthority-") else {
+        return false;
+    };
+    let Some(sid) = head.strip_prefix("\\registry\\user\\s-1-5-") else {
+        return false;
+    };
+    !sid.is_empty()
+        && sid
+            .split('-')
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+        && nonce.len() == 32
+        && nonce.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+pub fn fixture_record(role: &str, subkeys: u32, accessible: u32) -> Result<String> {
+    need(accessible == 0, "report")?;
+    Ok(record(role, subkeys, accessible)?.replace(
+        "\"version\":1",
+        "\"foreign_file_denied\":true,\"network_denied\":true,\"scratch_write\":true,\"scope\":\"owned-fixture\",\"version\":1",
+    ))
+}
+
+pub fn fixture_child_record(bytes: &[u8]) -> Result<String> {
+    need(bytes.len() <= 1024 && bytes.is_ascii(), "descendant")?;
+    let text = std::str::from_utf8(bytes).map_err(|_| Failure::new("descendant", "decode"))?;
+    let plain = text.replace(
+        "\"foreign_file_denied\":true,\"network_denied\":true,\"scratch_write\":true,\"scope\":\"owned-fixture\",",
+        "",
+    );
+    let parsed = child_record(plain.as_bytes())?;
+    need(
+        text == parsed.replace(
+            "\"version\":1",
+            "\"foreign_file_denied\":true,\"network_denied\":true,\"scratch_write\":true,\"scope\":\"owned-fixture\",\"version\":1",
+        ) && text.starts_with("{\"accessible\":0,"),
+        "descendant",
+    )?;
+    Ok(text.to_owned())
+}
+
 pub fn child_record(bytes: &[u8]) -> Result<String> {
     need(bytes.len() <= 1024 && bytes.is_ascii(), "descendant")?;
     let text = std::str::from_utf8(bytes).map_err(|_| Failure::new("descendant", "decode"))?;
@@ -385,61 +425,133 @@ pub fn child_record(bytes: &[u8]) -> Result<String> {
 mod tests {
     use super::*;
 
-    fn hex(value: &str) -> Vec<u8> {
-        value
-            .as_bytes()
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|pair| {
-                u8::from_str_radix(std::str::from_utf8(pair).expect("fixture ASCII"), 16)
-                    .expect("fixture hex")
-            })
-            .collect()
+    #[test]
+    fn owned_fixture_scope_is_explicit_and_cannot_substitute_for_machine_receipt() {
+        let fixture = fixture_record("descendant", 1, 0).expect("owned fixture");
+        assert!(fixture.contains("\"scope\":\"owned-fixture\""));
+        assert!(fixture.contains("\"foreign_file_denied\":true"));
+        assert_eq!(
+            fixture_child_record(fixture.as_bytes()).expect("strict fixture"),
+            fixture
+        );
+        assert!(child_record(fixture.as_bytes()).is_err());
+        assert!(
+            fixture_child_record(
+                record("descendant", 1, 0)
+                    .expect("machine schema")
+                    .as_bytes()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn owned_fixture_transport_refuses_missing_denial_or_permissive_surface() {
+        let fixture = fixture_record("descendant", 1, 0).expect("owned fixture");
+        for malformed in [
+            fixture.replace(
+                "\"foreign_file_denied\":true",
+                "\"foreign_file_denied\":false",
+            ),
+            fixture.replace("\"accessible\":0", "\"accessible\":1"),
+            format!("{fixture}\n"),
+            fixture.replace("owned-fixture", "machine"),
+        ] {
+            assert!(fixture_child_record(malformed.as_bytes()).is_err());
+        }
+        assert!(fixture_record("descendant", 1, 1).is_err());
+    }
+
+    #[test]
+    fn owned_fixture_namespace_never_accepts_machine_or_parent_registry_keys() {
+        assert!(fixture_name(
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software\RevayatNativeAuthority-0123456789abcdef0123456789abcdef"
+        ));
+        for name in [
+            KEY,
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software",
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software\RevayatNativeAuthority-short",
+            r"\Registry\USER\S-1-5-21-1-2-3-1000\Software\RevayatNativeAuthority-0123456789abcdef0123456789abcdef\private-child",
+        ] {
+            assert!(!fixture_name(name));
+        }
     }
 
     #[test]
     fn source_generated_oracle() {
-        let path =
-            std::env::var("REGISTRY_AUTHORITY_ORACLE").expect("CI must generate the Python oracle");
-        let source = std::fs::read_to_string(path).expect("oracle UTF-8");
-        let mut count = 0;
-        for line in source.lines() {
-            let row = line.split('\t').collect::<Vec<_>>();
-            let n = |index: usize| row[index].parse::<u32>().expect("oracle integer");
-            let actual = match row[0] {
-                "token" => token_fields(n(1), n(2), n(3)),
-                "denied" => denied(n(1), n(2) as usize),
-                "basic" => basic(n(1), n(2), n(3), n(4)),
-                "identity" => identity(n(1), n(2) as usize, &hex(row[3]), n(4) as usize).is_ok(),
-                "wire" => {
-                    assert_eq!(
-                        record(row[1], n(2), n(3))
-                            .expect("valid source record")
-                            .as_bytes(),
-                        hex(row[4])
-                    );
-                    count += 1;
-                    continue;
-                }
-                _ => panic!("unknown oracle case"),
-            };
-            assert_eq!(actual, row[row.len() - 1] == "1", "{line}");
-            count += 1;
-        }
-        assert_eq!(count, 41);
+        crate::oracle_events::source_generated_oracle();
     }
 
     #[test]
     fn token_stages_are_closed_and_fit_complete_failure_frames() {
+        scratch_frame::check_diagnostics();
+        panic_frame::check_diagnostics();
+        network_frame::check_diagnostics();
         for &kind in TOKEN_CHECKS {
             assert!(token_need(true, kind).is_ok());
             let error = token_need(false, kind).expect_err("predicate refused");
             assert_eq!(error.events, vec![("token", kind)]);
+            assert_eq!(
+                failure_summary(&error.wire("primary")),
+                Some(format!("events=token:{kind} child_exit=none"))
+            );
             assert!(
                 error
                     .wire("primary")
                     .ends_with(&format!("errors=token:{kind}\n"))
+            );
+        }
+        for frame in [
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=token:private-sentinel\n",
+            "REGISTRY_AUTHORITY_FAILURE role=descendant child_exit=none errors=token:control\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=root:control private-path\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=root:control\nextra\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=descendant:control-create-process native_error=private!\n",
+            "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors=root:control native_error=00000005\n",
+        ] {
+            assert!(failure_summary(frame).is_none());
+        }
+        let mut refusal = Failure::new("descendant", "control-create-process");
+        refusal.native_error = Some(5);
+        refusal.child_exit = Some(0xc0000022);
+        assert_eq!(failure_summary(&refusal.wire("primary")), Some(
+            "events=descendant:control-create-process child_exit=C0000022 native_error=00000005".into()
+        ));
+        assert!(root_open(0, 4).is_ok());
+        for handle in [0, usize::MAX] {
+            let failure = root_open(0, handle).unwrap_err();
+            assert_eq!(failure.events, [("root", "control-handle")]);
+            assert!(!failure.wire("primary").contains("nt_status="));
+        }
+        for status in [1, 0xC0000022, 0xC0000034, 0xC000003A, 0xC0000275, u32::MAX] {
+            let failure = root_open(status, 0).unwrap_err();
+            assert_eq!(failure.events, [("root", "control-open")]);
+            let wire = failure.wire("primary");
+            assert_eq!(
+                failure_summary(&wire),
+                Some(format!(
+                    "events=root:control-open child_exit=none nt_status={status:08X}"
+                ))
+            );
+            assert!(!wire.contains("native_error="));
+            assert!(!failure.wire("descendant").contains("nt_status="));
+        }
+        for body in [
+            "root:control-open nt_status=c0000022",
+            "root:control-open nt_status=C00000222",
+            "root:control-open nt_status=private-sentinel",
+            "root:control-open nt_status=00000000",
+            "root:control-handle nt_status=C0000022",
+            "root:control nt_status=C0000022",
+            "token:control nt_status=C0000022",
+            "root:control-private nt_status=C0000022",
+            "root:control-open nt_status=C0000022 native_error=00000005",
+        ] {
+            assert!(
+                failure_summary(&format!(
+                    "REGISTRY_AUTHORITY_FAILURE role=primary child_exit=none errors={body}\n"
+                ))
+                .is_none()
             );
         }
         for value in [true, false] {
@@ -458,6 +570,7 @@ mod tests {
                 child_exit: Some(u32::MAX),
                 restrictions: None,
                 native_error: None,
+                network_diag: None,
             };
             let wire = error.wire(role);
             assert!(wire.is_ascii() && wire.len() <= 512);

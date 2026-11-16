@@ -69,6 +69,67 @@ pub struct ProcessInfo {
     pub tid: u32,
 }
 
+#[repr(C)]
+pub struct CurDir {
+    pub dos_path: Unicode,
+    pub handle: Raw,
+}
+
+#[repr(C)]
+pub struct UserProcessParametersPrefix {
+    pub maximum_length: u32,
+    pub length: u32,
+    pub flags: u32,
+    pub debug_flags: u32,
+    pub console_handle: Raw,
+    pub console_flags: u32,
+    pub standard_input: Raw,
+    pub standard_output: Raw,
+    pub standard_error: Raw,
+    pub current_directory: CurDir,
+    pub dll_path: Unicode,
+    pub image_path_name: Unicode,
+    pub command_line: Unicode,
+    pub environment: Raw,
+    pub starting_x: u32,
+    pub starting_y: u32,
+    pub count_x: u32,
+    pub count_y: u32,
+    pub count_chars_x: u32,
+    pub count_chars_y: u32,
+    pub fill_attribute: u32,
+    pub window_flags: u32,
+}
+
+#[repr(C)]
+pub struct PsAttribute {
+    pub attribute: usize,
+    pub size: usize,
+    pub value: usize,
+    pub return_length: *mut usize,
+}
+
+#[repr(C)]
+pub struct PsAttributeList2 {
+    pub total_length: usize,
+    pub attributes: [PsAttribute; 2],
+}
+
+#[repr(C)]
+pub struct PsCreateInfo {
+    pub size: usize,
+    pub state: u32,
+    pub pad: u32,
+    pub raw: [u64; 9],
+}
+
+const _: () = {
+    assert!(std::mem::offset_of!(UserProcessParametersPrefix, console_handle) == 0x10);
+    assert!(std::mem::offset_of!(UserProcessParametersPrefix, standard_input) == 0x20);
+    assert!(std::mem::offset_of!(UserProcessParametersPrefix, window_flags) == 0xA4);
+    assert!(std::mem::size_of::<PsCreateInfo>() == 88);
+};
+
 #[link(name = "ntdll")]
 unsafe extern "system" {
     pub fn NtOpenKeyEx(
@@ -88,6 +149,34 @@ unsafe extern "system" {
         size: u32,
         returned: *mut u32,
     ) -> i32;
+    pub fn RtlCreateProcessParametersEx(
+        parameters: *mut *mut UserProcessParametersPrefix,
+        image_path: *const Unicode,
+        dll_path: *const Unicode,
+        current_directory: *const Unicode,
+        command_line: *const Unicode,
+        environment: Raw,
+        window_title: *const Unicode,
+        desktop_info: *const Unicode,
+        shell_info: *const Unicode,
+        runtime_data: *const Unicode,
+        flags: u32,
+    ) -> i32;
+    pub fn RtlDestroyProcessParameters(parameters: Raw) -> i32;
+    pub fn NtCreateUserProcess(
+        process: *mut Raw,
+        thread: *mut Raw,
+        process_access: u32,
+        thread_access: u32,
+        process_attributes: Raw,
+        thread_attributes: Raw,
+        process_flags: u32,
+        thread_flags: u32,
+        parameters: Raw,
+        create_info: *mut PsCreateInfo,
+        attribute_list: *mut PsAttributeList2,
+    ) -> i32;
+    pub fn RtlNtStatusToDosError(status: i32) -> u32;
 }
 
 #[link(name = "advapi32")]
@@ -220,6 +309,8 @@ unsafe extern "system" {
         available: *mut u32,
         remaining: Raw,
     ) -> i32;
+    pub fn GetEnvironmentStringsW() -> *mut u16;
+    pub fn FreeEnvironmentStringsW(environment: *mut u16) -> i32;
     pub fn ReadFile(handle: Raw, data: Raw, size: u32, read: *mut u32, overlapped: Raw) -> i32;
 }
 

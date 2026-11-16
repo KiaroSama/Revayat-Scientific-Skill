@@ -1,7 +1,11 @@
 use crate::native::*;
-use crate::protocol::{Failure, KEY, READ, Result, basic, denied, identity, need};
+use crate::protocol::{
+    Failure, KEY, PanicPhase, READ, Result, basic, denied, identity, mark_panic_phase, need,
+};
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
+#[path = "registry_network.rs"]
+mod network;
 
 fn deadline(start: Instant) -> Result<()> {
     if start.elapsed() < Duration::from_secs(8) {
@@ -14,10 +18,9 @@ fn deadline(start: Instant) -> Result<()> {
 fn open(name: &str, access: u32, root: Raw, start: Instant) -> Result<(u32, Handle)> {
     deadline(start)?;
     let text = wide(name);
-    need(
-        !name.contains('\0') && text.len() > 1 && text.len() <= 513,
-        "root",
-    )?;
+    if name.contains('\0') || text.len() <= 1 || text.len() > 513 {
+        return Err(Failure::new("root", "control-name"));
+    }
     let name = Unicode {
         length: ((text.len() - 1) * 2) as u16,
         maximum: (text.len() * 2) as u16,
@@ -99,21 +102,65 @@ fn counts(handle: &Handle) -> Result<(u32, u32, u64)> {
     Ok((keys, values, modified))
 }
 
+pub fn machine_baseline() -> Result<String> {
+    mark_panic_phase(PanicPhase::Baseline);
+    need(
+        [
+            "REVAYAT_AUTHORITY_FIXTURE",
+            "REVAYAT_AUTHORITY_FOREIGN",
+            "REVAYAT_AUTHORITY_NETWORK",
+        ]
+        .iter()
+        .all(|name| std::env::var_os(name).is_none()),
+        "start",
+    )?;
+    detached()?;
+    crate::token::controls()?;
+    let started = Instant::now();
+    let (status, mut key) = open(KEY, READ, null_mut(), started)?;
+    let record = crate::protocol::machine_baseline_record(status, key.raw as usize);
+    let cleanup = key.close();
+    let record = match (record, cleanup) {
+        (Ok(record), Ok(())) => record,
+        (Err(mut primary), Err(_)) => {
+            primary.events.push(("close", "cleanup"));
+            return Err(primary);
+        }
+        (Err(error), _) | (_, Err(error)) => return Err(error),
+    };
+    crate::token::controls()?;
+    deadline(started)?;
+    Ok(record)
+}
+
 pub fn controls() -> Result<(u32, u32)> {
+    mark_panic_phase(PanicPhase::Controls);
+    let fixture = std::env::var("REVAYAT_AUTHORITY_FIXTURE").ok();
+    let foreign = std::env::var_os("REVAYAT_AUTHORITY_FOREIGN");
+    let network = std::env::var("REVAYAT_AUTHORITY_NETWORK").ok();
+    need(fixture.is_some() == foreign.is_some(), "start")?;
+    need(fixture.is_some() == network.is_some(), "start")?;
+    if let Some(name) = &fixture {
+        need(crate::protocol::fixture_name(name), "start")?;
+    }
+    let key = fixture.as_deref().unwrap_or(KEY);
     need(
         size_of::<Raw>() == 8 && size_of::<Unicode>() == 16 && size_of::<Attributes>() == 48,
         "start",
     )?;
     detached()?;
+    mark_panic_phase(PanicPhase::Token);
     crate::token::controls()?;
     let start = Instant::now();
-    let (status, root) = open(KEY, READ, null_mut(), start)?;
-    need(status == 0, "root")?;
-    qualify(&root, KEY)?;
+    mark_panic_phase(PanicPhase::Root);
+    let (status, root) = open(key, READ, null_mut(), start)?;
+    crate::protocol::root_open(status, root.raw as usize)?;
+    qualify(&root, key)?;
     for access in [2, 4, 0x10000, 0x40000, 0x80000] {
-        let (status, handle) = open(KEY, access, null_mut(), start)?;
+        let (status, handle) = open(key, access, null_mut(), start)?;
         need(denied(status, handle.raw as usize), "mutation")?;
     }
+    mark_panic_phase(PanicPhase::Inventory);
     let before = counts(&root)?;
     let mut names: Vec<String> = Vec::new();
     let accessible = 0;
@@ -154,7 +201,7 @@ pub fn controls() -> Result<(u32, u32)> {
             need(!same_name(prior, &text)?, "inventory")?;
         }
         for access in [1, 8, 0x10, 0x20000] {
-            let (status, child) = open(&format!("{KEY}\\{text}"), access, null_mut(), start)?;
+            let (status, child) = open(&format!("{key}\\{text}"), access, null_mut(), start)?;
             need(denied(status, child.raw as usize), "inventory")?;
         }
         let (status, child) = open(&text, READ, root.raw, start)?;
@@ -165,7 +212,111 @@ pub fn controls() -> Result<(u32, u32)> {
         counts(&root)? == before && names.len() == before.0 as usize,
         "inventory",
     )?;
+    mark_panic_phase(PanicPhase::Token);
     crate::token::controls()?;
+    if let Some(path) = foreign {
+        mark_panic_phase(PanicPhase::Foreign);
+        foreign_denied(&path)?;
+        mark_panic_phase(PanicPhase::Scratch);
+        scratch_control()?;
+        network_denied(
+            network
+                .as_deref()
+                .ok_or_else(|| Failure::new("start", "control"))?,
+        )?;
+    }
     deadline(start)?;
     Ok((names.len() as u32, accessible))
+}
+
+fn network_denied(value: &str) -> Result<()> {
+    network::controls(value)
+}
+
+fn scratch_control() -> Result<()> {
+    use crate::protocol::scratch_failure;
+    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::os::windows::fs::OpenOptionsExt;
+    let path = std::env::current_dir()
+        .map_err(|error| scratch_failure("scratch-cwd", Some(&error)))?
+        .join("native-create-only-control");
+    // Create-only, no sharing, no reparse following, delete the exact owned
+    // object on close. A collision is fatal and never causes pathname cleanup.
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .access_mode(0xc0010000)
+        .share_mode(0)
+        .custom_flags(0x04200000)
+        .open(&path)
+        .map_err(|error| scratch_failure("scratch-create", Some(&error)))?;
+    let expected = b"native owned scratch control\0\r\n";
+    let mut actual = [0u8; 32];
+    let operation = (|| {
+        file.write_all(expected)
+            .map_err(|error| scratch_failure("scratch-write", Some(&error)))?;
+        file.flush()
+            .map_err(|error| scratch_failure("scratch-flush", Some(&error)))?;
+        file.sync_all()
+            .map_err(|error| scratch_failure("scratch-sync", Some(&error)))?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| scratch_failure("scratch-seek", Some(&error)))?;
+        let count = file
+            .read(&mut actual)
+            .map_err(|error| scratch_failure("scratch-read", Some(&error)))?;
+        need(
+            count == expected.len() && actual[..count] == expected[..],
+            "mutation",
+        )
+    })();
+    actual.fill(0);
+    use std::os::windows::io::IntoRawHandle;
+    let mut owned = Handle::new(file.into_raw_handle(), false);
+    let closed = owned.close();
+    match (operation, closed) {
+        (Err(mut primary), Err(cleanup)) => {
+            primary.events.extend(cleanup.events);
+            return Err(primary);
+        }
+        (Err(error), _) | (_, Err(error)) => return Err(error),
+        _ => {}
+    }
+    match std::fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(scratch_failure("scratch-retire", Some(&error))),
+        Ok(_) => Err(scratch_failure("scratch-retire", None)),
+    }
+}
+
+fn foreign_denied(path: &std::ffi::OsStr) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    let path = path.encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    need(
+        path.len() > 1 && path.len() < 32768 && !path[..path.len() - 1].contains(&0),
+        "mutation",
+    )?;
+    for access in [0x8000_0000u32, 0x4000_0000] {
+        // SAFETY: fixed host-provisioned private sentinel, no content is read or written.
+        let raw = unsafe {
+            CreateFileW(
+                path.as_ptr(),
+                access,
+                3,
+                std::ptr::null(),
+                3,
+                0x200000,
+                null_mut(),
+            )
+        };
+        let error = if raw as isize == -1 {
+            Some(unsafe { GetLastError() })
+        } else {
+            None
+        };
+        let mut owner = Handle::new(raw, false);
+        need(raw as isize == -1 && error == Some(5), "mutation")?;
+        owner.close()?;
+    }
+    Ok(())
 }

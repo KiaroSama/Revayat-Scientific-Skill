@@ -1,0 +1,36 @@
+[workspace]
+members = [
+    "crates/revayat-scientific",
+    "tests/security/windows/registry-authority",
+    "tests/security/windows/activation-fixture",
+]
+resolver = "3"
+
+[workspace.package]
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.100.0"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/KiaroSama/Revayat-Scientific-Skill"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[profile.release]
+# Every release harness links the complete document engine. Per-harness LTO
+# repeated that work across the entire frozen test inventory and exhausted CI's
+# bounded discovery time. Keep real optimized release builds without that pass.
+lto = false
+strip = "debuginfo"
+
+# Keep development/test executables within the same bounded skill-payload
+# contract as release executables. Symbols can be enabled locally when needed.
+[profile.dev]
+debug = 0
+strip = "symbols"
+opt-level = 1
+
+[profile.test]
+debug = 0
+strip = "symbols"
+opt-level = 1

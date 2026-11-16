@@ -1,0 +1,2967 @@
+{
+  "schema": 1,
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "public_test_count": 583,
+  "assertion_sites": 2445,
+  "tests": [
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IncludeTokenContractTest::test_unseparated_digit_and_punctuation_filenames_are_included",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IncludeTokenContractTest::test_custom_control_words_do_not_become_includes",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IncludeTokenContractTest::test_unseparated_missing_cycle_and_root_escape_are_blocking",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IncludeTokenContractTest::test_literal_comments_and_even_backslashes_stay_inert",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IncludeTokenContractTest::test_real_compiler_and_source_closure_agree_on_numeric_input",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_all_transforms_use_the_same_encryption_signature_xfa_admission",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_parser_repaired_source_is_not_silently_certified",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_valid_contiguous_range_keeps_geometry_pixels_and_shared_resources",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_late_write_failure_preserves_existing_output",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_admission_limits_apply_before_publication",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_memory_mode_and_ordinary_nontransform_inspection_remain_supported",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_public_pages_command_refuses_restricted_input",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::ExtractionAdmissionTest::test_shared_resource_identity_and_full_page_boxes_survive",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_output_cannot_overwrite_distributed_source",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_output_symlink_cannot_replace_or_follow_another_file",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_hardlink_alias_of_source_is_refused",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_case_variant_and_directory_destinations_fail_without_side_effects",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_valid_archive_and_repeat_build_preserve_payload",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_tracked_nonpayload_document_is_protected",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_new_output_inside_implementation_directories_is_rejected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_missing_skill_and_late_archive_failure_keep_previous_output",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_publication_failure_keeps_approved_archive",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::PackageOutputContractTest::test_unreadable_git_index_refuses_before_packaging",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_replacement_refs_cannot_hide_stored_author_identity",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_history_never_passes_as_complete_history",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_complete_history_and_introduced_range_remain_available",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_legacy_grafts_cannot_hide_bad_ancestors",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_environment_selected_grafts_are_rejected_without_removal",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_range_also_requires_complete_ancestry",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_browser_discovery.py::BrowserDiscoveryTest::test_path_browser_is_a_resolved_executable",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_browser_discovery.py::BrowserDiscoveryTest::test_selected_browser_survives_the_source_directory_change",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_delivery.py::NativeBuildDeliveryTest::test_each_source_preview_collision_is_rejected_before_any_output_changes",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_delivery.py::NativeBuildDeliveryTest::test_terms_and_manifest_with_pdf_suffix_are_never_delivery_targets",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_delivery.py::NativeBuildDeliveryTest::test_css_only_preview_resource_is_preserved_and_cannot_replace_working_pdf",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_delivery.py::NativeBuildDeliveryTest::test_noverify_does_not_reserve_unused_preview_paths",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_delivery.py::NativeBuildDeliveryTest::test_successful_three_to_one_page_rebuild_refreshes_every_preview_role",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_delivery.py::NativeBuildDeliveryTest::test_late_raster_failure_preserves_entire_previous_preview_batch",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_delivery.py::WindowsBuildDeliveryTest::test_explicit_engine_discovery_does_not_probe_other_backends",
+      "assertion_sites": 3,
+      "legacy_conditions": [
+        "unittest.skipUnless(sys.platform == 'win32', 'native PowerShell 5.1 and 7 input admission')"
+      ]
+    },
+    {
+      "id": "tests/test_build_delivery.py::WindowsBuildDeliveryTest::test_both_native_shells_preserve_colliding_source_inputs",
+      "assertion_sites": 4,
+      "legacy_conditions": [
+        "unittest.skipUnless(sys.platform == 'win32', 'native PowerShell 5.1 and 7 input admission')"
+      ]
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_plan_captures_explicit_inputs_assets_and_requested_fallback",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_nested_tex_closure_is_captured_without_modifying_inputs",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_each_preview_collision_is_rejected_before_mutation",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_pdf_destinations_cannot_overwrite_sidecars_or_vector_assets",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_symlink_hardlink_and_duplicate_output_aliases_are_rejected",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_changes_to_each_checked_input_invalidate_the_run",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_actual_runtime_resource_is_added_and_then_frozen",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_css_only_preview_dependency_is_not_a_publish_destination",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_runtime_cannot_substitute_an_already_checked_revision",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_rendered_hash_prevents_delivering_another_builds_working_pdf",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_unsealed_or_wrong_target_delivery_cannot_pass",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_valid_delivery_is_byte_equal_to_the_sealed_renderer_output",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_delivery_uses_bounded_streaming_identity",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_delivery_rejects_changed_staging_and_preserves_previous_output",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_delivery_rejects_a_source_revision_copied_as_a_new_baseline",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_delivery_still_refuses_inputs_above_the_explicit_build_limit",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_invalid_record_duplicate_keys_and_oversized_maps_fail_explicitly",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_existing_pending_record_is_never_deleted_on_exclusive_create_failure",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_missing_and_oversized_inputs_are_not_silently_fingerprinted",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_sample_batch_validates_every_png_before_replacing_any_preview",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_sample_publication_rolls_back_earlier_replacements",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_sample_staging_cannot_consume_unplanned_or_outside_files",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_partial_preview_set_and_duplicate_basenames_are_refused",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_html_actual_resources_block_a_late_collision_before_working_pdf_publication",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_html_worker_cannot_deliver_after_a_terminology_revision_change",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_guard.py::BuildGuardTest::test_html_seals_successful_output_and_does_not_allow_guard_on_worker_path",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_integrity.py::BuildIntegrityTest::test_failed_or_invalid_renderer_cannot_replace_delivery",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_build_integrity.py::BuildIntegrityTest::test_real_chromium_resource_denial_preserves_previous_delivery",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_required_census_matches_all_existing_matrix_and_reusable_jobs",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_all_real_jobs_have_their_own_true_result_and_direct_link",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_pending_resets_expected_and_old_contexts_without_claiming_results",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_every_non_success_conclusion_stays_non_green",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_missing_and_retired_jobs_are_explicit_errors",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_complete_pagination_and_partial_rerun_successes_are_retained",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_rerun_replaces_only_jobs_with_a_newer_actual_result",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_only_latest_pending_publisher_outcome_affects_summary",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_bad_job_identity_urls_and_context_collisions_fail_without_green",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_inconsistent_or_unbounded_pages_are_rejected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_superseded_attempt_never_overwrites_new_results_with_failure",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_partial_write_failure_leaves_aggregate_error_and_propagates",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_http_timeout_cap_utf8_and_secret_safe_errors",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_redirects_never_forward_credentials",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_workflow_retains_manual_trigger_and_complete_final_dependency_set",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_matching_complete_history_passes",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_exact_service_identities_pass_in_permitted_roles",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_github_service_identity_is_committer_only",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_author_and_committer_are_checked_independently",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_introduced_range_does_not_claim_legacy_history_passed",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_mailmap_cannot_hide_stored_identity_mismatch",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_empty_introduced_range_and_invalid_refs_are_distinct",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_email_comparison_is_exact",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_crop_admission.py::CropAdmissionTest::test_selected_crop_admission_preserves_source",
+      "assertion_sites": 16,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_crop_integrity.py::CropIntegrityTest::test_invalid_late_map_preserves_previous_output",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_crop_integrity.py::CropIntegrityTest::test_transitive_components_edges_and_ambiguity",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_crop_integrity.py::CropIntegrityTest::test_map_rejects_malformed_rows_duplicates_and_nonfinite_rectangles",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_crop_integrity.py::CropIntegrityTest::test_explicit_edge_crop_and_late_failures_preserve_batch",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_unreviewed_dark_original_still_requires_review",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_valid_review_accepts_exact_original_without_mutation",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_stale_review_is_rejected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_invalid_schema_duplicate_keys_and_oversized_review_fail",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_review_cannot_waive_transparency_depth_or_frames",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_one_review_does_not_approve_another_asset",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_directory_or_linked_review_is_rejected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_opaque_light_control_needs_no_review",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_dark_image_review.py::DarkImageReviewTest::test_public_command_honors_review_and_preserves_inputs",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_completed_replace_exception_restores_whole_previous_batch",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_corrupt_publication_backup_refuses_before_any_replacement",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_changed_backup_is_retained_instead_of_restored_on_late_failure",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_genuine_quoted_and_bom_installation_identity_remains_supported",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_ambiguous_frontmatter_never_replaces_existing_installation",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_partial_copy_cleanup_failure_retains_owned_stage_and_lock_evidence",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_failed_journal_refresh_cleanup_keeps_initial_stage_identity",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_tex_original_revision_is_bound_before_copy_not_after",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_delivery_recovery.py::DeliveryRecoveryTest::test_tex_staged_revision_mutation_is_not_certified_after_backend",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_document_context.py::SourceClosureTest::test_encoded_and_starred_assets_share_lint_and_build_resolution",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_document_context.py::SourceClosureTest::test_selection_honors_explicit_engine_and_actual_source",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_document_context.py::SourceClosureTest::test_nested_prose_and_repeated_includes_keep_order_and_location",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_document_context.py::SourceClosureTest::test_dynamic_and_outside_includes_are_explicit_failures",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx.py::DocxTest::test_edit_preserves_untouched_members_and_source",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx.py::DocxTest::test_rejected_edits_preserve_existing_output",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx.py::DocxTest::test_archive_and_xml_boundaries",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx.py::DocxTest::test_empty_nodes_entities_and_field_markup_preserved",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx.py::DocxTest::test_relationship_boundaries_and_signed_refusal",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx.py::DocxTest::test_create_sections_rtl_tables_images_and_edit",
+      "assertion_sites": 17,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_batch_scaling.py::DocxBatchScalingTest::test_story_tree_is_walked_once_not_once_per_patch",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_batch_scaling.py::DocxBatchScalingTest::test_multistory_unsorted_edits_preserve_all_untouched_bytes",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_batch_scaling.py::DocxBatchScalingTest::test_late_stale_patch_preserves_destination",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_batch_scaling.py::DocxBatchScalingTest::test_duplicate_addresses_and_invalid_characters_remain_rejected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_batch_scaling.py::DocxBatchScalingTest::test_growing_part_limit_preserves_existing_delivery",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_batch_scaling.py::DocxBatchScalingTest::test_late_publication_failure_does_not_destroy_previous_output",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_batch_scaling.py::DocxBatchScalingTest::test_adjacent_empty_and_nonempty_text_nodes",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_relocated_signature_parts_are_detected_by_type_and_relationship",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_signature_content_types_are_sufficient_without_conventional_paths",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_signature_relationships_are_sufficient_with_generic_content_type",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_relocated_vba_parts_are_detected_without_macro_enabled_main",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_external_restricted_relationship_is_data_not_fetch_permission",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_override_precedence_does_not_inherit_an_unrelated_restricted_default",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_lookalike_custom_types_and_relationships_do_not_grant_edit_restrictions",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_existing_canonical_name_and_macro_main_guards_are_retained",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_unsigned_real_document_stays_editable_without_unrelated_member_changes",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_mime_type_case_cannot_hide_restricted_features",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_complete_relocated_signature_metadata_chain_is_not_dropped",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_feature_identity.py::DocxFeatureIdentityTest::test_public_inspect_reports_restriction_and_edit_preserves_delivery",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_script_formatting.py::DocxScriptFormattingTest::test_explicit_true_sets_both_script_properties",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_script_formatting.py::DocxScriptFormattingTest::test_explicit_false_overrides_both_script_properties",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_script_formatting.py::DocxScriptFormattingTest::test_omitted_properties_preserve_style_inheritance",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_script_formatting.py::DocxScriptFormattingTest::test_fractional_sizes_use_identical_serialized_half_points",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_script_formatting.py::DocxScriptFormattingTest::test_created_package_keeps_body_table_header_footer_formatting",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_script_formatting.py::DocxScriptFormattingTest::test_invalid_style_boolean_preserves_existing_destination",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_noncanonical_signature_parts_are_reported_and_block_edits",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_relationship_signal_alone_cannot_be_hidden_by_generic_content_types",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_type_signal_alone_is_conservatively_protected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_mime_case_does_not_hide_package_signature_metadata",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_conventional_signature_directory_policy_remains_in_force",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_readonly_inventory_preserves_metadata_and_document_text",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_ordinary_unsigned_package_still_edits_with_exact_other_parts",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_signature_identity.py::DocxSignatureIdentityTest::test_arbitrary_signature_word_or_foreign_uri_is_not_opc_signature_metadata",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_all_five_story_kinds_use_declared_names",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_inspected_address_is_editable_without_changing_other_bytes",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_default_story_type_and_override_precedence",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_content_type_keys_are_ascii_insensitive_and_unique",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_generic_custom_xml_is_not_authorized_by_a_text_node",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_legacy_canonical_generic_story_remains_supported",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_primary_document_stays_editable_with_authoritative_main_type",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_canonical_names_do_not_override_custom_types_or_wrong_roots",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_wrong_declared_story_root_fails_before_publication",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_duplicate_declarations_are_not_silently_selected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_typed_nonxml_suffix_cannot_bypass_xml_limits",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_late_stale_edit_keeps_source_and_destination",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_duplicate_addresses_and_publication_failure_are_recoverable",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_parts.py::DocxStoryPartsTest::test_python_docx_reads_and_edits_a_renamed_real_header",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_docx_story_render.py::DocxStoryRenderTest::test_two_page_renamed_header_footer_matches_independent_expected_render",
+      "assertion_sites": 11,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_DOCX_RENDER') == '1', 'native DOCX scientific-render tier')"
+      ]
+    },
+    {
+      "id": "tests/test_fidelity.py::FidelityTest::test_journal_terms_and_scoped_original_quote",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fidelity.py::FidelityTest::test_crop_preserves_source_sampling_and_rotation",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fidelity.py::FidelityTest::test_crop_rejects_oversized_allocation_and_invalid_density",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fonts.py::FontDeliveryTest::test_incomplete_existing_delivery_is_not_success",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fonts.py::FontDeliveryTest::test_cache_delivery_includes_license_provenance_and_survives_failure",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fonts.py::FontDeliveryTest::test_nonobject_provenance_recovers_valid_offline_bundle",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fonts.py::FontDeliveryTest::test_identity_refuses_renamed_weight_fd_wrong_version_and_bad_font",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fonts.py::FontDeliveryTest::test_partial_cache_offline_and_bad_archives_do_not_publish",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fonts.py::FontDeliveryTest::test_installed_pair_requires_both_real_weights_and_license",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_fonts.py::FontDeliveryTest::test_legacy_cache_is_validated_before_versioned_migration",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_rcdata_comment_text_never_grants_a_waiver",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_rcdata_markup_is_text_not_an_asset_or_active_element",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_rcdata_character_references_decode_once_with_correct_offsets",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_rcdata_end_tag_attributes_do_not_hide_following_text",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_raw_text_comments_do_not_grant_a_waiver",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_templates_fail_explicitly_before_claiming_engine_independent_coverage",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_plaintext_is_explicitly_unsupported_but_rcdata_examples_are_safe",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_nonvoid_html_slash_does_not_end_an_isolate",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_void_html_slash_does_not_capture_following_prose",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_foreign_self_closing_elements_remain_self_closing",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_unterminated_raw_context_fails_instead_of_certifying_hidden_tail",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_real_comments_still_allow_only_the_requested_check",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_comment_terminator_width_does_not_protect_following_prose",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_whitespace_comment_end_does_not_expose_a_renderer_hidden_tail",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_live_active_content_remains_denied",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_character_reference_text_cannot_become_a_node",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_rcdata_isolate_preserves_literal_tags_instead_of_stripping_them",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_literal_transform_text_is_not_executable_mirroring_css",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_raw_end_tag_attributes_remain_entirely_nonprose",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_unquoted_end_attribute_quotes_do_not_capture_following_markup",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_foreign_breakout_preserves_html_isolate_and_neighbor_checks",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_context_integrity.py::HtmlContextIntegrityTest::test_public_lint_keeps_a_real_error_after_a_fake_waiver",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_prose_projection.py::HTMLProseProjectionTest::test_head_before_ltr_isolate_keeps_half_translation_check",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_prose_projection.py::HTMLProseProjectionTest::test_inline_formatting_does_not_hide_visible_phrase",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_render_context.py::HtmlRenderContextTest::test_html5_oracle_keeps_markup_inside_textarea_as_text",
+      "assertion_sites": 6,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'native HTML context integration tier')"
+      ]
+    },
+    {
+      "id": "tests/test_html_render_context.py::HtmlRenderContextTest::test_bounded_tokenizer_vectors_match_independent_html5_text_and_namespaces",
+      "assertion_sites": 5,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'native HTML context integration tier')"
+      ]
+    },
+    {
+      "id": "tests/test_html_render_context.py::HtmlRenderContextTest::test_comment_terminators_match_html5_including_unclosed_tail",
+      "assertion_sites": 3,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'native HTML context integration tier')"
+      ]
+    },
+    {
+      "id": "tests/test_html_render_context.py::HtmlRenderContextTest::test_two_page_render_matches_explicit_equivalent_markup",
+      "assertion_sites": 7,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'native HTML context integration tier')"
+      ]
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_paragraph_boundaries_end_language_hidden_and_isolate_scope",
+      "assertion_sites": 0,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_list_and_definition_item_boundaries_are_scoped",
+      "assertion_sites": 0,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_nested_lists_preserve_outer_scope_but_end_inner_item_scope",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_table_cells_rows_and_groups_do_not_leak_language",
+      "assertion_sites": 0,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_optional_head_end_does_not_protect_body",
+      "assertion_sites": 0,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_options_do_not_inherit_previous_option_language",
+      "assertion_sites": 0,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_heading_siblings_do_not_inherit_previous_heading_language",
+      "assertion_sites": 0,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_misnested_formatting_requires_review_instead_of_silent_reconstruction",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_table_foster_parenting_and_ignored_select_children_fail_closed",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_formatting_end_across_special_node_still_refuses_adoption",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_special_start_and_end_barriers_preserve_inherited_state",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_explicit_well_nested_equivalent_has_same_live_scopes",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_render_policy_uses_same_structure_gate_and_preserves_input",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_caption_colgroup_and_select_separator_boundaries",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_body_end_does_not_drop_scopes_for_browser_reprocessed_tail",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_out_of_scope_item_end_does_not_pop_an_outer_list",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_mismatched_heading_and_duplicate_root_are_explicit_errors",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_table_parts_outside_a_table_do_not_create_fake_exemptions",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_bounded_sibling_matrix_matches_or_explicitly_refuses_html5_repair",
+      "assertion_sites": 2,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'HTML5 oracle tier')"
+      ]
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_special_barriers_match_independent_html5_tree",
+      "assertion_sites": 3,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'HTML5 oracle tier')"
+      ]
+    },
+    {
+      "id": "tests/test_html_scope_boundaries.py::HtmlScopeBoundaryTest::test_implicit_scope_vectors_match_independent_html5_tree",
+      "assertion_sites": 1,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'HTML5 oracle tier')"
+      ]
+    },
+    {
+      "id": "tests/test_html_source.py::LiveHTMLTest::test_live_root_entities_and_comment_only_waivers",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_collision_preserves_entire_batch",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_depth_frames_and_invalid_profile_refuse_without_mutation",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_rgb16_png_is_refused_before_lazy_metadata_decodes_pixels",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_transparency_forms_and_check_only",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_unsupported_color_and_orientation_metadata_preserve_original",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_metadata_orientation_and_source_preservation",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_repeated_arguments_existing_backup_and_unavailable_backend",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_image_integrity.py::ImageIntegrityTest::test_save_and_publication_failure_roll_back_full_batch",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_new_install_and_force_replacement_preserve_exact_backup",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_foreign_nonempty_directory_is_not_a_force_installation",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_wrong_skill_name_does_not_authorize_replacement",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_git_metadata_and_case_variant_are_never_install_targets",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_separate_git_administration_directory_remains_intact",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_parent_symlink_never_redirects_installation",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_destination_symlink_is_preserved",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_source_root_link_is_not_dereferenced",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_backup_directory_link_does_not_move_the_old_install_outside",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_case_colliding_destination_is_refused",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_source_overlap_is_refused_without_changes",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_late_existing_target_preflight_does_not_install_first",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_late_invalid_target_preflight_does_not_install_first",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_payload_enumerated_once_for_the_entire_batch",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_second_staging_copy_failure_leaves_both_old_installs",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_second_activation_failure_restores_both_old_installs",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_failed_batch_removes_a_new_first_install",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_copy_corruption_is_detected_before_publishing",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_changed_source_is_not_mixed_into_an_installation",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_concurrent_old_install_change_is_not_overwritten",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_failed_rollback_retains_a_located_recovery_record_and_original",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_successful_batch_keeps_backups_outside_discovery",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_empty_directory_requires_force_and_is_preserved_as_a_backup",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_existing_install_with_nested_link_is_not_followed",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_existing_lock_is_not_removed_or_ignored",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_busy_second_lock_releases_only_owned_first_lock",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_replaced_lock_is_preserved_and_cleanup_is_not_success",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_late_backup_root_swap_is_refused_without_writing_through_link",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_target_created_during_staging_is_not_overwritten",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_actual_rename_then_exception_is_reconciled_by_directory_identity",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_new_destination_after_failure_is_not_deleted_to_force_rollback",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_journal_write_failure_preserves_old_installation",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_missing_or_misidentified_source_never_creates_target",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_payload_limit_refuses_before_any_target_mutation",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_nested_target_plan_is_rejected_without_changes",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_duplicate_case_target_plan_is_rejected_without_changes",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_shared_agent_path_is_deduplicated_before_publication",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_success_messages_are_not_printed_for_a_failed_batch",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_valid_bom_source_identity_is_supported",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_public_cli_refuses_a_foreign_target_without_mutation",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_retained_backup_is_not_reinterpreted_as_an_install_target",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_keyboard_interrupt_during_second_activation_restores_batch",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_source_file_link_and_nonregular_old_entry_are_rejected",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_install_transaction.py::InstallTransactionTest::test_windows_junction_in_destination_parent_is_rejected",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_lint_context.py::LintContextTest::test_job_sidecars_are_independent_of_argument_order",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_lint_context.py::LintContextTest::test_journal_names_and_foreign_original_identity_are_preserved",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_listing_boundaries.py::ListingBoundaryTest::test_real_listing_openers_remain_available_to_direction_checks",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_listing_boundaries.py::ListingBoundaryTest::test_fake_listing_openers_remain_inert",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_listing_boundaries.py::ListingBoundaryTest::test_ignored_direction_and_bookmark_context_cannot_hide_live_findings",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_listing_boundaries.py::ListingBoundaryTest::test_listing_and_figure_require_live_containing_direction_scopes",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_listing_boundaries.py::ListingBoundaryTest::test_real_listing_inside_preamble_remains_inert",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_native_build.py::NativeBuildTest::test_presentation_forms_preserve_logical_order",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_native_build.py::NativeBuildTest::test_unicode_font_flag_is_not_embedding",
+      "assertion_sites": 3,
+      "legacy_conditions": [
+        "unittest.skipUnless(sys.platform == 'win32', 'PowerShell font verification')"
+      ]
+    },
+    {
+      "id": "tests/test_native_build.py::NativeBuildTest::test_windows_shells_refuse_missing_container_without_changing_delivery",
+      "assertion_sites": 5,
+      "legacy_conditions": [
+        "unittest.skipUnless(sys.platform == 'win32', 'native Windows PowerShell compatibility')"
+      ]
+    },
+    {
+      "id": "tests/test_native_build.py::NativeBuildTest::test_extraction_uses_utf8",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_native_build.py::NativeBuildTest::test_windows_build_preserves_destination_on_failure",
+      "assertion_sites": 15,
+      "legacy_conditions": [
+        "unittest.skipUnless(sys.platform == 'win32', 'native Windows build; Linux covers POSIX')"
+      ]
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_filled_stroked_and_shaded_layers_are_rejected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_nested_form_painting_is_rejected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_visible_text_and_images_still_fail",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_empty_layer_is_not_claimed_as_success",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_valid_invisible_text_keeps_every_pixel_and_source_byte",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_late_bad_layer_rolls_back_whole_document",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_rotation_and_nonzero_crop_keep_geometry_and_pixels",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_dimension_mismatch_remains_blocking",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_backend_failure_and_deadline_keep_previous_output",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_ocr_painting_integrity.py::OcrPaintingIntegrityTest::test_original_alias_refuses_before_backend_invocation",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package.py::PackageTest::test_image_preparation_and_pdf_pages",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package.py::PackageTest::test_metadata_and_references",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package.py::PackageTest::test_install_launchers_replacement_and_logs",
+      "assertion_sites": 15,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package.py::PackageTest::test_archive_is_self_contained",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_ordinary_git_config_index_head_and_new_objects_are_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_separate_git_directory_and_pointer_file_are_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_linked_worktree_shared_and_private_metadata_are_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_legitimate_archive_and_exported_source_output_remain_available",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_metadata_resolution_failure_is_not_an_empty_allowlist",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_git_selected_external_index_and_object_store_are_protected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_explicit_git_dir_without_gitfile_is_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_git_metadata.py::PackageGitMetadataTest::test_invalid_explicit_git_dir_is_not_treated_as_an_export",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_index_config_head_and_refs_remain_byte_exact",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_new_files_inside_git_objects_or_logs_are_refused",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_linked_worktree_gitfile_and_private_admin_directory_are_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_worktree_shared_common_directory_is_protected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_external_separate_git_directory_is_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_environment_selected_index_is_not_an_output",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_hardlinked_critical_metadata_is_not_a_package_destination",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_valid_output_does_not_require_mutating_repository_metadata",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_exported_source_with_no_git_metadata_remains_packagable",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_dotgithub_and_similarly_named_outputs_are_not_metadata",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_metadata_discovery_failure_preserves_previous_delivery",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_vendored_source_uses_the_parent_repository_admin_directory",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_redirected_object_database_is_protected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_configured_external_hooks_directory_is_protected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_explicit_repository_environment_without_a_dotgit_marker_is_respected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_ambiguous_admin_paths_fail_without_publishing",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_index_relocation_during_staging_is_rechecked",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_external_index_shared_storage_and_hardlink_remain_unchanged",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_package_metadata_integrity.py::PackageMetadataIntegrityTest::test_reserved_case_variant_git_component_is_refused",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_page_integrity.py::PageIntegrityTest::test_same_path_keeps_complete_source",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_page_integrity.py::PageIntegrityTest::test_range_validation_aliases_and_rollback",
+      "assertion_sites": 11,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_page_integrity.py::PageIntegrityTest::test_encrypted_and_malformed_inputs_leave_output_unchanged",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_checkbox_booleans_select_all_supported_name_encodings",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_inventory_advertises_decoded_names_that_are_valid_fill_inputs",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_false_and_exact_off_keep_checkbox_unselected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_serialized_escape_spelling_is_not_a_second_alias",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_radio_names_are_decoded_and_only_requested_option_is_selected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_mismatched_stored_value_cannot_pass_by_matching_appearance",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_mismatched_appearance_type_or_value_remains_rejected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_duplicate_on_states_across_radio_widgets_are_rejected_before_writes",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_unrelated_prose_and_unselected_render_stay_intact",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_shared_parent_radio_value_is_verified_after_reopening",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_appearance_derived_radio_value_cannot_hide_wrong_parent_value",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_appearance_dictionary_refuses_nonstreams_and_ambiguous_states",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_native_serialized_names_do_not_depend_on_widget_parser",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_public_inspect_and_fill_accept_the_same_decoded_labels",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_late_saved_value_verification_failure_preserves_previous_delivery",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_state_reader_limits_and_non_utf8_names_fail_without_mutation",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_button_names.py::PdfButtonNamesTest::test_stored_value_parent_cycles_fail_instead_of_looping",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_fill_zero_false_preserves_source_and_geometry",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_fill_preflight_and_existing_output_survive_failures",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_radio_group_and_single_choice_values",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_text_table_image_provenance_and_original_image_stream",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_table_decimals_and_grid_preserve_rotation_and_caller_settings",
+      "assertion_sites": 11,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_table_failure_restores_settings_and_preserves_previous_output",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_merge_geometry_and_late_input_failure",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_ocr_preflight_and_overlay_preserve_visible_page",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_encryption_and_signature_limits",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_operations.py::PdfOperationsTest::test_real_tesseract_searchable_derivative",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_outline_preservation.py::PdfOutlinePreservationTest::test_destinations_styles_and_uri_actions_survive",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_outline_preservation.py::PdfOutlinePreservationTest::test_rotations_crop_offsets_and_page_pixels_are_unchanged",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_outline_preservation.py::PdfOutlinePreservationTest::test_standard_fit_destinations_and_null_coordinates_are_preserved",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_outline_preservation.py::PdfOutlinePreservationTest::test_repeated_source_remaps_each_copy_and_preserves_inputs",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_outline_preservation.py::PdfOutlinePreservationTest::test_no_outline_is_not_fabricated",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_outline_preservation.py::PdfOutlinePreservationTest::test_advanced_or_chained_actions_refuse_before_publication",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_outline_preservation.py::PdfOutlinePreservationTest::test_failed_staged_outline_verification_preserves_destination",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_page_links.py::PdfPageLinksTest::test_named_link_boundary_is_explicit",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_page_links.py::PdfPageLinksTest::test_links_to_omitted_pages_fail_before_output",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_page_links.py::PdfPageLinksTest::test_supported_navigation_is_verified_before_publication",
+      "assertion_sites": 20,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_page_links.py::PdfPageLinksTest::test_raw_unresolved_annotations_are_not_silently_omitted",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_page_links.py::PdfPageLinksTest::test_remote_raw_navigation_is_refused_before_output",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_pdf_page_links.py::PdfPageLinksTest::test_chained_page_actions_fail_before_output",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication.py::PublicationTest::test_late_replace_failure_restores_previous_outputs",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication.py::PublicationTest::test_casefold_collision_is_rejected_before_mutation",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication.py::PublicationTest::test_publication_inherits_destination_access_instead_of_private_stage",
+      "assertion_sites": 5,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.name == 'nt', 'Windows ACL inheritance')"
+      ]
+    },
+    {
+      "id": "tests/test_publication.py::PublicationTest::test_source_alias_and_directory_are_rejected",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_publication_rejects_growth_and_revisions_during_a_counted_read",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_unchanged_publication_accepts_copied_file_timestamps",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_opened_descriptor_substitution_is_refused_before_any_replacement",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_replaced_path_after_descriptor_close_is_refused",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_inherited_preparation_refuses_substituted_foreign_temporary_files",
+      "assertion_sites": 9,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.name == 'nt', 'native Windows inherited file preparation')"
+      ]
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_exact_explicit_limit_and_copied_backup_inode_remain_supported",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_explicit_limit_refuses_without_replacing_previous_destination",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_publication_fingerprints.py::PublicationFingerprintTest::test_missing_previous_destination_and_empty_candidate_remain_supported",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_interrupted_rollback_retains_previous_bytes",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_install_second_cancellation_retains_journal_backups_stages_and_locks",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_completed_install_restoration_error_reconciles_the_previous_edition",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_second_install_restore_cancellation_retains_the_complete_target_plan",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_completed_file_restoration_error_preserves_previous_bytes_and_cleans",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_later_restore_failure_keeps_whole_batch_and_foreign_destination",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_unchanged_publication_cleans_only_owned_paths",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_absent_destination_completed_rollback_unlink_is_reconciled",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_recovery_interrupts.py::RecoveryInterruptTest::test_publication_cleanup_cancellation_retains_journal_and_owned_lock",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_resource_boundary.py::ResourceBoundaryTest::test_fetch_allows_job_assets_and_denies_outside_network_and_attachments",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_runtime.py::ProcessOwnershipTest::test_idle_deadline_is_distinct_from_wall_deadline",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_runtime.py::ProcessOwnershipTest::test_environment_and_diagnostic_bytes_preserve_exit_code",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_runtime.py::ProcessOwnershipTest::test_debug_file_logging_is_explicit_utf8",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_runtime.py::ProcessOwnershipTest::test_timeout_terminates_descendant_after_launcher_exits",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_sandbox_enforcement.py::SandboxEnforcementTest::test_production_launch_enforces_isolation_and_cleans_owned_container",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_scientific_render.py::ScientificRenderTest::test_multipart_geometry_images_math_and_verified_delivery",
+      "assertion_sites": 10,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_RENDER') == '1', 'scientific CI tier')"
+      ]
+    },
+    {
+      "id": "tests/test_scientific_render.py::ScientificRenderTest::test_container_host_sentinel_and_shortened_internal_deadline",
+      "assertion_sites": 3,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_RENDER') == '1', 'scientific CI tier')"
+      ]
+    },
+    {
+      "id": "tests/test_scientific_render.py::ScientificRenderTest::test_surviving_owner_reaps_container_after_controller_is_killed",
+      "assertion_sites": 5,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_RENDER') == '1', 'scientific CI tier')"
+      ]
+    },
+    {
+      "id": "tests/test_scientific_render.py::ScientificRenderTest::test_weasyprint_resource_denial_preserves_previous_output",
+      "assertion_sites": 5,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_RENDER') == '1', 'scientific CI tier')"
+      ]
+    },
+    {
+      "id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_repeated_queries_do_not_rescan_source_prefixes",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_segment_start_keys_are_not_rebuilt_per_query",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_every_offset_matches_old_mapping_for_nested_repeated_mixed_sources",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_empty_closure_and_newline_boundaries",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_same_path_distinct_original_snapshots_have_distinct_indexes",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_repeated_protection_and_waiver_queries_use_snapshot_indexes",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_source_location_index.py::SourceLocationIndexTest::test_newline_index_has_bounded_compact_storage",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_brief.py::TermBriefTest::test_multilingual_source_locations_and_ambiguity",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_brief.py::TermBriefTest::test_missing_malformed_or_binary_inputs_fail_without_mutation",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_source_and_english_are_data_after_the_header",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_raw_record_boundaries_are_validated_before_decision_selection",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_reordered_columns_resolve_by_header_not_position",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_bom_comments_blank_lines_and_crlf_share_the_same_parser",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_short_and_long_rows_fail_even_for_persian_output",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_missing_and_duplicate_headers_are_not_accepted",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_lint_requires_its_documented_columns_but_brief_keeps_minimal_schema",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_only_approved_rows_drive_bans_when_status_is_present",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_quoted_cells_and_multiline_notes_keep_physical_row_locations",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_header_only_is_valid_and_does_not_invent_bans",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_deprecated_bans_and_missing_counterform_remain_enforced",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_late_invalid_row_returns_no_partial_bans",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_oversized_and_malformed_csv_fail_before_any_bans",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_house_pairs_allow_english_as_a_real_data_term",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_duplicate_house_header_is_not_a_term_or_silent_reset",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_term_ledger_contract.py::TermLedgerContractTest::test_cli_rejects_malformed_ledger_without_changing_inputs",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_command_boundaries.py::TexCommandBoundaryTest::test_odd_backslash_runs_expand_and_preserve_linebreaks",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_command_boundaries.py::TexCommandBoundaryTest::test_even_backslash_runs_are_not_includes",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_command_boundaries.py::TexCommandBoundaryTest::test_comments_and_verbatim_do_not_expand",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_command_boundaries.py::TexCommandBoundaryTest::test_missing_cyclic_dynamic_and_includeonly_still_fail",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_command_boundaries.py::TexCommandBoundaryTest::test_nested_and_unbraced_include_location_mapping",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_command_boundaries.py::TexCommandBoundaryTest::test_crlf_and_mixed_newlines_are_preserved_with_locations",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_command_boundaries.py::TexCommandBoundaryTest::test_real_tex_linebreak_then_input_agrees_with_closure",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_missing_tex_font_file_is_classified_without_exposing_log",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_remote_endpoint_is_rejected_before_document_access",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_surviving_owner_sweeps_receipts_after_child_timeout",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_endpoint_accepts_local_only_and_probe_never_pulls",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_staging_selects_closure_graphics_fonts_and_refuses_outside_assets",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_mount_csv_and_resource_flags_keep_cid_host_private",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_cleanup_removes_only_verified_run_and_detects_lost_label",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_failed_renderer_valid_pdf_timeout_and_cleanup_failure_never_publish",
+      "assertion_sites": 12,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_container.py::TexContainerTest::test_success_reopens_pdf_and_cleans_staging",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_input_snapshot.py::TexInputSnapshotTest::test_each_consumed_input_changed_during_render_preserves_the_previous_delivery",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_input_snapshot.py::TexInputSnapshotTest::test_removed_input_after_staging_is_not_certified_as_the_current_source",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_input_snapshot.py::TexInputSnapshotTest::test_copy_time_source_change_refuses_before_starting_the_backend",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_input_snapshot.py::TexInputSnapshotTest::test_unchanged_source_and_all_copied_resources_publish_without_mutation",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_input_snapshot.py::TexInputSnapshotTest::test_guard_binds_sidecars_not_passed_to_the_tex_engine",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_input_snapshot.py::TexInputSnapshotTest::test_guard_admits_copied_font_and_seals_exact_pdf",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_inline_literal_is_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_numeric_punctuation_and_starred_letter_delimiters",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_malformed_literals_fail_without_masking_following_lines",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_macro_with_verb_prefix_is_not_literal",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_starred_and_unstarred_literal_environments_are_protected",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_percent_inside_literal_does_not_hide_following_prose",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_literal_waiver_cannot_suppress_same_or_following_line",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_comments_after_paired_backslashes_remain_comments",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_escaped_percent_is_not_a_comment",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_real_waiver_after_linebreak_is_recognized",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_literal_images_are_not_asset_dependencies",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_live_graphics_after_linebreak_are_not_lost",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_escaped_graphics_commands_are_not_dependencies",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_fake_isolates_and_math_inside_literal_do_not_affect_prose",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_fake_document_begin_does_not_end_preamble",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_comment_brace_does_not_close_live_argument",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_nested_include_locations_and_comment_eof_boundary",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_region_offsets_and_newline_styles",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_plain_prose_respects_backslash_command_parity",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_complete_document_tail_is_not_prose_or_live_assets",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_post_document_isolates_cannot_add_lint_findings",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_post_document_missing_include_is_not_a_dependency",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_real_tex_ignores_post_document_tail",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_tex_lexical_regions.py::TexLexicalRegionsTest::test_real_tex_accepts_literal_graphics_and_keeps_parent_after_eof_comment",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_hidden_attribute_text_is_not_evidence",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_ignored_end_tags_cannot_expose_hidden_source_evidence",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_comment_tail_with_angle_bracket_is_not_evidence",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_title_head_script_style_and_hidden_subtrees_are_excluded",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_textarea_markup_is_preserved_as_displayed_text",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_raw_text_entities_and_escaped_literal_tag_text_keep_semantics",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_inline_boundaries_preserve_words_but_block_elements_separate_them",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_invalid_raw_context_is_not_certified_by_another_parser",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_window_results_match_legacy_algorithm_on_bounded_inputs",
+      "assertion_sites": 1,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_windows_do_not_copy_whole_remaining_source_for_every_probe",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_invalid_threshold_and_excessive_work_are_explicit_errors",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_cli_cannot_pass_using_attribute_only_evidence",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_text_order_sources.py::TextOrderSourceTest::test_real_two_page_pdf_matches_source_tokens",
+      "assertion_sites": 3,
+      "legacy_conditions": [
+        "unittest.skipUnless(os.environ.get('SCIENTIFIC_REQUIRE_HTML_CONTEXT') == '1', 'native source-text render tier')"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_controller_bootstrap_markers_preserve_fixed_validation_order",
+      "assertion_sites": 18,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_keeps_capture_once_after_reader_cleanup",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_primary_and_recovery_failures_remain_ordered_in_sanitized_report",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_outer_recovery_requires_reaping_and_handle_cleanup",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_success_keeps_capture_once",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_and_cleanup_failure_preserve_both_and_capture",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_and_invalid_utf8_preserve_both_failures",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_failure_categories_are_bounded_redacted_and_nonzero",
+      "assertion_sites": 11,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_fixed_token_capture_keeps_arguments_current_directory_and_cap",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_capture_failure_keeps_original_and_cleanup_but_zeroes_private_stderr",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_closed_sleep_and_pid_roles_retain_exact_standard_allowlist",
+      "assertion_sites": 10,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_partial_duplicates_and_all_close_failures_remain_fatal",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_extra_pid_denial_catch_contains_only_real_popen",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_exact_control_request_and_bound_cleanup",
+      "assertion_sites": 9,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_acquisition_and_qualification_failures_never_reach_controls",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_creation_and_binding_fail_at_distinct_boundaries",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_clean_cleanup_preserves_original_exception_identity",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_original_and_independent_cleanup_failures_are_retained",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_cleanup_refuses_foreign_identity_and_keeps_all_close_attempts",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_native_root_shape_is_exact_and_does_not_use_dos_translation",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_native_error_is_immediate_and_success_never_reads_stale_error",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_private_parent_is_bound_and_removed_before_reviewed_admission",
+      "assertion_sites": 10,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_authority_consumer_retains_original_actual_controls",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_existing_token_predicates_keep_first_failure_and_occurrence",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_privileges_require_full_canonical_identity_without_a_resolver",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_restrictions_decode_only_the_successful_returned_span",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_actual_preamble_stops_at_each_existing_boundary",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_operation_close_and_report_failures_remain_fatal",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_closed_phases_descendant_retention_and_transport_limits",
+      "assertion_sites": 16,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_controller_and_actual_call_sites_share_closed_phase_inventory",
+      "assertion_sites": 11,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::OrdinaryTokenTest::test_private_policy_uses_exact_token_user_without_changing_negative_inputs",
+      "assertion_sites": 21,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::OrdinaryTokenTest::test_private_creator_keeps_exact_call_and_immediate_error",
+      "assertion_sites": 10,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_python_token.py::OrdinaryTokenTest::test_actual_ordinary_privilege_inventory_without_name_lookup",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_standard_handles_and_observed_exit_including_259",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_primary_windows_output_keeps_exact_two_record_wire",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_extra_terminators_are_not_trimmed_into_host_success",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_universal_newlines_follow_raw_caps_and_strict_ascii",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_non_ascii_failure_receipt_retains_private_decode_fault",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_each_acquisition_failure_closes_only_obtained_owners",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_caps_allow_live_empty_peek_but_refuse_overflow_and_missing_eof",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_invalid_read_and_cleanup_faults_are_fatal_and_exhaustive",
+      "assertion_sites": 14,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_cleanup_overrun_is_fatal_after_every_owner_is_attempted",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_regular_child_failure_survives_later_transport_and_cleanup_faults",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_natural_exit_survives_decode_eof_and_close_failures",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_timeout_retains_bounded_bootstrap_before_exhaustive_cleanup",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_native_adapter_owns_outputs_before_failures",
+      "assertion_sites": 18,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_three_standard_duplicates_preserve_type_and_borrowed_ownership",
+      "assertion_sites": 5,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_fixed_ordinary_cap_does_not_change_registry_defaults",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_spawn_has_no_implicit_pipe_or_nul_route",
+      "assertion_sites": 13,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_reusable_kernel_helpers_do_not_initialize_network",
+      "assertion_sites": 10,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_scratch_entry_failure_preserves_original_and_bounds_diagnostics",
+      "assertion_sites": 11,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_positive_write_preserves_io_and_localizes_failure",
+      "assertion_sites": 13,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_preflight_failure_frame_is_fixed_source_and_private",
+      "assertion_sites": 14,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_original_receipt_precedes_fixed_loader_effects",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_fixed_file_binding_and_closed_results_without_native_loading",
+      "assertion_sites": 6,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_first_receipt_survives_unqualified_tail_and_child_timeout",
+      "assertion_sites": 19,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_python_diagnostics_precede_independent_debugger_controls",
+      "assertion_sites": 2,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_scratch_access_observer_is_read_only_and_not_admission",
+      "assertion_sites": 29,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_supported_policy_owns_admission_and_refuses_nested_trial",
+      "assertion_sites": 13,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_standard_trace_has_one_owned_lifecycle_and_outer_recovery",
+      "assertion_sites": 25,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_successful_consumer_requires_independent_trace_control",
+      "assertion_sites": 15,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_authority_keeps_python_diagnostic_separate",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_fixed_dll_preparation_stays_outside_trace_and_admission",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_token_stage_allowlists_match_controller",
+      "assertion_sites": 4,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_descendant_stages_preserve_ownership_and_native_error_boundaries",
+      "assertion_sites": 38,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_restrictions_query_uses_existing_call_and_failure_only_error",
+      "assertion_sites": 11,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_privileges_use_full_luid_without_worker_name_resolution",
+      "assertion_sites": 15,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_csr_host_launch_preserves_aggregate_containment_prerequisites",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_preparation_failures_use_one_ordered_controller_boundary",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_bootstrap_import_failures_are_private_and_nonzero",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_bootstrap_reported_import_name_is_closed_metadata",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_fixed_controls_without_native_execution",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_failure_projection_preserves_exits_order_and_privacy",
+      "assertion_sites": 23,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RuntimePreparationTest::test_streaming_validation_copy_progress_and_refusal",
+      "assertion_sites": 3,
+      "legacy_conditions": [
+        "unittest.skipUnless(sys.platform == 'win32', 'Windows PowerShell preparation functions')"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchAttachmentTest::test_owned_lifetime_and_host_only_descriptor_model",
+      "assertion_sites": 14,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_suspended_lifetime_and_managed_discovery",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_receipt_precedes_possible_mutation_and_recovery_precedes_detach",
+      "assertion_sites": 24,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_phase_handles_close_and_frames_follow_restore",
+      "assertion_sites": 11,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_supported_role_qualification_and_cleanup_order",
+      "assertion_sites": 21,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchFileAccessTest::test_fixed_create_only_request_and_owned_cleanup",
+      "assertion_sites": 18,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumeAccessTest::test_fixed_handle_only_differential_and_discovery",
+      "assertion_sites": 30,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_only_three_literal_job_references_change_in_memory",
+      "assertion_sites": 8,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_unsupported_references_never_disappear_from_validation",
+      "assertion_sites": 3,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_windows_browser_selection_uses_paired_managed_binary",
+      "assertion_sites": 10,
+      "legacy_conditions": []
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input",
+      "assertion_sites": 2,
+      "legacy_conditions": [
+        "unittest.skipUnless(__import__('shutil').which('actionlint'), 'actual actionlint is required in the quality CI job')"
+      ]
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_original_filename_and_failed_linter_exit_are_preserved",
+      "assertion_sites": 7,
+      "legacy_conditions": []
+    }
+  ]
+}

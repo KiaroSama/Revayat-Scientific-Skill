@@ -10,12 +10,11 @@ slash closes supported foreign SVG/MathML elements and HTML void elements, but
 not ordinary HTML `span`, `div` or `textarea`. Foreign breakout tags return to
 HTML context; integration points retain their distinct behavior. Quotes in an
 unquoted end-tag attribute do not turn the following text into a quoted value.
-The parser uses explicit raw/RCDATA handling across older and newer patch versions;
-native RCDATA support also exists in later Python 3.10 patches.
+The native Rust tokenizer handles raw/RCDATA script/style/title/textarea contexts through the shared HTML5 tree model.
 
 `template` and obsolete `plaintext` are explicitly unsupported in HTML input.
 Make a separately reviewed static document instead. Template contents can be
-hidden by the default WeasyPrint stylesheet yet become visible through author
+hidden by a renderer default stylesheet yet become visible through author
 CSS; treating them as universally inert would certify the wrong source. This
 restriction includes declarative shadow-root templates. Do not silently discard
 these elements or insert their content into the document. Unterminated raw/RCDATA
@@ -26,7 +25,7 @@ checks still apply; parsing is not a sandbox.
 Only actual `<!-- ... -->` comments may grant the documented narrowly scoped
 lint exception. Comment-like text inside a literal context cannot grant it.
 Standard `-->` and `--!>` endings and abrupt empty-comment endings are recognized
-consistently across supported Python patches. Whitespace in `-- >` is not a
+consistently through the shared HTML5 tokenizer. Whitespace in `-- >` is not a
 terminator: the remaining input stays comment content until a genuine ending or
 EOF, rather than exposing text the renderer hides.
 
@@ -76,4 +75,4 @@ explicitly authorized separate workflow; the editor never does it implicitly.
 - [Microsoft OPC signatures](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/opc/digital-signatures-overview)
   and [ECMA-376](https://ecma-international.org/publications-and-standards/standards/ecma-376/):
   signature origin names are configurable and signature metadata is separate from
-  authentication. No third-party code, credentials, documents or fonts are bundled.
+  authentication. These research references do not import their runtimes or private inputs. The native binary includes licensed Rust dependencies and the static Vazirmatn font pair; see NOTICE.md.

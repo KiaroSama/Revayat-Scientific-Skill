@@ -1,12 +1,135 @@
 {
   "schema": 1,
   "scenarios": [
-    {"id": "linux-controls", "platform": "linux", "checks": ["readonly-target-tools-root", "scratch-only-writes", "empty-allowlisted-environment", "network-namespace", "nonroot-capabilities", "cpu-memory-pid-file-disk-wall", "owned-cleanup"], "required": true},
-    {"id": "windows-controls", "platform": "windows-python311", "checks": ["lpac-no-capabilities", "sealed-real-profile-filesystem-registry", "owned-profile-cleanup", "readonly-target-tools", "scratch-only-acls", "empty-environment", "network-denial", "job-cpu-memory-pid-wall", "ntfs-enforced-quota-logical-size", "protected-resource-authority-denial", "effective-token-privilege-owner-closure", "protected-creator-owner-quota-bound", "native-eof-positive-negative", "physical-volume-capacity", "owned-cleanup"], "required": true},
-    {"id": "docx-case-relationships", "fingerprint": "docx_package:read_package:relationship-case-admission-disagreement", "checks": ["case-directory-suffix", "independent-opc-consumer", "restricted-edit-refusal", "ordinary-edit", "external-data"], "required": true},
-    {"id": "static-output-links", "fingerprint": "publication.py:_linked:windows-junction-version-gap", "checks": ["native-python311-junction", "public-adapter-lexical-path", "outside-sentinel-preserved", "ordinary-publication", "protected-alias", "portable-reparse-metadata"], "required": true},
-    {"id": "html-work-admission", "fingerprint": "html_source.py:ParsedHTML/uncapped-stack-scans", "checks": ["depth-boundary", "element-count-boundary", "parser", "source", "lint", "guard", "assets", "text-order", "resource-policy", "render-entry-admission-ordering", "ordinary-nesting"], "required": true},
-    {"id": "tex-output-budget", "fingerprint": "tex-container.py:run_arguments/output-bind-aggregate-quota", "checks": ["effective-production-mount", "per-file-versus-aggregate", "finite-multi-file-quota", "harmless-tex-openout-policy", "normal-output"], "required": true}
+    {
+      "id": "linux-controls",
+      "platform": "linux",
+      "checks": [
+        "readonly-target-tools-root",
+        "scratch-only-writes",
+        "empty-allowlisted-environment",
+        "network-namespace",
+        "nonroot-capabilities",
+        "cpu-memory-pid-file-disk-wall",
+        "owned-cleanup"
+      ],
+      "required": true
+    },
+    {
+      "id": "windows-controls",
+      "platform": "windows-native-rust",
+      "checks": ["lpac-no-capabilities", "sealed-real-profile-filesystem-registry", "owned-profile-cleanup", "readonly-target-tools", "scratch-only-acls", "empty-environment", "network-denial", "job-cpu-memory-pid-wall", "ntfs-enforced-quota-logical-size", "protected-resource-authority-denial", "effective-token-privilege-owner-closure", "protected-creator-owner-quota-bound", "native-eof-positive-negative", "physical-volume-capacity", "owned-cleanup"],
+      "authored_rust_checks": [
+        "restricted-lua-primary-admin-deny-only",
+        "actual-primary-descendant-lpac-zero-capabilities",
+        "full-luid-privilege-inventory",
+        "exact-three-inherited-standard-handles",
+        "fresh-owned-hkcu-root-read-only",
+        "protected-private-registry-child-denial",
+        "private-foreign-file-read-write-denial",
+        "owned-create-only-scratch-read-write",
+        "protected-concrete-package-scratch-acl",
+        "readonly-medium-integrity-prepared-image",
+        "minimal-allowlisted-environment",
+        "host-positive-ipv4-ipv6-tcp-udp-and-exact-lpac-access-denial",
+        "queried-job-cpu-rate-memory-process-limits-and-wall-deadline",
+        "bounded-strict-ascii-output",
+        "whole-job-reaping-before-owned-fixture-cleanup"
+      ],
+      "required": true,
+      "rust_gate": "windows_native::actual_lpac_primary_and_descendant_attest_registry_and_token_controls",
+      "scope": "Fixed trusted native verifier and owned fixture; normal renderer process ownership is not a complete LPAC sandbox.",
+      "unverified_required_checks": ["complete-original-managed-stage-and-helper-execution", "real-profile-intent-crash-recovery", "ntfs-enforced-quota-logical-size", "protected-creator-owner-quota-bound", "physical-volume-capacity", "machine-sidebyside-policy-lease-and-causal-comparison"],
+      "acceptance": "The authored owned-HKCU Rust gate is partial evidence only. Every original scenario check remains required; unavailable or unverified checks prevent complete parity. No assurance is retired because its old implementation used another language."
+    },
+    {
+      "id": "docx-case-relationships",
+      "fingerprint": "docx.rs:relationship-parts:casefolded-restricted-edit-admission",
+      "checks": [
+        "case-directory-suffix",
+        "independent-opc-consumer",
+        "restricted-edit-refusal",
+        "ordinary-edit",
+        "external-data"
+      ],
+      "required": true,
+      "legacy_fingerprint": "docx_package:read_package:relationship-case-admission-disagreement",
+      "standalone_inventory": "tests/security-baseline.json"
+    },
+    {
+      "id": "static-output-links",
+      "fingerprint": "publication.rs:checked-batch:native-windows-junction-boundary",
+      "checks": [
+        "native-rust-ntfs-junction",
+        "public-adapter-lexical-path",
+        "outside-sentinel-preserved",
+        "ordinary-publication",
+        "protected-alias",
+        "portable-reparse-metadata"
+      ],
+      "required": true,
+      "standalone_inventory": "tests/security-baseline.json"
+    },
+    {
+      "id": "html-work-admission",
+      "fingerprint": "html.rs:ParsedHtml:bounded-element-and-open-ancestor-admission",
+      "checks": [
+        "depth-boundary",
+        "element-count-boundary",
+        "parser",
+        "source",
+        "lint",
+        "guard",
+        "assets",
+        "text-order",
+        "resource-policy",
+        "render-entry-admission-ordering",
+        "ordinary-nesting"
+      ],
+      "required": true,
+      "legacy_fingerprint": "html_source.py:ParsedHTML/uncapped-stack-scans",
+      "standalone_inventory": "tests/security-baseline.json"
+    },
+    {
+      "id": "tex-output-budget",
+      "fingerprint": "tex_container.rs:run_arguments:per-file-versus-writable-output-bind",
+      "checks": [
+        "effective-production-mount",
+        "per-file-versus-aggregate",
+        "finite-multi-file-quota",
+        "harmless-tex-openout-policy",
+        "normal-output"
+      ],
+      "required": true,
+      "legacy_fingerprint": "tex-container.py:run_arguments/output-bind-aggregate-quota",
+      "limitation": "Production writable output bind aggregate quota is unresolved; the helper tmpfs quota is not attributed to that bind.",
+      "standalone_inventory": "tests/security-baseline.json"
+    }
   ],
-  "excluded_assurances": ["Microsoft Word behavior", "host agent approval and message provenance", "container or OS escape resistance", "real manuscript semantic fidelity"]
+  "excluded_assurances": [
+    "Microsoft Word behavior",
+    "host agent approval and message provenance",
+    "container or OS escape resistance",
+    "real manuscript semantic fidelity"
+  ],
+  "required_windows_diagnostic_obligations": [
+    {
+      "id": "interpreter-loader-activation-etw-csr",
+      "requirement": "Preserve original loader/SxS/CSR/debugger diagnostic role, order, status and owned-state restoration with equivalent Rust images. Removing the old-language runtime does not retire these invariants.",
+      "status": "unverified",
+      "partial_evidence": "Native primary/descendant LPAC verifier and adversarial controller cases do not substitute for all actual diagnostic operations."
+    },
+    {
+      "id": "machine-sidebyside-policy-lease",
+      "requirement": "Preserve original fixed SideBySide policy lease, identity, restoration and causal comparison under the approved native contract. An owned HKCU fixture is a separate scoped control, not an equivalent machine-policy receipt.",
+      "status": "unverified",
+      "partial_evidence": "Owned-root read, mutation/private-child/foreign-file denials and scope=owned-fixture remain useful but do not complete this obligation."
+    },
+    {
+      "id": "vhd-attachment-ntfs-quota-owner-research",
+      "requirement": "Preserve original owned physical-volume capacity, enforced NTFS logical-size quota and creator-owner closure checks in Rust. Job memory limits or file-size bounds are not disk-quota proof.",
+      "status": "unverified",
+      "partial_evidence": "Job resource limits, bounded scratch, reparse rejection, identity-safe publication and process cleanup do not establish physical-volume or enforced-quota parity."
+    }
+  ]
 }
