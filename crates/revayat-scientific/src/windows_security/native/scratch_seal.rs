@@ -43,8 +43,42 @@ unsafe extern "system" {
     fn NtSetSecurityObject(handle: Handle, fields: u32, data: *const std::ffi::c_void) -> i32;
     fn RtlNtStatusToDosError(status: i32) -> u32;
 }
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn ReOpenFile(original: Handle, access: u32, share: u32, flags: u32) -> Handle;
+}
 
-/// `progress` bits: 0x10 opened, 0x20 identity bound, 0x40 native setter invoked.
+/// Opens the exact held root for the DACL write. A pathname open is tried first; when it is
+/// refused, the held root object is reopened (no pathname rebind) and each candidate access is
+/// probed so a hosted refusal reports which right was denied, never raw text.
+fn open_writer(path: &Path, root: Handle, progress: &mut u32) -> Result<Owned> {
+    let primary = match Owned::open(path, 0x00060080, 7, 0x02200000) {
+        Ok(handle) => return Ok(handle),
+        Err(error) => error,
+    };
+    for (bit, access, flags) in [
+        (0x100, 0x00040000, 0x02200000),
+        (0x200, 0x00040000, 0x00200000),
+        (0x400, 0x00080000, 0x02200000),
+        (0x800, 0x00020000, 0x02200000),
+    ] {
+        if let Ok(mut probe) = Owned::open(path, access, 7, flags) {
+            *progress |= bit;
+            probe.close()?;
+        }
+    }
+    // SAFETY: `root` is the live held directory handle; the result is owned or invalid.
+    let handle = unsafe { ReOpenFile(root, 0x00060080, 7, 0x02000000) };
+    if handle.is_null() || handle as isize == -1 {
+        return Err(primary);
+    }
+    *progress |= 0x1000;
+    Ok(Owned(handle))
+}
+
+/// `progress` bits: 0x10 opened, 0x20 identity bound, 0x40 native setter invoked; open probes
+/// 0x100 WRITE_DAC backup, 0x200 WRITE_DAC plain, 0x400 WRITE_OWNER, 0x800 READ_CONTROL,
+/// 0x1000 held-root reopen.
 fn set_dacl(
     path: &Path,
     root: Handle,
@@ -53,9 +87,8 @@ fn set_dacl(
     ntstatus: &mut Option<u32>,
 ) -> Result<()> {
     // Restore privilege is applied at the backup-intent open, not merely enabled around a
-    // pathname setter. FILE_READ_ATTRIBUTES is requested explicitly: a volume root has no
-    // parent whose list right would grant it implicitly, and the identity bind needs it.
-    let mut target = Owned::open(path, 0x00060080, 7, 0x02200000)?;
+    // pathname setter. FILE_READ_ATTRIBUTES is requested explicitly for the identity bind.
+    let mut target = open_writer(path, root, progress)?;
     *progress |= 0x10;
     let result = (|| {
         ensure!(
