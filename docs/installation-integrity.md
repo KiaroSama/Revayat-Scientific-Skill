@@ -1,126 +1,23 @@
-# Installation admission, batch publication and recovery
+# Installation integrity
 
-The Python installer and both native launchers share one contract. An invocation
-plans **all** selected destinations, reads the payload once, stages every new copy
-and verifies its bytes before replacing any existing installation. A late invalid
-target or failed copy cannot leave an earlier agent silently upgraded.
+The Rust installer is a bounded, recoverable directory transaction. It copies a complete allowlisted skill payload, including its native executable, and never links an installed skill back to the checkout.
 
-## Destination admission
+## Admission
 
-`--dest` remains an explicit final directory, not permission to replace arbitrary
-user data. An existing nonempty directory must have a UTF-8 `SKILL.md` whose
-frontmatter identifies exactly `name: revayat-scientific`; `--force` is additionally
-required. An existing empty directory is replaceable with `--force`. A missing,
-ambiguous or different skill identity requires a separately reviewed manual
-migration, not a forced overwrite. This identity is a safety marker, not proof of
-trust or authentication of downloaded code. Admission accepts simple unquoted
-frontmatter keys and a plain or matching single/double-quoted name scalar; UTF-8
-BOM and ordinary multiline descriptions remain supported. Explicit/escaped keys,
-duplicate names, malformed quotes and non-scalar names require manual review.
+Payload identity requires simple unambiguous skill frontmatter. Payload addresses are unique under conservative case comparison; links, junctions, reparse points, nonregular entries, hidden files, job data and interpreter implementations are excluded or refused. Payloads are limited to 64 MiB and 10,000 files. Existing trees are bounded to 100,000 entries and 512 MiB; counted hashes and native object identity detect changes during inspection.
 
-Source/destination overlap, implementation folders, filesystem root, `.git`
-components, detected repository administration, links/junctions/reparse points,
-case collisions and overlapping target sets are refused before replacement.
-Source and old-installation trees must contain regular files/directories; linked
-content requires manual review rather than implicit copying. This deliberately
-includes Windows reparse points, not just POSIX-style symlinks.
+Destination admission walks components before filesystem normalization. It refuses parent traversal, linked/reparse components, case collisions, nested targets, source/implementation overlap and reserved stage/backup/recovery paths. Git discovery resolves worktree markers, separate/private/common directories, object databases, configured hooks and selected indexes. Ambiguous or failed discovery fails closed. Existing Git files and their known hardlink aliases remain protected.
 
-The source and target repository contexts are checked with read-only Git path
-queries, including separate Git directories and worktree/common administration.
-A detected repository requires Git and unambiguous metadata resolution. Source
-archives with no repository do not acquire a new Git dependency. This is not a
-search of every repository or mounted filesystem on the machine.
+## Preparation and activation
 
-Backups, owned stages and recovery-storage paths cannot be selected as new targets.
-Normal `<agent>/skills/revayat-scientific` replacements retain their old directory
-under `<agent>/skill-backups/revayat-scientific-<run>-<index>`, outside normal skill
-discovery. For other explicit parent names, the backup folder is a sibling
-`skill-backups` directory; custom host discovery rules must exclude it. Existing
-backups are never overwritten. Backup and target must share a filesystem.
+All selected destinations are preflighted before any old installation moves. Cooperative exclusive locks identify the owning operation. All stage directories are created with normal destination inheritance, and an initial complete recovery plan records their native identities before copying. Copies are checked against one captured payload; source bytes are checked again after staging. The complete prepared journal is refreshed before activation.
 
-## Staging and publication
-
-`install/install_paths.py` owns directory/path admission.
-`install/install_transaction.py` owns the bounded payload snapshot, target plan,
-cooperative locks, staging, recovery journal and whole-invocation rollback.
-`install/install.py` retains agent selection, payload allowlisting and the public
-CLI. Native launcher options and detected host directories are unchanged.
-
-Source SHA-256 values and staged bytes must match the selected payload snapshot.
-A source change or concurrent change to an existing installation aborts instead
-of combining versions or overwriting a local edit. Stop running work that writes
-inside the installation before replacing it. Payloads are limited to 64 MiB and
-10000 files; inspected existing trees are limited to 512 MiB and 100000 entries.
-Exceeding a limit is a refused operation, not partial installation.
-
-Directories used as final stages retain normal parent permission/ACL inheritance.
-The private recovery journal does not become the final installation. Each target
-has an exclusively created `.revayat-install-<digest>.lock`; another invocation
-must not remove or ignore it. After every target has been published and cleanup
-has succeeded, the installer prints completion and retained-backup paths.
+The destructive boundary rechecks destination snapshots, staged contents, directory paths and lock ownership. Old installations move to a sibling `skill-backups` area outside normal skill discovery, then complete staged directories become active. Previous editions remain available after success.
 
 ## Failure and recovery
 
-Before replacing anything, the installer writes `recovery.json` beneath a private
-`.revayat-install-recovery-<run>` directory. The prepared record identifies every
-destination, stage, previous-backup path and directory identity, plus each owned
-lock path/identity. All empty stages are identified in the initial journal before
-copying or journal refresh, so a partial-copy or refresh failure followed by failed
-stage cleanup still retains accountable stage and lock
-evidence. Those locks are not released while owned stage cleanup remains unresolved.
-The journal contains operational paths, not document contents or credentials.
+A failed batch restores targets in reverse order. Native identity reconciles operations that completed before reporting an error. A concurrent foreign destination, changed backup, substituted stage or replaced lock is preserved, and cannot be deleted to force a successful rollback. Incomplete restoration or cleanup retains the complete journal, backups, stages and locks and reports a local recovery location. Do not delete them until every target in the plan has been resolved.
 
-On an ordinary copy/admission failure, existing installations remain unchanged.
-On a later publication failure or interrupt, newly installed directories are
-withdrawn and all earlier installations are restored in reverse order. Rollback
-identifies its own directory objects; an unexpected concurrent directory is not
-deleted just to force a clean result.
+Locks coordinate cooperating installers; directory rename is not a global multi-target atomic transaction. These checks are not a substitute for a secure host filesystem or a sandbox against an attacker with equivalent access.
 
-Recovery is marked unresolved **before** restoration begins. A second
-`KeyboardInterrupt` or `SystemExit` during restoration propagates as cancellation,
-with a note naming the recovery journal; it never becomes a successful return or
-ordinary cleanup. Even when the interrupted rename completed, keep the journal,
-remaining stages/backups and owned locks until every target is reconciled. An
-ordinary OS error after a completed restoration is checked against the recorded
-directory identity and exact snapshot before it is considered restored.
-
-When safe restoration fails, the operation reports **recovery required** and keeps
-the journal, original backups, owned stages and locks. Do not retry with `--force`
-or delete all `.revayat-*` paths. Under the owner's Rules, stop other installers,
-read the named journal, inspect **every** target and retain any concurrent user
-changes. Restore each verified previous directory from its retained backup (or
-remove only the verified new copy for a previously absent target), then verify
-all destinations and finish cleanup. Record recovery evidence before releasing
-only this operation's locks. A stale lock is not proof that no recovery is needed.
-
-Cleanup failures are also non-success outcomes with a retained recovery location;
-an already published complete set is not misreported as rolled back. Logs use the
-shared timestamped INFO/WARNING/ERROR/DEBUG facility and do not include file bodies.
-
-This is recoverable multi-target publication with cooperative concurrency checks,
-**not** one globally atomic filesystem operation, a crash-proof database, an
-adversarial filesystem sandbox or protection against arbitrary same-user mutation
-between OS calls. A machine crash, lost volume or hostile parent-directory swap
-requires operator recovery; no automatic deletion is justified by a missing path.
-If even the initial journal write fails and stage removal also fails, no complete
-journal identity is guaranteed: stop competing installers and treat retained paths
-as unverified until independently inspected. A reported recovery location is not
-proof that the storage device accepted every journal write.
-
-## Research and acceptance
-
-The implementation adapts contracts rather than importing a package manager:
-
-- [pip's stashed uninstall paths](https://github.com/pypa/pip/blob/main/src/pip/_internal/req/req_uninstall.py): retain a reversible move plan. Unlike an uninstall, Revayat retains successful previous editions and never deletes a concurrent foreign destination during recovery.
-- [Python shutil](https://docs.python.org/3.10/library/shutil.html): distinguish rename, copy and deletion, including symlink/junction limitations. A fallback cross-device copy is not an atomic rename.
-- [Git administrative path resolution](https://git-scm.com/docs/git-rev-parse): discover the real private/common/object/index/hooks paths rather than assuming `.git` is always a directory.
-- [Microsoft junctions and reparse points](https://learn.microsoft.com/en-us/windows/win32/fileio/hard-links-and-junctions): test native Windows junctions and preserve parent ACL inheritance.
-- [Spec Kit workflow](https://github.github.com/spec-kit/reference/agentic-sdd.html): carry reproductions and closure tests through the owner's configured chain and explicitly selected private feature, not an invented public plan.
-
-`tests/test_install_transaction.py` exercises full-plan refusal, actual copying,
-source identity, aliasing, injected late failures/interrupts, concurrent changes,
-recovery retention, privacy and native Windows junctions. Existing package tests
-still install and launch the real distribution through Bash/PowerShell, test
-Windows ACL inheritance and execute installed DOCX/PDF and terminology helpers.
-A successful install is not proof of every host's user-interface discovery or
-scientific correctness of a later translation.
+Regression coverage lives in the native [installation tests](../crates/revayat-scientific/tests/distribution_install.rs). The migration inventory records the original scenario IDs, including failure injection, concurrent edits, retained recovery evidence, ambiguous identity, multi-target rollback and native Windows junction refusal.

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
+  "public_test_count": 14,
+  "tests": [
+    {"id":"tests/security/windows/registry-authority/src/protocol.rs::tests::source_generated_oracle"},
+    {"id":"tests/security/windows/registry-authority/src/protocol.rs::tests::token_stages_are_closed_and_fit_complete_failure_frames"},
+    {"id":"tests/security/windows/registry-authority/src/protocol.rs::tests::descendant_stages_and_native_errors_are_closed"},
+    {"id":"tests/security/windows/registry-authority/src/protocol.rs::tests::restriction_query_retains_only_immediate_failed_result"},
+    {"id":"tests/security/windows/registry-authority/src/protocol.rs::tests::restriction_representations_preserve_exact_true_and_returned_span"},
+    {"id":"tests/security/windows/registry-authority/src/protocol.rs::tests::descendant_wire_refuses_partial_or_permissive_records"},
+    {"id":"tests/security/windows/registry-authority/src/process.rs::tests::owned_input_refusals_close_only_the_duplicate"},
+    {"id":"tests/security/windows/registry-authority/src/process.rs::tests::complete_capture_handles_short_reads_and_requires_eof"},
+    {"id":"tests/security/windows/registry-authority/src/process.rs::tests::child_errors_retain_actual_exit_and_closed_original_order"},
+    {"id":"tests/security/windows/registry-authority/src/pipe.rs::tests::local_names_and_connection_are_fixed_and_fail_closed"},
+    {"id":"tests/security/windows/registry-authority/src/pipe.rs::tests::pair_sequence_stops_before_handoff_and_closes_every_owner"},
+    {"id":"tests/security/windows/registry-authority/src/token.rs::tests::privilege_inventory_requires_the_complete_traversal_luid"},
+    {"id":"tests/security/windows/registry-authority/src/token.rs::tests::token_spans_keep_bounds_alignment_and_first_failure"},
+    {"id":"tests/security/windows/registry-authority/src/main.rs::tests::observed_exit_survives_cleanup_and_reporting_failures"}
+  ]
+}

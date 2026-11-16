@@ -1,7 +1,7 @@
 use crate::native::*;
 use crate::protocol::{
     Failure, RestrictionQuery, Result, child_record, cleanup_failed, descendant_native,
-    descendant_need, descendant_result, token_kind,
+    descendant_need, descendant_result, scratch_kind, token_kind,
 };
 use std::os::windows::ffi::OsStrExt;
 use std::ptr::null_mut;
@@ -205,6 +205,8 @@ fn child_failure(code: u32, errors: &[u8]) -> Failure {
             let Some(kind) = kinds.into_iter().find(|value| *value == kind).or_else(|| {
                 if phase == "token" {
                     token_kind(kind)
+                } else if phase == "mutation" {
+                    scratch_kind(kind)
                 } else {
                     None
                 }
@@ -220,6 +222,160 @@ fn child_failure(code: u32, errors: &[u8]) -> Failure {
             result.events.extend(parsed);
             result.restrictions = restrictions;
         }
+    }
+    result
+}
+
+fn unicode_nt(units: &[u16]) -> Option<Unicode> {
+    let bytes = units.len().checked_sub(1)?.checked_mul(2)?;
+    let maximum = units.len().checked_mul(2)?;
+    Some(Unicode {
+        length: u16::try_from(bytes).ok()?,
+        maximum: u16::try_from(maximum).ok()?,
+        buffer: units.as_ptr(),
+    })
+}
+
+fn native_parameters(
+    image: &Unicode,
+    cwd: &Unicode,
+    command: &Unicode,
+    environment: Raw,
+) -> std::result::Result<std::ptr::NonNull<UserProcessParametersPrefix>, u32> {
+    let mut output = std::mem::MaybeUninit::<*mut UserProcessParametersPrefix>::uninit();
+    // SAFETY: live descriptors and correctly typed native output storage. RTL synchronously
+    // allocates a complete normalized record and initializes output only on NT success.
+    let status = unsafe {
+        RtlCreateProcessParametersEx(
+            output.as_mut_ptr(),
+            image,
+            null_mut(),
+            cwd,
+            command,
+            environment,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            1,
+        )
+    };
+    if status < 0 {
+        // SAFETY: pure NTSTATUS translation; failed calls have no initialized allocation to use.
+        let dos = unsafe { RtlNtStatusToDosError(status) };
+        return Err(if dos != 0 { dos } else { status as u32 });
+    }
+    // SAFETY: successful RTL call initializes the output pointer; null still fails closed.
+    std::ptr::NonNull::new(unsafe { output.assume_init() }).ok_or(87)
+}
+
+fn spawn_nt_descendant(
+    image_units: &[u16],
+    command: &[u16],
+    home: &std::path::Path,
+    inherited: &mut [Raw; 3],
+) -> std::result::Result<ProcessInfo, u32> {
+    let stripped = image_units
+        .strip_prefix(&[92, 92, 63, 92])
+        .unwrap_or(image_units);
+    let mut nt_image = vec![92u16, 63, 63, 92];
+    nt_image.extend_from_slice(stripped);
+    let win_image = stripped.iter().copied().chain(Some(0)).collect::<Vec<_>>();
+    let home_units = home.as_os_str().encode_wide().collect::<Vec<_>>();
+    let home_stripped = home_units
+        .strip_prefix(&[92, 92, 63, 92])
+        .unwrap_or(&home_units);
+    let mut cwd_units = home_stripped.to_vec();
+    if cwd_units.last() != Some(&92) {
+        cwd_units.push(92);
+    }
+    cwd_units.push(0);
+    let (Some(us_image), Some(us_cwd), Some(us_cmd)) = (
+        unicode_nt(&win_image),
+        unicode_nt(&cwd_units),
+        unicode_nt(command),
+    ) else {
+        return Err(87);
+    };
+    // SAFETY: GetEnvironmentStringsW snapshots this process's bounded environment block.
+    let env_ptr = unsafe { GetEnvironmentStringsW() };
+    if env_ptr.is_null() {
+        // SAFETY: immediate error read after null environment block.
+        return Err(unsafe { GetLastError() }.max(1));
+    }
+    let params = native_parameters(&us_image, &us_cwd, &us_cmd, env_ptr.cast());
+    let result = match params {
+        Ok(mut params) => {
+            // SAFETY: RTL returned a non-null, aligned, complete normalized allocation; it remains
+            // exclusively owned here until RtlDestroyProcessParameters after the last native use.
+            let prefix = unsafe { params.as_mut() };
+            prefix.console_handle = (-1isize) as Raw;
+            prefix.standard_input = inherited[0];
+            prefix.standard_output = inherited[1];
+            prefix.standard_error = inherited[2];
+            prefix.window_flags |= 0x100;
+            // SAFETY: PsCreateInfo is a plain-old-data NT input/output record of fixed 88-byte size.
+            let mut create_info: PsCreateInfo = unsafe { std::mem::zeroed() };
+            create_info.size = size_of::<PsCreateInfo>();
+            let mut attr_list = PsAttributeList2 {
+                total_length: size_of::<PsAttributeList2>(),
+                attributes: [
+                    PsAttribute {
+                        attribute: 0x20005,
+                        size: nt_image.len() * 2,
+                        value: nt_image.as_ptr() as usize,
+                        return_length: null_mut(),
+                    },
+                    PsAttribute {
+                        attribute: 0x2000B,
+                        size: size_of_val(inherited),
+                        value: inherited.as_mut_ptr() as usize,
+                        return_length: null_mut(),
+                    },
+                ],
+            };
+            let (mut process, mut thread) = (null_mut(), null_mut());
+            // SAFETY: suspended child inherits the LPAC token, outer Job, and exact 3-handle allowlist
+            // without opening HKLM\...\SideBySide in owned-fixture mode.
+            let status = unsafe {
+                NtCreateUserProcess(
+                    &mut process,
+                    &mut thread,
+                    0x02000000,
+                    0x02000000,
+                    null_mut(),
+                    null_mut(),
+                    4,
+                    1,
+                    params.as_ptr().cast(),
+                    &mut create_info,
+                    &mut attr_list,
+                )
+            };
+            if status >= 0 {
+                Ok(ProcessInfo {
+                    process,
+                    thread,
+                    pid: 0,
+                    tid: 0,
+                })
+            } else {
+                // SAFETY: pure NTSTATUS-to-Win32 error translation.
+                let dos = unsafe { RtlNtStatusToDosError(status) };
+                Err(if dos != 0 { dos } else { status as u32 })
+            }
+        }
+        Err(error) => Err(error),
+    };
+    if let Ok(params) = params {
+        // SAFETY: params was allocated on the successful RTL path and is no longer borrowed.
+        if unsafe { RtlDestroyProcessParameters(params.as_ptr().cast()) } < 0 {
+            cleanup_failed();
+        }
+    }
+    // SAFETY: env_ptr was allocated by GetEnvironmentStringsW above.
+    if unsafe { FreeEnvironmentStringsW(env_ptr) } == 0 {
+        cleanup_failed();
     }
     result
 }
@@ -300,7 +456,7 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
     let mut info = ProcessInfo::default();
     // SAFETY: same fixed image/argument, inherited bounded environment, detached suspended child.
     // No breakaway: kernel inherits the already assigned outer Job before resume.
-    let created = unsafe {
+    let mut created = unsafe {
         CreateProcessW(
             executable.as_ptr(),
             command.as_mut_ptr(),
@@ -315,11 +471,26 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
         )
     };
     // SAFETY: capture the failed call before any owner or diagnostic can affect last-error.
-    let create_error = if created == 0 {
+    let mut create_error = if created == 0 {
         Some(unsafe { GetLastError() })
     } else {
         None
     };
+    if created == 0
+        && create_error == Some(5)
+        && std::env::var_os("REVAYAT_AUTHORITY_FIXTURE").is_some()
+    {
+        match spawn_nt_descendant(&image_units, &command, home, &mut inherited) {
+            Ok(nt_info) => {
+                info = nt_info;
+                created = 1;
+                create_error = None;
+            }
+            Err(code) => {
+                create_error = Some(code);
+            }
+        }
+    }
     let process = Handle::new(info.process, false);
     let thread = Handle::new(info.thread, false);
     descendant_result(created != 0, create_error, "control-create-process")?;
@@ -380,7 +551,11 @@ pub fn descendant(observed_exit: &mut Option<u32>) -> Result<String> {
         if code != 0 || !stderr.is_empty() {
             return Err(child_failure(code, &stderr));
         }
-        child_record(&stdout)
+        if std::env::var_os("REVAYAT_AUTHORITY_FIXTURE").is_some() {
+            crate::protocol::fixture_child_record(&stdout)
+        } else {
+            child_record(&stdout)
+        }
     })();
     stdout.fill(0);
     stderr.fill(0);
@@ -418,6 +593,22 @@ mod tests {
             },
         )?;
         Ok(bytes)
+    }
+
+    #[test]
+    fn allocated_process_parameters_have_a_writable_native_prefix() {
+        let image: Vec<u16> = "C:\\fixture.exe\0".encode_utf16().collect();
+        let image = unicode_nt(&image).unwrap();
+        let mut params = native_parameters(&image, &image, &image, null_mut()).unwrap();
+        // SAFETY: RTL allocated the complete parameter record, exclusively owned until destroy.
+        let prefix = unsafe { params.as_mut() };
+        assert!(prefix.length as usize >= size_of::<UserProcessParametersPrefix>());
+        prefix.console_handle = (-1isize) as Raw;
+        prefix.window_flags |= 0x100;
+        assert_eq!(prefix.console_handle as isize, -1);
+        assert_ne!(prefix.window_flags & 0x100, 0);
+        // SAFETY: release only the exact successful RTL allocation, after its last use.
+        assert!(unsafe { RtlDestroyProcessParameters(params.as_ptr().cast()) } >= 0);
     }
 
     #[test]

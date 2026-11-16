@@ -9,8 +9,8 @@ can be a different literal label. The parser decodes serialized dictionary keys
 exactly once. Checkbox booleans remain supported. Radio choices must identify
 one unique normal on-state in their group.
 
-`pdf_button_states.py` reads the bounded name-to-stream-reference appearance
-subset through public PyMuPDF object APIs, independently of the widget helper's
+`pdf_forms.rs` reads the bounded name-to-stream-reference appearance
+subset through native lopdf object APIs, independently of the widget helper's
 serialized spelling. Direct and indirect appearance dictionaries are supported.
 An appearance dictionary is limited to 65536 serialized characters and 1024
 states. Non-UTF-8 names, control characters, unsupported values and ambiguous
@@ -30,7 +30,7 @@ remain mandatory. No form JavaScript is executed.
 ## DOCX restricted-feature identity
 
 An OPC part does not lose its signature or VBA identity when its filename changes.
-`docx_package.py` checks effective declared content types and exact known
+`docx_package.rs` checks effective declared content types and exact known
 relationship identifiers, in addition to the existing conservative filename
 and macro-enabled-main guards. Content-type comparison for this restriction is
 ASCII case-insensitive; overrides still take precedence over defaults.
@@ -84,7 +84,5 @@ place. Ordinary `dist/` and independent output paths remain supported.
   actual configured chain and selected local feature. Do not publish private Rules
   or replace their checkpoints with an assumed default workflow.
 
-Regression modules: `test_pdf_button_names.py`, `test_docx_feature_identity.py`,
-and `test_package_git_metadata.py`. They use the existing test discovery and
-operation logging. No additional runtime dependencies, certificates, macro
-payloads, model weights or third-party source code are distributed.
+Regression targets: `pdf_buttons`, `docx_native`, and `distribution_package`. They use Cargo test discovery and
+native operation boundaries. Certificates, executable macro payloads and model weights are not distributed. Rust dependencies, inert licensed OOXML defaults and the static font pair retain the notices listed in NOTICE.md.

@@ -39,6 +39,29 @@ one ZIP package. For PDF, workers translate/review extracted source units; the
 coordinator owns assembled editable sources, rendering and publication. Shared
 fonts, figures, databases and renderer sessions have one writer.
 
+### Fluency editor
+
+After fidelity review, assign only completed draft snapshots to a fluency editor.
+Its brief includes the source/draft/glossary revisions, exact unit locations,
+read-only neighboring context, selected scientific register and these files:
+
+- [fluency-gold.md](fluency-gold.md).
+- Persian [ai-tells.md](voice/persian/references/ai-tells.md),
+  [pitfalls.md](voice/persian/references/pitfalls.md) and
+  [register-guide.md](voice/persian/references/register-guide.md).
+- [review-lenses.md](voice/persian/references/review-lenses.md), using only ai-tells,
+  fluency-eloquence, modern-standards and oral/read-aloud, and
+  [humanizer patterns](voice/humanizer/SKILL.md).
+- The canonical [precedence rule](voice/README.md#precedence).
+
+The editor returns located patches with old/new fluency spans and reasons only;
+reject suggestions that conflict with precedence. It never writes canonical output
+or changes the approved glossary. In its existing worker log, record guidance
+actually applied and counts of proposed spans and rejected conflicts. The coordinator
+rechecks accepted spans against the source and records accepted revision counts in
+the required FLUENCY entry. Missing guidance gets a WARNING and fluency-gold fallback.
+Existing approval, worker limits and snapshot-revision checks still apply.
+
 ## Translate and review
 
 Draft independent sections concurrently. A reviewer starts only after its assigned

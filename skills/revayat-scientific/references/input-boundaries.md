@@ -2,7 +2,7 @@
 
 ## PDF admission
 
-The `scripts/pdf_input.py` context manager supplies shared admission for contiguous
+The native `pdf.rs` admission layer supplies shared admission for contiguous
 page extraction, existing PDF operations and raster cropping. Parity tests bind
 these public entry points. Read-only inspection and raster cropping can admit
 signature-bearing inputs; PDF transformations refuse signatures and XFA. All paths retain the existing
@@ -12,8 +12,8 @@ authorized, reviewed derivative when a source needs decryption or repair. A
 signature-bearing fixture or successful structural check does not authenticate a
 cryptographic signature or certify scientific meaning.
 
-Page extraction still uses one contiguous `insert_pdf` call, preserving shared
-resources rather than copying every page separately. The staged output is
+Page extraction plans one contiguous native page range and preserves shared
+resource identity rather than independently rasterizing or duplicating every page. The staged output is
 reopened before recoverable publication. Named/remote page links, chained actions,
 unresolved annotations and local targets outside the copied range are refused
 before publication. Supported
@@ -26,14 +26,14 @@ Its separate 50-million-pixel allocation ceiling is unchanged.
 
 ## Safe package destinations
 
-`tools/package.py --output PATH` captures the allowlisted payload, protects its
+`revayat-scientific package --output PATH` captures the allowlisted payload, protects its
 sources and known build inputs, and in a Git checkout also protects every tracked
 path. Outputs cannot overwrite source documentation outside the payload, follow
 links/junctions, alias a protected input through a hardlink, collide by case, or
 use a directory as a file. Outputs beneath the skill, `tools/` or `install/` are
 refused. Use `dist/` or a separate explicit destination.
 
-A same-filesystem staged ZIP must pass CRC and required-entry checks before the
+A same-filesystem staged ZIP must pass CRC, complete-entry-set and exact payload SHA-256 checks before the
 shared publication helper can replace a legitimate prior output. This is
 recoverable publication, not a global atomic filesystem transaction. Exported
 source trees without `.git` protect known build inputs and payload, but cannot

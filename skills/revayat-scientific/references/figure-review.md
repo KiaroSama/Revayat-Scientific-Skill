@@ -35,10 +35,10 @@ fields, invalid/duplicate JSON keys, stale digests, linked paths and oversized
 reviews fail. Review files are limited to 16 KiB and notes to 4096 characters;
 notes are not copied to diagnostic logs.
 
-`prepare-figures.py --check` keeps the image and sidecar bytes unchanged.
+`revayat-scientific figures --check` keeps the image and sidecar bytes unchanged.
 Unreviewed dark images still fail; transparency and unsupported depth/frames
 continue to fail even with a valid darkness review. Both native build adapters
-use the same referenced-asset checker through `build-support.py`, including
+use the same referenced-asset checker through `build.rs`, including
 nested artwork directories. No blanket skip flag or automatic inversion is added.
 
 When no source comparison is possible, report the figure as unresolved.

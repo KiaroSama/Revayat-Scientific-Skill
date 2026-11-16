@@ -75,7 +75,7 @@ because “the PDF outline is enough”; the printed page is the deliverable.
 Lint each part as it is finished, not at the end:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" lint parts/03-networking.tex --level <selected-level> --terms terms.tsv --manifest manifests/03-networking.txt --strict
+"$REVAYAT" lint parts/03-networking.tex --level <selected-level> --terms terms.tsv --manifest manifests/03-networking.txt --strict
 ```
 
 Use a manifest containing only the figures expected in that part; keep paths
@@ -96,6 +96,15 @@ revisions in `progress.md`; changed revisions invalidate affected approvals.
 Check for missing/duplicate IDs, empty targets and mismatched source locations
 before assembly. A split or merged segment needs a new explicit mapping and review.
 
+For Markdown/MyST inputs, inventory front matter, notebook kernel metadata,
+pre-title material and code fences before drafting. Keep executable metadata
+and code byte-exact; translate only the selected prose. A response wrapped in
+an extra code fence is not ready for publication. Compare the source and target
+fence structure and restore only verified original metadata before reviewing
+the resulting document again. A missing closing fence or duplicated metadata
+blocks completion. These are source-preservation review steps; the Rust CLI's
+TeX/HTML lint does not validate Markdown or MyST.
+
 ## Progress ledger
 
 `progress.md`, updated as each part changes state, because a fresh agent
@@ -114,6 +123,30 @@ States: `todo`, `drafting`, `done`, `needs-review`. Fluency:
 (a part is not `done` without one of those). On resume, read
 `progress.md` and `terms.tsv` first, then the part in `drafting`. Never
 restart a `done` part; never re-decide a term already in `terms.tsv`.
+
+When source or terminology revisions change, keep the last accepted source/target
+snapshot while preparing the replacement. Mark affected parts `needs-review`;
+do not mark them complete to suppress a stale-state warning. Apply spot fixes to
+the editable part, because reconstruction can overwrite edits made only in an
+assembled derivative. These durable job files are separate from temporary sandbox
+staging, whose verified cleanup remains mandatory.
+
+Before carrying a later source edit into a reviewed part, compare the accepted
+source snapshot with the old source that edit assumes. Distinguish a missing
+change, a target already ahead of that change, and an earlier pending update;
+unknown revision state does not establish alignment. Missing or corrupt
+bookkeeping never authorizes overwriting an existing translation, and a ledger
+entry without its target file does not establish completion. Recover the actual
+source/target relationship first, then update the affected editable spans and
+review them. A preview must select the same parts as the eventual operation.
+
+Rerunning an old whole-document job can restore an obsolete source snapshot over
+later edits. Check every affected source part before choosing that recovery route;
+carry changes into accepted text when regeneration would discard reviewed work.
+For a rename, verify both old and new paths belong to the intended source scope
+before moving or deleting anything. This is revision-recovery guidance from the
+[November 13 source review](upstream-review-2026-11-13.md#revision-recovery),
+not an additional automatic CLI sync feature.
 
 ## Ambiguity queue
 
@@ -140,8 +173,8 @@ claim depends on them. Do not guess across a context boundary or duplicate overl
 ## Assembly and verification
 
 1. Lint every part, then the assembled document.
-2. Build with `"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" build doc.tex <slug> --level <selected-level> --output-dir <selected-output-directory> --verify`. It lints
-   first, runs `prepare-figures.py --check` when `figures/` exists, and
+2. Build with `"$REVAYAT" build doc.tex --out <selected-output-directory>/document.pdf`. It lints
+   first, runs `revayat-scientific figures --check` when `figures/` exists, and
    will not copy a PDF if lint, figure check, or `--verify` fail.
    `--verify` fails closed: missing poppler tools, no embedded font, or
    a raster that was not written. Compare page count to `inventory.md`
@@ -150,7 +183,7 @@ claim depends on them. Do not guess across a context boundary or duplicate overl
 4. Report the path, the page count, and the queued questions.
 
 If the user asked for a page range, not the whole PDF, extract it with
-`scripts/extract-pdf-pages.py in.pdf out.pdf 1-20` after the build. That
+`revayat-scientific pages in.pdf out.pdf 1-20` after the build. That
 script copies a contiguous range in **one** operation so fonts and images
 stay shared. Never loop `insert_pdf` (or equivalent) one page at a time —
 each iteration duplicates every XObject and a 2 MB file becomes 40 MB.

@@ -20,7 +20,7 @@ Use installed tools to measure, for example:
 pdfinfo -box -f 1 -l PAGE_COUNT "$WORK/source/paper.pdf"
 ```
 
-Inspect all page classes. PyMuPDF's `page.rect` reflects displayed rotation/cropping;
+Inspect all page classes. A displayed PDF rectangle reflects displayed rotation/cropping;
 `page.mediabox`, `page.cropbox`, `page.trimbox`, `page.bleedbox` and `page.rotation`
 provide the separate geometry. A TrimBox may default to CropBox when not explicitly
 present. Do not confuse a crop with the original sheet or discard print bleed.
@@ -62,7 +62,7 @@ can change appearance. A page preview is inspection evidence, not the figure ass
 When raster cropping is necessary, the crop helper accepts a minimum density:
 
 ```bash
-"$PY" "$SKILL_DIR/scripts/revayat-scientific.py" crop "$WORK/source/paper.pdf" --out "$WORK/figures" --map "$WORK/figures-map.tsv" --dpi 300
+"$REVAYAT" crop "$WORK/source/paper.pdf" --out "$WORK/figures" --map "$WORK/figures-map.tsv" --dpi 300
 ```
 
 `--dpi` defaults to 300. The helper raises sampling to retain higher embedded-image

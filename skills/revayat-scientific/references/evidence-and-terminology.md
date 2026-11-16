@@ -12,7 +12,7 @@ After checking extraction order, run the packaged helper on a reviewed UTF-8
 text or Markdown part and the job's `terms.tsv`:
 
 ```bash
-python scripts/revayat-scientific.py term-brief source/part-01.txt --terms terms.tsv --language ja > term-brief-01.json
+revayat-scientific term-brief source/part-01.txt --terms terms.tsv --language ja > term-brief-01.json
 ```
 
 The helper reads only those two local files. Its JSON records their SHA-256
