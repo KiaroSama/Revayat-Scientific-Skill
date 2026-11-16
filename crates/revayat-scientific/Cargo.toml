@@ -17,7 +17,7 @@ flate2 = "1.1"
 cssparser = "0.35"
 scraper = "0.29"
 unicode-bidi-mirroring = "0.4"
-getrandom = "0.3"
+getrandom = "0.4"
 regex = "1.11"
 registry-authority = { path = "../../tests/security/windows/registry-authority" }
 serde = { version = "1.0", features = ["derive", "rc"] }
