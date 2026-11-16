@@ -375,6 +375,7 @@ impl ScratchVolume {
                             "scratch NT root shape differs"
                         );
                         filesystem(&mount.root)?;
+                        phase(seal_root(&mount.root, root.0, &intent), Stage::ScratchSeal)?;
                         let quota = phase(
                             super::scratch_quota::Quota::new(&mount.root),
                             Stage::ScratchQuota,
@@ -412,7 +413,7 @@ impl ScratchVolume {
                             uncertain: false,
                         };
                         let result = (|| {
-                            phase(volume.seal(), Stage::ScratchSeal)?;
+                            phase(volume.require_seal(), Stage::ScratchSeal)?;
                             phase(
                                 volume.private.as_mut().unwrap().seal(),
                                 Stage::ScratchPrivate,
@@ -550,25 +551,6 @@ impl ScratchVolume {
         drop(quota);
         self.require()
     }
-    fn seal(&self) -> Result<()> {
-        let root = Path::new(self.drive_root());
-        for (sddl, fields, stage) in [
-            (
-                format!("O:{}", self.intent.host),
-                0x1,
-                Stage::ScratchSealOwner,
-            ),
-            ("S:(ML;OICI;NW;;;LW)".into(), 0x10, Stage::ScratchSealLabel),
-            (
-                root_policy(&self.intent),
-                0x80000004,
-                Stage::ScratchSealDacl,
-            ),
-        ] {
-            set_root_security(root, self.root.0, &sddl, fields, stage)?;
-        }
-        self.require_seal()
-    }
     fn require_seal(&self) -> Result<()> {
         require_root_seal(self.root.0, &self.intent)
     }
@@ -640,6 +622,20 @@ pub(super) fn filesystem(root: &str) -> Result<(u32, u64)> {
         "scratch filesystem capacity exceeds fixed bound"
     );
     Ok((serial, total))
+}
+
+/// Seals the freshly mounted root before quota and private-creator setup touch it, so the
+/// first security write meets the formatter's default root descriptor.
+fn seal_root(drive_root: &str, root: super::Handle, intent: &Intent) -> Result<()> {
+    let path = Path::new(drive_root);
+    for (sddl, fields, stage) in [
+        (format!("O:{}", intent.host), 0x1, Stage::ScratchSealOwner),
+        ("S:(ML;OICI;NW;;;LW)".into(), 0x10, Stage::ScratchSealLabel),
+        (root_policy(intent), 0x80000004, Stage::ScratchSealDacl),
+    ] {
+        set_root_security(path, root, &sddl, fields, stage)?;
+    }
+    require_root_seal(root, intent)
 }
 
 fn root_policy(intent: &Intent) -> String {
