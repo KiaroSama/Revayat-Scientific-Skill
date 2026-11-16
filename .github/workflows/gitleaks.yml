@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up the native Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
 
       - name: Build the native scanner controller and actual Git child adapter
         run: cargo build --locked -p revayat-scientific --bin revayat-scientific --bin revayat-process-owner --bin revayat-gitleaks-git
