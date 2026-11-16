@@ -48,6 +48,116 @@ unsafe extern "system" {
     fn ReOpenFile(original: Handle, access: u32, share: u32, flags: u32) -> Handle;
     fn GetCurrentThread() -> Handle;
     fn GetCurrentProcess() -> Handle;
+    fn GetVolumeInformationByHandleW(
+        handle: Handle,
+        name: *mut u16,
+        name_size: u32,
+        serial: *mut u32,
+        component: *mut u32,
+        flags: *mut u32,
+        system: *mut u16,
+        system_size: u32,
+    ) -> i32;
+}
+#[link(name = "fltlib")]
+unsafe extern "system" {
+    fn FilterVolumeInstanceFindFirst(
+        volume: *const u16,
+        class: i32,
+        buffer: *mut std::ffi::c_void,
+        size: u32,
+        returned: *mut u32,
+        find: *mut Handle,
+    ) -> i32;
+    fn FilterVolumeInstanceFindNext(
+        find: Handle,
+        class: i32,
+        buffer: *mut std::ffi::c_void,
+        size: u32,
+        returned: *mut u32,
+    ) -> i32;
+    fn FilterVolumeInstanceFindClose(find: Handle) -> i32;
+}
+
+/// Known minifilter names reported as bits 32-39 of `dr6`; total instances in bits 40-47.
+const FILTERS: [&str; 8] = [
+    "WdFilter",
+    "bindflt",
+    "wcifs",
+    "luafv",
+    "Wof",
+    "FileCrypt",
+    "storqosflt",
+    "CldFlt",
+];
+
+/// Volume evidence: file-system flags into `result` when no NTSTATUS was recorded, and the
+/// attached minifilter census into `dr6` bits 32-47 (closed name set, never raw names).
+fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers) {
+    let mut flags = 0u32;
+    // SAFETY: query-only call on the live held root; null buffers are allowed with size 0.
+    let queried = unsafe {
+        GetVolumeInformationByHandleW(
+            root,
+            null_mut(),
+            0,
+            null_mut(),
+            null_mut(),
+            &mut flags,
+            null_mut(),
+            0,
+        )
+    } != 0;
+    if numbers.result.is_none() {
+        numbers.result = Some(if queried { flags } else { 0xFFFF_FFFF });
+    }
+    let name = wide(path);
+    let mut buffer = vec![0u64; 512];
+    let (mut known, mut total, mut find) = (0u64, 0u64, null_mut());
+    let mut returned = 0u32;
+    // SAFETY: bounded 4 KiB aligned buffer, InstanceFullInformation (2); the find handle is
+    // closed below. Each entry's name offsets are bounds-checked before slicing.
+    let mut status = unsafe {
+        FilterVolumeInstanceFindFirst(
+            name.as_ptr(),
+            2,
+            buffer.as_mut_ptr().cast(),
+            4096,
+            &mut returned,
+            &mut find,
+        )
+    };
+    while status >= 0 && total < 0xFF {
+        total += 1;
+        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast(), 4096) };
+        let field = |at: usize| usize::from(u16::from_le_bytes([bytes[at], bytes[at + 1]]));
+        let (length, offset) = (field(16), field(18));
+        if length % 2 == 0 && offset + length <= 4096 {
+            let units: Vec<u16> = bytes[offset..offset + length]
+                .chunks_exact(2)
+                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                .collect();
+            let filter = String::from_utf16_lossy(&units);
+            if let Some(index) = FILTERS
+                .iter()
+                .position(|known| known.eq_ignore_ascii_case(&filter))
+            {
+                known |= 1 << index;
+            }
+        }
+        status = unsafe {
+            FilterVolumeInstanceFindNext(find, 2, buffer.as_mut_ptr().cast(), 4096, &mut returned)
+        };
+    }
+    if !find.is_null() && find as isize != -1 {
+        unsafe { FilterVolumeInstanceFindClose(find) };
+    }
+    let census = if total == 0 && status < 0 && status as u32 != 0x80070103 {
+        0xFFFF
+    } else {
+        known | (total << 8)
+    };
+    numbers.dr6 = Some((numbers.dr6.unwrap_or(0) & !(0xFFFF << 32)) | (census << 32));
 }
 #[link(name = "advapi32")]
 unsafe extern "system" {
@@ -224,6 +334,16 @@ fn open_writer(path: &Path, root: Handle, progress: &mut u32) -> Result<Owned> {
             probe.close()?;
         }
     }
+    // The same root through its volume GUID name bypasses the drive-letter mount point; the
+    // later identity bind still requires it to be the held root object.
+    if let Some(volume) = path
+        .to_str()
+        .and_then(|text| super::layout::mounted(text).ok().flatten())
+        && let Ok(handle) = Owned::open(&volume, 0x00060080, 7, 0x02200000)
+    {
+        *progress |= 0x2000;
+        return Ok(handle);
+    }
     // SAFETY: `root` is the live held directory handle; the result is owned or invalid.
     let handle = unsafe { ReOpenFile(root, 0x00060080, 7, 0x02000000) };
     if handle.is_null() || handle as isize == -1 {
@@ -235,7 +355,7 @@ fn open_writer(path: &Path, root: Handle, progress: &mut u32) -> Result<Owned> {
 
 /// `progress` bits: 0x10 opened, 0x20 identity bound, 0x40 native setter invoked; open probes
 /// 0x100 WRITE_DAC backup, 0x200 WRITE_DAC plain, 0x400 WRITE_OWNER, 0x800 READ_CONTROL,
-/// 0x1000 held-root reopen.
+/// 0x1000 held-root reopen, 0x2000 volume GUID path open.
 fn set_dacl(
     path: &Path,
     root: Handle,
@@ -353,6 +473,7 @@ pub(super) fn set_root_security(
                         | progress,
                 );
                 root_evidence(root, &mut numbers);
+                volume_evidence(path, root, &mut numbers);
                 numbers.stderr_bytes = Some(token_evidence());
             }
             result
