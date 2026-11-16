@@ -137,7 +137,7 @@ fn test_all_real_jobs_have_their_own_true_result_and_direct_link() -> Result<()>
         f.state(SUMMARY)["description"]
             .as_str()
             .unwrap()
-            .contains("9 passed, 2 failed")
+            .contains("8 passed, 2 failed")
     );
     assert!(
         !f.published

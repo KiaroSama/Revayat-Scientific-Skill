@@ -656,7 +656,7 @@ fn every_required_os_profile_and_native_slot_is_mandatory() {
         "workflow_ref",
     ] {
         let mut encoded = serde_json::to_value(&reports).unwrap();
-        encoded[8][field] = json!("foreign");
+        encoded[5][field] = json!("foreign");
         assert!(
             validate_report_matrix(
                 &serde_json::from_value::<Vec<_>>(encoded).unwrap(),
