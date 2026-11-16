@@ -134,8 +134,10 @@ fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers
         let (length, offset) = (field(16), field(18));
         if length % 2 == 0 && offset + length <= 4096 {
             let units: Vec<u16> = bytes[offset..offset + length]
-                .chunks_exact(2)
-                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
                 .collect();
             let filter = String::from_utf16_lossy(&units);
             if let Some(index) = FILTERS
