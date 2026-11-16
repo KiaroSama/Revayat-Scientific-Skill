@@ -44,15 +44,25 @@ unsafe extern "system" {
     fn RtlNtStatusToDosError(status: i32) -> u32;
 }
 
-fn set_dacl(path: &Path, root: Handle, descriptor: Handle) -> Result<()> {
+/// `progress` bits: 0x10 opened, 0x20 identity bound, 0x40 native setter invoked.
+fn set_dacl(
+    path: &Path,
+    root: Handle,
+    descriptor: Handle,
+    progress: &mut u32,
+    ntstatus: &mut Option<u32>,
+) -> Result<()> {
     // Restore privilege is applied at the backup-intent open, not merely enabled around a
-    // pathname setter.
-    let mut target = Owned::open(path, 0x00060000, 7, 0x02200000)?;
+    // pathname setter. FILE_READ_ATTRIBUTES is requested explicitly: a volume root has no
+    // parent whose list right would grant it implicitly, and the identity bind needs it.
+    let mut target = Owned::open(path, 0x00060080, 7, 0x02200000)?;
+    *progress |= 0x10;
     let result = (|| {
         ensure!(
             access::identity(target.0, true)? == access::identity(root, true)?,
             "scratch seal pathname changed from its held root"
         );
+        *progress |= 0x20;
         let length = unsafe { GetSecurityDescriptorLength(descriptor) };
         ensure!(
             (20..=65536).contains(&length),
@@ -60,13 +70,14 @@ fn set_dacl(path: &Path, root: Handle, descriptor: Handle) -> Result<()> {
         );
         // SAFETY: exact bound directory handle with WRITE_DAC; the self-relative descriptor
         // stays live. Unlike SetSecurityInfo/SetNamedSecurityInfoW, the native setter does not
-        // walk existing children: a fresh NTFS root holds SYSTEM-only `System Volume Information`
-        // whose propagation open is denied. The protected private creator keeps its own ACL and
-        // folders created after the seal inherit this root in the kernel.
+        // walk existing children. The protected private creator keeps its own ACL and folders
+        // created after the seal inherit this root in the kernel.
+        *progress |= 0x40;
         let status = unsafe { NtSetSecurityObject(target.0, 4, descriptor.cast_const()) };
         if status >= 0 {
             Ok(())
         } else {
+            *ntstatus = Some(status as u32);
             let code = unsafe { RtlNtStatusToDosError(status) };
             Err(std::io::Error::from_raw_os_error(code as i32))
                 .with_context(|| format!("set scratch DACL ntstatus=0x{:08X}", status as u32))
@@ -118,8 +129,9 @@ pub(super) fn set_root_security(
                     } != 0
                         && present != 0);
             ensure!(extracted, "scratch security component extraction failed");
+            let mut progress = 0;
             let result = if fields == 0x80000004 {
-                set_dacl(path, root, descriptor.0)
+                set_dacl(path, root, descriptor.0, &mut progress, &mut numbers.result)
             } else {
                 // Owner and integrity-label writes retain the established named-object path.
                 let status = unsafe {
@@ -147,7 +159,8 @@ pub(super) fn set_root_security(
                     u32::from(take.is_some())
                         | (u32::from(restore.is_some()) << 1)
                         | (u32::from(readback.is_some()) << 2)
-                        | (u32::from(readback == Some(true)) << 3),
+                        | (u32::from(readback == Some(true)) << 3)
+                        | progress,
                 );
             }
             result
@@ -231,7 +244,7 @@ mod tests {
                 "inaccessible protected child DACL changed"
             );
             ensure!(
-                set_dacl(&other, root.0, expected.0).is_err(),
+                set_dacl(&other, root.0, expected.0, &mut 0, &mut None).is_err(),
                 "foreign directory accepted"
             );
             Ok(())
