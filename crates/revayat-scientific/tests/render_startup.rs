@@ -164,6 +164,8 @@ fn inherited_runtime_group_reaps_pipe_holder_without_reader_join_deadlock() -> R
         .arg("render-html")
         .arg(&source)
         .arg(&output)
+        // This lifecycle fixture must not probe an unrelated optional container daemon.
+        .args(["--engine", "chromium"])
         .arg("--browser")
         .arg(&executable)
         .current_dir(&root)

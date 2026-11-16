@@ -81,7 +81,7 @@ jobs:
       - name: Collect every portable debug harness outcome
         run: target/debug/revayat-test-runner --tier portable --profile debug --output execution/portable-debug.json --timeout 1800
       - name: Select and verify the discovered hosted Windows browser
-        if: runner.os == 'Windows'
+        if: ${{ !cancelled() && runner.os == 'Windows' && hashFiles('target/debug/revayat-scientific.exe') != '' }}
         run: target/debug/revayat-scientific check-workflows select-browser
       - name: Prepare licensed fonts for native Windows renderer
         if: runner.os == 'Windows'

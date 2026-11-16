@@ -16,6 +16,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(windows)]
+#[path = "render_cleanup.rs"]
+mod cleanup;
 #[path = "render_diagnostics.rs"]
 mod diagnostics;
 
@@ -28,11 +31,15 @@ struct Browser {
     profile: tempfile::TempDir,
     diagnostics: Option<diagnostics::Diagnostics>,
     stopped: Option<bool>,
+    cleanup_error: Option<String>,
+    executable: PathBuf,
+    started: Instant,
     #[cfg(windows)]
     owner: Option<crate::windows_security::native::WindowsJob>,
 }
 impl Browser {
     fn launch(executable: &Path, parent: &Path) -> Result<(Self, u16, String)> {
+        let started = Instant::now();
         let profile = tempfile::Builder::new()
             .prefix(".revayat-browser-")
             .tempdir_in(parent)?;
@@ -69,6 +76,9 @@ impl Browser {
             profile,
             diagnostics: None,
             stopped: None,
+            cleanup_error: None,
+            executable: executable.to_owned(),
+            started,
             #[cfg(windows)]
             owner: Some(owner),
         };
@@ -128,8 +138,13 @@ impl Browser {
                 return Ok((port, endpoint));
             }
             if Instant::now() >= deadline {
-                return Err(runtime::DeadlineExceeded { idle: false, limit })
-                    .context("Chromium startup exceeded its deadline");
+                return Err(runtime::DeadlineExceeded { idle: false, limit }).with_context(|| {
+                    format!(
+                        "Chromium startup exceeded its deadline executable={:?} elapsed_seconds={:.3}",
+                        self.executable,
+                        self.started.elapsed().as_secs_f64()
+                    )
+                });
             }
             thread::sleep(Duration::from_millis(20));
         }
@@ -138,7 +153,8 @@ impl Browser {
     fn initialization_failure(&mut self, error: anyhow::Error) -> anyhow::Error {
         let clean = self.stop();
         let error = error.context(format!(
-            "phase=startup diagnostic_init=false cleanup_complete={clean}"
+            "phase=startup diagnostic_init=false cleanup_complete={clean} cleanup_detail={}",
+            self.cleanup_error.as_deref().unwrap_or("none")
         ));
         if clean {
             error
@@ -159,29 +175,48 @@ impl Browser {
             clean &= self.child.finish().is_ok();
         }
         #[cfg(windows)]
-        if let Some(mut owner) = self.owner.take() {
-            clean &= owner.finish().is_ok();
-            // KILL_ON_JOB_CLOSE fallback runs before the diagnostic reader joins.
-            drop(owner);
-        }
-        #[cfg(windows)]
         {
-            // Windows Job owns descendants independently of process-ID lifetime.
-            if !matches!(self.child.try_wait(), Ok(Some(_))) {
-                clean &= self.child.kill().is_ok();
-            }
-            let deadline = Instant::now() + Duration::from_secs(2);
-            loop {
-                match self.child.try_wait() {
-                    Ok(Some(_)) => break,
-                    Ok(None) if Instant::now() < deadline => {
-                        thread::sleep(Duration::from_millis(5))
-                    }
-                    _ => {
-                        clean = false;
-                        break;
-                    }
+            // Explicit cleanup owns the profile: TempDir::drop must not hide a
+            // sharing violation or remove it while job cleanup is unverified.
+            self.profile.disable_cleanup(true);
+            if let Some(mut owner) = self.owner.take() {
+                if let Err(error) = owner.finish() {
+                    clean = false;
+                    self.cleanup_error = Some(format!("step=job_finish error={error:#}"));
                 }
+                drop(owner); // KILL_ON_JOB_CLOSE fallback precedes direct-child wait.
+            }
+            let waited = (|| -> Result<()> {
+                if self.child.try_wait()?.is_none() {
+                    self.child.kill()?;
+                }
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while self.child.try_wait()?.is_none() {
+                    ensure!(
+                        Instant::now() < deadline,
+                        "browser child wait deadline exceeded"
+                    );
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Ok(())
+            })();
+            if let Err(error) = waited {
+                clean = false;
+                let detail = format!("step=child_wait error={error:#}");
+                self.cleanup_error = Some(match self.cleanup_error.take() {
+                    Some(previous) => format!("{previous}; {detail}"),
+                    None => detail,
+                });
+            }
+            // Only a verified empty job and reaped direct child admit deletion.
+            if clean && let Err(error) = cleanup::remove_profile(self.profile.path()) {
+                clean = false;
+                self.cleanup_error = Some(format!(
+                    "step=profile_remove os_error={} error={error}",
+                    error
+                        .raw_os_error()
+                        .map_or_else(|| "unknown".into(), |code| code.to_string())
+                ));
             }
         }
         self.stopped = Some(clean);
@@ -216,7 +251,10 @@ impl Browser {
         let scope = "registered-guardian-owned-group";
         #[cfg(windows)]
         let scope = "owned-job";
-        let cleanup = format!("cleanup_complete={clean} cleanup_scope={scope}");
+        let cleanup = format!(
+            "cleanup_complete={clean} cleanup_scope={scope} cleanup_detail={}",
+            self.cleanup_error.as_deref().unwrap_or("none")
+        );
         let result = match result {
             Err(error) => Err(error.context(format!("browser {report} {cleanup}"))),
             Ok(value)
@@ -537,6 +575,9 @@ mod lifecycle_tests {
                 profile,
                 diagnostics: Some(diagnostics),
                 stopped: None,
+                cleanup_error: None,
+                executable: std::env::current_exe().unwrap(),
+                started: Instant::now(),
                 #[cfg(windows)]
                 owner: Some(owner),
             },
@@ -568,6 +609,20 @@ mod lifecycle_tests {
         assert!(result.is_err());
         assert!(format!("{:#}", result.unwrap_err()).contains("exit_code=42"));
         drop(browser);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn stopped_browser_reaps_child_before_removing_owned_profile() {
+        let (mut browser, _temp) = launch_fixture();
+        let profile = browser.profile.path().to_owned();
+        assert!(profile.is_dir());
+        assert!(browser.stop());
+        assert!(browser.child.try_wait().unwrap().is_some());
+        assert!(
+            !profile.exists(),
+            "stopped browser retained its owned profile"
+        );
     }
 
     #[test]

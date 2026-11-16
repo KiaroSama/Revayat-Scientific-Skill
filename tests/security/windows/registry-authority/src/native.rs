@@ -150,7 +150,7 @@ unsafe extern "system" {
         returned: *mut u32,
     ) -> i32;
     pub fn RtlCreateProcessParametersEx(
-        parameters: *mut Raw,
+        parameters: *mut *mut UserProcessParametersPrefix,
         image_path: *const Unicode,
         dll_path: *const Unicode,
         current_directory: *const Unicode,

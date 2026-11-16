@@ -197,7 +197,12 @@ pub(super) fn publish_windows_native_events(
         crate::resource::bounded_read(&path, 65536)
     })();
     // Consume even an invalid receipt so it cannot be replayed or uploaded as a report.
-    let bytes = runtime::with_cleanup(read, fs::remove_file(&path).map_err(Into::into))?;
+    // A failed producer has no receipt to remove; preserve its missing-read failure alone.
+    let cleanup = match fs::remove_file(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        result => result.map_err(Into::into),
+    };
+    let bytes = runtime::with_cleanup(read, cleanup)?;
     let receipt: Receipt =
         serde_json::from_slice(&bytes).context("invalid Windows security receipt")?;
     verify_receipt(&receipt, report)?;
@@ -375,6 +380,35 @@ mod tests {
                 })
             }))
             .collect()
+    }
+    #[test]
+    fn missing_receipt_preserves_primary_read_failure_without_cleanup_noise() {
+        let root = tempfile::tempdir().unwrap();
+        let report = CollectedExecution {
+            schema: 1,
+            tested_sha: "a".repeat(40),
+            run_id: "1".into(),
+            run_attempt: "1".into(),
+            repository: "example/revayat".into(),
+            workflow_ref: "example/revayat/.github/workflows/ci.yml@refs/heads/test".into(),
+            job: "windows-security".into(),
+            platform: "windows".into(),
+            tier: "native".into(),
+            profile: "debug".into(),
+            ignored_only: true,
+            binaries: vec![],
+            error: None,
+            discovery_exit: None,
+            final_parity_verified: false,
+        };
+        let output = root.path().join("missing-execution/native-debug.json");
+        let error = publish_windows_native_events(root.path(), &output, &report).unwrap_err();
+        assert!(error.downcast_ref::<runtime::CleanupFailure>().is_none());
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::NotFound
+        );
+        assert!(!output.exists());
     }
     #[test]
     fn receipt_binding_and_all_standalone_cleanup_are_required() {

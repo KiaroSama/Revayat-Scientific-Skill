@@ -549,9 +549,34 @@ impl ScratchVolume {
     }
     fn seal(&self) -> Result<()> {
         let root = Path::new(self.drive_root());
-        set_root_security(root, &format!("O:{}", self.intent.host), 0x1)?;
-        set_root_security(root, "S:(ML;OICI;NW;;;LW)", 0x10)?;
-        set_root_security(root, &root_policy(&self.intent), 0x80000004)?;
+        for (sddl, fields, stage) in [
+            (
+                format!("O:{}", self.intent.host),
+                0x1,
+                Stage::ScratchSealOwner,
+            ),
+            ("S:(ML;OICI;NW;;;LW)".into(), 0x10, Stage::ScratchSealLabel),
+            (
+                root_policy(&self.intent),
+                0x80000004,
+                Stage::ScratchSealDacl,
+            ),
+        ] {
+            set_root_security(root, &sddl, fields).map_err(|error| {
+                let native_error = diagnostics::find::<std::io::Error>(&error)
+                    .and_then(std::io::Error::raw_os_error)
+                    .map(|status| status as u32);
+                diagnostics::annotate(
+                    error,
+                    stage,
+                    diagnostics::Numbers {
+                        native_error,
+                        properties: Some(fields),
+                        ..Default::default()
+                    },
+                )
+            })?;
+        }
         self.require_seal()
     }
     fn require_seal(&self) -> Result<()> {

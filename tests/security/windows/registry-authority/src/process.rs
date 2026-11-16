@@ -236,6 +236,39 @@ fn unicode_nt(units: &[u16]) -> Option<Unicode> {
     })
 }
 
+fn native_parameters(
+    image: &Unicode,
+    cwd: &Unicode,
+    command: &Unicode,
+    environment: Raw,
+) -> std::result::Result<std::ptr::NonNull<UserProcessParametersPrefix>, u32> {
+    let mut output = std::mem::MaybeUninit::<*mut UserProcessParametersPrefix>::uninit();
+    // SAFETY: live descriptors and correctly typed native output storage. RTL synchronously
+    // allocates a complete normalized record and initializes output only on NT success.
+    let status = unsafe {
+        RtlCreateProcessParametersEx(
+            output.as_mut_ptr(),
+            image,
+            null_mut(),
+            cwd,
+            command,
+            environment,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            1,
+        )
+    };
+    if status < 0 {
+        // SAFETY: pure NTSTATUS translation; failed calls have no initialized allocation to use.
+        let dos = unsafe { RtlNtStatusToDosError(status) };
+        return Err(if dos != 0 { dos } else { status as u32 });
+    }
+    // SAFETY: successful RTL call initializes the output pointer; null still fails closed.
+    std::ptr::NonNull::new(unsafe { output.assume_init() }).ok_or(87)
+}
+
 fn spawn_nt_descendant(
     image_units: &[u16],
     command: &[u16],
@@ -270,91 +303,73 @@ fn spawn_nt_descendant(
         // SAFETY: immediate error read after null environment block.
         return Err(unsafe { GetLastError() }.max(1));
     }
-    let mut params: Raw = null_mut();
-    // SAFETY: valid NUL-terminated UNICODE_STRING descriptors and live environment snapshot.
-    let params_status = unsafe {
-        RtlCreateProcessParametersEx(
-            &mut params,
-            &us_image,
-            null_mut(),
-            &us_cwd,
-            &us_cmd,
-            env_ptr.cast(),
-            null_mut(),
-            null_mut(),
-            null_mut(),
-            null_mut(),
-            1,
-        )
-    };
-    let result = if params_status < 0 || params.is_null() {
-        // SAFETY: pure NTSTATUS-to-Win32 error translation.
-        let dos = unsafe { RtlNtStatusToDosError(params_status) };
-        Err(if dos != 0 { dos } else { params_status as u32 })
-    } else {
-        // SAFETY: RtlCreateProcessParametersEx initialized a complete normalized parameter block.
-        unsafe {
-            let prefix = params.cast::<UserProcessParametersPrefix>();
-            (*prefix).console_handle = (-1isize) as Raw;
-            (*prefix).standard_input = inherited[0];
-            (*prefix).standard_output = inherited[1];
-            (*prefix).standard_error = inherited[2];
-            (*prefix).window_flags |= 0x100;
+    let params = native_parameters(&us_image, &us_cwd, &us_cmd, env_ptr.cast());
+    let result = match params {
+        Ok(mut params) => {
+            // SAFETY: RTL returned a non-null, aligned, complete normalized allocation; it remains
+            // exclusively owned here until RtlDestroyProcessParameters after the last native use.
+            let prefix = unsafe { params.as_mut() };
+            prefix.console_handle = (-1isize) as Raw;
+            prefix.standard_input = inherited[0];
+            prefix.standard_output = inherited[1];
+            prefix.standard_error = inherited[2];
+            prefix.window_flags |= 0x100;
+            // SAFETY: PsCreateInfo is a plain-old-data NT input/output record of fixed 88-byte size.
+            let mut create_info: PsCreateInfo = unsafe { std::mem::zeroed() };
+            create_info.size = size_of::<PsCreateInfo>();
+            let mut attr_list = PsAttributeList2 {
+                total_length: size_of::<PsAttributeList2>(),
+                attributes: [
+                    PsAttribute {
+                        attribute: 0x20005,
+                        size: nt_image.len() * 2,
+                        value: nt_image.as_ptr() as usize,
+                        return_length: null_mut(),
+                    },
+                    PsAttribute {
+                        attribute: 0x2000B,
+                        size: size_of_val(inherited),
+                        value: inherited.as_mut_ptr() as usize,
+                        return_length: null_mut(),
+                    },
+                ],
+            };
+            let (mut process, mut thread) = (null_mut(), null_mut());
+            // SAFETY: suspended child inherits the LPAC token, outer Job, and exact 3-handle allowlist
+            // without opening HKLM\...\SideBySide in owned-fixture mode.
+            let status = unsafe {
+                NtCreateUserProcess(
+                    &mut process,
+                    &mut thread,
+                    0x02000000,
+                    0x02000000,
+                    null_mut(),
+                    null_mut(),
+                    4,
+                    1,
+                    params.as_ptr().cast(),
+                    &mut create_info,
+                    &mut attr_list,
+                )
+            };
+            if status >= 0 {
+                Ok(ProcessInfo {
+                    process,
+                    thread,
+                    pid: 0,
+                    tid: 0,
+                })
+            } else {
+                // SAFETY: pure NTSTATUS-to-Win32 error translation.
+                let dos = unsafe { RtlNtStatusToDosError(status) };
+                Err(if dos != 0 { dos } else { status as u32 })
+            }
         }
-        // SAFETY: PsCreateInfo is a plain-old-data NT input/output record of fixed 88-byte size.
-        let mut create_info: PsCreateInfo = unsafe { std::mem::zeroed() };
-        create_info.size = size_of::<PsCreateInfo>();
-        let mut attr_list = PsAttributeList2 {
-            total_length: size_of::<PsAttributeList2>(),
-            attributes: [
-                PsAttribute {
-                    attribute: 0x20005,
-                    size: nt_image.len() * 2,
-                    value: nt_image.as_ptr() as usize,
-                    return_length: null_mut(),
-                },
-                PsAttribute {
-                    attribute: 0x2000B,
-                    size: size_of_val(inherited),
-                    value: inherited.as_mut_ptr() as usize,
-                    return_length: null_mut(),
-                },
-            ],
-        };
-        let (mut process, mut thread) = (null_mut(), null_mut());
-        // SAFETY: suspended child inherits the LPAC token, outer Job, and exact 3-handle allowlist
-        // without opening HKLM\...\SideBySide in owned-fixture mode.
-        let status = unsafe {
-            NtCreateUserProcess(
-                &mut process,
-                &mut thread,
-                0x02000000,
-                0x02000000,
-                null_mut(),
-                null_mut(),
-                4,
-                1,
-                params,
-                &mut create_info,
-                &mut attr_list,
-            )
-        };
-        if status >= 0 {
-            Ok(ProcessInfo {
-                process,
-                thread,
-                pid: 0,
-                tid: 0,
-            })
-        } else {
-            // SAFETY: pure NTSTATUS-to-Win32 error translation.
-            let dos = unsafe { RtlNtStatusToDosError(status) };
-            Err(if dos != 0 { dos } else { status as u32 })
-        }
+        Err(error) => Err(error),
     };
-    if !params.is_null() {
-        // SAFETY: params was allocated by RtlCreateProcessParametersEx above.
-        if unsafe { RtlDestroyProcessParameters(params) } < 0 {
+    if let Ok(params) = params {
+        // SAFETY: params was allocated on the successful RTL path and is no longer borrowed.
+        if unsafe { RtlDestroyProcessParameters(params.as_ptr().cast()) } < 0 {
             cleanup_failed();
         }
     }
@@ -578,6 +593,22 @@ mod tests {
             },
         )?;
         Ok(bytes)
+    }
+
+    #[test]
+    fn allocated_process_parameters_have_a_writable_native_prefix() {
+        let image: Vec<u16> = "C:\\fixture.exe\0".encode_utf16().collect();
+        let image = unicode_nt(&image).unwrap();
+        let mut params = native_parameters(&image, &image, &image, null_mut()).unwrap();
+        // SAFETY: RTL allocated the complete parameter record, exclusively owned until destroy.
+        let prefix = unsafe { params.as_mut() };
+        assert!(prefix.length as usize >= size_of::<UserProcessParametersPrefix>());
+        prefix.console_handle = (-1isize) as Raw;
+        prefix.window_flags |= 0x100;
+        assert_eq!(prefix.console_handle as isize, -1);
+        assert_ne!(prefix.window_flags & 0x100, 0);
+        // SAFETY: release only the exact successful RTL allocation, after its last use.
+        assert!(unsafe { RtlDestroyProcessParameters(params.as_ptr().cast()) } >= 0);
     }
 
     #[test]

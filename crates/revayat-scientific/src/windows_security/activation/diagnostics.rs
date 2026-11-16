@@ -69,6 +69,9 @@ pub enum Stage {
     ScratchQuota,
     ScratchPrivate,
     ScratchSeal,
+    ScratchSealOwner,
+    ScratchSealLabel,
+    ScratchSealDacl,
     ScratchReady,
     FixtureDiscover,
     FixtureHost,
@@ -177,6 +180,9 @@ impl Stage {
             Self::ScratchQuota => "scratch-quota",
             Self::ScratchPrivate => "scratch-private",
             Self::ScratchSeal => "scratch-seal",
+            Self::ScratchSealOwner => "scratch-seal-owner",
+            Self::ScratchSealLabel => "scratch-seal-label",
+            Self::ScratchSealDacl => "scratch-seal-dacl",
             Self::ScratchReady => "scratch-ready",
             Self::FixtureDiscover => "fixture-discover",
             Self::FixtureHost => "fixture-host",
@@ -419,6 +425,29 @@ pub fn find<T: Error + Send + Sync + 'static>(error: &anyhow::Error) -> Option<&
     visit(error, 0)
 }
 pub fn check_validation() -> anyhow::Result<()> {
+    for (stage, label, fields) in [
+        (Stage::ScratchSealOwner, "scratch-seal-owner", 1),
+        (Stage::ScratchSealLabel, "scratch-seal-label", 0x10),
+        (Stage::ScratchSealDacl, "scratch-seal-dacl", 0x80000004),
+    ] {
+        let error = annotate(
+            std::io::Error::from_raw_os_error(5).into(),
+            stage,
+            Numbers {
+                native_error: Some(5),
+                properties: Some(fields),
+                ..Default::default()
+            },
+        );
+        let report = at(error, Stage::ScratchSeal).to_string();
+        anyhow::ensure!(
+            report.contains(&format!("stage={label} "))
+                && report.contains("native_error=0x00000005")
+                && report.contains(&format!("properties=0x{fields:08X}"))
+                && !report.contains("Access is denied"),
+            "scratch seal step or numeric fields were lost or exposed raw text"
+        );
+    }
     let inner = operation(
         std::io::Error::from_raw_os_error(5).into(),
         Stage::ScratchCreate,
