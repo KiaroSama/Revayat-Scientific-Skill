@@ -36,43 +36,40 @@ unsafe extern "system" {
         dacl: Handle,
         sacl: Handle,
     ) -> u32;
-    fn SetSecurityInfo(
-        object: Handle,
-        kind: i32,
-        fields: u32,
-        owner: Handle,
-        group: Handle,
-        dacl: Handle,
-        sacl: Handle,
-    ) -> u32;
+    fn GetSecurityDescriptorLength(descriptor: Handle) -> u32;
+}
+#[link(name = "ntdll")]
+unsafe extern "system" {
+    fn NtSetSecurityObject(handle: Handle, fields: u32, data: *const std::ffi::c_void) -> i32;
+    fn RtlNtStatusToDosError(status: i32) -> u32;
 }
 
-fn set_dacl(path: &Path, root: Handle, dacl: Handle) -> Result<()> {
+fn set_dacl(path: &Path, root: Handle, descriptor: Handle) -> Result<()> {
     // Restore privilege is applied at the backup-intent open, not merely enabled around a
-    // pathname setter. READ_CONTROL also permits the filesystem ACL inheritance machinery.
+    // pathname setter.
     let mut target = Owned::open(path, 0x00060000, 7, 0x02200000)?;
     let result = (|| {
         ensure!(
             access::identity(target.0, true)? == access::identity(root, true)?,
             "scratch seal pathname changed from its held root"
         );
-        // SAFETY: exact bound directory handle with WRITE_DAC; descriptor stays live. The
-        // protected private creator keeps its own ACL; subsequent folders inherit this root.
-        let status = unsafe {
-            SetSecurityInfo(
-                target.0,
-                1,
-                0x80000004,
-                null_mut(),
-                null_mut(),
-                dacl,
-                null_mut(),
-            )
-        };
-        if status == 0 {
+        let length = unsafe { GetSecurityDescriptorLength(descriptor) };
+        ensure!(
+            (20..=65536).contains(&length),
+            "scratch seal descriptor exceeds bound"
+        );
+        // SAFETY: exact bound directory handle with WRITE_DAC; the self-relative descriptor
+        // stays live. Unlike SetSecurityInfo/SetNamedSecurityInfoW, the native setter does not
+        // walk existing children: a fresh NTFS root holds SYSTEM-only `System Volume Information`
+        // whose propagation open is denied. The protected private creator keeps its own ACL and
+        // folders created after the seal inherit this root in the kernel.
+        let status = unsafe { NtSetSecurityObject(target.0, 4, descriptor.cast_const()) };
+        if status >= 0 {
             Ok(())
         } else {
-            Err(std::io::Error::from_raw_os_error(status as i32)).context("set scratch DACL")
+            let code = unsafe { RtlNtStatusToDosError(status) };
+            Err(std::io::Error::from_raw_os_error(code as i32))
+                .with_context(|| format!("set scratch DACL ntstatus=0x{:08X}", status as u32))
         }
     })();
     access::combine(result, target.close())
@@ -122,7 +119,7 @@ pub(super) fn set_root_security(
                         && present != 0);
             ensure!(extracted, "scratch security component extraction failed");
             let result = if fields == 0x80000004 {
-                set_dacl(path, root, dacl)
+                set_dacl(path, root, descriptor.0)
             } else {
                 // Owner and integrity-label writes retain the established named-object path.
                 let status = unsafe {
@@ -181,9 +178,25 @@ mod tests {
         let work = tempfile::tempdir().unwrap();
         let child = work.path().join("private");
         std::fs::create_dir(&child).unwrap();
+        let host = crate::windows_security::sxs::current_user_sid().unwrap();
         let other = work.path().join("other");
         std::fs::create_dir(&other).unwrap();
-        let host = crate::windows_security::sxs::current_user_sid().unwrap();
+        // Mirrors `System Volume Information`: a protected child the caller cannot open for
+        // READ_CONTROL/WRITE_DAC, which a user-mode propagating setter fails on.
+        let locked = work.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        let mut locked_pin = Owned::open(&locked, 0x20080, 7, 0x02200000).unwrap();
+        // The owner keeps only delete/list so the fixture stays removable.
+        let locked_policy = format!("D:P(D;;0x000C0000;;;OW)(A;;FA;;;SY)(A;;0x00110081;;;{host})");
+        set_root_security(
+            &locked,
+            locked_pin.0,
+            &locked_policy,
+            0x80000004,
+            Stage::ScratchSealDacl,
+        )
+        .unwrap();
+        let locked_before = access::security(locked_pin.0, 4).unwrap();
         let policy = format!("D:P(A;OICI;FA;;;{host})(A;OICI;FA;;;SY)");
         let mut expected = Descriptor::new(&policy).unwrap();
         let mut root = Owned::open(work.path(), 0x20080, 7, 0x02200000).unwrap();
@@ -213,21 +226,20 @@ mod tests {
                 access::security(child_pin.0, 4)? == before,
                 "protected child DACL changed"
             );
-            let (mut present, mut defaulted, mut dacl) = (0, 0, null_mut());
             ensure!(
-                unsafe {
-                    GetSecurityDescriptorDacl(expected.0, &mut present, &mut dacl, &mut defaulted)
-                } != 0,
-                "test DACL extraction failed"
+                access::security(locked_pin.0, 4)? == locked_before,
+                "inaccessible protected child DACL changed"
             );
             ensure!(
-                set_dacl(&other, root.0, dacl).is_err(),
+                set_dacl(&other, root.0, expected.0).is_err(),
                 "foreign directory accepted"
             );
             Ok(())
         })();
         let result = access::combine(result, expected.close());
         let result = access::combine(result, child_pin.close());
+        let result = access::combine(result, locked_pin.close());
+        let result = access::combine(result, std::fs::remove_dir(&locked).map_err(Into::into));
         access::combine(result, root.close()).unwrap();
         work.close().unwrap();
     }
