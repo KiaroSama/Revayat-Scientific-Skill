@@ -79,8 +79,8 @@ unsafe extern "system" {
     fn FilterVolumeInstanceFindClose(find: Handle) -> i32;
 }
 
-/// Known minifilter names reported as bits 32-39 of `dr6`; total instances in bits 40-47.
-const FILTERS: [&str; 8] = [
+/// Known minifilter names reported as bits 0-23 of `bytes`; total instances in bits 24-31.
+const FILTERS: [&str; 24] = [
     "WdFilter",
     "bindflt",
     "wcifs",
@@ -89,10 +89,28 @@ const FILTERS: [&str; 8] = [
     "FileCrypt",
     "storqosflt",
     "CldFlt",
+    "FileInfo",
+    "bfs",
+    "UCPD",
+    "applockerfltr",
+    "WinSetupMon",
+    "mssecflt",
+    "MsSecCore",
+    "SysmonDrv",
+    "Dedup",
+    "npsvctrig",
+    "Ntfs",
+    "fsdepends",
+    "dfmfilter",
+    "iorate",
+    "PROCMON24",
+    "unionfs",
 ];
 
-/// Volume evidence: file-system flags into `result` when no NTSTATUS was recorded, and the
-/// attached minifilter census into `dr6` bits 32-47 (closed name set, never raw names).
+/// Volume evidence: file-system flags into `result` when no NTSTATUS was recorded, the
+/// attached minifilter census into `bytes` (closed name set, never raw names; replaces the
+/// deny mask, which is zero on the formatter default root), and `count` 0x4000 when a fresh
+/// child directory on the same volume accepts a backup-intent WRITE_DAC open.
 fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers) {
     let mut flags = 0u32;
     // SAFETY: query-only call on the live held root; null buffers are allowed with size 0.
@@ -154,12 +172,19 @@ fn volume_evidence(path: &Path, root: Handle, numbers: &mut diagnostics::Numbers
     if !find.is_null() && find as isize != -1 {
         unsafe { FilterVolumeInstanceFindClose(find) };
     }
-    let census = if total == 0 && status < 0 && status as u32 != 0x80070103 {
-        0xFFFF
+    numbers.bytes = Some(if total == 0 && status < 0 && status as u32 != 0x80070103 {
+        0xFFFF_FFFF
     } else {
-        known | (total << 8)
-    };
-    numbers.dr6 = Some((numbers.dr6.unwrap_or(0) & !(0xFFFF << 32)) | (census << 32));
+        (known as u32) | ((total as u32) << 24)
+    });
+    let child = path.join("rvy-dacl-probe");
+    if std::fs::create_dir(&child).is_ok() {
+        if let Ok(mut probe) = Owned::open(&child, 0x00040000, 7, 0x02200000) {
+            numbers.count = Some(numbers.count.unwrap_or(0) | 0x4000);
+            let _ = probe.close();
+        }
+        let _ = std::fs::remove_dir(&child);
+    }
 }
 #[link(name = "advapi32")]
 unsafe extern "system" {
@@ -357,7 +382,7 @@ fn open_writer(path: &Path, root: Handle, progress: &mut u32) -> Result<Owned> {
 
 /// `progress` bits: 0x10 opened, 0x20 identity bound, 0x40 native setter invoked; open probes
 /// 0x100 WRITE_DAC backup, 0x200 WRITE_DAC plain, 0x400 WRITE_OWNER, 0x800 READ_CONTROL,
-/// 0x1000 held-root reopen, 0x2000 volume GUID path open.
+/// 0x1000 held-root reopen, 0x2000 volume GUID path open, 0x4000 same-volume child WRITE_DAC.
 fn set_dacl(
     path: &Path,
     root: Handle,
