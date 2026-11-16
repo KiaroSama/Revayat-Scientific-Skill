@@ -88,6 +88,16 @@ whole source passages, translations, secrets, credentials or private user data.
 If several agents participate, the coordinating agent appends their reported
 actions to the log so concurrent writers do not corrupt it.
 
+Each job must include this entry with actual applied files and nonnegative counts,
+including zero; never claim an unread file was applied:
+
+```text
+[YYYY-MM-DD HH:mm:ss UTC] [INFO] [FLUENCY] Voice guidance applied: <files>; spans revised: <n>; suggestions rejected by precedence: <n>
+```
+
+If vendored guidance is missing or unreadable, log a `[WARNING] [FLUENCY]` entry
+naming the unavailable files and continue with [fluency-gold.md](references/fluency-gold.md).
+
 Keep the log current throughout the workflow, not just in a final recap. If the
 translation is delivered in another directory, deliver its completed log beside
 it too. Include the log path in the handoff. Helper diagnostic logs do not replace
@@ -98,6 +108,13 @@ workflow is complete.
 ---
 
 Native diagnostic logs are separate from that translation record. The CLI writes content-free UTC operation records to `./logs`; `REVAYAT_LOG_DIR` selects another location and `REVAYAT_LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING` or `ERROR`. Records contain command/exit categories, exit code and duration, without arguments, tool output or private paths. Keep unresolved recovery journals local.
+
+## Reply voice
+
+For your own conversational replies, use Persian [ai-tells](references/voice/persian/references/ai-tells.md),
+Russian [great-russian](references/voice/great-russian/SKILL.md), or English
+[humanizer](references/voice/humanizer/SKILL.md), under the [precedence rule](references/voice/README.md#precedence).
+Never change reported facts, numbers or status. Missing guidance follows the warning rule above.
 
 ## Step 1 — Check the tools
 
@@ -268,8 +285,15 @@ not a substitute for source comparison. Use the same terminology revision and
 neighbor context for drafting and review; label actual coverage and error severity.
 
 Then read the Persian for fluency using
-[fluency-gold.md](references/fluency-gold.md). Revise only the necessary spans,
-preserving terms and scientific force.
+[fluency-gold.md](references/fluency-gold.md). After fidelity review, for Persian
+targets also read [ai-tells.md](references/voice/persian/references/ai-tells.md),
+[pitfalls.md](references/voice/persian/references/pitfalls.md),
+[register-guide.md](references/voice/persian/references/register-guide.md),
+[review-lenses.md](references/voice/persian/references/review-lenses.md) (only the
+ai-tells, fluency-eloquence, modern-standards and oral/read-aloud lenses), and
+[humanizer patterns](references/voice/humanizer/SKILL.md), under the canonical
+[precedence rule](references/voice/README.md#precedence). Revise only fluency spans,
+recheck their scientific meaning and log which guidance was actually applied.
 
 Approved review/correction workers receive completed draft snapshots and return
 located findings or separate patches. The coordinator alone accepts corrections

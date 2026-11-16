@@ -2,8 +2,11 @@
 
 ## Upstream delta review — 2026-11-13 (UTC)
 
-The [current inventory](upstream-revisions.json) refreshes all 33 repository
-HEADs, with exact UTC observation bounds for each batch. The
+The [current inventory](upstream-revisions.json) contains 35 repository identities.
+The November 13 refresh covers the original 33 HEADs, with exact UTC observation
+bounds per batch; two voice-guidance repositories were added at pinned HEADs
+checked November 16. [Voice provenance](voice/README.md) records the three bundled
+MIT guidance sets and their retained paths. The
 [November 13 selected-source record](upstream-review-2026-11-13.md) names actual
 immutable documents and diffs read for the five changed repositories; the other
 28 retain their November 10 selected-source review. Four deltas inform guidance:
@@ -21,10 +24,11 @@ and native verification. The historical review below and the
 
 ## Rust migration review — 2026-11-10 (UTC)
 
-[Upstream revisions](upstream-revisions.json) records the latest default-branch
-commit metadata observed for the 33 referenced repositories. That inventory is
-discovery evidence, not a claim that every repository's complete history was
-reviewed. The following current documents were also read. A separate
+[Upstream revisions](upstream-revisions.json) now records 35 repository identities;
+the observations in this historical review cover the original 33. The two later
+voice-guidance additions retain their own November 16 observation bounds. The
+inventory is discovery evidence, not a claim that every repository's complete
+history was reviewed. The following documents were read for this review. A separate
 [selected-source review](upstream-review-2026-11-10.md) records actual documents
 read for the other 23 repositories, completing selected-document inspection
 across all 33 identities. It records decisions and limitations rather than
@@ -48,14 +52,19 @@ from dependency PR #32 is already present in the Rust reference branch.
 
 ## Further skill review — 2026-09-24
 
-The following public repositories were inspected for reusable procedures. Their
-code, examples, corpora, prompts, models and templates were not copied into this
-package. The bundled `term-brief` and source-evidence guidance are independently
-written for this project's existing ledger and any original source language.
+The following public repositories were inspected for reusable procedures. Since
+the November 16 voice-guidance integration, selected Persian, humanizer and Russian
+Markdown craft references are bundled verbatim at pinned commits; the [provenance
+and precedence rule](voice/README.md#precedence) defines their scope. Their scripts,
+banks, corpora, models and templates are not imported. The bundled native
+`term-brief` and source-evidence guidance remain independently written for this
+project's existing ledger and any original source language.
 
 | Primary source | Useful method | Boundary and decision |
 | --- | --- | --- |
-| [Persian skill](https://github.com/Mojtaba-Alehosseini/persian-skill) | Select only glossary entries that occur in a source; review Persian register, typography and idioms separately from source fidelity. | MIT repository, English–Persian focus. Adopt the source-filtered *method* through native `term-brief`; do not import its banks or automatic digit normalization, which could alter equations and original quotations. |
+| [Persian skill](https://github.com/Mojtaba-Alehosseini/persian-skill) | Review Persian register, machine-translation pitfalls and AI tells separately from source fidelity; select only glossary entries present in the source. | MIT; vendored Markdown craft guidance at pinned commit `4264f6ef03f7568bc15b14287a3db09bc815fc31`, with LICENSE and NOTICE. Banks, scripts and automatic digit normalization are still not imported; native `term-brief` owns source-filtered lookup. Follow [voice precedence](voice/README.md#precedence). |
+| [Humanizer](https://github.com/blader/humanizer) | Recognize stock AI phrasing and improve flow without changing supported facts. | MIT; SKILL.md and LICENSE vendored at `b48c832f0f809c1b5658edbb838c2521b72f2413`. Persian fluency and English replies use its patterns under [voice precedence](voice/README.md#precedence); scientific hedges and claims remain intact. |
+| [Great Russian](https://github.com/frolin/great-russian-skill) | Recognize officialese and machine tics in Russian register; write natural Russian replies. | MIT; SKILL.md, seven Markdown references and LICENSE vendored at `c9ba8661768927c21b7ba5608e63dce832c568b5`. Use for source-register reading and Russian writing, never a rewritten Russian translation intermediary; follow [voice precedence](voice/README.md#precedence). |
 | [Scientific writing](https://github.com/K-Dense-AI/scientific-agent-skills/blob/main/skills/scientific-writing/SKILL.md), [library paper](https://arxiv.org/abs/2609.00065) | Locate claims and numbers in the original, distinguish verified evidence from search leads and missing details, and check confidentiality. | MIT skill; its manuscript drafting and optional Python 3.11 tools are outside this translation package (minimum Python 3.11 since 2026-10-08). Adapt source-bound review guidance, not scripts or a claim of human verification. |
 | [Academic paper engineering](https://github.com/Hongyuan-Lu/academic-paper-engineering) | Maintain section-specific translation/style memory and never silently change scientific numbers, formulas or references. | MIT repository; published translation direction is Chinese→English, not Chinese→Persian. Adopt section-role checks for any source language; do not bundle its publisher templates or pdflatex workflow. |
 | [PARME](https://github.com/DOLMA-NLP/PARME), [license](https://github.com/DOLMA-NLP/PARME/blob/main/LICENSE) | English–Persian–regional-language alignment covers seven named low-resource languages; the Zazaki material instead pairs with English/Kurmanji. | MIT repository, general-domain sentences. Verify the exact variety, direction, corpus provenance and reuse terms for each job; no sentence is bundled or treated as reviewed Persian scientific gold. |

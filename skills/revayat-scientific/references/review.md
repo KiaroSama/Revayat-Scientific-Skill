@@ -102,6 +102,7 @@ word-for-word source structure, excessive nominalization and unnecessary foreign
 jargon. Judge verbs/passives in context; do not turn editorial preference into an
 accuracy error. Preserve author voice and scientific force while improving flow.
 After a fluency edit, return to L1 for the changed span.
+For the Persian and humanizer files and fluency-only lenses, follow the [voice guidance and precedence rule](voice/README.md#precedence).
 
 ## L4 — Page and image fidelity
 

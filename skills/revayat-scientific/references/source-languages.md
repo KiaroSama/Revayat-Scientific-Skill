@@ -82,6 +82,18 @@ number conventions, terminology, names and script/font needs. Absence from this
 table does not reject the source; inability to understand it limits the review.
 Never manufacture a dedicated repository or a tested-language badge.
 
+### Russian sources
+
+For Russian sources, read [great-russian](voice/great-russian/SKILL.md),
+[antipatterns.md](voice/great-russian/references/antipatterns.md) and
+[ai-detection.md](voice/great-russian/references/ai-detection.md) only to judge the
+source's register and recognize machine tics or officialese. Follow the canonical
+[precedence rule](voice/README.md#precedence); a style tic does not prove AI authorship.
+Never rewrite the Russian source or translate through an intermediate Russian
+rewrite. Translate directly from the preserved original into Persian. The Russian
+guidance also applies when writing Russian replies, with reported facts, numbers
+and status unchanged.
+
 ## Protect meaning across scripts
 
 - Keep verbatim originals unmodified in `source/`. Normalize only translated Persian

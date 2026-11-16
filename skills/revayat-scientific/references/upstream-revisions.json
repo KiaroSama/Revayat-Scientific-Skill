@@ -9,8 +9,30 @@
     "started_at": "2026-11-13T20:23:14Z",
     "completed_at": "2026-11-13T20:24:05Z"
   },
-  "scope": "Latest default-branch commit metadata for the 33 repositories cited in research-sources.md. Per-row times bound each metadata read batch. Metadata discovery alone is not a code or release review; upstream-review-2026-11-13.md records the five changed comparisons, actual selected-source reads, adoption decisions and limits. The 2026-11-10 selected-source record remains historical.",
+  "scope": "Latest observed default-branch commit metadata for the 35 repositories cited in research-sources.md. The original 33 retain their November 13 observation bounds; two voice-guidance repositories were added from the November 16 HEAD check. Per-row times bound each metadata read batch. Metadata discovery alone is not a code or release review; upstream-review-2026-11-13.md records the five changed comparisons, actual selected-source reads, adoption decisions and limits. The 2026-11-10 selected-source record remains historical.",
   "repositories": [
+    {
+      "repository": "blader/humanizer",
+      "commit": "b48c832f0f809c1b5658edbb838c2521b72f2413",
+      "committed_at": "2026-11-10T01:34:24Z",
+      "subject": "Merge pull request #333 from blader/release-4.0.0",
+      "commit_url": "https://github.com/blader/humanizer/commit/b48c832f0f809c1b5658edbb838c2521b72f2413",
+      "head_checked_utc": {
+        "started_at": "2026-11-16T20:14:47Z",
+        "completed_at": "2026-11-16T20:14:47Z"
+      }
+    },
+    {
+      "repository": "frolin/great-russian-skill",
+      "commit": "c9ba8661768927c21b7ba5608e63dce832c568b5",
+      "committed_at": "2026-08-04T20:42:55Z",
+      "subject": "docs: add social preview image",
+      "commit_url": "https://github.com/frolin/great-russian-skill/commit/c9ba8661768927c21b7ba5608e63dce832c568b5",
+      "head_checked_utc": {
+        "started_at": "2026-11-16T20:14:47Z",
+        "completed_at": "2026-11-16T20:14:47Z"
+      }
+    },
     {
       "repository": "Mojtaba-Alehosseini/persian-skill",
       "commit": "4264f6ef03f7568bc15b14287a3db09bc815fc31",
