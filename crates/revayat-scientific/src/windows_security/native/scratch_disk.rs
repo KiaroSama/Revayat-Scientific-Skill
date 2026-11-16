@@ -4,8 +4,11 @@ use super::{
     scratch_access::{self as access, Identity, Owned},
     scratch_layout::{self as layout, VolumeBinding},
 };
+#[path = "scratch_seal.rs"]
+mod seal;
 use crate::windows_security::activation::diagnostics::{self, Stage};
 use anyhow::{Context, Result, ensure};
+use seal::set_root_security;
 fn phase<T>(result: Result<T>, stage: Stage) -> Result<T> {
     result.map_err(|error| diagnostics::operation(error, stage))
 }
@@ -637,123 +640,6 @@ pub(super) fn filesystem(root: &str) -> Result<(u32, u64)> {
         "scratch filesystem capacity exceeds fixed bound"
     );
     Ok((serial, total))
-}
-
-fn set_root_security(
-    path: &Path,
-    root: super::Handle,
-    sddl: &str,
-    fields: u32,
-    stage: Stage,
-) -> Result<()> {
-    #[link(name = "advapi32")]
-    unsafe extern "system" {
-        fn GetSecurityDescriptorOwner(
-            descriptor: super::Handle,
-            owner: *mut super::Handle,
-            defaulted: *mut i32,
-        ) -> i32;
-        fn GetSecurityDescriptorDacl(
-            descriptor: super::Handle,
-            present: *mut i32,
-            dacl: *mut super::Handle,
-            defaulted: *mut i32,
-        ) -> i32;
-        fn GetSecurityDescriptorSacl(
-            descriptor: super::Handle,
-            present: *mut i32,
-            sacl: *mut super::Handle,
-            defaulted: *mut i32,
-        ) -> i32;
-        fn SetNamedSecurityInfoW(
-            path: *mut u16,
-            kind: i32,
-            fields: u32,
-            owner: super::Handle,
-            group: super::Handle,
-            dacl: super::Handle,
-            sacl: super::Handle,
-        ) -> u32;
-    }
-    let mut descriptor = super::authority::Descriptor::new(sddl)?;
-    let mut wide_path = super::authority::wide(path);
-    let mut take = access::ManageVolume::acquire_optional("SeTakeOwnershipPrivilege")?;
-    let mut numbers = diagnostics::Numbers {
-        properties: Some(fields),
-        ..Default::default()
-    };
-    let result = (|| {
-        let mut restore = access::ManageVolume::acquire_optional("SeRestorePrivilege")?;
-        let result = (|| {
-            let (mut owner, mut dacl, mut sacl) = (null_mut(), null_mut(), null_mut());
-            let (mut present, mut defaulted) = (0, 0);
-            let extracted = (fields & 1 == 0
-                || unsafe { GetSecurityDescriptorOwner(descriptor.0, &mut owner, &mut defaulted) }
-                    != 0)
-                && (fields & 4 == 0
-                    || unsafe {
-                        GetSecurityDescriptorDacl(
-                            descriptor.0,
-                            &mut present,
-                            &mut dacl,
-                            &mut defaulted,
-                        )
-                    } != 0
-                        && present != 0)
-                && (fields & 0x18 == 0
-                    || unsafe {
-                        GetSecurityDescriptorSacl(
-                            descriptor.0,
-                            &mut present,
-                            &mut sacl,
-                            &mut defaulted,
-                        )
-                    } != 0
-                        && present != 0);
-            ensure!(extracted, "scratch security component extraction failed");
-            let status = unsafe {
-                SetNamedSecurityInfoW(
-                    wide_path.as_mut_ptr(),
-                    1,
-                    fields,
-                    owner,
-                    null_mut(),
-                    dacl,
-                    sacl,
-                )
-            };
-            if status == 0 {
-                Ok(())
-            } else {
-                if fields & 4 != 0 {
-                    // Failure-only evidence: available take/restore privileges, readback, DACL match.
-                    // Readback is never recovery or admission and cannot replace the setter error.
-                    let readback = access::dacl_matches(root, descriptor.0).ok();
-                    numbers.count = Some(
-                        u32::from(take.is_some())
-                            | (u32::from(restore.is_some()) << 1)
-                            | (u32::from(readback.is_some()) << 2)
-                            | (u32::from(readback == Some(true)) << 3),
-                    );
-                }
-                Err(std::io::Error::from_raw_os_error(status as i32)).context("set scratch policy")
-            }
-        })();
-        access::combine(
-            result,
-            restore.as_mut().map_or(Ok(()), access::ManageVolume::close),
-        )
-    })();
-    let result = access::combine(
-        result,
-        take.as_mut().map_or(Ok(()), access::ManageVolume::close),
-    );
-    access::combine(result, descriptor.close()).map_err(|error| {
-        numbers.native_error = diagnostics::find::<std::io::Error>(&error)
-            .and_then(std::io::Error::raw_os_error)
-            .map(|code| code as u32);
-        diagnostics::annotate(error, stage, numbers)
-    })
 }
 
 fn root_policy(intent: &Intent) -> String {
