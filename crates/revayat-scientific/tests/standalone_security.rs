@@ -46,7 +46,7 @@ fn refusal_error_boundaries() -> Result<()> {
         security_cases::{ExpectedRefusal, require_contract_refusal},
     };
     let directory = tempfile::tempdir()?;
-    // macOS tempfile roots may pass through /var -> /private/var. The actual
+    // Tempfile roots may pass through a symbolic-link alias. The actual
     // refusal cases need a plain canonical parent before exercising missing I/O.
     let root = directory.path().canonicalize()?;
     let delivery = root.join("previous.docx");

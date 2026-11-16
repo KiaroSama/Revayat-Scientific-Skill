@@ -446,7 +446,7 @@ fn test_live_root_entities_and_comment_only_waivers() {
 fn test_encoded_and_starred_assets_share_lint_and_build_resolution() {
     let d = tempfile::tempdir().unwrap();
     // Match Source::load/lint::check/build's approved canonical root, including
-    // macOS's /var -> /private/var temporary-directory alias.
+    // any symbolic-link alias in the temporary-directory path.
     let root = d.path().canonicalize().unwrap();
     fs::create_dir(root.join("figures")).unwrap();
     fs::create_dir(root.join("chapters")).unwrap();

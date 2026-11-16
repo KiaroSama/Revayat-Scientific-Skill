@@ -101,14 +101,13 @@ impl GitHubApi for Fixture {
 }
 #[test]
 fn test_required_census_matches_all_existing_matrix_and_reusable_jobs() {
-    assert_eq!(REQUIRED_JOBS.len(), 10);
+    assert_eq!(REQUIRED_JOBS.len(), 9);
     for expected in [
         "security / linux-security",
         "security / windows-security",
         "codeql / analyse",
         "dependency-review / review",
         "portable (ubuntu-latest)",
-        "portable (macos-latest)",
         "portable (windows-latest)",
         "scientific",
         "quality",
@@ -482,7 +481,7 @@ fn http_fixture_framed(
                 Err(error) => panic!("HTTP fixture accept failed: {error}"),
             }
         };
-        // accept inherits nonblocking mode on macOS/Windows; Linux differs.
+        // accept inherits nonblocking mode on Windows; Linux differs.
         // The listener polls for cancellation, but request/body I/O must block.
         connection.set_nonblocking(false).unwrap();
         connection
@@ -529,7 +528,7 @@ fn http_fixture_framed(
                 break;
             };
             if let Err(error) = connection.set_write_timeout(Some(timeout)) {
-                // Darwin rejects setsockopt after an early client shutdown,
+                // Some platforms reject setsockopt after an early client shutdown,
                 // including the deliberate declared-body-cap refusal.
                 exchange.write_error = Some(error.kind());
                 break;

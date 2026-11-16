@@ -576,7 +576,7 @@ fn debug_artifacts_and_reports_cannot_be_reused_as_release_evidence() {
 #[test]
 fn every_required_os_profile_and_native_slot_is_mandatory() {
     let mut reports = Vec::new();
-    for platform in ["linux", "macos", "windows"] {
+    for platform in ["linux", "windows"] {
         for profile in ["debug", "release"] {
             let mut value = report();
             value.platform = platform.into();
@@ -586,7 +586,6 @@ fn every_required_os_profile_and_native_slot_is_mandatory() {
     }
     for (tier, platform, job) in [
         ("scientific", "linux", "scientific"),
-        ("scientific", "macos", "portable"),
         ("scientific", "windows", "portable"),
         ("native", "linux", "linux-security"),
         ("native", "windows", "windows-security"),

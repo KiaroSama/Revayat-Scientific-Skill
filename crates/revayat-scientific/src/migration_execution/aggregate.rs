@@ -4,7 +4,7 @@ use crate::migration::{BehaviorLedger, read_evidence};
 
 fn required_scopes() -> BTreeSet<(String, String, String, String)> {
     let mut scopes = BTreeSet::new();
-    for platform in ["linux", "macos", "windows"] {
+    for platform in ["linux", "windows"] {
         for profile in ["debug", "release"] {
             scopes.insert((
                 "portable".into(),
@@ -14,11 +14,7 @@ fn required_scopes() -> BTreeSet<(String, String, String, String)> {
             ));
         }
     }
-    for (platform, job) in [
-        ("linux", "scientific"),
-        ("macos", "portable"),
-        ("windows", "portable"),
-    ] {
+    for (platform, job) in [("linux", "scientific"), ("windows", "portable")] {
         scopes.insert((
             "scientific".into(),
             platform.into(),
@@ -81,7 +77,7 @@ pub fn validate_obligation_scopes(ledger: &BehaviorLedger) -> Result<()> {
     let scopes = required_scopes();
     for obligation in &ledger.obligations {
         let platforms: Vec<&str> = if obligation.platforms.is_empty() {
-            vec!["linux", "macos", "windows"]
+            vec!["linux", "windows"]
         } else {
             obligation.platforms.iter().map(String::as_str).collect()
         };

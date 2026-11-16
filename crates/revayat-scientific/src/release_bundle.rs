@@ -1,4 +1,4 @@
-//! Six-target archives, detached owner signatures and verified GitHub publication.
+//! Four-target archives, detached owner signatures and verified GitHub publication.
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 use std::{
@@ -10,13 +10,11 @@ mod publish;
 #[path = "release_bundle/signing.rs"]
 mod signing;
 
-pub const REQUIRED_TARGETS: [&str; 6] = [
+pub const REQUIRED_TARGETS: [&str; 4] = [
     "x86_64-pc-windows-msvc",
     "aarch64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "aarch64-apple-darwin",
 ];
 const PUBLIC_KEY: &str = "release-signing-public-key.asc";
 const FINGERPRINT: &str = "AD46D65BE80708C2F6C93607C94F9CF383377BB8";
@@ -95,7 +93,7 @@ fn checksum_manifest(dir: &Path, tag: &str) -> Result<String> {
     actual.sort();
     ensure!(
         actual == names,
-        "release directory must contain exactly the six required ZIP archives"
+        "release directory must contain exactly the four required ZIP archives"
     );
     let mut manifest = String::new();
     for name in names {
@@ -158,7 +156,7 @@ pub fn cli(args: &[String]) -> Result<i32> {
 mod tests {
     use super::*;
     #[test]
-    fn required_targets_are_exactly_six_native_x64_and_arm64_builds() {
+    fn required_targets_are_exactly_four_native_x64_and_arm64_builds() {
         let actual = REQUIRED_TARGETS;
         assert_eq!(
             actual,
@@ -166,9 +164,7 @@ mod tests {
                 "x86_64-pc-windows-msvc",
                 "aarch64-pc-windows-msvc",
                 "x86_64-unknown-linux-gnu",
-                "aarch64-unknown-linux-gnu",
-                "x86_64-apple-darwin",
-                "aarch64-apple-darwin"
+                "aarch64-unknown-linux-gnu"
             ]
         );
         assert!(

@@ -236,7 +236,7 @@ pub fn select_equipped_cases(
 ) -> Result<BTreeSet<String>> {
     ensure!(tier == "scientific", "native execution adapter unavailable");
     ensure!(
-        ["linux", "macos", "windows"].contains(&platform),
+        ["linux", "windows"].contains(&platform),
         "unsupported equipped platform"
     );
     ensure!(
@@ -257,7 +257,7 @@ mod tests {
     use super::*;
     #[test]
     fn crop_all_platforms_and_windows_renderer_are_not_optional() {
-        for platform in ["linux", "macos", "windows"] {
+        for platform in ["linux", "windows"] {
             let crops = inventory(Some("crop_native"), platform);
             assert_eq!(
                 select_equipped_cases("scientific", platform, Some("crop_native"), &crops).unwrap(),
@@ -284,13 +284,13 @@ mod tests {
             .unwrap(),
             [WINDOWS_RENDER.into()].into()
         );
-        let office = inventory(Some("docx_native"), "macos");
+        let office = inventory(Some("docx_native"), "windows");
         assert!(
-            select_equipped_cases("scientific", "macos", Some("docx_native"), &office)
+            select_equipped_cases("scientific", "windows", Some("docx_native"), &office)
                 .unwrap()
                 .is_empty()
         );
-        for platform in ["linux", "macos", "windows"] {
+        for platform in ["linux", "windows"] {
             assert!(
                 select_equipped_cases("scientific", platform, Some("unreviewed"), &mixed).is_err()
             );
@@ -326,7 +326,7 @@ mod tests {
                 .unwrap(),
             cases
         );
-        for platform in ["macos", "windows"] {
+        for platform in ["windows"] {
             assert!(
                 select_equipped_cases("scientific", platform, Some("standalone_security"), &cases)
                     .unwrap()
@@ -369,7 +369,7 @@ mod tests {
                 repository: "example/project".into(),
                 workflow_ref: "fixture".into(),
                 job: "portable".into(),
-                platform: "macos".into(),
+                platform: "windows".into(),
                 tier: "scientific".into(),
                 profile: "debug".into(),
                 ignored_only: true,

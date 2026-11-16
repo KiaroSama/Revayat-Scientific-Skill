@@ -53,8 +53,8 @@ paths stay at `target/<profile>`; fixed companions resolve to that same profile,
 without searching arbitrary ancestors. Separate custom intermediate build roots
 are refused by this collector rather than admitted as unrelated target artifacts.
 Path-adversarial fixtures resolve only their newly created, empty temporary root
-before creating test inputs. This supports macOS's system temporary-directory
-alias while retaining production rejection of linked inputs and linked ancestors.
+before creating test inputs. This supports symbolic-link temporary-directory
+aliases while retaining production rejection of linked inputs and linked ancestors.
 
 The Gitleaks workflow added on main is retained with a Rust controller and native
 Git adapter. It verifies the pinned scanner archive, captures scanner output
@@ -66,7 +66,7 @@ missing receipts, scanner errors and inconsistent reports cannot become clean sc
 
 CI runs for pushes, pull requests and manual dispatch. No path filter exempts
 documentation changes from builds. The portable matrix builds every debug target
-and every release binary on Linux, macOS and Windows. It retains separate debug
+and every release binary on Linux and Windows. It retains separate debug
 and release execution reports and native executable/skill artifacts. Scientific,
 Linux/Windows security, Rust CodeQL, dependency review and quality jobs remain
 required. Report aggregation must refuse missing, failed or contradictory evidence.

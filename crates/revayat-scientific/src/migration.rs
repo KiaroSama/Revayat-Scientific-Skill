@@ -205,7 +205,7 @@ pub fn audit_behavior(
         "behavior ledger uses a different baseline"
     );
     ensure!(
-        ["linux", "macos", "windows"].contains(&platform) && !tier.is_empty(),
+        ["linux", "windows"].contains(&platform) && !tier.is_empty(),
         "invalid execution scope"
     );
     unique_names([evidence.run_id.as_str()])?;
@@ -311,7 +311,7 @@ pub fn audit_behavior(
         ensure!(
             platforms
                 .iter()
-                .all(|value| ["linux", "macos", "windows"].contains(value))
+                .all(|value| ["linux", "windows"].contains(value))
                 && !obligation.tier.trim().is_empty(),
             "invalid obligation execution scope"
         );
@@ -588,7 +588,7 @@ pub fn audit(
             mapping
                 .platforms
                 .iter()
-                .all(|p| ["linux", "macos", "windows"].contains(&p.as_str())),
+                .all(|p| ["linux", "windows"].contains(&p.as_str())),
             "invalid migration platform"
         );
     }

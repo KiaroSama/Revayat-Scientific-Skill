@@ -453,15 +453,6 @@ pub fn discover_browser(explicit: Option<&str>) -> Result<PathBuf> {
             return Ok(path);
         }
     }
-    #[cfg(target_os = "macos")]
-    for name in [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    ] {
-        if Path::new(name).is_file() {
-            return Ok(PathBuf::from(name));
-        }
-    }
     #[cfg(windows)]
     for directory in ["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"] {
         if let Some(root) = std::env::var_os(directory) {

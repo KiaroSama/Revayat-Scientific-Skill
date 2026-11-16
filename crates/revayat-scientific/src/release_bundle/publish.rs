@@ -32,7 +32,7 @@ fn json_request(client: &Client, method: Method, url: &str, body: &Value) -> Res
 }
 fn release_body() -> String {
     format!(
-        "Native Rust bundles for Windows, Linux and macOS, each in x64 and arm64 (six targets).\n\nVerify the self-managed project release signing key fingerprint `{FINGERPRINT}`, then run:\n```text\ngpg --import release-signing-public-key.asc\ngpg --verify SHA256SUMS.asc SHA256SUMS\nsha256sum --check SHA256SUMS\n```\n\nEach archive has a detached .zip.asc signature. GitHub build provenance attestations accompany the six ZIP archives."
+        "Native Rust bundles for Windows and Linux, each in x64 and arm64 (four targets).\n\nVerify the self-managed project release signing key fingerprint `{FINGERPRINT}`, then run:\n```text\ngpg --import release-signing-public-key.asc\ngpg --verify SHA256SUMS.asc SHA256SUMS\nsha256sum --check SHA256SUMS\n```\n\nEach archive has a detached .zip.asc signature. GitHub build provenance attestations accompany the four ZIP archives."
     )
 }
 fn asset_names(tag: &str) -> Vec<String> {

@@ -4,7 +4,6 @@ use serde_json::Value;
 
 const PROGRAMS: &[&str] = &[
     "cargo",
-    "brew",
     "sudo",
     "docker",
     "zizmor",
@@ -42,12 +41,6 @@ fn program(argv: &[&str]) -> Result<()> {
                 .iter()
                 .any(|arg| *arg == "--config" || arg.starts_with("--config=")),
             "workflow Cargo configuration must not override executable runners"
-        );
-    }
-    if *first == "brew" {
-        ensure!(
-            argv == ["brew", "install", "poppler"],
-            "brew is limited to hosted Poppler setup"
         );
     }
     if *first == "sudo" {

@@ -25,7 +25,7 @@ fn cross_target_archives_select_exact_companion_and_executable_modes() {
             "revayat-process-owner",
         ),
         (
-            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu",
             "revayat-scientific",
             "revayat-process-owner",
         ),

@@ -15,7 +15,7 @@ fn owned_fixture_directory() -> (tempfile::TempDir, std::path::PathBuf) {
     assert!(metadata.is_dir() && !metadata.file_type().is_symlink());
     assert!(std::fs::read_dir(original).unwrap().next().is_none());
     let identity = revayat_scientific::identity::path_object_id(original).unwrap();
-    // macOS's system temporary directory may be spelled through /var -> /private/var.
+    // A Unix temporary directory may be spelled through a symbolic-link alias.
     // Preserve Windows's DOS spelling for the validators that deliberately require it.
     #[cfg(unix)]
     let physical = original.canonicalize().unwrap();

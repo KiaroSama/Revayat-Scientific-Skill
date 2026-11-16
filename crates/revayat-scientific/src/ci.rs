@@ -14,7 +14,6 @@ pub const REQUIRED_JOBS: &[&str] = &[
     "codeql / analyse",
     "dependency-review / review",
     "portable (ubuntu-latest)",
-    "portable (macos-latest)",
     "portable (windows-latest)",
     "scientific",
     "quality",

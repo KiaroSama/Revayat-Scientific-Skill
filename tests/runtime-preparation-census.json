@@ -401,66 +401,6 @@
       },
       {
         "scope": {
-          "platform": "macos",
-          "tier": "portable",
-          "profile": "debug",
-          "job": "portable"
-        },
-        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
-        "entry_ids": [
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
-        ]
-      },
-      {
-        "scope": {
-          "platform": "macos",
-          "tier": "portable",
-          "profile": "release",
-          "job": "portable"
-        },
-        "owner_case_id": "crates/revayat-scientific/test/windows_contract::bootstrap::controller_markers_preserve_validation_order",
-        "entry_ids": [
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@26",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@27",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@32",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@33",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@37",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@68",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@69",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@72",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@74",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@75",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@76",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@89",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@94",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@95",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@96",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@100",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@105",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@115",
-          "tests/security/windows/Check-RuntimePreparation.ps1::Require@119"
-        ]
-      },
-      {
-        "scope": {
           "platform": "windows",
           "tier": "portable",
           "profile": "debug",

@@ -19,7 +19,7 @@ fn root() -> &'static Path {
 }
 
 #[test]
-fn signed_release_workflow_keeps_six_targets_and_invocation_only_steps() {
+fn signed_release_workflow_keeps_four_targets_and_invocation_only_steps() {
     let filename = ".github/workflows/release.yml";
     let source = fs::read_to_string(root().join(filename)).unwrap();
     c::validate_workflow_contract(root(), filename, &source).unwrap();
@@ -35,7 +35,7 @@ fn signed_release_workflow_keeps_six_targets_and_invocation_only_steps() {
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(actual, expected);
-    assert_eq!(targets.len(), 6);
+    assert_eq!(targets.len(), 4);
     for job in ["build", "publish"] {
         let steps = workflow["jobs"][job]["steps"].as_array().unwrap();
         for step in steps {
@@ -322,7 +322,7 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
     let workflow: serde_json::Value = serde_saphyr::from_str(&source).unwrap();
     let steps = workflow["jobs"]["portable"]["steps"].as_array().unwrap();
     for command in [
-        "brew install poppler",
+        "apt-get install -y --no-install-recommends poppler-utils",
         "check-workflows prepare-poppler",
         "check-workflows poppler-preflight",
         "check-workflows cleanup-poppler",
@@ -382,7 +382,7 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
         .filter_map(|step| step["run"].as_str())
         .filter(|run| run.contains("revayat-test-runner"))
         .collect::<Vec<_>>();
-    assert_eq!(collect.len(), 4); // portable debug/release plus Mac/Windows equipped conditions.
+    assert_eq!(collect.len(), 3); // portable debug/release plus the Windows equipped condition.
     let aggregate = workflow["jobs"]["behavior-aggregate"]["steps"]
         .as_array()
         .unwrap();
@@ -391,9 +391,9 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
         .filter_map(|step| step["run"].as_str())
         .find(|run| run.contains("--aggregate"))
         .unwrap();
-    assert_eq!(joined.matches("--report ").count(), 11);
+    assert_eq!(joined.matches("--report ").count(), 8);
     assert_eq!(joined.matches("--ledger ").count(), 8);
-    assert_eq!(joined.matches("--event-report ").count(), 21);
+    assert_eq!(joined.matches("--event-report ").count(), 15);
     for population in ["coverage", "native-stage"] {
         let population = population.to_owned();
         assert!(joined.contains(&format!(
@@ -404,7 +404,7 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
         joined
             .contains("--event-report execution-input/execution-native-linux/coverage-debug.json")
     );
-    for platform in ["ubuntu", "macos", "windows"] {
+    for platform in ["ubuntu", "windows"] {
         for profile in ["debug", "release"] {
             for population in ["oracle", "engine", "runtime-preparation"] {
                 assert!(joined.contains(&format!(
@@ -413,7 +413,7 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
             }
         }
     }
-    assert!(joined.contains("execution-macos-latest/scientific-debug.json"));
+    assert!(!joined.contains("macos"));
     for census in ["upstream", "verifier", "security"] {
         let step = aggregate
             .iter()
@@ -426,7 +426,7 @@ fn equipped_poppler_and_all_profile_reports_are_explicit_required_inputs() {
         let run = step["run"].as_str().unwrap();
         assert_eq!(step["if"], "${{ always() }}");
         assert!(run.contains(&format!("--ledger tests/behavior/{census}.json")));
-        assert_eq!(run.matches("--report ").count(), 11);
+        assert_eq!(run.matches("--report ").count(), 8);
         assert!(!run.contains("--tier")); // Reuse actual reports, never execute another pass.
     }
     assert!(revayat_scientific::ci::REQUIRED_JOBS.contains(&"behavior-aggregate"));

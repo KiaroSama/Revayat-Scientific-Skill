@@ -8,24 +8,9 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-#[cfg(target_os = "macos")]
-#[path = "runtime_darwin.rs"]
-mod darwin;
 
 fn kill_group(pid: u32) -> Result<()> {
-    let result = super::kill_owned_group(pid);
-    #[cfg(target_os = "macos")]
-    if result
-        .as_ref()
-        .err()
-        .and_then(|error| error.downcast_ref::<std::io::Error>())
-        .and_then(std::io::Error::raw_os_error)
-        == Some(libc::EPERM)
-        && darwin::stopped_group(pid)?
-    {
-        return Ok(());
-    }
-    result
+    super::kill_owned_group(pid)
 }
 
 pub struct OwnedResult {

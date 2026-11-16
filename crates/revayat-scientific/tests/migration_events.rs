@@ -286,15 +286,15 @@ fn one_shared_entry_contract_reconciles_each_explicit_scope_without_copying_rows
     let (mut censuses, mut reports, mut harnesses) = fixture();
     let mut second: CollectedExecution =
         serde_json::from_value(serde_json::to_value(&harnesses[0]).unwrap()).unwrap();
-    second.platform = "macos".into();
+    second.platform = "windows".into();
     harnesses.push(second);
     let contract = censuses[0].contract.as_mut().unwrap();
     let mut scope = contract.scopes[0].clone();
-    scope.scope.platform = "macos".into();
+    scope.scope.platform = "windows".into();
     contract.scopes.push(scope);
     assert_eq!(contract.entries.len(), 1);
     let mut report = reports[0].clone();
-    report.scope.platform = "macos".into();
+    report.scope.platform = "windows".into();
     reports.push(report);
     assert_eq!(validate(&censuses, &reports, &harnesses).unwrap(), 6);
     reports.pop();

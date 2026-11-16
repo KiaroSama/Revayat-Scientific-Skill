@@ -118,40 +118,6 @@
       },
       {
         "scope": {
-          "platform": "macos",
-          "tier": "portable",
-          "profile": "debug",
-          "job": "portable"
-        },
-        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
-        "entry_ids": [
-          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
-          "tests/Check-EngineDiscovery.ps1::explicit-tex",
-          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
-          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
-          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
-          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
-        ]
-      },
-      {
-        "scope": {
-          "platform": "macos",
-          "tier": "portable",
-          "profile": "release",
-          "job": "portable"
-        },
-        "owner_case_id": "crates/revayat-scientific/test/runtime_build_integration::test_explicit_engine_discovery_does_not_probe_other_backends",
-        "entry_ids": [
-          "tests/Check-EngineDiscovery.ps1::explicit-chromium",
-          "tests/Check-EngineDiscovery.ps1::explicit-tex",
-          "tests/Check-EngineDiscovery.ps1::explicit-weasyprint",
-          "tests/Check-EngineDiscovery.ps1::auto-ordered-discovery",
-          "tests/Check-EngineDiscovery.ps1::unavailable-explicit-chromium",
-          "tests/Check-EngineDiscovery.ps1::absent-browser-no-import"
-        ]
-      },
-      {
-        "scope": {
           "platform": "windows",
           "tier": "portable",
           "profile": "debug",
