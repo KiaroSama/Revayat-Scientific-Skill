@@ -36,7 +36,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 kamadak-exif = "0.6.2"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 
-lopdf = "0.47"
+lopdf = { version = "0.47", default-features = false, features = ["rayon"] }
 png = "0.18"
 gif = "0.13"
 tiff = "0.10"
