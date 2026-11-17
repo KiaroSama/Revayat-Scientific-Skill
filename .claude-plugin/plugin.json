@@ -1,6 +1,6 @@
 {
   "name": "revayat-scientific",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
   "author": {
     "name": "Kiaro Sama",

@@ -179,11 +179,11 @@ mod tests {
     #[test]
     fn checksums_are_sorted_exact_and_refuse_missing_extra_or_tampered_archives() {
         let temp = tempfile::tempdir().unwrap();
-        let names = archive_names("v2.0.0");
+        let names = archive_names("v2.1.0");
         for name in names.iter().rev() {
             fs::write(temp.path().join(name), b"abc").unwrap();
         }
-        let actual = checksum_manifest(temp.path(), "v2.0.0").unwrap();
+        let actual = checksum_manifest(temp.path(), "v2.1.0").unwrap();
         let digest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         let expected = names
             .iter()
@@ -194,12 +194,12 @@ mod tests {
             .collect::<String>();
         assert_eq!(actual, expected);
         fs::write(temp.path().join("unexpected.zip"), b"abc").unwrap();
-        assert!(checksum_manifest(temp.path(), "v2.0.0").is_err());
+        assert!(checksum_manifest(temp.path(), "v2.1.0").is_err());
         fs::remove_file(temp.path().join("unexpected.zip")).unwrap();
         fs::write(temp.path().join(&names[0]), b"abd").unwrap();
-        assert_ne!(checksum_manifest(temp.path(), "v2.0.0").unwrap(), expected);
+        assert_ne!(checksum_manifest(temp.path(), "v2.1.0").unwrap(), expected);
         fs::remove_file(temp.path().join(&names[0])).unwrap();
-        assert!(checksum_manifest(temp.path(), "v2.0.0").is_err());
+        assert!(checksum_manifest(temp.path(), "v2.1.0").is_err());
     }
     #[test]
     fn committed_release_public_key_is_an_armored_pgp_block() {

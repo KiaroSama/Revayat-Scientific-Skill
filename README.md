@@ -5,7 +5,7 @@
 [![CI status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
 [![CodeQL status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml)
 [![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
-[![Plugin version 2.0.0](https://img.shields.io/badge/Plugin-2.0.0-blue?style=flat-square)](.codex-plugin/plugin.json)
+[![Plugin version 2.1.0](https://img.shields.io/badge/Plugin-2.1.0-blue?style=flat-square)](.codex-plugin/plugin.json)
 <br>
 [![Rust migration CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=rewrite%2Frust-complete)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions?query=branch%3Arewrite%2Frust-complete)
 [![Rust 1.100.0](https://img.shields.io/badge/Rust-1.100.0-dea584?style=flat-square&logo=rust)](rust-toolchain.toml)

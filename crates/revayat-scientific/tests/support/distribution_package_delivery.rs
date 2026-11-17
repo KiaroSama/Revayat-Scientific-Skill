@@ -27,7 +27,7 @@ fn test_metadata_and_references() -> Result<()> {
     for name in [".codex-plugin/plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json"] {
         let value: serde_json::Value = serde_json::from_slice(&fs::read(root.join(name))?)?;
         assert_eq!(value["name"], "revayat-scientific");
-        assert_eq!(value["version"], "2.0.0");
+        assert_eq!(value["version"], "2.1.0");
         assert!(value["keywords"].as_array().unwrap().iter().any(|v| v == "rust"));
         assert!(root.join(value["skills"].as_str().unwrap()).is_dir());
     }
@@ -77,7 +77,7 @@ fn test_install_launchers_replacement_and_logs() -> Result<()> {
     let executable = target.join("bin").join(if cfg!(windows) { "revayat-scientific.exe" } else { "revayat-scientific" });
     let output = delivery_command(&executable, &f.root, &["--version"], None)?;
     assert!(output.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("2.0.0"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("2.1.0"));
     assert!(target.join("LICENSE").is_file());
     #[cfg(unix)]
     assert_companion_layout(&executable, &f.root)?;
