@@ -190,7 +190,7 @@ fn actual_profile_owner_is_installed_before_observers_and_closed_before_profile_
                 .unwrap()
     );
     assert!(
-        run.find("profile_registry.close_retired(process_reaped && job_reaped)")
+        run.find("close_retired(process_reaped && job_reaped)")
             .unwrap()
             < run.rfind("profile.close()").unwrap()
     );

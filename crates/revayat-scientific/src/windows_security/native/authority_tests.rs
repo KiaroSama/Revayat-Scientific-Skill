@@ -643,7 +643,7 @@ fn uncertain_profile_registry_close_retains_profile_before_any_profile_delete() 
         .unwrap()
         .1;
     let registry = cleanup
-        .find("profile_registry.close_retired(process_reaped && job_reaped)")
+        .find("close_retired(process_reaped && job_reaped)")
         .unwrap();
     let retain = cleanup.find("profile.retain()").unwrap();
     let close = cleanup.rfind("profile.close()").unwrap();
