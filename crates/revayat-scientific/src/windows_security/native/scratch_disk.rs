@@ -322,10 +322,16 @@ impl ScratchVolume {
                     Version: ATTACH_VIRTUAL_DISK_VERSION_1,
                     ..Default::default()
                 };
+                // Surface the disk with a descriptor that grants the
+                // Administrators group full access, matching a normally mounted volume, so
+                // the volume device check no longer strips WRITE_DAC from the seal.
+                let mut device_descriptor = super::authority::Descriptor::new(
+                    "D:(A;;FX;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)(A;;FX;;;RC)",
+                )?;
                 let status = unsafe {
                     AttachVirtualDisk(
                         HANDLE(virtual_disk.0),
-                        None,
+                        Some(PSECURITY_DESCRIPTOR(device_descriptor.0)),
                         ATTACH_VIRTUAL_DISK_FLAG_NO_DRIVE_LETTER
                             | ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME,
                         0,
@@ -333,6 +339,7 @@ impl ScratchVolume {
                         None,
                     )
                 };
+                let _ = device_descriptor.close();
                 if status.0 != 0 {
                     return Err(diagnostics::operation(
                         std::io::Error::from_raw_os_error(status.0 as i32).into(),

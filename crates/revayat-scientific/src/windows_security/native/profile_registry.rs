@@ -70,6 +70,7 @@ struct Entry {
 #[derive(Default)]
 pub(super) struct ProfileRegistry {
     entries: Vec<Entry>,
+    originals: Vec<Vec<u8>>,
     prepared: bool,
     closed: bool,
     uncertain: std::cell::Cell<bool>,
@@ -229,6 +230,11 @@ impl ProfileRegistry {
         } // Transfer even a valid partial output before qualification/cleanup can fail.
         acquired?;
         self.collect(0, 0)?;
+        self.originals = self
+            .entries
+            .iter()
+            .map(|entry| policy::read_access(entry.key.0))
+            .collect::<Result<Vec<_>>>()?;
         self.seal(&user, package, false)?;
         emit(&format!(
             "WINDOWS_PROFILE_REGISTRY sealed=true keys={}",
@@ -414,6 +420,7 @@ impl ProfileRegistry {
             entry.name.clear();
         }
         self.entries.clear();
+        self.originals.clear();
         if !errors.is_empty() {
             self.uncertain.set(true);
         }
@@ -428,15 +435,35 @@ impl ProfileRegistry {
             Ok(())
         }
     }
+    fn restore_originals(&mut self) -> Result<()> {
+        let mut errors = Vec::new();
+        for (entry, original) in self.entries.iter().rev().zip(self.originals.iter().rev()) {
+            if !original.is_empty()
+                && let Err(error) = policy::restore(entry.key.0, original)
+            {
+                errors.push(error);
+            }
+        }
+        match errors.len() {
+            0 => Ok(()),
+            1 => Err(errors.remove(0)),
+            _ => Err(Failures { errors }.into()),
+        }
+    }
     pub fn close(&mut self) -> Result<()> {
-        self.close_with(|key| {
+        let restored = self.restore_originals();
+        if restored.is_err() {
+            self.uncertain.set(true);
+        }
+        let closed = self.close_with(|key| {
             let status = unsafe { RegCloseKey(key) };
             ensure!(
                 status == 0,
                 "owned profile registry close failed winerror={status}"
             );
             Ok(())
-        })
+        });
+        combine(restored, closed)
     }
 }
 impl Drop for ProfileRegistry {
