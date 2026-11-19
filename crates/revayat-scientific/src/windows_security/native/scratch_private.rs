@@ -60,6 +60,7 @@ unsafe extern "system" {
 #[link(name = "ntdll")]
 unsafe extern "system" {
     fn NtSetSecurityObject(handle: Handle, fields: u32, data: *const std::ffi::c_void) -> i32;
+    fn RtlNtStatusToDosError(status: i32) -> u32;
 }
 
 /// Applies the private directory's descriptor after a bare create. A create
@@ -114,7 +115,14 @@ fn apply_created_policy(path: &Path, descriptor: &Descriptor) -> Result<()> {
     let result = if status >= 0 {
         Ok(())
     } else {
-        Err(access::native_error("set private creator DACL"))
+        // NtSetSecurityObject reports NTSTATUS and does not set the thread
+        // last-error: build the failure from the returned status itself, so
+        // a real denial cannot surface as winerror=0 or a stale value.
+        let code = unsafe { RtlNtStatusToDosError(status) };
+        Err(anyhow::anyhow!(
+            "set private creator DACL ntstatus={:08X} winerror={code}",
+            status as u32
+        ))
     };
     access::combine(result, handle.close())
 }

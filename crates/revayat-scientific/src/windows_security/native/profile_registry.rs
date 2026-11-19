@@ -450,8 +450,23 @@ impl ProfileRegistry {
             _ => Err(Failures { errors }.into()),
         }
     }
+    /// Close without a confirmed job retirement: the seal stays in place and
+    /// the uncertainty is recorded. Restoring the original DACLs while a
+    /// worker may still run would hand it write access to the profile
+    /// registry tree again.
     pub fn close(&mut self) -> Result<()> {
-        let restored = self.restore_originals();
+        self.close_retired(false)
+    }
+    /// Close after the completion path confirms the job tree is terminated
+    /// and reaped. Only then is it safe to restore the original DACLs.
+    pub fn close_retired(&mut self, retired: bool) -> Result<()> {
+        let restored = if retired {
+            self.restore_originals()
+        } else {
+            Err(anyhow::anyhow!(
+                "owned profile registry restore refused: job retirement unconfirmed"
+            ))
+        };
         if restored.is_err() {
             self.uncertain.set(true);
         }

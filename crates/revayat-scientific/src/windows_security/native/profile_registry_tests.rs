@@ -189,10 +189,19 @@ fn actual_profile_owner_is_installed_before_observers_and_closed_before_profile_
                 .find("let metadata = default_metadata(process.0)?;")
                 .unwrap()
     );
-    assert!(run.find("profile_registry.close()").unwrap() < run.rfind("profile.close()").unwrap());
+    assert!(
+        run.find("profile_registry.close_retired(process_reaped && job_reaped)")
+            .unwrap()
+            < run.rfind("profile.close()").unwrap()
+    );
     assert!(run.contains("profile.retain()"));
     assert!(run.contains("observer.token_metadata(record)"));
+    let completion = include_str!("authority_completion.rs");
+    assert!(completion.contains("close_retired(retired)"));
+    assert!(completion.contains("!self.failed && self.direct_reaped && self.job_reaped"));
     let source = include_str!("profile_registry.rs");
+    assert!(source.contains("pub fn close_retired(&mut self, retired: bool)"));
+    assert!(source.contains("job retirement unconfirmed"));
     assert!(source.contains("WINDOWS_PROFILE_REGISTRY sealed=true keys="));
     assert!(source.contains("WINDOWS_PROFILE_REGISTRY_READ_PAIR old_denied=true new_read=true individual_mutations_denied=true keys="));
     assert!(run.contains("!profile_keys_closed || !process_reaped || !job_reaped"));
