@@ -21,6 +21,7 @@ graphify-out/
 .claude-plugin/
 .codex-plugin/
 .cursor-plugin/
+.antigravity-plugin/
 secrets.md
 .env
 .env.*

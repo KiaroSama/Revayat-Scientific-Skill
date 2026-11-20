@@ -54,3 +54,10 @@ Thumbs.db
 /tests/security/windows/registry-authority/target/
 /target/
 /var/cache/fontconfig/
+
+# Tracked Codex plugin marketplace catalog inside ignored /.agents/
+!/.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json

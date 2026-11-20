@@ -20,7 +20,7 @@
 [![Native DOCX and PDF tools](https://img.shields.io/badge/Documents-DOCX%20%7C%20PDF-287c91?style=flat-square)](docs/architecture.md)
 [![Isolated Docker or Podman TeX](https://img.shields.io/badge/TeX-Docker%20%7C%20Podman-287c91?style=flat-square)](skills/revayat-scientific/references/pdf-output.md)
 <br>
-[![Codex, Claude Code and Cursor support](https://img.shields.io/badge/Agents-Codex%20%7C%20Claude%20Code%20%7C%20Cursor-287c91?style=flat-square)](docs/installation.md)
+[![پشتیبانی پلاگین Claude Code، Codex، Cursor، Antigravity و Copilot](https://img.shields.io/badge/Agents-Claude%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Copilot-287c91?style=flat-square)](docs/installation.md)
 [![GitHub stars](https://img.shields.io/github/stars/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/stargazers)
 [![Support donations](https://img.shields.io/badge/Support-donations-d04a9a)](README.md#donate)
 
@@ -67,6 +67,10 @@ jobهای CI برای هر سیستم‌عامل فایل اجرایی و آرش
 
 پیش از نصب، بسته‌بندی یا استفاده از فرمان‌های سورس، همهٔ binaryها را با فرمان بالا بسازید. `cargo run --bin revayat-scientific` به‌تنهایی برنامهٔ همراه هر پلتفرم را دوباره نمی‌سازد. companion مفقود، لینک‌شده یا غیرعادی رد می‌شود؛ کنارهم‌بودن و بایت‌های جمع‌آوری‌شده بررسی می‌شوند، نه اصالت امضاشده یا سازگاری نسخهٔ دو برنامه.
 
+مانیفست‌های بومی پلاگین برای پنج اکوسیستم ایجنت آماده شده است:
+
+- **Claude Code** (`.claude-plugin/`):
+
 <div dir="ltr">
 
 ```text
@@ -75,6 +79,21 @@ jobهای CI برای هر سیستم‌عامل فایل اجرایی و آرش
 ```
 
 </div>
+
+- **OpenAI Codex** (`.codex-plugin/` و `.agents/plugins/marketplace.json`):
+
+<div dir="ltr">
+
+```console
+codex plugin marketplace add KiaroSama/Revayat-Scientific-Skill
+codex plugin add revayat-scientific@revayat-scientific-skill
+```
+
+</div>
+
+- **VS Code / GitHub Copilot و استاندارد Agent Plugins 1.0.0** (`plugin.json`): گزینهٔ `chat.plugins.enabled` را روشن کنید، دستور **Chat: Install Plugin From Source** را اجرا کنید و نشانی `https://github.com/KiaroSama/Revayat-Scientific-Skill` را بدهید.
+- **Cursor** (`.cursor-plugin/`): از Cursor Marketplace یا مسیر **Settings > Rules > Add Rule > Remote Rule (Github)** با شناسهٔ `KiaroSama/Revayat-Scientific-Skill` اضافه کنید.
+- **Google Antigravity** (`.antigravity-plugin/plugin.json`): مستقیم از همین مخزن در مدیر پلاگین یا CLI آنتی‌گراویتی نصب کنید.
 
 پلاگین سه فرمان `/translate-paper`، `/revayat-scientific-resume` و `/revayat-scientific-qa` را می‌دهد. در Codex از `$revayat-scientific` استفاده کنید. نصب پلاگین از سورس به ساخت برنامه یا دریافت خروجی CI همان سیستم‌عامل نیاز دارد.
 

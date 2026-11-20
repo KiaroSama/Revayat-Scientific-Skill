@@ -1,0 +1,20 @@
+{
+  "name": "revayat-scientific-skill",
+  "interface": {
+    "displayName": "Revayat Scientific"
+  },
+  "plugins": [
+    {
+      "name": "revayat-scientific",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/KiaroSama/Revayat-Scientific-Skill.git"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

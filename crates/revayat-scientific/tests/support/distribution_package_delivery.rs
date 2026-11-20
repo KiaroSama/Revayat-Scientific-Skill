@@ -24,13 +24,72 @@ fn test_metadata_and_references() -> Result<()> {
     for link in links.captures_iter(&text) {
         assert!(skill.join(link[1].split('#').next().unwrap()).is_file());
     }
-    for name in [".codex-plugin/plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json"] {
+    for name in [
+        "plugin.json",
+        ".antigravity-plugin/plugin.json",
+        ".codex-plugin/plugin.json",
+        ".claude-plugin/plugin.json",
+        ".cursor-plugin/plugin.json",
+    ] {
         let value: serde_json::Value = serde_json::from_slice(&fs::read(root.join(name))?)?;
-        assert_eq!(value["name"], "revayat-scientific");
-        assert_eq!(value["version"], "2.1.0");
-        assert!(value["keywords"].as_array().unwrap().iter().any(|v| v == "rust"));
-        assert!(root.join(value["skills"].as_str().unwrap()).is_dir());
+        assert_eq!(value["name"], "revayat-scientific", "{name}");
+        assert_eq!(value["version"], "2.1.0", "{name}");
+        assert_eq!(value["license"], "GPL-3.0-or-later", "{name}");
+        assert!(
+            value["keywords"].as_array().unwrap().iter().any(|v| v == "rust"),
+            "{name}"
+        );
+        if let Some(skills_path) = value.get("skills").and_then(serde_json::Value::as_str) {
+            assert!(root.join(skills_path).is_dir(), "{name}");
+        }
     }
+    let root_plugin: serde_json::Value = serde_json::from_slice(&fs::read(root.join("plugin.json"))?)?;
+    assert_eq!(root_plugin["$schema"], "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");
+    let root_allowed = [
+        "$schema", "name", "version", "description", "author",
+        "homepage", "repository", "license", "keywords", "extensions",
+    ];
+    for key in root_plugin.as_object().unwrap().keys() {
+        assert!(root_allowed.contains(&key.as_str()), "plugin.json unexpected key: {key}");
+    }
+    let agy_plugin: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join(".antigravity-plugin/plugin.json"))?)?;
+    assert_eq!(agy_plugin["$schema"], "https://antigravity.google/schemas/v1/plugin.json");
+    assert_eq!(agy_plugin["displayName"], "Revayat Scientific");
+    let prompts = agy_plugin["suggestedPrompts"].as_array().unwrap();
+    assert!((1..=3).contains(&prompts.len()));
+    assert!(prompts.iter().all(|p| !p.as_str().unwrap_or("").trim().is_empty()));
+    let agy_allowed = [
+        "$schema", "name", "displayName", "display_name", "description", "version",
+        "disabled", "logo", "suggestedPrompts", "suggested_prompts", "skills",
+        "author", "homepage", "repository", "license", "keywords", "extensions",
+    ];
+    for key in agy_plugin.as_object().unwrap().keys() {
+        assert!(agy_allowed.contains(&key.as_str()), ".antigravity-plugin/plugin.json unexpected key: {key}");
+    }
+    if let Some(logo) = agy_plugin.get("logo").and_then(serde_json::Value::as_str) {
+        assert!(root.join(logo).is_file(), "missing Antigravity logo: {logo}");
+    }
+    let claude_mkt: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join(".claude-plugin/marketplace.json"))?)?;
+    assert_eq!(claude_mkt["name"], "revayat-scientific-skill");
+    assert_eq!(claude_mkt["plugins"][0]["name"], "revayat-scientific");
+    assert_eq!(claude_mkt["plugins"][0]["source"], "./");
+    assert_eq!(claude_mkt["plugins"][0]["version"], "2.1.0");
+    let codex_mkt: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join(".agents/plugins/marketplace.json"))?)?;
+    assert_eq!(codex_mkt["name"], "revayat-scientific-skill");
+    assert_eq!(codex_mkt["plugins"][0]["name"], "revayat-scientific");
+    assert_eq!(codex_mkt["plugins"][0]["source"]["source"], "url");
+    assert_eq!(
+        codex_mkt["plugins"][0]["source"]["url"],
+        "https://github.com/KiaroSama/Revayat-Scientific-Skill.git"
+    );
+    let cursor_mkt: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join(".cursor-plugin/marketplace.json"))?)?;
+    assert_eq!(cursor_mkt["name"], "revayat-scientific-skill");
+    assert_eq!(cursor_mkt["plugins"][0]["name"], "revayat-scientific");
+    assert_eq!(cursor_mkt["plugins"][0]["source"], "./");
     Ok(())
 }
 #[test]

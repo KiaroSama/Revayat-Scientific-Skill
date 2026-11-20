@@ -1,0 +1,30 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "revayat-scientific",
+  "displayName": "Revayat Scientific",
+  "version": "2.1.0",
+  "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
+  "suggestedPrompts": [
+    "Translate this scientific paper into Persian and give me a verified PDF.",
+    "Review the scientific accuracy and Persian fluency of this translation.",
+    "Resume this scientific translation project from its saved checkpoint."
+  ],
+  "author": {
+    "name": "Kiaro Sama",
+    "url": "https://github.com/KiaroSama"
+  },
+  "homepage": "https://github.com/KiaroSama/Revayat-Scientific-Skill",
+  "repository": "https://github.com/KiaroSama/Revayat-Scientific-Skill",
+  "license": "GPL-3.0-or-later",
+  "keywords": [
+    "scientific",
+    "translation",
+    "persian",
+    "farsi",
+    "rtl",
+    "pdf",
+    "rust",
+    "docx",
+    "document-integrity"
+  ]
+}

@@ -18,7 +18,7 @@
 [![Native DOCX and PDF tools](https://img.shields.io/badge/Documents-DOCX%20%7C%20PDF-287c91?style=flat-square)](docs/architecture.md)
 [![Isolated Docker or Podman TeX](https://img.shields.io/badge/TeX-Docker%20%7C%20Podman-287c91?style=flat-square)](skills/revayat-scientific/references/pdf-output.md)
 <br>
-[![Codex, Claude Code and Cursor support](https://img.shields.io/badge/Agents-Codex%20%7C%20Claude%20Code%20%7C%20Cursor-287c91?style=flat-square)](docs/installation.md)
+[![Claude Code, Codex, Cursor, Antigravity and Copilot plugin support](https://img.shields.io/badge/Agents-Claude%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Copilot-287c91?style=flat-square)](docs/installation.md)
 [![GitHub stars](https://img.shields.io/github/stars/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/stargazers)
 [![Support donations](https://img.shields.io/badge/Support-donations-d04a9a)](#donate)
 
@@ -61,12 +61,25 @@ Native executables and `.skill` archives are produced by the target-specific CI 
 
 Build all binaries with the command above before installing, packaging or using source commands. `cargo run --bin revayat-scientific` alone does not rebuild its platform sibling. A missing, linked or nonregular companion is refused; adjacency and collected bytes are checked, not a signed same-build/version handshake.
 
-Claude Code plugin installation:
+Native plugin manifests are included for five agent ecosystems:
+
+- **Claude Code** (`.claude-plugin/`):
 
 ```text
 /plugin marketplace add KiaroSama/Revayat-Scientific-Skill
 /plugin install revayat-scientific@revayat-scientific-skill
 ```
+
+- **OpenAI Codex** (`.codex-plugin/` and `.agents/plugins/marketplace.json`):
+
+```console
+codex plugin marketplace add KiaroSama/Revayat-Scientific-Skill
+codex plugin add revayat-scientific@revayat-scientific-skill
+```
+
+- **VS Code / GitHub Copilot & Agent Plugins 1.0.0** (`plugin.json`): enable `chat.plugins.enabled`, run **Chat: Install Plugin From Source**, and enter `https://github.com/KiaroSama/Revayat-Scientific-Skill`.
+- **Cursor** (`.cursor-plugin/`): add `KiaroSama/Revayat-Scientific-Skill` via Cursor Marketplace or **Settings > Rules > Add Rule > Remote Rule (Github)**.
+- **Google Antigravity** (`.antigravity-plugin/plugin.json`): install directly from this repository in Antigravity's plugin manager or CLI.
 
 The plugin exposes `/translate-paper`, `/revayat-scientific-resume` and `/revayat-scientific-qa`. Invoke `$revayat-scientific` in Codex. A source plugin checkout must first build the executable or use a matching CI artifact.
 

@@ -1,5 +1,10 @@
 {
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
   "name": "revayat-scientific-skill",
+  "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
+  "metadata": {
+    "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs."
+  },
   "owner": {
     "name": "Kiaro Sama",
     "url": "https://github.com/KiaroSama"
@@ -10,7 +15,24 @@
       "source": "./",
       "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
       "version": "2.1.0",
-      "license": "GPL-3.0-or-later"
+      "author": {
+        "name": "Kiaro Sama",
+        "url": "https://github.com/KiaroSama"
+      },
+      "homepage": "https://github.com/KiaroSama/Revayat-Scientific-Skill",
+      "repository": "https://github.com/KiaroSama/Revayat-Scientific-Skill",
+      "license": "GPL-3.0-or-later",
+      "keywords": [
+        "scientific",
+        "translation",
+        "persian",
+        "farsi",
+        "rtl",
+        "pdf",
+        "rust",
+        "docx",
+        "document-integrity"
+      ]
     }
   ]
 }
