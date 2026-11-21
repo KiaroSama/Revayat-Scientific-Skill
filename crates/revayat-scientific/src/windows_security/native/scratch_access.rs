@@ -208,6 +208,28 @@ pub(super) fn identity(handle: Handle, directory: bool) -> Result<Identity> {
     );
     Ok(value)
 }
+/// Identity for handles opened without FILE_READ_ATTRIBUTES (for example the
+/// diagnostic's LPAC probe handles, whose desired mask is traverse+synchronize
+/// only): the FileIdInfo query alone, without the attribute/tag queries that
+/// `identity` performs and that such handles cannot service.
+pub(super) fn identity_id(handle: Handle) -> Result<Identity> {
+    ensure!(
+        unsafe { GetFileType(handle) } == 1,
+        "scratch object is not a disk file"
+    );
+    let mut value = Identity {
+        volume: 0,
+        low: 0,
+        high: 0,
+    };
+    ensure!(
+        unsafe {
+            GetFileInformationByHandleEx(handle, 18, (&mut value as *mut Identity).cast(), 24)
+        } != 0,
+        "scratch file identity query failed"
+    );
+    Ok(value)
+}
 pub(super) fn name(handle: Handle) -> Result<String> {
     let mut text = [0u16; 512];
     let length = unsafe { GetFinalPathNameByHandleW(handle, text.as_mut_ptr(), 512, 2) } as usize;

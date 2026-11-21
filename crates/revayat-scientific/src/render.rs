@@ -457,8 +457,8 @@ pub fn discover_browser(explicit: Option<&str>) -> Result<PathBuf> {
     for directory in ["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"] {
         if let Some(root) = std::env::var_os(directory) {
             for relative in [
-                "Google/Chrome/Application/chrome.exe",
-                "Microsoft/Edge/Application/msedge.exe",
+                r"Google\Chrome\Application\chrome.exe",
+                r"Microsoft\Edge\Application\msedge.exe",
             ] {
                 let path = PathBuf::from(&root).join(relative);
                 if path.is_file() {

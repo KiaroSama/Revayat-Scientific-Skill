@@ -221,7 +221,7 @@ impl References {
         let mut root = volume.root.duplicate()?;
         let mut temp = Owned(null_mut());
         let result = (|| {
-            temp = Owned::open(format!("{}temp", volume.drive_root()), 0x80, 7, 0x220000)?;
+            temp = Owned::open(format!("{}temp", volume.drive_root()), 0x80, 7, 0x2200000)?;
             let root_id = access::identity(root.0, true)?;
             let temp_id = access::identity(temp.0, true)?;
             ensure!(
@@ -252,7 +252,7 @@ impl References {
         };
         ensure!(
             access::identity(reference.0, true)? == identity
-                && access::identity(handle as Handle, true)? == identity
+                && access::identity_id(handle as Handle)? == identity
                 && access::name(handle as Handle)? == name,
             "scratch diagnostic opened directory identity differs"
         );
