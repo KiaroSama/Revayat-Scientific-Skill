@@ -7,7 +7,11 @@ use crate::windows_security::quota_controls::QUOTA_BYTES;
 use anyhow::{Result, ensure};
 use std::ptr::null_mut;
 fn denied(code: Option<i32>) -> bool {
-    matches!(code, Some(112 | 39 | 1816))
+    // ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL, ERROR_DISK_QUOTA_EXCEEDED and
+    // ERROR_NOT_ENOUGH_QUOTA are the possible space/quota denial surfaces; a
+    // per-user NTFS quota denial surfaces as 1671, which the set previously
+    // omitted, so a real quota denial was reported as no denial.
+    matches!(code, Some(112 | 39 | 1671 | 1816))
 }
 pub(super) fn sparse(handle: Raw) -> Result<()> {
     let mut returned = 0;
