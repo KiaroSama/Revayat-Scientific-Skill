@@ -73,7 +73,8 @@ pub(crate) fn provision_private_creator_file(
         .ok_or_else(|| anyhow::anyhow!("private creator provision path is not Unicode"))?;
     files::absent(text)?;
     let mut descriptor = Descriptor::new(&format!(
-        "D:P(A;;GA;;;{})(A;;GA;;;{})",
+        "O:{}D:P(A;;GA;;;{})(A;;GA;;;{})",
+        inventory.user.canonical(),
         inventory.user.canonical(),
         inventory.package.canonical(),
     ))?;
