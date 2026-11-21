@@ -355,7 +355,16 @@ fn find_volume(disk: u32, partition: u32, partition_id: GUID) -> Result<String> 
                 volume_name(&candidate)?;
                 if let Ok(mut handle) = Owned::open(candidate.trim_end_matches('\\'), 0, 3, 0) {
                     let result = (|| {
-                        let number = number(handle.0)?;
+                        // Enumeration visits every volume on the machine, including
+                        // non-disk volumes (e.g. an optical drive) whose device number
+                        // is absent or not FILE_DEVICE_DISK. Those can never be the
+                        // scratch partition, so skip them instead of aborting the
+                        // whole scan; the strict number() check still guards the
+                        // exact disk() and volume() bindings.
+                        let number = match number(handle.0) {
+                            Ok(value) => value,
+                            Err(_) => return Ok(()),
+                        };
                         if number.DeviceNumber == disk && number.PartitionNumber == partition {
                             let info: PARTITION_INFORMATION_EX =
                                 query(handle.0, IOCTL_DISK_GET_PARTITION_INFO_EX)?;
