@@ -1,38 +1,33 @@
 <div dir="rtl">
 
-# روایت علمی — Revayat Scientific
-
 <div align="center">
 
-[![CI status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml)
-[![CodeQL status on main](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/codeql.yml)
-[![GPL-3.0-or-later license](https://img.shields.io/badge/License-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
-[![Plugin version 2.1.0](https://img.shields.io/badge/Plugin-2.1.0-blue?style=flat-square)](.codex-plugin/plugin.json)
-<br>
-[![Rust migration CI](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/workflows/ci.yml/badge.svg?branch=rewrite%2Frust-complete)](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions?query=branch%3Arewrite%2Frust-complete)
-[![Rust 1.100.0](https://img.shields.io/badge/Rust-1.100.0-dea584?style=flat-square&logo=rust)](rust-toolchain.toml)
-[![Windows and Linux](https://img.shields.io/badge/Platforms-Windows%20%7C%20Linux-287c91?style=flat-square)](.github/workflows/ci.yml)
-[![English and Persian docs](https://img.shields.io/badge/Docs-EN%20%7C%20FA-6f42c1?style=flat-square)](README.md)
-[![Agent Skills format](https://img.shields.io/badge/Format-Agent%20Skills-6f42c1?style=flat-square)](skills/revayat-scientific/SKILL.md)
-<br>
-[![Installable skill ZIP](https://img.shields.io/badge/Package-.skill%20ZIP-6f42c1?style=flat-square)](docs/installation.md)
-[![Any source language to Persian](https://img.shields.io/badge/Languages-Any%20source%20to%20Persian-287c91?style=flat-square)](skills/revayat-scientific/references/source-languages.md)
-[![Native DOCX and PDF tools](https://img.shields.io/badge/Documents-DOCX%20%7C%20PDF-287c91?style=flat-square)](docs/architecture.md)
-[![Isolated Docker or Podman TeX](https://img.shields.io/badge/TeX-Docker%20%7C%20Podman-287c91?style=flat-square)](skills/revayat-scientific/references/pdf-output.md)
-<br>
-[![پشتیبانی پلاگین Claude Code، Codex، Cursor، Antigravity و Copilot](https://img.shields.io/badge/Agents-Claude%20%7C%20Codex%20%7C%20Cursor%20%7C%20Antigravity%20%7C%20Copilot-287c91?style=flat-square)](docs/installation.md)
-[![GitHub stars](https://img.shields.io/github/stars/KiaroSama/Revayat-Scientific-Skill?style=flat-square)](https://github.com/KiaroSama/Revayat-Scientific-Skill/stargazers)
+# روایت علمی — Revayat Scientific
+
+**ترجمهٔ علمی از هر زبان به فارسی، همراه با منبع ویرایش‌پذیر، حفظ اجزای سند و PDF بررسی‌شده.**
+
+[![GitHub Actions CI workflow on main](https://img.shields.io/badge/CI-GitHub%20Actions-16a34a)](.github/workflows/ci.yml)
+[![GNU General Public License v3.0 or later](https://img.shields.io/badge/license-GPL--3.0--or--later-2563eb)](LICENSE)
+[![Release v2.1.0 standalone Rust packages](https://img.shields.io/badge/release-v2.1.0-ea580c)](.github/workflows/release.yml)
+[![1021 verified Rust test cases across workspace suites](https://img.shields.io/badge/tests-1021%20cases-0d9488)](.github/workflows/ci.yml)
+[![Rust 1.100.0 toolchain measured via rustc](https://img.shields.io/badge/Rust-1.100.0-8b5cf6)](rust-toolchain.toml)
+[![Runs on Linux x64, Linux arm64, Windows x64, and Windows arm64](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%2064--bit-0891b2)](.github/workflows/release.yml)
+[![Prebuilt signed release ZIP and installable .skill archive](https://img.shields.io/badge/install-Prebuilt%20ZIP%20%7C%20.skill-4f46e5)](docs/installation.md)
+[![Signed with pinned GPG key and GitHub build provenance](https://img.shields.io/badge/signing-GPG%20%7C%20Provenance-7c3aed)](.github/workflows/release.yml)
+[![English and Persian documentation](https://img.shields.io/badge/docs-EN%20%7C%20FA-0284c7)](README.md)
+[![Measured tracked repository tree size](https://img.shields.io/badge/repo%20size-14.6%20MB-ca8a04)](README.md)
+[![Agent Skills specification format](https://img.shields.io/badge/format-Agent%20Skills-15803d)](skills/revayat-scientific/SKILL.md)
+[![Any source language to Persian](https://img.shields.io/badge/languages-Any%20to%20Persian-b45309)](skills/revayat-scientific/references/source-languages.md)
+[![Native Rust DOCX and PDF pipeline](https://img.shields.io/badge/documents-DOCX%20%7C%20PDF-334155)](docs/architecture.md)
+[![Isolated Docker or Podman TeX typesetting](https://img.shields.io/badge/TeX-Docker%20%7C%20Podman-c2410c)](skills/revayat-scientific/references/pdf-output.md)
+[![Claude Code, Codex, Cursor, Antigravity, and Copilot plugin manifests](https://img.shields.io/badge/agents-5%20Ecosystems-0f766e)](docs/installation.md)
 [![Support donations](https://img.shields.io/badge/Support-donations-d04a9a)](README.md#donate)
 
 </div>
 
-**ترجمهٔ علمی از هر زبان به فارسی، همراه با منبع ویرایش‌پذیر، حفظ اجزای سند و PDF بررسی‌شده.**
-
 روایت یک اسکیل ایجنت و یک برنامهٔ بومی Rust است. ترجمه و بازبینی علمی را مدل همان ایجنت انجام می‌دهد؛ برنامه، یکپارچگی فایل‌ها، اصطلاحات، تصاویر، حروف‌چینی و تحویل را بررسی می‌کند. Codex، Claude Code، Cursor، Kiro، Cline، Hermes، OpenCode، Antigravity و میزبان‌های پشتیبان `SKILL.md` قابل استفاده‌اند.
 
 [English](README.md)
-
-**وضعیت بازنویسی Rust:** این راهنما شاخهٔ `rewrite/rust-complete` را توصیف می‌کند، نه پیاده‌سازی فعلی `main`. برابری رفتاری تست‌ها و CI میزبانی‌شده هنوز در حال بررسی است؛ ثبت نام تست اثبات اجرای assertionهای اصلی یا موفقیت کنترل بومی نیست. نشان‌های دارای برچسب `main` وضعیت شاخهٔ اصلی را نشان می‌دهند و نشان Rust migration CI مربوط به شاخهٔ این PR است. نشان CI به‌تنهایی برابری assertionها را اثبات نمی‌کند. آرشیو را از اجرای CI بازبینی‌شدهٔ همان نسخه بگیرید؛ بستهٔ میانی را release نهایی امضاشده معرفی نکنید.
 
 ## تفاوت با ترجمهٔ عمومی
 

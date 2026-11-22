@@ -288,3 +288,134 @@ fn check_target_validation() -> Result<()> {
     }
     Ok(())
 }
+
+impl PeImage<'_> {
+    /// Fail-closed structural CSR dispatch site resolver for OS-verified serviced
+    /// `System32\kernel32.dll` builds whose SHA-256 hash falls outside `PROFILES`.
+    pub fn resolve_serviced_csr_dispatch_sites(&self) -> Result<[u32; 3]> {
+        const PREFIX: [u8; 12] = [
+            0x41, 0xb9, 0xf8, 0x01, 0x00, 0x00, 0x41, 0xb8, 0x1e, 0x00, 0x01, 0x10,
+        ];
+        const SUFFIX: [u8; 7] = [0x0f, 0x1f, 0x44, 0x00, 0x00, 0x8b, 0xd8];
+
+        self.activation_worker_slice()?;
+        let csr_iat = self.resolve_serviced_csr_iat()?;
+        let mut matches = Vec::new();
+        for section in &self.sections {
+            if section.flags & 0x20000000 == 0 {
+                continue;
+            }
+            let len = section.virtual_size.min(section.raw_size) as usize;
+            if len < PREFIX.len() + 7 + SUFFIX.len() {
+                continue;
+            }
+            let data = span(self.bytes, section.raw as usize, len)?;
+            for rel in PREFIX.len()..=len - 7 - SUFFIX.len() {
+                if data[rel..rel + 3] != [0x48, 0xff, 0x15]
+                    || data[rel - PREFIX.len()..rel] != PREFIX
+                    || data[rel + 7..rel + 7 + SUFFIX.len()] != SUFFIX
+                {
+                    continue;
+                }
+                let disp = i32::from_le_bytes(data[rel + 3..rel + 7].try_into()?);
+                let call = section
+                    .rva
+                    .checked_add(rel as u32)
+                    .ok_or_else(|| anyhow::anyhow!("serviced CSR call RVA overflow"))?;
+                let post = call
+                    .checked_add(7)
+                    .ok_or_else(|| anyhow::anyhow!("serviced CSR post RVA overflow"))?;
+                if i64::from(post) + i64::from(disp) == i64::from(csr_iat)
+                    && self.executable(call, 7)
+                    && self.executable(post, 5)
+                {
+                    matches.push([call, post, csr_iat]);
+                }
+            }
+        }
+        ensure!(
+            matches.len() == 1,
+            "serviced kernel32 CSR dispatch site count {} != 1",
+            matches.len()
+        );
+        Ok(matches[0])
+    }
+
+    fn resolve_serviced_csr_iat(&self) -> Result<u32> {
+        let (imp_rva, imp_size) = self.directory(1)?;
+        ensure!(
+            imp_rva >= self.headers && (20..=1048576).contains(&imp_size),
+            "serviced CSR import directory differs"
+        );
+        let max_descs = (imp_size / 20).min(4096);
+        let mut csr_iat = None;
+        for idx in 0..max_descs {
+            let desc_rva = imp_rva
+                .checked_add(idx * 20)
+                .ok_or_else(|| anyhow::anyhow!("serviced CSR descriptor RVA overflow"))?;
+            let desc_off = self.map(desc_rva, 20)?;
+            let raw = span(self.bytes, desc_off, 20)?;
+            if raw.iter().all(|byte| *byte == 0) {
+                break;
+            }
+            let ilt = u32_at(self.bytes, desc_off)?;
+            let name_rva = u32_at(self.bytes, desc_off + 12)?;
+            let iat = u32_at(self.bytes, desc_off + 16)?;
+            if !self
+                .text(name_rva, 64, true)?
+                .eq_ignore_ascii_case("ntdll.dll")
+            {
+                continue;
+            }
+            ensure!(ilt != 0 && iat != 0, "serviced ntdll import tables absent");
+            for slot_idx in 0u32..4096 {
+                let offset = slot_idx
+                    .checked_mul(8)
+                    .ok_or_else(|| anyhow::anyhow!("serviced CSR thunk offset overflow"))?;
+                let lookup_rva = ilt
+                    .checked_add(offset)
+                    .ok_or_else(|| anyhow::anyhow!("serviced CSR ILT RVA overflow"))?;
+                let slot_rva = iat
+                    .checked_add(offset)
+                    .ok_or_else(|| anyhow::anyhow!("serviced CSR IAT RVA overflow"))?;
+                let lookup = u64_at(self.bytes, self.map(lookup_rva, 8)?)?;
+                let bound = u64_at(self.bytes, self.map(slot_rva, 8)?)?;
+                if lookup == 0 {
+                    ensure!(bound == 0, "serviced ntdll import terminator mismatch");
+                    break;
+                }
+                if lookup & (1u64 << 63) != 0 {
+                    continue;
+                }
+                ensure!(
+                    lookup <= u64::from(u32::MAX - 2),
+                    "serviced ntdll import hint RVA out of bounds"
+                );
+                if self.text(lookup as u32 + 2, 64, false)? == "CsrClientCallServer" {
+                    ensure!(bound == lookup, "serviced CSR ILT/IAT entry differs");
+                    ensure!(
+                        csr_iat.replace(slot_rva).is_none(),
+                        "serviced CSR import slot duplicated"
+                    );
+                }
+            }
+        }
+        let slot = csr_iat.ok_or_else(|| anyhow::anyhow!("serviced CSR import slot absent"))?;
+        ensure!(
+            self.sections
+                .iter()
+                .filter(|section| {
+                    section.flags & 0x40000000 != 0
+                        && section.flags & 0x20000000 == 0
+                        && slot >= section.rva
+                        && u64::from(slot) + 8
+                            <= u64::from(section.rva)
+                                + u64::from(section.virtual_size.min(section.raw_size))
+                })
+                .count()
+                == 1,
+            "serviced CSR import slot section differs"
+        );
+        Ok(slot)
+    }
+}

@@ -55,9 +55,26 @@ impl DispatchImages {
             match name.as_str() {
                 "kernel32.dll" => {
                     ensure!(self.kernel.is_none(), "CSR kernel32 load repeated");
-                    let sites = image
-                        .require_activation_profile()
-                        .map_err(|error| diagnostics::at(error, Stage::DebugKernelProfile))?;
+                    let sites = match image.require_activation_profile() {
+                        Ok(sites) => sites,
+                        Err(_) => {
+                            let [csr_call, csr_post, csr_iat] = image
+                                .resolve_serviced_csr_dispatch_sites()
+                                .map_err(|error| {
+                                    diagnostics::at(error, Stage::DebugKernelProfile)
+                                })?;
+                            ActivationSites {
+                                worker: 0,
+                                registry: 0,
+                                funnel: 0,
+                                resource: 0,
+                                callback: 0,
+                                csr_call,
+                                csr_post,
+                                csr_iat,
+                            }
+                        }
+                    };
                     executable(process, base, sites.csr_call, 7)
                         .map_err(|error| diagnostics::at(error, Stage::DebugExecutable))?;
                     executable(process, base, sites.csr_post, 5)

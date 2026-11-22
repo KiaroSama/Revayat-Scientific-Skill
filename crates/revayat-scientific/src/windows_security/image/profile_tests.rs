@@ -208,3 +208,86 @@ fn profile_selection_accepts_no_whitespace_digest_timestamp_module_or_size_drift
         }
     }
 }
+
+#[test]
+fn serviced_csr_dispatch_resolver_matches_profiles_and_fails_closed_on_mutation() {
+    for p in PROFILES {
+        let mut bytes = fixture(p);
+        // Point the import directory directly at the ntdll descriptor so walking
+        // from directory(1) sees a contiguous non-null descriptor chain.
+        let ntdll = &p.imports[0];
+        let ntdll_raw = raw(ntdll.descriptor);
+        let dir_raw = raw(p.import_directory);
+        let desc = bytes[ntdll_raw..ntdll_raw + 20].to_vec();
+        bytes[dir_raw..dir_raw + 20].copy_from_slice(&desc);
+        bytes[dir_raw + 20..dir_raw + 40].fill(0);
+        // Synthetic fixture still fails hash-pinned require_activation_profile.
+        let parsed = PeImage::parse(&bytes, 0x10000000).unwrap();
+        assert!(parsed.require_activation_profile().is_err());
+        let expected = [p.code[7], p.code[8], p.edges[1]];
+        assert_eq!(
+            parsed.resolve_serviced_csr_dispatch_sites().unwrap(),
+            expected
+        );
+
+        // Mutating the SxS prefix must fail closed.
+        let mut bad_prefix = bytes.clone();
+        bad_prefix[raw(p.code[7] - 12)] ^= 0xff;
+        assert!(
+            PeImage::parse(&bad_prefix, 0x10000000)
+                .unwrap()
+                .resolve_serviced_csr_dispatch_sites()
+                .is_err()
+        );
+
+        // Mutating the post-call sequence must fail closed.
+        let mut bad_suffix = bytes.clone();
+        bad_suffix[raw(p.code[7] + 12)] ^= 0xff;
+        assert!(
+            PeImage::parse(&bad_suffix, 0x10000000)
+                .unwrap()
+                .resolve_serviced_csr_dispatch_sites()
+                .is_err()
+        );
+
+        // Duplicating the site inside .text must fail closed (matches.len() == 2).
+        let mut duplicate = bytes.clone();
+        let src_start = raw(p.code[7] - 12);
+        let src_end = raw(p.code[7] + 14);
+        let dup_rva = 0x22040u32;
+        let dup_raw = raw(dup_rva);
+        let slice = bytes[src_start..src_end].to_vec();
+        duplicate[dup_raw..dup_raw + slice.len()].copy_from_slice(&slice);
+        let new_disp = (i64::from(expected[2]) - i64::from(dup_rva + 12 + 7)) as i32;
+        duplicate[dup_raw + 15..dup_raw + 19].copy_from_slice(&new_disp.to_le_bytes());
+        assert!(
+            PeImage::parse(&duplicate, 0x10000000)
+                .unwrap()
+                .resolve_serviced_csr_dispatch_sites()
+                .is_err()
+        );
+
+        // Mismatched ILT/IAT entry must fail closed.
+        let mut bad_iat = bytes.clone();
+        bad_iat[raw(expected[2])] ^= 0x01;
+        assert!(
+            PeImage::parse(&bad_iat, 0x10000000)
+                .unwrap()
+                .resolve_serviced_csr_dispatch_sites()
+                .is_err()
+        );
+    }
+
+    #[cfg(windows)]
+    {
+        let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+        let kernel32 = std::path::PathBuf::from(root)
+            .join("System32")
+            .join("kernel32.dll");
+        let bytes = std::fs::read(&kernel32).unwrap();
+        let parsed = PeImage::parse(&bytes, 0x180000000).unwrap();
+        let [call, post, iat] = parsed.resolve_serviced_csr_dispatch_sites().unwrap();
+        assert_eq!(post, call + 7);
+        assert!(iat > 0);
+    }
+}

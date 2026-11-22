@@ -55,6 +55,9 @@ jobs:
     needs: [build]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment:
+      name: revayat-signing
+      url: https://github.com/${{ github.repository }}/releases/tag/${{ inputs.tag }}
     permissions:
       contents: write
       id-token: write
