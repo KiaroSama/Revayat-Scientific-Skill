@@ -5,6 +5,18 @@ The native Rust source is maintained on the default `main` branch. The former re
 ```console
 git clone --branch main https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
+```
+
+Select the full commit SHA from the successful CI run you reviewed before building. The commands below select the [recorded baseline run](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/runs/45045532942/attempts/3), which succeeded for `0e68d28af5dcc5954b241dd5c5f3f805e33a2565`. For a later revision, substitute its full SHA only after its own CI run and required reports for your operating system succeed.
+
+```console
+git switch --detach 0e68d28af5dcc5954b241dd5c5f3f805e33a2565
+git rev-parse HEAD
+```
+
+Confirm that the printed SHA matches the successful run's head revision and that its reports contain the same revision. Then build and install from that checkout:
+
+```console
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
 cargo run --locked --release --bin revayat-scientific -- install --scope project --path /path/to/project
