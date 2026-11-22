@@ -410,7 +410,9 @@ fn run_profile(
     if foreign.close().is_err() {
         cleanup.push("private-fixture");
     }
-    let profile_keys_closed = profile_registry.close().is_ok();
+    let profile_keys_closed = profile_registry
+        .close_retired(process_reaped && job_reaped)
+        .is_ok();
     if !profile_keys_closed {
         cleanup.push("profile-registry");
     }

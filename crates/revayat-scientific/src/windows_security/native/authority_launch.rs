@@ -210,6 +210,7 @@ pub(super) fn prepare(
     };
     let operation = (|| {
         let scratch = if let Some(plan) = quota {
+            let directory = crate::windows_security::native::dos_path::existing(&directory)?;
             plain_path(&directory)?;
             ensure!(
                 directory == plan.readonly_root
@@ -378,6 +379,11 @@ pub(super) fn prepare(
                 "quota prepared directory identity changed"
             );
         }
+        // The child inherited the pipe write ends at creation; the parent's copies must
+        // close before resume (mirroring authority_run.rs), or the completion drain can
+        // never observe EOF on the captured streams.
+        owner.stdout_writer.close()?;
+        owner.stderr_writer.close()?;
         Ok(target)
     })();
     let cleanup = held_directory.map_or(Ok(()), close_file);

@@ -488,7 +488,13 @@ impl CompletionIo for NativeCompletion<'_> {
             }
             6 => self.source.take().map_or(Ok(()), |mut image| image.close()),
             7 => self.target.take().map_or(Ok(()), |mut image| image.close()),
-            8 => self.profile_registry.close(),
+            8 => {
+                // terminate() and reap() ran before the release loop; only a
+                // reaped tree with no recorded failure may hand the profile
+                // registry back. Anything else leaves the seal in place.
+                let retired = !self.failed && self.direct_reaped && self.job_reaped;
+                self.profile_registry.close_retired(retired)
+            }
             9 => self
                 .prepared
                 .take()

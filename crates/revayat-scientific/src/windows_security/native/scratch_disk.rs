@@ -322,10 +322,22 @@ impl ScratchVolume {
                     Version: ATTACH_VIRTUAL_DISK_VERSION_1,
                     ..Default::default()
                 };
+                // Surface the disk with a descriptor that grants the
+                // Administrators group full access, matching a normally mounted volume, so
+                // the volume device check no longer strips WRITE_DAC from the seal. The
+                // host user ACE is required as well: under an LPAC token the access
+                // check intersects the user/group result with the package result, the
+                // Administrators SID is deny-only in that token, and without a host ACE
+                // only the Everyone FX grant matches, which carries no data rights, so
+                // every LPAC create on the volume is denied.
+                let mut device_descriptor = super::authority::Descriptor::new(&format!(
+                    "D:(A;;FX;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)(A;;FX;;;RC)(A;;FA;;;{})",
+                    intent.host
+                ))?;
                 let status = unsafe {
                     AttachVirtualDisk(
                         HANDLE(virtual_disk.0),
-                        None,
+                        Some(PSECURITY_DESCRIPTOR(device_descriptor.0)),
                         ATTACH_VIRTUAL_DISK_FLAG_NO_DRIVE_LETTER
                             | ATTACH_VIRTUAL_DISK_FLAG_PERMANENT_LIFETIME,
                         0,
@@ -333,6 +345,7 @@ impl ScratchVolume {
                         None,
                     )
                 };
+                let _ = device_descriptor.close();
                 if status.0 != 0 {
                     return Err(diagnostics::operation(
                         std::io::Error::from_raw_os_error(status.0 as i32).into(),

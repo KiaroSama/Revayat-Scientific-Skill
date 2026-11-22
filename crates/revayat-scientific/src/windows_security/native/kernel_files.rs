@@ -22,8 +22,24 @@ pub(super) fn environment(plan: &KernelPlan) -> Result<()> {
             "kernel environment contains case-alias names"
         );
     }
+    let mut expected = plan.environment()?;
+    // Windows rewrites LOCALAPPDATA, TEMP and TMP in the environment block
+    // of an AppContainer process to the container's own folders
+    // ({HOME}\Packages\<lowercase package name>\AC and its Temp), whatever
+    // values the block carried. Expect exactly those derived values.
+    let home = expected
+        .get("HOME")
+        .ok_or_else(|| anyhow::anyhow!("kernel plan environment lacks HOME"))?
+        .clone();
+    let ac = format!(
+        "{home}\\Packages\\scientific.security.{}\\AC",
+        plan.quota.run
+    );
+    expected.insert("LOCALAPPDATA".into(), ac.clone());
+    expected.insert("TEMP".into(), format!("{ac}\\Temp"));
+    expected.insert("TMP".into(), format!("{ac}\\Temp"));
     ensure!(
-        actual == plan.environment()?
+        actual == expected
             && actual.len() == 13
             && !actual.contains_key("SCIENTIFIC_AMBIENT_CANARY"),
         "kernel exact environment differs from closed plan"

@@ -13,7 +13,6 @@ use std::{
     cell::RefCell,
     error::Error,
     fmt,
-    mem::size_of,
     path::{Path, PathBuf},
     ptr::null_mut,
     sync::Arc,
@@ -30,6 +29,104 @@ impl Error for PortableFailure {
         Some(self.0.as_ref())
     }
 }
+#[link(name = "advapi32")]
+unsafe extern "system" {
+    fn GetSecurityDescriptorOwner(
+        descriptor: Handle,
+        owner: *mut Handle,
+        defaulted: *mut i32,
+    ) -> i32;
+    fn GetSecurityDescriptorGroup(
+        descriptor: Handle,
+        group: *mut Handle,
+        defaulted: *mut i32,
+    ) -> i32;
+    fn GetSecurityDescriptorSacl(
+        descriptor: Handle,
+        present: *mut i32,
+        sacl: *mut Handle,
+        defaulted: *mut i32,
+    ) -> i32;
+    fn SetNamedSecurityInfoW(
+        path: *mut u16,
+        kind: i32,
+        fields: u32,
+        owner: Handle,
+        group: Handle,
+        dacl: Handle,
+        sacl: Handle,
+    ) -> u32;
+}
+#[link(name = "ntdll")]
+unsafe extern "system" {
+    fn NtSetSecurityObject(handle: Handle, fields: u32, data: *const std::ffi::c_void) -> i32;
+    fn RtlNtStatusToDosError(status: i32) -> u32;
+}
+
+/// Applies the private directory's descriptor after a bare create. A create
+/// carrying any descriptor is refused on the surfaced scratch volume, while
+/// the root seal's post-create setters are proven on the same stack: named
+/// owner/group and label writes, then the DACL through a handle. The caller
+/// verifies the landed policy before the directory is used.
+fn apply_created_policy(path: &Path, descriptor: &Descriptor) -> Result<()> {
+    let mut owner: Handle = null_mut();
+    let mut group: Handle = null_mut();
+    let mut sacl: Handle = null_mut();
+    let mut present = 0;
+    let mut defaulted = 0;
+    ensure!(
+        unsafe { GetSecurityDescriptorOwner(descriptor.0, &mut owner, &mut defaulted) } != 0
+            && unsafe { GetSecurityDescriptorGroup(descriptor.0, &mut group, &mut defaulted) } != 0
+            && unsafe {
+                GetSecurityDescriptorSacl(descriptor.0, &mut present, &mut sacl, &mut defaulted)
+            } != 0
+            && present != 0,
+        "private creator descriptor component extraction failed"
+    );
+    let _take = access::ManageVolume::acquire_optional("SeTakeOwnershipPrivilege")?;
+    let _restore = access::ManageVolume::acquire_optional("SeRestorePrivilege")?;
+    let mut text = wide(path);
+    let status = unsafe {
+        SetNamedSecurityInfoW(
+            text.as_mut_ptr(),
+            1,
+            0x3,
+            owner,
+            group,
+            null_mut(),
+            null_mut(),
+        )
+    };
+    ensure!(status == 0, "set private creator owner failed");
+    let status = unsafe {
+        SetNamedSecurityInfoW(
+            text.as_mut_ptr(),
+            1,
+            0x10,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            sacl,
+        )
+    };
+    ensure!(status == 0, "set private creator label failed");
+    let mut handle = Owned::open(path, 0x0006_0080, 7, 0x0220_0000)?;
+    let status = unsafe { NtSetSecurityObject(handle.0, 4, descriptor.0.cast_const()) };
+    let result = if status >= 0 {
+        Ok(())
+    } else {
+        // NtSetSecurityObject reports NTSTATUS and does not set the thread
+        // last-error: build the failure from the returned status itself, so
+        // a real denial cannot surface as winerror=0 or a stale value.
+        let code = unsafe { RtlNtStatusToDosError(status) };
+        Err(anyhow::anyhow!(
+            "set private creator DACL ntstatus={:08X} winerror={code}",
+            status as u32
+        ))
+    };
+    access::combine(result, handle.close())
+}
+
 fn shared<T>(result: Result<T>) -> scratch::OperationResult<T> {
     result.map_err(|error| Arc::from(error.into_boxed_dyn_error()))
 }
@@ -121,13 +218,8 @@ impl PrivateCreator {
                 "O:{host}G:{host}D:P(A;;FA;;;{host})(A;;FA;;;{package})S:(ML;OICI;NW;;;LW)"
             ))?;
             let text = wide(&path);
-            let security = Security {
-                size: size_of::<Security>() as u32,
-                descriptor: descriptor.0,
-                inherit: 0,
-            };
-            let result = if unsafe { CreateDirectoryW(text.as_ptr(), &security) } != 0 {
-                Ok(())
+            let result = if unsafe { CreateDirectoryW(text.as_ptr(), std::ptr::null()) } != 0 {
+                apply_created_policy(&path, &descriptor)
             } else {
                 Err(access::native_error("create private creator directory"))
             };

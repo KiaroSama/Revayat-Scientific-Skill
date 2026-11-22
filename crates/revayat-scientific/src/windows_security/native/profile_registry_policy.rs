@@ -85,7 +85,7 @@ pub(super) fn bytes(descriptor: &Descriptor) -> Result<Vec<u8>> {
 pub(super) fn matches_access(expected: &[u8], actual: &[u8]) -> Result<bool> {
     crate::windows_security::policy::access_matches(expected, actual)
 }
-fn read_access(key: Handle) -> Result<Vec<u8>> {
+pub(super) fn read_access(key: Handle) -> Result<Vec<u8>> {
     let (mut owner, mut group, mut dacl, mut sacl, mut descriptor) =
         (null_mut(), null_mut(), null_mut(), null_mut(), null_mut());
     let status = unsafe {
@@ -123,6 +123,35 @@ fn read_access(key: Handle) -> Result<Vec<u8>> {
         ))
     };
     combine(result, cleanup)
+}
+pub(super) fn restore(key: Handle, captured: &[u8]) -> Result<()> {
+    ensure!(
+        (20..=65536).contains(&captured.len()),
+        "profile registry captured descriptor exceeds bound"
+    );
+    let control = u16::from_le_bytes([captured[2], captured[3]]);
+    let information = if control & 0x1000 != 0 {
+        0x80000004
+    } else {
+        0x20000004
+    };
+    let status = unsafe { RegSetKeySecurity(key, information, captured.as_ptr() as Handle) };
+    ensure!(
+        status == 0,
+        "restore owned profile registry DACL failed winerror={status}"
+    );
+    let mut actual = read_access(key)?;
+    let compared = restored_matches(captured, &actual);
+    actual.fill(0);
+    ensure!(compared?, "restored profile registry seal readback differs");
+    Ok(())
+}
+fn restored_matches(captured: &[u8], actual: &[u8]) -> Result<bool> {
+    let a = crate::windows_security::policy::Descriptor::parse(captured)?;
+    let b = crate::windows_security::policy::Descriptor::parse(actual)?;
+    Ok(a.control & !0x400 == b.control & !0x400
+        && a.dacl.is_some()
+        && crate::windows_security::policy::serialized_acl_equal(a.dacl, b.dacl)?)
 }
 pub(super) fn apply(key: Handle, user: &str, package: &str, read_only: bool) -> Result<()> {
     let mut expected = Descriptor::new(&sddl(user, package, read_only)?)?;
