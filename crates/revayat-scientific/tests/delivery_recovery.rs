@@ -84,7 +84,20 @@ fn test_corrupt_publication_backup_refuses_before_any_replacement() {
         );
         assert_eq!(fs::read(d).unwrap(), format!("approved {label}").as_bytes());
     }
-    assert!(artifacts(root.as_path()).is_empty());
+    // A foreign revision of an admitted backup is retained, even before commit.
+    let records = journals(root.as_path());
+    assert_eq!(records.len(), 1);
+    let record: serde_json::Value =
+        serde_json::from_slice(&fs::read(&records[0]).unwrap()).unwrap();
+    assert_eq!(
+        fs::read(record["backup"].as_str().unwrap()).unwrap(),
+        b"corrupted backup"
+    );
+    let lock = Path::new(record["lock"].as_str().unwrap());
+    assert_eq!(
+        fs::read_to_string(lock).unwrap().trim(),
+        records[0].to_str().unwrap()
+    );
 }
 #[test]
 fn test_changed_backup_is_retained_instead_of_restored_on_late_failure() {

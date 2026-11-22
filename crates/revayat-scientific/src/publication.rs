@@ -160,8 +160,9 @@ fn copied(
     destination: &Path,
     max_bytes: Option<u64>,
     created: &mut Option<ObjectId>,
+    admitted: &mut Option<Fingerprint>,
     boundary: &mut impl FnMut(Boundary, &Path) -> Result<()>,
-) -> Result<Fingerprint> {
+) -> Result<()> {
     let original = file_identity(source, max_bytes)?;
     // Create in the destination's parent so native Windows ACL inheritance is
     // preserved, without copying a private stage's DACL or granting access.
@@ -184,18 +185,24 @@ fn copied(
     output.sync_all()?;
     drop(input);
     drop(output);
+    owned(destination, id)?;
+    let backup = file_identity(destination, max_bytes)?;
+    ensure!(
+        backup.same_bytes(&original),
+        "publication copied backup differs"
+    );
+    *admitted = Some(backup.clone());
     boundary(Boundary::BackupPrepared, destination)?;
     owned(destination, id)?;
     ensure!(
         file_identity(source, max_bytes)? == original,
         "publication source changed during copying"
     );
-    let backup = file_identity(destination, max_bytes)?;
     ensure!(
-        backup.same_bytes(&original),
-        "publication copied backup differs"
+        file_identity(destination, max_bytes)? == backup,
+        "publication copied backup changed after preparation"
     );
-    Ok(backup)
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -399,13 +406,14 @@ pub fn publish_with_identity(
             lock.file.sync_all()?;
             drop(file);
             if let Some(original) = &previous {
-                plan.backup_fingerprint = Some(copied(
+                copied(
                     destination,
                     &backup,
                     max_bytes,
                     &mut plan.backup_identity,
+                    &mut plan.backup_fingerprint,
                     &mut boundary,
-                )?);
+                )?;
                 ensure!(
                     fingerprint(destination, max_bytes)?.as_ref() == Some(original),
                     "destination changed before publication"
@@ -543,6 +551,17 @@ pub fn publish_with_identity(
             .context("publication failed; rollback completed with secondary diagnostics"))
     };
     let cleanup = (|| -> Result<()> {
+        // Admit owned partial copies before cleanup observers can change them.
+        // Completed copies retain their earlier pre-observer revision instead.
+        for plan in &mut plans {
+            if let Some(identity) = plan.backup_identity
+                && plan.backup_fingerprint.is_none()
+            {
+                owned(&plan.directory, plan.directory_identity)?;
+                owned(&plan.recovery.backup, identity)?;
+                plan.backup_fingerprint = Some(file_identity(&plan.recovery.backup, max_bytes)?);
+            }
+        }
         for plan in &plans {
             boundary(Boundary::BeforeCleanup, &plan.recovery.destination)?;
             owned(&plan.directory, plan.directory_identity)?;
@@ -576,12 +595,14 @@ pub fn publish_with_identity(
             let path = &plan.recovery.backup;
             if let Some(identity) = plan.backup_identity {
                 owned(path, identity)?;
-                if let Some(expected) = &plan.backup_fingerprint {
-                    ensure!(
-                        file_identity(path, max_bytes)?.eq(expected),
-                        "saved backup changed before recovery disposal"
-                    );
-                }
+                let expected = plan
+                    .backup_fingerprint
+                    .as_ref()
+                    .context("backup revision was not admitted")?;
+                ensure!(
+                    file_identity(path, max_bytes)?.eq(expected),
+                    "saved backup changed before recovery disposal"
+                );
             } else {
                 ensure!(
                     !is_link(path)? && !path.try_exists()?,

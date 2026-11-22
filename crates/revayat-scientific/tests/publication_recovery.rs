@@ -65,6 +65,44 @@ fn retained(root: &Path, count: usize) -> Vec<serde_json::Value> {
 }
 
 #[test]
+fn prepared_backup_edit_retains_foreign_bytes_and_previous_destination() {
+    for failure in ["none", "ordinary", "signal", "requested"] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let entries = plans(&root);
+        let mut changed = None;
+        let error = publish_observed(&entries[..1], &[], None, |event, path| {
+            if event == Boundary::BackupPrepared {
+                let identity = path_object_id(path)?;
+                fs::write(path, b"foreign prepared backup")?;
+                assert_eq!(path_object_id(path)?, identity);
+                changed = Some(path.to_owned());
+                match failure {
+                    "ordinary" => bail!("controlled preparation failure"),
+                    "signal" => return Err(Cancellation::Signal.into()),
+                    "requested" => return Err(Cancellation::Requested.into()),
+                    _ => (),
+                }
+            }
+            Ok(())
+        })
+        .unwrap_err();
+        let backup = changed.expect("the preparation callback must execute");
+        let cancellation = match failure {
+            "signal" => Some(&Cancellation::Signal),
+            "requested" => Some(&Cancellation::Requested),
+            _ => None,
+        };
+        assert_eq!(error.downcast_ref::<Cancellation>(), cancellation);
+        assert_eq!(fs::read(&entries[0].0).unwrap(), b"candidate A");
+        assert_eq!(fs::read(&entries[0].1).unwrap(), b"approved A");
+        let records = retained(&root, 1);
+        assert_eq!(records[0]["backup"], backup.to_str().unwrap());
+        assert_eq!(fs::read(backup).unwrap(), b"foreign prepared backup");
+    }
+}
+
+#[test]
 fn late_stage_mutation_preserves_the_previous_delivery() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();
