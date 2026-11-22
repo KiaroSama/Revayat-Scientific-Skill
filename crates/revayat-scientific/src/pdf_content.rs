@@ -201,7 +201,7 @@ fn parse_stream(
     let mut saves = Vec::new();
     let mut marks = Vec::new();
     let mut actual_depth = 0usize;
-    let mut active_actual: Option<(usize, bool)> = None;
+    let mut active_actual: Option<(usize, usize, bool)> = None;
     let mut path = Vec::new();
     let mut segments = Vec::new();
     for op in content.operations {
@@ -303,12 +303,16 @@ fn parse_stream(
                     for glyph in &glyphs {
                         out.glyphs.push(positioned(glyph, &state, g, false)?);
                     }
-                } else if let Some((index, positioned_already)) = active_actual.as_mut()
+                } else if let Some((index, text_index, positioned_already)) = active_actual.as_mut()
                     && let Some(first) = glyphs.first()
                 {
                     let position = positioned(first, &state, g, true)?;
                     let actual = &mut out.glyphs[*index];
                     if !*positioned_already {
+                        let span = &mut out.texts[*text_index];
+                        span.x = position.x;
+                        span.y = position.y;
+                        span.axis = position.axis;
                         actual.x = position.x;
                         actual.y = position.y;
                         actual.axis = position.axis;
@@ -362,7 +366,7 @@ fn parse_stream(
                             origin: 0.,
                             advance: 0.,
                         };
-                        active_actual = Some((out.glyphs.len(), false));
+                        active_actual = Some((out.glyphs.len(), out.texts.len(), false));
                         out.glyphs.push(positioned(&marker, &state, g, true)?);
                         let transform = display(compose(state.ctm, state.text_matrix), g);
                         let p = point(transform, 0., 0.);

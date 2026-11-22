@@ -14,6 +14,7 @@ pub fn extract_tables_observed(
     destination: &Path,
     mut observer: impl FnMut(pdf::PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
+    let inputs = pdf::SourceSnapshot::capture(&[source.to_owned()])?;
     let doc = pdf::open_pdf(source, false)?;
     let mut pages = Vec::new();
     for (index, id) in pdf::page_ids(&doc)?.into_iter().enumerate() {
@@ -109,10 +110,10 @@ pub fn extract_tables_observed(
         }
         pages.push(json!({"page":index+1,"tables":tables}));
     }
-    pdf::write_report_observed(
+    pdf::write_report_bound(
         &json!({"format":"pdf-tables","detection":"heuristic-review-required","pages":pages}),
         destination,
-        &[source.to_owned()],
+        &inputs,
         observer,
     )
 }
@@ -162,6 +163,7 @@ fn image_bytes(stream: &Stream) -> Result<(&'static str, Vec<u8>)> {
     Ok(("png", out))
 }
 pub fn extract_images(source: &Path, directory: &Path) -> Result<()> {
+    let inputs = pdf::SourceSnapshot::capture(&[source.to_owned()])?;
     let doc = pdf::open_pdf(source, false)?;
     publication::validate_destination(&directory.join("images.json"), &[source.to_owned()])?;
     ensure!(
@@ -244,5 +246,5 @@ pub fn extract_images(source: &Path, directory: &Path) -> Result<()> {
         ensure!(fs::read(&p)? == bytes, "staged image changed bytes");
         entries.push((p, directory.join(name)));
     }
-    publication::publish_files(&entries, &[source.to_owned()], Some(pdf::MAX_PDF_BYTES))
+    inputs.publish(&entries, |_, _| Ok(()))
 }

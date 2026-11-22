@@ -1,13 +1,12 @@
 //! Bounded native raster preparation and asset-bound review of dark originals.
 //! Review only waives darkness: alpha, frame, depth and color gates still apply.
-use crate::{identity, publication};
+use crate::identity;
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
 use image::metadata::Orientation;
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
     fs,
     io::{Cursor, Read},
     path::{Path, PathBuf},
@@ -97,6 +96,7 @@ pub struct Inspection {
     pub requires_review: bool,
 }
 struct Raster {
+    source: identity::Fingerprint,
     pixels: image::RgbImage,
     alpha: bool,
     mode: String,
@@ -362,6 +362,7 @@ fn load(source: &Path) -> Result<Raster> {
         "image changed while decoding"
     );
     Ok(Raster {
+        source: before,
         pixels,
         alpha,
         mode,
@@ -450,175 +451,9 @@ fn write_png(raster: &Raster, destination: &Path, invert: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn iter_images(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    for path in paths {
-        plain_path(path)?;
-        if path.is_dir() {
-            let mut entries: Vec<PathBuf> = fs::read_dir(path)?
-                .map(|r| r.map(|e| e.path()))
-                .collect::<std::io::Result<_>>()?;
-            entries.sort();
-            files.extend(entries.into_iter().filter(|p| {
-                p.extension()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|s| EXTENSIONS.contains(&s.to_lowercase().as_str()))
-            }));
-        } else {
-            ensure!(
-                path.is_file()
-                    && path
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .is_some_and(|s| EXTENSIONS.contains(&s.to_lowercase().as_str())),
-                "input must be an image file or directory"
-            );
-            files.push(path.clone());
-        }
-    }
-    let mut keys = HashSet::new();
-    let mut objects = Vec::new();
-    for file in &files {
-        plain_path(file)?;
-        ensure!(
-            keys.insert(fs::canonicalize(file)?.to_string_lossy().to_lowercase()),
-            "duplicate image input"
-        );
-        let id = identity::path_object_id(file)?;
-        ensure!(!objects.contains(&id), "aliased image input");
-        objects.push(id);
-    }
-    ensure!(!files.is_empty(), "no images");
-    Ok(files)
-}
-
-/// Validate the complete batch before staging any conversion or original backup.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Boundary {
-    BeforeEncode,
-    Publication(publication::Boundary),
-}
-pub fn prepare(paths: &[PathBuf], invert_dark: bool) -> Result<usize> {
-    prepare_observed(paths, invert_dark, |_, _| Ok(()))
-}
-pub fn prepare_observed(
-    paths: &[PathBuf],
-    invert_dark: bool,
-    mut observe: impl FnMut(Boundary, &Path) -> Result<()>,
-) -> Result<usize> {
-    let files = iter_images(paths)?;
-    let mut names = HashSet::new();
-    let mut plan = Vec::new();
-    for source in &files {
-        let destination = source.with_extension("png");
-        ensure!(
-            names.insert(
-                std::path::absolute(&destination)?
-                    .to_string_lossy()
-                    .to_lowercase()
-            ),
-            "image destination collision"
-        );
-        let in_place = source
-            .extension()
-            .is_some_and(|s| s.eq_ignore_ascii_case("png"));
-        let destination = if in_place {
-            source.clone()
-        } else {
-            destination
-        };
-        for sibling in fs::read_dir(
-            destination
-                .parent()
-                .context("image destination parent missing")?,
-        )? {
-            let p = sibling?.path();
-            ensure!(
-                p == destination
-                    || p.file_name().unwrap().to_string_lossy().to_lowercase()
-                        != destination
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .to_lowercase(),
-                "case-insensitive image destination collision"
-            );
-        }
-        publication::validate_destination(
-            &destination,
-            &files
-                .iter()
-                .filter(|p| *p != source)
-                .cloned()
-                .collect::<Vec<_>>(),
-        )?;
-        ensure!(
-            in_place || !destination.exists(),
-            "converted PNG destination already exists"
-        );
-        let raster = load(source)?;
-        let (mean, black) = stats(&raster);
-        let invert = invert_dark && mean < 120. && black >= 0.5;
-        if in_place
-            && !invert
-            && !raster.alpha
-            && raster.mode == "Rgb8"
-            && raster.orientation == Orientation::NoTransforms
-        {
-            continue;
-        }
-        let backup = in_place.then(|| {
-            source.with_file_name(format!(
-                "{}.orig",
-                source.file_name().unwrap().to_string_lossy()
-            ))
-        });
-        if let Some(p) = &backup {
-            publication::validate_destination(p, &files)?;
-            ensure!(
-                !p.exists() || fs::read(p)? == fs::read(source)?,
-                "existing original differs from current input"
-            );
-        }
-        plan.push((source.clone(), destination, backup, raster, invert));
-    }
-    let mut dirs = Vec::new();
-    let mut entries = Vec::new();
-    let mut protected = files.clone();
-    for (source, dest, backup, raster, invert) in &plan {
-        let dir = tempfile::Builder::new()
-            .prefix(".revayat-images-")
-            .tempdir_in(source.parent().unwrap())?;
-        let stage = dir.path().join("figure.png");
-        observe(Boundary::BeforeEncode, source)?;
-        write_png(raster, &stage, *invert)?;
-        if let Some(backup) = backup {
-            protected.retain(|p| p != source);
-            if backup.exists() {
-                protected.push(backup.clone());
-            } else {
-                let original = dir.path().join("original");
-                fs::copy(source, &original)?;
-                ensure!(
-                    fs::read(&original)? == fs::read(source)?,
-                    "source changed during original backup"
-                );
-                entries.push((original, backup.clone()));
-            }
-        }
-        entries.push((stage, dest.clone()));
-        dirs.push(dir);
-    }
-    if !entries.is_empty() {
-        publication::publish_observed(
-            &entries,
-            &protected,
-            Some(MAX_IMAGE_BYTES),
-            |boundary, path| observe(Boundary::Publication(boundary), path),
-        )?;
-    }
-    Ok(plan.len())
-}
+#[path = "images_prepare.rs"]
+mod preparation;
+pub use preparation::{Boundary, iter_images, prepare, prepare_observed};
 
 #[derive(Parser)]
 #[command(name = "prepare-figures")]

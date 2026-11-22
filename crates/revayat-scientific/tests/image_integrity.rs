@@ -364,3 +364,70 @@ fn test_save_and_publication_failure_roll_back_full_batch() {
             .all(|p| p.unwrap().path().is_file())
     );
 }
+
+#[test]
+fn test_changed_source_before_encode_preserves_batch() {
+    for extension in ["png", "jpg"] {
+        let t = tempfile::tempdir().unwrap();
+        let first = t.path().join("first.png");
+        let second = t.path().join(format!("second.{extension}"));
+        image::RgbaImage::from_pixel(6, 6, image::Rgba([20, 30, 40, 20]))
+            .save(&first)
+            .unwrap();
+        if extension == "png" {
+            image::RgbaImage::from_pixel(6, 6, image::Rgba([60, 70, 80, 120]))
+                .save(&second)
+                .unwrap();
+        } else {
+            image::RgbImage::from_pixel(6, 6, image::Rgb([60, 70, 80]))
+                .save(&second)
+                .unwrap();
+        }
+        let paths = [first, second.clone()];
+        let mut expected = None;
+        let result = images::prepare_observed(&paths, false, |boundary, path| {
+            if boundary == images::Boundary::BeforeEncode && path == second {
+                image::RgbImage::from_pixel(6, 6, image::Rgb([210, 220, 230])).save(&second)?;
+                expected = Some(snapshot(t.path()));
+            }
+            Ok(())
+        });
+        let expected = expected.expect("the source replacement boundary must be reached");
+        assert!(result.is_err(), "changed {extension} source was published");
+        assert_eq!(snapshot(t.path()), expected);
+        assert!(
+            fs::read_dir(t.path())
+                .unwrap()
+                .all(|entry| entry.unwrap().path().is_file())
+        );
+    }
+}
+
+#[test]
+fn test_changed_source_during_publication_preserves_delivery() {
+    let t = tempfile::tempdir().unwrap();
+    let source = t.path().join("figure.jpg");
+    image::RgbImage::from_pixel(6, 6, image::Rgb([20, 30, 40]))
+        .save(&source)
+        .unwrap();
+    let mut expected = None;
+    let result = images::prepare_observed(std::slice::from_ref(&source), false, |boundary, _| {
+        if boundary
+            == images::Boundary::Publication(
+                revayat_scientific::publication::Boundary::BeforeCommit,
+            )
+        {
+            image::RgbImage::from_pixel(6, 6, image::Rgb([210, 220, 230])).save(&source)?;
+            expected = Some(fs::read(&source)?);
+        }
+        Ok(())
+    });
+    let expected = expected.expect("the source replacement boundary must be reached");
+    assert!(
+        result.is_err(),
+        "changed source was published during commit"
+    );
+    assert_eq!(fs::read(&source).unwrap(), expected);
+    assert!(!source.with_extension("png").exists());
+    assert_eq!(fs::read_dir(t.path()).unwrap().count(), 1);
+}

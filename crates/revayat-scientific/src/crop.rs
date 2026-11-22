@@ -230,6 +230,9 @@ pub fn crop_document_observed(
         args.map.is_some() || args.cover || args.author_page > 0,
         "need --map, --cover or --author-page"
     );
+    let mut protected = vec![args.pdf.clone()];
+    protected.extend(args.map.clone());
+    let inputs = pdf::SourceSnapshot::capture(&protected)?;
     let doc = pdf::open_pdf_with_limits(&args.pdf, false, limits)?;
     let geometry = pdf::geometry(&doc)?;
     let by_page = args
@@ -238,8 +241,6 @@ pub fn crop_document_observed(
         .map(|p| load_map(p))
         .transpose()?
         .unwrap_or_default();
-    let mut protected = vec![args.pdf.clone()];
-    protected.extend(args.map.clone());
     let mut planned = Vec::new();
     for (number, figures) in by_page {
         ensure!(
@@ -360,12 +361,9 @@ pub fn crop_document_observed(
         pdf::render_region(&args.pdf, *number, *dpi, *clip, &stage)?;
         entries.push((stage, destination.clone()));
     }
-    publication::publish_observed(
-        &entries,
-        &protected,
-        Some(pdf::MAX_PDF_BYTES),
-        |boundary, path| observe(CropBoundary::Publication(boundary), path),
-    )?;
+    inputs.publish(&entries, |boundary, path| {
+        observe(CropBoundary::Publication(boundary), path)
+    })?;
     Ok(entries.len())
 }
 pub fn cli(args: &[String]) -> Result<i32> {

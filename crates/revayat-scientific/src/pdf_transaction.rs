@@ -32,6 +32,64 @@ pub enum PdfBoundary {
     StageWritten,
     Publication(publication::Boundary),
 }
+
+pub(crate) struct SourceSnapshot {
+    paths: Vec<PathBuf>,
+    identities: Vec<identity::Fingerprint>,
+}
+impl SourceSnapshot {
+    pub(crate) fn capture(paths: &[PathBuf]) -> Result<Self> {
+        let identities = paths
+            .iter()
+            .map(|path| {
+                crate::images::plain_path(path)?;
+                identity::file_identity(path, Some(MAX_PDF_BYTES))
+            })
+            .collect::<Result<_>>()?;
+        Ok(Self {
+            paths: paths.to_vec(),
+            identities,
+        })
+    }
+    pub(crate) fn verify(&self) -> Result<()> {
+        for (path, expected) in self.paths.iter().zip(&self.identities) {
+            crate::images::plain_path(path)?;
+            ensure!(
+                identity::file_identity(path, Some(MAX_PDF_BYTES))? == *expected,
+                "PDF input changed after its snapshot"
+            );
+        }
+        Ok(())
+    }
+    pub(crate) fn publish(
+        &self,
+        entries: &[(PathBuf, PathBuf)],
+        mut observer: impl FnMut(publication::Boundary, &Path) -> Result<()>,
+    ) -> Result<()> {
+        self.verify()?;
+        let mut committed = 0;
+        publication::publish_observed(
+            entries,
+            &self.paths,
+            Some(MAX_PDF_BYTES),
+            |boundary, path| {
+                observer(boundary, path)?;
+                if boundary == publication::Boundary::BeforeCommit && committed == 0 {
+                    self.verify()?;
+                }
+                if boundary == publication::Boundary::AfterCommit {
+                    committed += 1;
+                    // A late source change rolls back the complete output batch,
+                    // without rehashing a large source once per extracted image.
+                    if committed == entries.len() {
+                        self.verify()?;
+                    }
+                }
+                Ok(())
+            },
+        )
+    }
+}
 pub fn open_pdf(path: &Path, transform: bool) -> Result<Document> {
     open_pdf_with_limits(path, transform, AdmissionLimits::default())
 }
@@ -97,13 +155,47 @@ pub fn open_pdf_with_limits(
 pub fn write_report(value: &Value, destination: &Path, sources: &[PathBuf]) -> Result<()> {
     write_report_observed(value, destination, sources, |_, _| Ok(()))
 }
+fn publish_stage(
+    inputs: &SourceSnapshot,
+    stage: PathBuf,
+    destination: PathBuf,
+    expected: &identity::Fingerprint,
+    mut observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
+    inputs.publish(&[(stage.clone(), destination)], |boundary, path| {
+        observer(PdfBoundary::Publication(boundary), path)?;
+        let check = match boundary {
+            publication::Boundary::BeforeCommit | publication::Boundary::BeforeReplace => {
+                Some(stage.as_path())
+            }
+            publication::Boundary::AfterCommit => Some(path),
+            _ => None,
+        };
+        if let Some(path) = check {
+            ensure!(
+                identity::file_identity(path, Some(MAX_PDF_BYTES))?.same_bytes(expected),
+                "staged PDF output changed after writing"
+            );
+        }
+        Ok(())
+    })
+}
 pub fn write_report_observed(
     value: &Value,
     destination: &Path,
     sources: &[PathBuf],
+    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
+    let inputs = SourceSnapshot::capture(sources)?;
+    write_report_bound(value, destination, &inputs, observer)
+}
+pub(crate) fn write_report_bound(
+    value: &Value,
+    destination: &Path,
+    inputs: &SourceSnapshot,
     mut observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
-    let destination = publication::validate_destination(destination, sources)?;
+    let destination = publication::validate_destination(destination, &inputs.paths)?;
     let parent = destination.parent().context("report parent missing")?;
     fs::create_dir_all(parent)?;
     let stage = tempfile::Builder::new()
@@ -112,15 +204,15 @@ pub fn write_report_observed(
     let path = stage.path().join("report.json");
     let mut raw = serde_json::to_vec_pretty(value)?;
     raw.push(b'\n');
+    let expected_bytes = (raw.len() as u64, crate::resource::sha256(&raw));
     fs::write(&path, raw)?;
+    let expected = identity::file_identity(&path, Some(MAX_PDF_BYTES))?;
+    ensure!(
+        expected.size == expected_bytes.0 && expected.sha256 == expected_bytes.1,
+        "staged report differs from emitted JSON"
+    );
     observer(PdfBoundary::StageWritten, &path)?;
-    let _: Value = serde_json::from_slice(&fs::read(&path)?)?;
-    publication::publish_observed(
-        &[(path, destination)],
-        sources,
-        Some(MAX_PDF_BYTES),
-        |boundary, path| observer(PdfBoundary::Publication(boundary), path),
-    )
+    publish_stage(inputs, path, destination, &expected, observer)
 }
 pub fn save_document(
     doc: &mut Document,
@@ -144,9 +236,20 @@ pub fn save_document_observed(
     sources: &[PathBuf],
     expected: &[PageGeometry],
     validator: impl Fn(&Document) -> Result<()>,
+    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
+    let inputs = SourceSnapshot::capture(sources)?;
+    save_document_bound(doc, destination, &inputs, expected, validator, observer)
+}
+pub(crate) fn save_document_bound(
+    doc: &mut Document,
+    destination: &Path,
+    inputs: &SourceSnapshot,
+    expected: &[PageGeometry],
+    validator: impl Fn(&Document) -> Result<()>,
     mut observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
-    let destination = publication::validate_destination(destination, sources)?;
+    let destination = publication::validate_destination(destination, &inputs.paths)?;
     let parent = destination.parent().context("PDF output parent missing")?;
     fs::create_dir_all(parent)?;
     let stage = tempfile::Builder::new()
@@ -154,6 +257,7 @@ pub fn save_document_observed(
         .tempdir_in(parent)?;
     let path = stage.path().join("result.pdf");
     doc.save(&path)?;
+    let expected_content = identity::file_identity(&path, Some(MAX_PDF_BYTES))?;
     observer(PdfBoundary::StageWritten, &path)?;
     let reopened = open_pdf(&path, false)?;
     ensure!(
@@ -161,10 +265,5 @@ pub fn save_document_observed(
         "staged PDF changed page count or geometry"
     );
     validator(&reopened)?;
-    publication::publish_observed(
-        &[(path, destination)],
-        sources,
-        Some(MAX_PDF_BYTES),
-        |boundary, path| observer(PdfBoundary::Publication(boundary), path),
-    )
+    publish_stage(inputs, path, destination, &expected_content, observer)
 }

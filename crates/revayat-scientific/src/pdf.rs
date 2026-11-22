@@ -1,22 +1,25 @@
 //! Native bounded PDF admission, object-preserving transformations and reports.
 use crate::{pdf_forms, pdf_navigation as nav, publication};
+#[path = "pdf_render.rs"]
+mod render;
 #[path = "pdf_transaction.rs"]
 mod transaction;
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, Subcommand};
 use lopdf::{Document, Object, ObjectId, dictionary};
+pub use render::{render_page, render_region, render_sample_set};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
-    time::Duration,
 };
 pub use transaction::{
     AdmissionLimits, PdfBoundary, open_pdf, open_pdf_with_limits, save_document,
     save_document_observed, write_report, write_report_observed,
 };
+pub(crate) use transaction::{SourceSnapshot, save_document_bound, write_report_bound};
 
 pub const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_PDF_PAGES: usize = 10000;
@@ -182,6 +185,7 @@ pub fn merge_pdfs_observed(
         "merge needs 1..1000 input PDFs"
     );
     publication::validate_destination(destination, sources)?;
+    let inputs = SourceSnapshot::capture(sources)?;
     let mut docs = Vec::new();
     let mut expected = Vec::new();
     let mut links = Vec::new();
@@ -255,10 +259,10 @@ pub fn merge_pdfs_observed(
     result.objects.insert(catalog, Object::Dictionary(root));
     result.trailer.set("Root", catalog);
     result.trailer.remove(b"Info");
-    save_document_observed(
+    save_document_bound(
         &mut result,
         destination,
-        sources,
+        &inputs,
         &expected,
         |doc| {
             ensure!(
@@ -298,6 +302,7 @@ pub fn extract_pages_observed(
     );
     let protected = [source.to_owned()];
     publication::validate_destination(destination, &protected)?;
+    let inputs = SourceSnapshot::capture(&protected)?;
     let mut doc = open_pdf_with_limits(source, true, limits)?;
     let all = page_ids(&doc)?;
     ensure!(last <= all.len(), "requested range exceeds source pages");
@@ -320,10 +325,10 @@ pub fn extract_pages_observed(
     catalog.remove(b"OpenAction");
     catalog.remove(b"AA");
     doc.prune_objects();
-    save_document_observed(
+    save_document_bound(
         &mut doc,
         destination,
-        &protected,
+        &inputs,
         &expected,
         |d| {
             ensure!(
@@ -355,14 +360,24 @@ pub fn fill_pdf_observed(
     let mut protected = vec![source.to_owned()];
     protected.extend_from_slice(additional_sources);
     publication::validate_destination(destination, &protected)?;
+    let inputs = SourceSnapshot::capture(&protected)?;
+    fill_pdf_bound(source, destination, values, &inputs, observer)
+}
+fn fill_pdf_bound(
+    source: &Path,
+    destination: &Path,
+    values: &serde_json::Map<String, Value>,
+    inputs: &SourceSnapshot,
+    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
     let mut doc = open_pdf(source, true)?;
     let expected = geometry(&doc)?;
     let plan = pdf_forms::plan_fill(&doc, values)?;
     pdf_forms::apply_fill(&mut doc, &plan)?;
-    save_document_observed(
+    save_document_bound(
         &mut doc,
         destination,
-        &protected,
+        inputs,
         &expected,
         |d| pdf_forms::verify_fill(d, &plan),
         observer,
@@ -395,6 +410,7 @@ pub fn stored_pdf_text(source: &Path) -> Result<String> {
     Ok(result)
 }
 pub fn extract_text(source: &Path, destination: &Path) -> Result<()> {
+    let inputs = SourceSnapshot::capture(&[source.to_owned()])?;
     let d = open_pdf(source, false)?;
     let mut pages = Vec::new();
     let mut text_bytes = 0usize;
@@ -411,136 +427,12 @@ pub fn extract_text(source: &Path, destination: &Path) -> Result<()> {
         );
         pages.push(json!({"page":g.page,"rect":g.rect,"text":text,"source_stream_text":source_stream_text}));
     }
-    write_report(
+    write_report_bound(
         &json!({"format":"pdf-text","order":"geometry-unicode-bidi","actual_text":"authoritative","pages":pages,"semantic_completeness":"not-verified"}),
         destination,
-        &[source.to_owned()],
+        &inputs,
+        |_, _| Ok(()),
     )
-}
-
-pub fn render_page(source: &Path, page: usize, dpi: u32, destination: &Path) -> Result<()> {
-    let d = open_pdf(source, false)?;
-    let g = geometry(&d)?;
-    ensure!(page > 0 && page <= g.len(), "render page exceeds document");
-    render_region(source, page, dpi, g[page - 1].rect, destination)
-}
-pub fn render_region(
-    source: &Path,
-    page: usize,
-    dpi: u32,
-    clip: [f64; 4],
-    destination: &Path,
-) -> Result<()> {
-    ensure!(dpi > 0, "render density must be positive");
-    let d = open_pdf(source, false)?;
-    let g = geometry(&d)?;
-    ensure!(page > 0 && page <= g.len(), "render page exceeds document");
-    let r = g[page - 1].rect;
-    ensure!(
-        clip.iter().all(|n| n.is_finite())
-            && clip[0] >= r[0]
-            && clip[1] >= r[1]
-            && clip[2] <= r[2]
-            && clip[3] <= r[3]
-            && clip[0] < clip[2]
-            && clip[1] < clip[3],
-        "crop rectangle must be finite, nonempty and inside page"
-    );
-    let scale = f64::from(dpi) / 72.;
-    let x = (clip[0] * scale).floor() as u64;
-    let y = (clip[1] * scale).floor() as u64;
-    let w = (clip[2] * scale).ceil() as u64 - x;
-    let h = (clip[3] * scale).ceil() as u64 - y;
-    ensure!(
-        w.checked_mul(h).is_some_and(|n| n <= 50_000_000),
-        "crop exceeds 50 million pixels; no downsampling performed"
-    );
-    let destination = publication::validate_destination(destination, &[source.to_owned()])?;
-    let parent = destination
-        .parent()
-        .context("render destination parent missing")?;
-    fs::create_dir_all(parent)?;
-    let work = tempfile::Builder::new()
-        .prefix(".revayat-raster-")
-        .tempdir_in(parent)?;
-    let prefix = work.path().join("page");
-    let mut spec = crate::runtime::CommandSpec::new("pdftoppm");
-    spec.timeout = Duration::from_secs(120);
-    spec.args = vec![
-        "-f".into(),
-        page.to_string().into(),
-        "-l".into(),
-        page.to_string().into(),
-        "-singlefile".into(),
-        "-png".into(),
-        "-cropbox".into(),
-        "-r".into(),
-        dpi.to_string().into(),
-        "-x".into(),
-        x.to_string().into(),
-        "-y".into(),
-        y.to_string().into(),
-        "-W".into(),
-        w.to_string().into(),
-        "-H".into(),
-        h.to_string().into(),
-        source.as_os_str().to_owned(),
-        prefix.as_os_str().to_owned(),
-    ];
-    let output = crate::runtime::run(&spec)?;
-    ensure!(
-        output.success(),
-        "Poppler raster backend failed: {}",
-        output.stderr_text()
-    );
-    let stage = prefix.with_extension("png");
-    let image = image::open(&stage)?;
-    ensure!(
-        u64::from(image.width()) == w && u64::from(image.height()) == h,
-        "raster backend changed requested crop dimensions"
-    );
-    publication::publish_files(
-        &[(stage, destination)],
-        &[source.to_owned()],
-        Some(MAX_PDF_BYTES),
-    )
-}
-pub fn render_sample_set(source: &Path, output_prefix: &Path) -> Result<Vec<PathBuf>> {
-    let d = open_pdf(source, false)?;
-    let n = page_ids(&d)?.len();
-    let mut pages = vec![1, n.div_ceil(2), n];
-    pages.sort_unstable();
-    pages.dedup();
-    let parent = output_prefix
-        .parent()
-        .context("sample output parent missing")?;
-    let protected = [source.to_owned()];
-    let mut outputs = Vec::new();
-    for page in pages {
-        let output = output_prefix.with_file_name(format!(
-            "{}-{page}.png",
-            output_prefix
-                .file_name()
-                .context("output prefix missing")?
-                .to_string_lossy()
-        ));
-        publication::validate_destination(&output, &protected)?;
-        outputs.push((page, output));
-    }
-    fs::create_dir_all(parent)?;
-    let work = tempfile::Builder::new()
-        .prefix(".revayat-samples-")
-        .tempdir_in(parent)?;
-    let mut entries = Vec::new();
-    let mut result = Vec::new();
-    for (page, destination) in outputs {
-        let stage = work.path().join(format!("page-{page}.png"));
-        render_page(source, page, 100, &stage)?;
-        entries.push((stage, destination.clone()));
-        result.push(destination);
-    }
-    publication::publish_files(&entries, &protected, Some(MAX_PDF_BYTES))?;
-    Ok(result)
 }
 
 #[derive(Parser)]
@@ -596,10 +488,12 @@ pub fn cli(args: &[String]) -> Result<i32> {
     )?;
     match a.command {
         Commands::Inspect { source, output } => {
-            let v = inspect_pdf(&source)?;
             if let Some(p) = output {
-                write_report(&v, &p, &[source])?;
+                let inputs = SourceSnapshot::capture(std::slice::from_ref(&source))?;
+                let v = inspect_pdf(&source)?;
+                write_report_bound(&v, &p, &inputs, |_, _| Ok(()))?;
             } else {
+                let v = inspect_pdf(&source)?;
                 println!("{}", serde_json::to_string_pretty(&v)?);
             }
         }
@@ -620,9 +514,10 @@ pub fn cli(args: &[String]) -> Result<i32> {
                 fs::metadata(&fields)?.len() <= 8 * 1024 * 1024,
                 "fields JSON exceeds size limit"
             );
+            let inputs = SourceSnapshot::capture(&[source.clone(), fields.clone()])?;
             let values: crate::pdf_content::UniqueFields =
-                serde_json::from_slice(&fs::read(&fields)?)?;
-            fill_pdf(&source, &output, &values.0, &[fields])?;
+                serde_json::from_slice(&crate::resource::bounded_read(&fields, 8 * 1024 * 1024)?)?;
+            fill_pdf_bound(&source, &output, &values.0, &inputs, |_, _| Ok(()))?;
         }
         Commands::Ocr {
             source,

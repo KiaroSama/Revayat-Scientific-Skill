@@ -213,7 +213,7 @@ pub fn ocr_with_backend(
     mut backend: impl FnMut(usize, &Document) -> Result<Document>,
 ) -> Result<()> {
     let destination = crate::publication::validate_destination(destination, &[source.to_owned()])?;
-    let source_identity = crate::identity::file_identity(source, Some(pdf::MAX_PDF_BYTES))?;
+    let inputs = pdf::SourceSnapshot::capture(&[source.to_owned()])?;
     let mut doc = pdf::open_pdf(source, true)?;
     let expected = pdf::geometry(&doc)?;
     let mut planned = 0;
@@ -235,16 +235,14 @@ pub fn ocr_with_backend(
         planned == 0 || recognized > 0,
         "OCR recognized no text; no derivative published"
     );
-    ensure!(
-        source_identity == crate::identity::file_identity(source, Some(pdf::MAX_PDF_BYTES))?,
-        "OCR source changed during backend processing"
-    );
-    pdf::save_document(
+    inputs.verify()?;
+    pdf::save_document_bound(
         &mut doc,
         &destination,
-        &[source.to_owned()],
+        &inputs,
         &expected,
         |_| Ok(()),
+        |_, _| Ok(()),
     )
 }
 

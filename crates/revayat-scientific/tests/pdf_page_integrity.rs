@@ -130,3 +130,105 @@ fn test_encrypted_and_malformed_inputs_leave_output_unchanged() {
         assert_eq!(fs::read_dir(x.temp.path()).unwrap().count(), 2);
     }
 }
+
+#[test]
+fn test_changed_source_during_extraction_preserves_delivery() {
+    for boundary in [
+        p::PdfBoundary::StageWritten,
+        p::PdfBoundary::Publication(revayat_scientific::publication::Boundary::BeforeCommit),
+    ] {
+        let fixture = Fixture::new();
+        fixture.save(document(3));
+        fixture.previous();
+        let mut replacement = None;
+        let result = p::extract_pages_observed(
+            &fixture.source,
+            &fixture.output,
+            1,
+            1,
+            p::AdmissionLimits::default(),
+            |event, _| {
+                if event == boundary {
+                    fixture.save(document(2));
+                    replacement = Some(fs::read(&fixture.source)?);
+                }
+                Ok(())
+            },
+        );
+        let replacement = replacement.expect("the source replacement boundary must be reached");
+        assert!(
+            result.is_err(),
+            "changed source was published at {boundary:?}"
+        );
+        fixture.preserved();
+        assert_eq!(fs::read(&fixture.source).unwrap(), replacement);
+        assert_eq!(fs::read_dir(fixture.temp.path()).unwrap().count(), 2);
+    }
+}
+
+#[test]
+fn test_changed_merge_input_preserves_delivery() {
+    let fixture = Fixture::new();
+    fixture.save(document(1));
+    fixture.previous();
+    let second = fixture.temp.path().join("second.pdf");
+    document(3).save(&second).unwrap();
+    let original = fs::read(&fixture.source).unwrap();
+    let mut replacement = None;
+    let result = p::merge_pdfs_observed(
+        &[fixture.source.clone(), second.clone()],
+        &fixture.output,
+        |boundary, _| {
+            if boundary == p::PdfBoundary::StageWritten {
+                document(2).save(&second)?;
+                replacement = Some(fs::read(&second)?);
+            }
+            Ok(())
+        },
+    );
+    let replacement = replacement.expect("the merge source replacement boundary must be reached");
+    assert!(result.is_err(), "changed merge input was published");
+    fixture.preserved();
+    assert_eq!(fs::read(&fixture.source).unwrap(), original);
+    assert_eq!(fs::read(&second).unwrap(), replacement);
+    assert_eq!(fs::read_dir(fixture.temp.path()).unwrap().count(), 3);
+}
+
+#[test]
+fn test_changed_fill_input_preserves_delivery() {
+    let fixture = Fixture::new();
+    let mut doc = document(1);
+    textfield(&mut doc, "Quantity");
+    fixture.save(doc);
+    fixture.previous();
+    let original = fs::read(&fixture.source).unwrap();
+    let field_source = fixture.temp.path().join("fields.json");
+    fs::write(&field_source, br#"{"Quantity":"23.5 C"}"#).unwrap();
+    let values = serde_json::json!({"Quantity":"23.5 C"});
+    let mut reached = false;
+    let result = p::fill_pdf_observed(
+        &fixture.source,
+        &fixture.output,
+        values.as_object().unwrap(),
+        std::slice::from_ref(&field_source),
+        |boundary, _| {
+            if boundary == p::PdfBoundary::StageWritten {
+                reached = true;
+                fs::write(&field_source, br#"{"Quantity":"-0.25 mV"}"#)?;
+            }
+            Ok(())
+        },
+    );
+    assert!(
+        reached,
+        "the field input replacement boundary must be reached"
+    );
+    assert!(result.is_err(), "changed fill input was published");
+    fixture.preserved();
+    assert_eq!(fs::read(&fixture.source).unwrap(), original);
+    assert_eq!(
+        fs::read(&field_source).unwrap(),
+        br#"{"Quantity":"-0.25 mV"}"#
+    );
+    assert_eq!(fs::read_dir(fixture.temp.path()).unwrap().count(), 3);
+}
