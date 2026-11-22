@@ -15,7 +15,9 @@ fn denied(code: Option<i32>) -> bool {
 }
 pub(super) fn sparse(handle: Raw) -> Result<()> {
     let mut returned = 0;
-    // SAFETY: fixed FSCTL_SET_SPARSE with no input sets the sparse bit on this owned write handle.
+    // SAFETY: fixed FSCTL_SET_SPARSE with no input sets the sparse bit on this owned
+    // write handle. Controller-side provisioning only: the contained worker is
+    // denied this call, so sparse files are created and marked before launch.
     ensure!(
         unsafe {
             DeviceIoControl(
@@ -33,6 +35,29 @@ pub(super) fn sparse(handle: Raw) -> Result<()> {
     );
     Ok(())
 }
+pub(super) fn sparse_denied(handle: Raw) -> Result<()> {
+    let mut returned = 0;
+    // SAFETY: fixed FSCTL_SET_SPARSE with no input on this owned write handle; the
+    // contained worker must stay unable to set the sparse bit itself.
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            0x900c4,
+            null_mut(),
+            0,
+            null_mut(),
+            0,
+            &mut returned,
+            null_mut(),
+        )
+    };
+    let error = unsafe { GetLastError() };
+    ensure!(
+        ok == 0 && error == 5,
+        "contained worker set the sparse bit or was denied for a different reason"
+    );
+    Ok(())
+}
 fn seek(handle: Raw, length: u64) -> Result<()> {
     let mut position = 0;
     // SAFETY: bounded nonnegative file offset and writable position output.
@@ -45,7 +70,9 @@ fn seek(handle: Raw, length: u64) -> Result<()> {
 }
 pub(super) fn native(handle: Raw, make_sparse: bool) -> Result<()> {
     if make_sparse {
-        sparse(handle)?;
+        // Sparse files arrive pre-marked by the controller; the worker only
+        // verifies the sparse attribute before running the EOF probes.
+        files::require_sparse(handle, true)?;
     }
     seek(handle, 1024)?;
     // SAFETY: live write-capable file handle positioned within the admitted 16MiB bound.
@@ -68,40 +95,48 @@ pub(super) fn native(handle: Raw, make_sparse: bool) -> Result<()> {
     Ok(())
 }
 pub(super) fn controls(root: &Root) -> Result<()> {
-    for make_sparse in [false, true] {
-        let mut leaf = root.create(if make_sparse {
-            "quota-sparse"
-        } else {
-            "quota-ordinary"
-        })?;
-        let result = (|| {
-            leaf.require()?;
-            native(leaf.handle.0, make_sparse)?;
-            if make_sparse {
-                sparse(leaf.handle.0)?;
-            }
-            let result = files::file(leaf.handle.0).set_len(QUOTA_BYTES + 1);
-            ensure!(
-                result
-                    .as_ref()
-                    .is_err_and(|error| denied(error.raw_os_error())),
-                "standard file logical EOF was not denied by space/quota policy"
-            );
-            Ok(())
-        })();
-        combine(result, leaf.close())?;
-    }
+    // Ordinary coverage stays worker-created and non-sparse.
+    let mut ordinary = root.create("quota-ordinary")?;
+    let result = (|| {
+        ordinary.require()?;
+        native(ordinary.handle.0, false)?;
+        sparse_denied(ordinary.handle.0)?;
+        let result = files::file(ordinary.handle.0).set_len(QUOTA_BYTES + 1);
+        ensure!(
+            result
+                .as_ref()
+                .is_err_and(|error| denied(error.raw_os_error())),
+            "standard file logical EOF was not denied by space/quota policy"
+        );
+        Ok(())
+    })();
+    combine(result, ordinary.close())?;
+    // The sparse leaf is controller-provisioned and pre-marked sparse.
+    let mut sparse_leaf = root.provisioned("quota-sparse")?;
+    let result = (|| {
+        sparse_leaf.require()?;
+        native(sparse_leaf.handle.0, true)?;
+        let result = files::file(sparse_leaf.handle.0).set_len(QUOTA_BYTES + 1);
+        ensure!(
+            result
+                .as_ref()
+                .is_err_and(|error| denied(error.raw_os_error())),
+            "standard file logical EOF was not denied by space/quota policy"
+        );
+        Ok(())
+    })();
+    combine(result, sparse_leaf.close())?;
     let mut leaves = Vec::new();
     let result = (|| {
         for index in 0..2 {
-            leaves.push(root.create(if index == 0 {
+            leaves.push(root.provisioned(if index == 0 {
                 "quota-aggregate-0"
             } else {
                 "quota-aggregate-1"
             })?);
             let leaf = leaves.last().expect("just pushed fixed leaf");
             leaf.require()?;
-            sparse(leaf.handle.0)?;
+            files::require_sparse(leaf.handle.0, true)?;
             let result = files::file(leaf.handle.0).set_len(9 * 1024 * 1024);
             if index == 0 {
                 ensure!(

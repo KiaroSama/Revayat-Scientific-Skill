@@ -140,7 +140,159 @@ pub(crate) fn provision_private_creator_file(
             all([rollback, cleanup_provisioned_private_file(&path)]),
         );
     }
+    // No file removal is attempted on a sparse provisioning failure here:
+    // the suspended child still holds the duplicated fixture handle, so
+    // removal would fail on sharing. Both run drivers chain the
+    // provisioned-file cleanups after the child is finished, on success
+    // and failure paths alike.
+    provision_sparse_files(child_process, scratch, inventory)?;
     Ok(path)
+}
+
+pub(crate) fn cleanup_provisioned_sparse_files(scratch: &str) -> Result<()> {
+    let paths = [
+        format!("{scratch}private-creator\\authority-protected-sparse"),
+        format!("{scratch}quota-sparse"),
+        format!("{scratch}quota-aggregate-0"),
+        format!("{scratch}quota-aggregate-1"),
+        format!("{scratch}private-creator\\stage-quota-sparse"),
+        format!("{scratch}private-creator\\stage-quota-aggregate-0"),
+        format!("{scratch}private-creator\\stage-quota-aggregate-1"),
+    ];
+    let mut result = Ok(());
+    for text in &paths {
+        let step = (|| {
+            match std::fs::remove_file(text) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => anyhow::bail!("provisioned sparse cleanup failed"),
+            }
+            files::absent(text)
+        })();
+        result = combine(result, step);
+    }
+    result
+}
+
+fn provision_sparse_files(
+    child_process: BorrowedHandle<'_>,
+    scratch: &str,
+    inventory: &OwnerInventory,
+) -> Result<()> {
+    let mut descriptor = Descriptor::new(&format!(
+        "O:{}D:P(A;;GA;;;{})(A;;GA;;;{})",
+        inventory.user.canonical(),
+        inventory.user.canonical(),
+        inventory.package.canonical(),
+    ))?;
+    // The low mandatory label matches the volume policy: without it a
+    // provisioned file keeps the creator's integrity level and the
+    // contained worker is denied write access opening it by path. A
+    // create-time SACL is ignored without SeSecurityPrivilege, so the
+    // label is applied to each file after creation instead.
+    let mut label = Descriptor::new("S:(ML;;NW;;;LW)")?;
+    let operation = (|| {
+        let fixture = format!("{scratch}private-creator\\authority-protected-sparse");
+        provision_sparse_file(child_process, &fixture, &descriptor, &label)?;
+        for leaf in ["quota-sparse", "quota-aggregate-0", "quota-aggregate-1"] {
+            let staging = format!("{scratch}private-creator\\stage-{leaf}");
+            let target = format!("{scratch}{leaf}");
+            provision_sparse_root_leaf(&staging, &target, &descriptor, &label)?;
+        }
+        Ok(())
+    })();
+    combine(combine(operation, descriptor.close()), label.close())
+}
+
+fn apply_low_label(handle: Raw, label: &Descriptor) -> Result<()> {
+    let sacl = label.sacl()?;
+    // SAFETY: live provisioned handle carrying READ_CONTROL and a live
+    // converted label descriptor; LABEL uses READ_CONTROL only.
+    ensure!(
+        unsafe { SetSecurityInfo(handle, 1, 0x10, null_mut(), null_mut(), null_mut(), sacl) } == 0,
+        "provisioned sparse file label application failed"
+    );
+    Ok(())
+}
+
+fn provision_sparse_file(
+    child_process: BorrowedHandle<'_>,
+    text: &str,
+    descriptor: &Descriptor,
+    label: &Descriptor,
+) -> Result<()> {
+    files::absent(text)?;
+    let security = Security {
+        length: size_of::<Security>() as u32,
+        descriptor: descriptor.0,
+        inherit: 0,
+    };
+    let mut original = open(text, 0xC00C0000, 3, 1, 0x80, &security)?;
+    let operation = (|| {
+        // The controller marks the file sparse before any handle reaches the worker:
+        // the contained LPAC worker is denied FSCTL_SET_SPARSE itself.
+        eof::sparse(original.0)?;
+        apply_low_label(original.0, label)?;
+        files::grant(original.0, 0x1E019F)?;
+        let mut duplicated = null_mut();
+        // SAFETY: host owns the source; the actual suspended child owns the non-inherited output.
+        let ok = unsafe {
+            DuplicateHandle(
+                GetCurrentProcess(),
+                original.0,
+                child_process.as_raw_handle(),
+                &mut duplicated,
+                0x001E019F,
+                0,
+                0,
+            )
+        };
+        ensure!(
+            ok != 0 && !duplicated.is_null(),
+            "provisioned sparse handle duplication failed"
+        );
+        Ok(())
+    })();
+    combine(operation, original.close())
+}
+
+fn provision_sparse_root_leaf(
+    staging: &str,
+    target: &str,
+    descriptor: &Descriptor,
+    label: &Descriptor,
+) -> Result<()> {
+    files::absent(staging)?;
+    files::absent(target)?;
+    // The sealed scratch root refuses a descriptor twice over: assigning
+    // one at creation is denied, and the inherited OWNER RIGHTS deny
+    // blocks the WRITE_DAC reopen that could apply one afterwards. So
+    // the leaf is fully provisioned inside private-creator, where
+    // descriptor-at-create is proven, and then moved to the scratch
+    // root; a same-volume move keeps the owner, the descriptor, the
+    // label and the sparse attribute.
+    let security = Security {
+        length: size_of::<Security>() as u32,
+        descriptor: descriptor.0,
+        inherit: 0,
+    };
+    let mut original = open(staging, 0xC00C0000, 3, 1, 0x80, &security)?;
+    let operation = (|| {
+        // The controller marks the file sparse before the worker opens it:
+        // the contained LPAC worker is denied FSCTL_SET_SPARSE itself.
+        eof::sparse(original.0)?;
+        apply_low_label(original.0, label)?;
+        Ok(())
+    })();
+    combine(operation, original.close())?;
+    let from = wide(staging);
+    let to = wide(target);
+    // SAFETY: fixed provisioned staging and target paths on one volume.
+    ensure!(
+        unsafe { MoveFileW(from.as_ptr(), to.as_ptr()) } != 0,
+        "provisioned sparse leaf move failed"
+    );
+    Ok(())
 }
 
 fn provisioned_handle(root: &Root, expected: &str) -> Result<Owned> {
@@ -246,14 +398,18 @@ struct PrivateFile {
     closed: bool,
 }
 impl PrivateFile {
-    fn create(root: &Root, descriptor: &Descriptor) -> Result<Self> {
+    fn create(root: &Root, descriptor: &Descriptor, name: &str) -> Result<Self> {
+        ensure!(
+            ["authority-protected", "authority-protected-sparse"].contains(&name),
+            "private creator fixture is outside fixed set"
+        );
         root.require()?;
         let parent = format!("{}private-creator", root.path);
-        let path = format!("{parent}\\authority-protected");
+        let path = format!("{parent}\\{name}");
         let directory = open(&parent, 0x80, 3, 3, 0x02200000, null())?;
         let mut value = Self {
             path,
-            expected: format!("{}private-creator\\authority-protected", root.native),
+            expected: format!("{}private-creator\\{name}", root.native),
             volume: root.id.volume,
             directory,
             original: Owned::empty(),
@@ -493,7 +649,7 @@ pub(super) fn controls(root: &Root, plan: &WorkerPlan, inventory: &OwnerInventor
         ))?;
         let operation = (|| {
             let dacl = policy.dacl()?;
-            let mut fixture = PrivateFile::create(root, &policy)?;
+            let mut fixture = PrivateFile::create(root, &policy, "authority-protected")?;
             let operation = (|| {
                 let handle = fixture.qualify()?;
                 // SAFETY: qualified original private file carries exact WRITE_DAC/WRITE_OWNER rights.
@@ -511,10 +667,19 @@ pub(super) fn controls(root: &Root, plan: &WorkerPlan, inventory: &OwnerInventor
                     } == 0,
                     "private creator own DACL positive failed"
                 );
+                // The non-sparse probes must run on a file that is actually non-sparse.
+                files::require_sparse(handle, false)?;
                 eof::native(handle, false)?;
+                Ok(())
+            })();
+            combine(operation, fixture.close())?;
+            let mut sparse_fixture =
+                PrivateFile::create(root, &policy, "authority-protected-sparse")?;
+            let operation = (|| {
+                let handle = sparse_fixture.qualify()?;
                 eof::native(handle, true)?;
                 for owner in &inventory.owners {
-                    let handle = fixture.qualify()?;
+                    let handle = sparse_fixture.qualify()?;
                     let status = unsafe {
                         SetSecurityInfo(
                             handle,
@@ -537,7 +702,7 @@ pub(super) fn controls(root: &Root, plan: &WorkerPlan, inventory: &OwnerInventor
                 }
                 for text in ["S-1-5-32-544", "S-1-5-21-101-202-303-404"] {
                     let sid = Sid::text(text)?;
-                    let handle = fixture.qualify()?;
+                    let handle = sparse_fixture.qualify()?;
                     let status = unsafe {
                         SetSecurityInfo(
                             handle,
@@ -557,7 +722,7 @@ pub(super) fn controls(root: &Root, plan: &WorkerPlan, inventory: &OwnerInventor
                 protected_write_denied(plan)?;
                 Ok(())
             })();
-            combine(operation, fixture.close())
+            combine(operation, sparse_fixture.close())
         })();
         combine(operation, policy.close())?;
         raw_volume_denied(root)

@@ -65,6 +65,19 @@ pub(super) fn absent(path: &str) -> Result<()> {
     );
     Ok(())
 }
+pub(super) fn require_sparse(handle: Raw, sparse: bool) -> Result<()> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: live file handle and writable native information storage.
+    ensure!(
+        unsafe { GetFileInformationByHandle(handle, &mut info) } != 0
+            && (info.dwFileAttributes & 0x200 != 0) == sparse,
+        "quota file sparse attribute differs from its provisioned class"
+    );
+    Ok(())
+}
 pub(super) fn bind(handle: Raw, id: Identity, expected: &str) -> Result<()> {
     ensure!(
         identity(handle, false)? == id && name(handle)? == expected,
@@ -182,6 +195,31 @@ impl Root {
             ensure!(
                 id.volume == self.id.volume && name(handle.0)? == expected,
                 "quota newly created leaf is outside pinned root"
+            );
+            Ok(Leaf {
+                path,
+                id,
+                expected,
+                handle: Owned(std::mem::replace(&mut handle.0, null_mut())),
+                removed: false,
+            })
+        })();
+        combine(result, handle.close())
+    }
+    pub(super) fn provisioned(&self, leaf: &str) -> Result<Leaf> {
+        ensure!(
+            ["quota-sparse", "quota-aggregate-0", "quota-aggregate-1"].contains(&leaf),
+            "quota provisioned leaf is outside fixed set"
+        );
+        self.require()?;
+        let path = format!("{}{leaf}", self.path);
+        let mut handle = open(&path, 0xC0030080, 3, 3, 0x00200080, std::ptr::null())?;
+        let result = (|| {
+            let id = identity(handle.0, false)?;
+            let expected = format!("{}{leaf}", self.native);
+            ensure!(
+                id.volume == self.id.volume && name(handle.0)? == expected,
+                "quota provisioned leaf is outside pinned root"
             );
             Ok(Leaf {
                 path,

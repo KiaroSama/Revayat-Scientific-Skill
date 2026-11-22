@@ -162,6 +162,10 @@ pub(super) fn primary<'a>(
     let mut completed = owner.finish(operation, ticket);
     if let Some(path) = provisioned_path {
         let cleanup = native_quota::cleanup_provisioned_private_file(&path);
+        let cleanup = crate::runtime::with_cleanup(
+            cleanup,
+            native_quota::cleanup_provisioned_sparse_files(&plan.quota.scratch),
+        );
         completed.result = crate::runtime::with_cleanup(completed.result, cleanup);
     }
     Ok(KernelCompleted {
