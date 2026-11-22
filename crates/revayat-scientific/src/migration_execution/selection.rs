@@ -246,7 +246,7 @@ pub fn select_equipped_cases(
     Ok(match (platform, target) {
         (_, Some("crop_native")) => ignored.clone(),
         ("windows", Some("runtime_build_integration")) => [WINDOWS_RENDER.into()].into(),
-        (_, Some("workflow_lint" | "windows_standalone")) => BTreeSet::new(), // Quality/native owners, not scientific execution.
+        ("windows", Some("workflow_lint")) | (_, Some("windows_standalone")) => BTreeSet::new(), // Windows has no pinned actionlint; windows_standalone is owned by native CI.
         ("linux", _) => ignored.clone(),
         _ => BTreeSet::new(),
     })

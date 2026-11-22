@@ -2,80 +2,2853 @@
   "schema": 1,
   "baseline_commit": "4e24f3da8df19f83eb3c3b424e3618252d03a36c",
   "identities": [
-    {"id":"tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_complete_history_and_introduced_range_remain_available","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-01"]},
-    {"id":"tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_environment_selected_grafts_are_rejected_without_removal","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-02"]},
-    {"id":"tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_legacy_grafts_cannot_hide_bad_ancestors","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-03"]},
-    {"id":"tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_replacement_refs_cannot_hide_stored_author_identity","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-04"]},
-    {"id":"tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_history_never_passes_as_complete_history","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-05"]},
-    {"id":"tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_range_also_requires_complete_ancestry","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-06"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_all_real_jobs_have_their_own_true_result_and_direct_link","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-07"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_bad_job_identity_urls_and_context_collisions_fail_without_green","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-08"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_complete_pagination_and_partial_rerun_successes_are_retained","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-09"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_every_non_success_conclusion_stays_non_green","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-10"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_http_timeout_cap_utf8_and_secret_safe_errors","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-11"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_inconsistent_or_unbounded_pages_are_rejected","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-12"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_missing_and_retired_jobs_are_explicit_errors","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-13"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_only_latest_pending_publisher_outcome_affects_summary","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-14"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_partial_write_failure_leaves_aggregate_error_and_propagates","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-15"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_pending_resets_expected_and_old_contexts_without_claiming_results","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-16"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_redirects_never_forward_credentials","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-17"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_required_census_matches_all_existing_matrix_and_reusable_jobs","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-18"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_rerun_replaces_only_jobs_with_a_newer_actual_result","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-19"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_superseded_attempt_never_overwrites_new_results_with_failure","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-20"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_workflow_retains_manual_trigger_and_complete_final_dependency_set","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-21"]},
-    {"id":"tests/test_ci_status.py::CiStatusTest::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-22"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_author_and_committer_are_checked_independently","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-23"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_email_comparison_is_exact","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-24"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_empty_introduced_range_and_invalid_refs_are_distinct","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-25"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_exact_service_identities_pass_in_permitted_roles","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-26"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_github_service_identity_is_committer_only","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-27"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_introduced_range_does_not_claim_legacy_history_passed","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-28"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_mailmap_cannot_hide_stored_identity_mismatch","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-29"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_matching_complete_history_passes","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-30"]},
-    {"id":"tests/test_commit_identity.py::CommitIdentityTest::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-31"]},
-    {"id":"tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-32","B08-32-scientific"]},
-    {"id":"tests/test_workflow_lint.py::WorkflowLintTest::test_only_three_literal_job_references_change_in_memory","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-33"]},
-    {"id":"tests/test_workflow_lint.py::WorkflowLintTest::test_original_filename_and_failed_linter_exit_are_preserved","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-34"]},
-    {"id":"tests/test_workflow_lint.py::WorkflowLintTest::test_unsupported_references_never_disappear_from_validation","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-35"]},
-    {"id":"tests/test_workflow_lint.py::WorkflowLintTest::test_windows_browser_selection_uses_paired_managed_binary","kind":"test","parent_ids":[],"invokes_ids":[],"obligation_ids":["B08-36"]}
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_complete_history_and_introduced_range_remain_available",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-01"
+      ]
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_environment_selected_grafts_are_rejected_without_removal",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-02"
+      ]
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_legacy_grafts_cannot_hide_bad_ancestors",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-03"
+      ]
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_replacement_refs_cannot_hide_stored_author_identity",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-04"
+      ]
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_history_never_passes_as_complete_history",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-05"
+      ]
+    },
+    {
+      "id": "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_range_also_requires_complete_ancestry",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-06"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_all_real_jobs_have_their_own_true_result_and_direct_link",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-07"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_bad_job_identity_urls_and_context_collisions_fail_without_green",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-08"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_complete_pagination_and_partial_rerun_successes_are_retained",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-09"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_every_non_success_conclusion_stays_non_green",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-10"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_http_timeout_cap_utf8_and_secret_safe_errors",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-11"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_inconsistent_or_unbounded_pages_are_rejected",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-12"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_missing_and_retired_jobs_are_explicit_errors",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-13"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_only_latest_pending_publisher_outcome_affects_summary",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-14"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_partial_write_failure_leaves_aggregate_error_and_propagates",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-15"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_pending_resets_expected_and_old_contexts_without_claiming_results",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-16"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_redirects_never_forward_credentials",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-17"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_required_census_matches_all_existing_matrix_and_reusable_jobs",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-18"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_rerun_replaces_only_jobs_with_a_newer_actual_result",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-19"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_superseded_attempt_never_overwrites_new_results_with_failure",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-20"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_workflow_retains_manual_trigger_and_complete_final_dependency_set",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-21"
+      ]
+    },
+    {
+      "id": "tests/test_ci_status.py::CiStatusTest::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-22"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_author_and_committer_are_checked_independently",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-23"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_email_comparison_is_exact",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-24"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_empty_introduced_range_and_invalid_refs_are_distinct",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-25"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_exact_service_identities_pass_in_permitted_roles",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-26"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_github_service_identity_is_committer_only",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-27"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_introduced_range_does_not_claim_legacy_history_passed",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-28"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_mailmap_cannot_hide_stored_identity_mismatch",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-29"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_matching_complete_history_passes",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-30"
+      ]
+    },
+    {
+      "id": "tests/test_commit_identity.py::CommitIdentityTest::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-31"
+      ]
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-32",
+        "B08-32-scientific"
+      ]
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_only_three_literal_job_references_change_in_memory",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-33"
+      ]
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_original_filename_and_failed_linter_exit_are_preserved",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-34"
+      ]
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_unsupported_references_never_disappear_from_validation",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-35"
+      ]
+    },
+    {
+      "id": "tests/test_workflow_lint.py::WorkflowLintTest::test_windows_browser_selection_uses_paired_managed_binary",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-36"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_controller_bootstrap_markers_preserve_fixed_validation_order",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-037"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_keeps_capture_once_after_reader_cleanup",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-038"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_primary_and_recovery_failures_remain_ordered_in_sanitized_report",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-039"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_outer_recovery_requires_reaping_and_handle_cleanup",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-040"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_success_keeps_capture_once",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-041"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_and_cleanup_failure_preserve_both_and_capture",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-042"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_and_invalid_utf8_preserve_both_failures",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-043"
+      ]
+    },
+    {
+      "id": "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_failure_categories_are_bounded_redacted_and_nonzero",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-044"
+      ]
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_fixed_token_capture_keeps_arguments_current_directory_and_cap",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-045"
+      ]
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_capture_failure_keeps_original_and_cleanup_but_zeroes_private_stderr",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-046"
+      ]
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_closed_sleep_and_pid_roles_retain_exact_standard_allowlist",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-047"
+      ]
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_partial_duplicates_and_all_close_failures_remain_fatal",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-048"
+      ]
+    },
+    {
+      "id": "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_extra_pid_denial_catch_contains_only_real_popen",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-049"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_exact_control_request_and_bound_cleanup",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-050"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_acquisition_and_qualification_failures_never_reach_controls",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-051"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_creation_and_binding_fail_at_distinct_boundaries",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-052"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_clean_cleanup_preserves_original_exception_identity",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-053"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_original_and_independent_cleanup_failures_are_retained",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-054"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_cleanup_refuses_foreign_identity_and_keeps_all_close_attempts",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-055"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_native_root_shape_is_exact_and_does_not_use_dos_translation",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-056"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_native_error_is_immediate_and_success_never_reads_stale_error",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-057"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_private_parent_is_bound_and_removed_before_reviewed_admission",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-058"
+      ]
+    },
+    {
+      "id": "tests/test_windows_private_creator.py::PrivateCreatorTest::test_authority_consumer_retains_original_actual_controls",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-059"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_existing_token_predicates_keep_first_failure_and_occurrence",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-060"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_privileges_require_full_canonical_identity_without_a_resolver",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-061"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_restrictions_decode_only_the_successful_returned_span",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-062"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_actual_preamble_stops_at_each_existing_boundary",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-063"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_operation_close_and_report_failures_remain_fatal",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-064"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_closed_phases_descendant_retention_and_transport_limits",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-065"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::PythonTokenTest::test_controller_and_actual_call_sites_share_closed_phase_inventory",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-066"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::OrdinaryTokenTest::test_private_policy_uses_exact_token_user_without_changing_negative_inputs",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-067"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::OrdinaryTokenTest::test_private_creator_keeps_exact_call_and_immediate_error",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-068"
+      ]
+    },
+    {
+      "id": "tests/test_windows_python_token.py::OrdinaryTokenTest::test_actual_ordinary_privilege_inventory_without_name_lookup",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-069"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_standard_handles_and_observed_exit_including_259",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-070"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_primary_windows_output_keeps_exact_two_record_wire",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-071"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_extra_terminators_are_not_trimmed_into_host_success",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-072"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_universal_newlines_follow_raw_caps_and_strict_ascii",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-073"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_non_ascii_failure_receipt_retains_private_decode_fault",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-074"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_each_acquisition_failure_closes_only_obtained_owners",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-075"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_caps_allow_live_empty_peek_but_refuse_overflow_and_missing_eof",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-076"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_invalid_read_and_cleanup_faults_are_fatal_and_exhaustive",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-077"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_cleanup_overrun_is_fatal_after_every_owner_is_attempted",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-078"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_regular_child_failure_survives_later_transport_and_cleanup_faults",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-079"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_natural_exit_survives_decode_eof_and_close_failures",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-080"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_timeout_retains_bounded_bootstrap_before_exhaustive_cleanup",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-081"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_native_adapter_owns_outputs_before_failures",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-082"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_three_standard_duplicates_preserve_type_and_borrowed_ownership",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-083"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_fixed_ordinary_cap_does_not_change_registry_defaults",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-084"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_spawn_has_no_implicit_pipe_or_nul_route",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-085"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_reusable_kernel_helpers_do_not_initialize_network",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-086"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_scratch_entry_failure_preserves_original_and_bounds_diagnostics",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-087"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_positive_write_preserves_io_and_localizes_failure",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-088"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_preflight_failure_frame_is_fixed_source_and_private",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-089"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_original_receipt_precedes_fixed_loader_effects",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-090"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_fixed_file_binding_and_closed_results_without_native_loading",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-091"
+      ]
+    },
+    {
+      "id": "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_first_receipt_survives_unqualified_tail_and_child_timeout",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-092"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_python_diagnostics_precede_independent_debugger_controls",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-093"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_scratch_access_observer_is_read_only_and_not_admission",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-094"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_supported_policy_owns_admission_and_refuses_nested_trial",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-095"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_standard_trace_has_one_owned_lifecycle_and_outer_recovery",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-096"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_successful_consumer_requires_independent_trace_control",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-097"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_authority_keeps_python_diagnostic_separate",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-098"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_fixed_dll_preparation_stays_outside_trace_and_admission",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-099"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_token_stage_allowlists_match_controller",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-100"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_descendant_stages_preserve_ownership_and_native_error_boundaries",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-101"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_restrictions_query_uses_existing_call_and_failure_only_error",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-102"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_privileges_use_full_luid_without_worker_name_resolution",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-103"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-104"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_csr_host_launch_preserves_aggregate_containment_prerequisites",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-105"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_preparation_failures_use_one_ordered_controller_boundary",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-106"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_bootstrap_import_failures_are_private_and_nonzero",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-107"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_bootstrap_reported_import_name_is_closed_metadata",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-108"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_fixed_controls_without_native_execution",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-109"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_failure_projection_preserves_exits_order_and_privacy",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-110"
+      ]
+    },
+    {
+      "id": "tests/test_windows_runtime_preparation.py::RuntimePreparationTest::test_streaming_validation_copy_progress_and_refusal",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-111"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchAttachmentTest::test_owned_lifetime_and_host_only_descriptor_model",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-112"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_suspended_lifetime_and_managed_discovery",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-113"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_receipt_precedes_possible_mutation_and_recovery_precedes_detach",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-114"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_phase_handles_close_and_frames_follow_restore",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-115"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_supported_role_qualification_and_cleanup_order",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-116"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchFileAccessTest::test_fixed_create_only_request_and_owned_cleanup",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-117"
+      ]
+    },
+    {
+      "id": "tests/test_windows_scratch_attachment.py::ScratchVolumeAccessTest::test_fixed_handle_only_differential_and_discovery",
+      "kind": "test",
+      "parent_ids": [],
+      "invokes_ids": [],
+      "obligation_ids": [
+        "B08-118"
+      ]
+    }
   ],
   "obligations": [
-    {"id":"B08-01","baseline_ids":["tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_complete_history_and_introduced_range_remain_available"],"rust_test":"commit_identity::test_complete_history_and_introduced_range_remain_available","assertions":["source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L441-L445; retained assertion: introduced good head after bad base reports (1,[]) while full history reports two commits and the bad author; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_complete_history_and_introduced_range_remain_available"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-02","baseline_ids":["tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_environment_selected_grafts_are_rejected_without_removal"],"rust_test":"commit_identity::test_environment_selected_grafts_are_rejected_without_removal","assertions":["source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L460-L468; retained assertion: environment-selected nonempty grafts produce a graft-specific failure and exact original graft bytes survive; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_environment_selected_grafts_are_rejected_without_removal"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-03","baseline_ids":["tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_legacy_grafts_cannot_hide_bad_ancestors"],"rust_test":"commit_identity::test_legacy_grafts_cannot_hide_bad_ancestors","assertions":["source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L448-L458; retained assertion: nonempty .git/info/grafts is rejected unchanged; removing only fixture grafts restores the full two-commit bad-author result; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_legacy_grafts_cannot_hide_bad_ancestors"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-04","baseline_ids":["tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_replacement_refs_cannot_hide_stored_author_identity"],"rust_test":"commit_identity::test_replacement_refs_cannot_hide_stored_author_identity","assertions":["source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L424-L431; retained assertion: replacement ref from bad to good cannot hide stored author; raw traversal reports exactly bad commit and leaves replacement ref present; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_replacement_refs_cannot_hide_stored_author_identity"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-05","baseline_ids":["tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_history_never_passes_as_complete_history"],"rust_test":"commit_identity::test_shallow_history_never_passes_as_complete_history","assertions":["source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L433-L439; retained assertion: depth-one clone with hidden bad ancestor fails as shallow/incomplete rather than passing its visible good head; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_shallow_history_never_passes_as_complete_history"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-06","baseline_ids":["tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_range_also_requires_complete_ancestry"],"rust_test":"commit_identity::test_shallow_range_also_requires_complete_ancestry","assertions":["source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L470-L476; retained assertion: even empty head..head range in a shallow clone fails completeness admission; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_shallow_range_also_requires_complete_ancestry"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-07","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_all_real_jobs_have_their_own_true_result_and_direct_link"],"rust_test":"ci_status::test_all_real_jobs_have_their_own_true_result_and_direct_link","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L72-L88; retained assertion: eleven unique contexts include each true job state, extra failure/direct job40 link and aggregate failure with 8 passed/2 failed; status-final is excluded and every POST targets exact repository/SHA; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_all_real_jobs_have_their_own_true_result_and_direct_link"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-08","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_bad_job_identity_urls_and_context_collisions_fail_without_green"],"rust_test":"ci_status::test_bad_job_identity_urls_and_context_collisions_fail_without_green","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L174-L187; retained assertion: wrong run/SHA/attempt/link, reserved or newline names, zero id and case-insensitive SCIENTIFIC collision fail without success publication; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_bad_job_identity_urls_and_context_collisions_fail_without_green"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-09","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_complete_pagination_and_partial_rerun_successes_are_retained"],"rust_test":"ci_status::test_complete_pagination_and_partial_rerun_successes_are_retained","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L125-L134; retained assertion: 105 extra attempt2 jobs yield 115 unique states, include validation104 and retained scientific success, fetch exactly two jobs pages with filter=all; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_complete_pagination_and_partial_rerun_successes_are_retained"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-10","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_every_non_success_conclusion_stays_non_green"],"rust_test":"ci_status::test_every_non_success_conclusion_stays_non_green","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L99-L114; retained assertion: failure/timed_out/action_required become failure; cancelled/skipped/neutral/stale/unknown/null become error; in-progress job and summary remain pending; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_every_non_success_conclusion_stays_non_green"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-11","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_http_timeout_cap_utf8_and_secret_safe_errors"],"rust_test":"ci_status::test_http_timeout_cap_utf8_and_secret_safe_errors","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L224-L245; retained assertion: valid JSON accepted, HTTP timeout15 and read limit8MiB+1 retained, malformed UTF8/oversize rejected, HTTP403 diagnostic omits token and response body; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_http_timeout_cap_utf8_and_secret_safe_errors"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-12","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_inconsistent_or_unbounded_pages_are_rejected"],"rust_test":"ci_status::test_inconsistent_or_unbounded_pages_are_rejected","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L189-L198; retained assertion: total1001, empty incomplete page and more rows than total are rejected with no success status; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_inconsistent_or_unbounded_pages_are_rejected"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-13","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_missing_and_retired_jobs_are_explicit_errors"],"rust_test":"ci_status::test_missing_and_retired_jobs_are_explicit_errors","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L116-L123; retained assertion: missing required job and old retired context both publish error and summary error; strengthened missing initial publisher also errors; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_missing_and_retired_jobs_are_explicit_errors"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-14","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_only_latest_pending_publisher_outcome_affects_summary"],"rust_test":"ci_status::test_only_latest_pending_publisher_outcome_affects_summary","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L151-L161; retained assertion: newer successful pending publisher supersedes old failure, but latest failed publisher makes summary error; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_only_latest_pending_publisher_outcome_affects_summary"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-15","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_partial_write_failure_leaves_aggregate_error_and_propagates"],"rust_test":"ci_status::test_partial_write_failure_leaves_aggregate_error_and_propagates","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L216-L222; retained assertion: scientific status POST failure propagates, first summary is pending and final summary error rather than success; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_partial_write_failure_leaves_aggregate_error_and_propagates"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-16","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_pending_resets_expected_and_old_contexts_without_claiming_results"],"rust_test":"ci_status::test_pending_resets_expected_and_old_contexts_without_claiming_results","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L90-L97; retained assertion: pending resets required+oldCI contexts only, excludes external/check, yields eleven unique contexts all pending; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_pending_resets_expected_and_old_contexts_without_claiming_results"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-17","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_redirects_never_forward_credentials"],"rust_test":"ci_status::test_redirects_never_forward_credentials","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L247-L250; retained assertion: redirect not followed; real local HTTP302 fixture verifies no credentialed request reaches redirect destination; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_redirects_never_forward_credentials"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-18","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_required_census_matches_all_existing_matrix_and_reusable_jobs"],"rust_test":"ci_status::test_required_census_matches_all_existing_matrix_and_reusable_jobs","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L63-L70; retained assertion: exact nine validation buckets cover both native security jobs, CodeQL, dependency review, three portable OSes, scientific and quality; Python minor suffixes removed only with Rust runtime migration; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_required_census_matches_all_existing_matrix_and_reusable_jobs"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-19","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_rerun_replaces_only_jobs_with_a_newer_actual_result"],"rust_test":"ci_status::test_rerun_replaces_only_jobs_with_a_newer_actual_result","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L136-L149; retained assertion: ten contexts after partial rerun, native success points to newer job60, quality failure retained, unchanged scientific explicitly describes attempt1; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_rerun_replaces_only_jobs_with_a_newer_actual_result"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-20","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_superseded_attempt_never_overwrites_new_results_with_failure"],"rust_test":"ci_status::test_superseded_attempt_never_overwrites_new_results_with_failure","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L200-L214; retained assertion: run attempt changes during job fetch, publication aborts with exactly one initial pending status and no stale error overwrite; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_superseded_attempt_never_overwrites_new_results_with_failure"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-21","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_workflow_retains_manual_trigger_and_complete_final_dependency_set"],"rust_test":"ci_status::test_workflow_retains_manual_trigger_and_complete_final_dependency_set","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L252-L262; retained assertion: manual root/no workflow_run, always final reporter needs all seven aggregate dependencies, actionsread/statuswrite permissions and no continue-on-error; Rust migration requirement explicitly enables push/PR/manual root triggers and retains reusable-only children; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_workflow_retains_manual_trigger_and_complete_final_dependency_set"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-22","baseline_ids":["tests/test_ci_status.py::CiStatusTest::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes"],"rust_test":"ci_status::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes","assertions":["source-anchor: tests/test_ci_status.py@4e24f3d:L163-L172; retained assertion: wrong run id/fullSHA/attempt/workflow path/repository fails before any POST; unknown/workflow_run/pull_request_target/workflow_call events are rejected; push/PR/manual root events are accepted under the requested automatic-CI contract; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-23","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_author_and_committer_are_checked_independently"],"rust_test":"commit_identity::test_author_and_committer_are_checked_independently","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L83-L90; retained assertion: three bad-author/bad-committer/both commits produce exact perSHA role vectors and count3; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_author_and_committer_are_checked_independently"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-24","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_email_comparison_is_exact"],"rust_test":"commit_identity::test_email_comparison_is_exact","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L110-L112; retained assertion: lowercased owner address is not accepted and exact stored badSHA author is reported; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_email_comparison_is_exact"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-25","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_empty_introduced_range_and_invalid_refs_are_distinct"],"rust_test":"commit_identity::test_empty_introduced_range_and_invalid_refs_are_distinct","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L103-L108; retained assertion: valid head..head returns(0,[]) but missinghead/missingbase/--all revisions all fail; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_empty_introduced_range_and_invalid_refs_are_distinct"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-26","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_exact_service_identities_pass_in_permitted_roles"],"rust_test":"commit_identity::test_exact_service_identities_pass_in_permitted_roles","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L51-L57; retained assertion: exactDependabot/owner five permitted author-committer pairs includingGitHubcommitter yieldcount5/no failures; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_exact_service_identities_pass_in_permitted_roles"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-27","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_github_service_identity_is_committer_only"],"rust_test":"commit_identity::test_github_service_identity_is_committer_only","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L59-L63; retained assertion: noreplyGitHub author rejected whether committer owner orGitHub, exact reverse-chronological badSHA author vectors retained; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_github_service_identity_is_committer_only"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-28","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_introduced_range_does_not_claim_legacy_history_passed"],"rust_test":"commit_identity::test_introduced_range_does_not_claim_legacy_history_passed","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L92-L96; retained assertion: introduced good commit passescount1 while fullhistory still reports one earlierbadidentity; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_introduced_range_does_not_claim_legacy_history_passed"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-29","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_mailmap_cannot_hide_stored_identity_mismatch"],"rust_test":"commit_identity::test_mailmap_cannot_hide_stored_identity_mismatch","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L98-L101; retained assertion: mailmap mappingbadaddress toowner cannot change raw stored badSHA author report; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_mailmap_cannot_hide_stored_identity_mismatch"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-30","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_matching_complete_history_passes"],"rust_test":"commit_identity::test_matching_complete_history_passes","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L47-L49; retained assertion: two exact owner commits produce(2,[]) over fullhistory; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_matching_complete_history_passes"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-31","baseline_ids":["tests/test_commit_identity.py::CommitIdentityTest::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role"],"rust_test":"commit_identity::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role","assertions":["source-anchor: tests/test_commit_identity.py@4e24f3d:L65-L81; retained assertion: spoofedDependabot/GitHubnames plusmailmap cannot hide fourteen exact author/committer failures acrosssevenaddresslookalikes/case/suffixvariants; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-32","baseline_ids":["tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input"],"rust_test":"workflow_lint::test_actual_callee_contract_still_rejects_missing_input","assertions":["source-anchor: tests/test_workflow_lint.py@4e24f3d:L85-L93; retained assertion: portable internal local-callee contract rejects removed required base_ref input; separate explicit ignored counterpart retains actual equipped linter execution without an internal environment-only branch; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_actual_callee_contract_still_rejects_missing_input"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-32-scientific","baseline_ids":["tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input"],"rust_test":"workflow_lint::equipped_actionlint_rejects_missing_callee_input","assertions":["source-anchor: tests/test_workflow_lint.py@4e24f3d:L85-L93; retained assertion: actual actionlint receives the original workflow filename and missing-base_ref stdin, returns nonzero and reports the required input; explicit ignored test is selected once in equipped tier and registered as canonical additional_rust_tests; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::equipped_actionlint_rejects_missing_callee_input"],"platforms":["linux"],"tier":"scientific"},
-    {"id":"B08-33","baseline_ids":["tests/test_workflow_lint.py::WorkflowLintTest::test_only_three_literal_job_references_change_in_memory"],"rust_test":"workflow_lint::test_only_three_literal_job_references_change_in_memory","assertions":["source-anchor: tests/test_workflow_lint.py@4e24f3d:L18-L30; retained assertion: onlythree$to.dot byteschange, length/sourceunchanged, allthreecallee paths/baseinput survive and CRLFpreserved; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_only_three_literal_job_references_change_in_memory"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-34","baseline_ids":["tests/test_workflow_lint.py::WorkflowLintTest::test_original_filename_and_failed_linter_exit_are_preserved"],"rust_test":"workflow_lint::test_original_filename_and_failed_linter_exit_are_preserved","assertions":["source-anchor: tests/test_workflow_lint.py@4e24f3d:L95-L104; retained assertion: exactactionlint -stdin-filename originalpath - argv,repositoryCWD,UTF8translatedstdin,30sbound and exit7retained atrealrunnerseam; equippedactualinvalidworkflowreturnsaggregate1+originalfilename; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_original_filename_and_failed_linter_exit_are_preserved"],"platforms":["linux"],"tier":"scientific"},
-    {"id":"B08-35","baseline_ids":["tests/test_workflow_lint.py::WorkflowLintTest::test_unsupported_references_never_disappear_from_validation"],"rust_test":"workflow_lint::test_unsupported_references_never_disappear_from_validation","assertions":["source-anchor: tests/test_workflow_lint.py@4e24f3d:L32-L47; retained assertion: remote-tagcallee/wrongjob/missingcallee/unsupportedcomment$/ andnonrootcompatibilityallreject, ordinaryYAMLunchanged; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_unsupported_references_never_disappear_from_validation"],"platforms":["linux","windows"],"tier":"portable"},
-    {"id":"B08-36","baseline_ids":["tests/test_workflow_lint.py::WorkflowLintTest::test_windows_browser_selection_uses_paired_managed_binary"],"rust_test":"workflow_lint::test_windows_browser_selection_uses_paired_managed_binary","assertions":["source-anchor: tests/test_workflow_lint.py@4e24f3d:L49-L83; retained assertion: provider-selected executable mustexist; Rust-onlyadaptation usesexplicit/defaultnativediscovery thenrealboundedDevToolsfixturepreflight beforeUTF8appendGITHUB_ENV, preservingpriorbytes; missing/earlyexitpublishnothing; PythonPlaywrightinstallreplacedbyhostednativebrowserverification, notanoptionaltest; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_windows_browser_selection_uses_paired_managed_binary"],"platforms":["linux","windows"],"tier":"portable"}
+    {
+      "id": "B08-01",
+      "baseline_ids": [
+        "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_complete_history_and_introduced_range_remain_available"
+      ],
+      "rust_test": "commit_identity::test_complete_history_and_introduced_range_remain_available",
+      "assertions": [
+        "source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L441-L445; retained assertion: introduced good head after bad base reports (1,[]) while full history reports two commits and the bad author; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_complete_history_and_introduced_range_remain_available"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-02",
+      "baseline_ids": [
+        "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_environment_selected_grafts_are_rejected_without_removal"
+      ],
+      "rust_test": "commit_identity::test_environment_selected_grafts_are_rejected_without_removal",
+      "assertions": [
+        "source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L460-L468; retained assertion: environment-selected nonempty grafts produce a graft-specific failure and exact original graft bytes survive; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_environment_selected_grafts_are_rejected_without_removal"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-03",
+      "baseline_ids": [
+        "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_legacy_grafts_cannot_hide_bad_ancestors"
+      ],
+      "rust_test": "commit_identity::test_legacy_grafts_cannot_hide_bad_ancestors",
+      "assertions": [
+        "source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L448-L458; retained assertion: nonempty .git/info/grafts is rejected unchanged; removing only fixture grafts restores the full two-commit bad-author result; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_legacy_grafts_cannot_hide_bad_ancestors"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-04",
+      "baseline_ids": [
+        "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_replacement_refs_cannot_hide_stored_author_identity"
+      ],
+      "rust_test": "commit_identity::test_replacement_refs_cannot_hide_stored_author_identity",
+      "assertions": [
+        "source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L424-L431; retained assertion: replacement ref from bad to good cannot hide stored author; raw traversal reports exactly bad commit and leaves replacement ref present; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_replacement_refs_cannot_hide_stored_author_identity"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-05",
+      "baseline_ids": [
+        "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_history_never_passes_as_complete_history"
+      ],
+      "rust_test": "commit_identity::test_shallow_history_never_passes_as_complete_history",
+      "assertions": [
+        "source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L433-L439; retained assertion: depth-one clone with hidden bad ancestor fails as shallow/incomplete rather than passing its visible good head; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_shallow_history_never_passes_as_complete_history"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-06",
+      "baseline_ids": [
+        "tests/test_audit_contract_boundaries.py::IdentityCompletenessTest::test_shallow_range_also_requires_complete_ancestry"
+      ],
+      "rust_test": "commit_identity::test_shallow_range_also_requires_complete_ancestry",
+      "assertions": [
+        "source-anchor: tests/test_audit_contract_boundaries.py@4e24f3d:L470-L476; retained assertion: even empty head..head range in a shallow clone fails completeness admission; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_shallow_range_also_requires_complete_ancestry"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-07",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_all_real_jobs_have_their_own_true_result_and_direct_link"
+      ],
+      "rust_test": "ci_status::test_all_real_jobs_have_their_own_true_result_and_direct_link",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L72-L88; retained assertion: eleven unique contexts include each true job state, extra failure/direct job40 link and aggregate failure with 8 passed/2 failed; status-final is excluded and every POST targets exact repository/SHA; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_all_real_jobs_have_their_own_true_result_and_direct_link"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-08",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_bad_job_identity_urls_and_context_collisions_fail_without_green"
+      ],
+      "rust_test": "ci_status::test_bad_job_identity_urls_and_context_collisions_fail_without_green",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L174-L187; retained assertion: wrong run/SHA/attempt/link, reserved or newline names, zero id and case-insensitive SCIENTIFIC collision fail without success publication; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_bad_job_identity_urls_and_context_collisions_fail_without_green"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-09",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_complete_pagination_and_partial_rerun_successes_are_retained"
+      ],
+      "rust_test": "ci_status::test_complete_pagination_and_partial_rerun_successes_are_retained",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L125-L134; retained assertion: 105 extra attempt2 jobs yield 115 unique states, include validation104 and retained scientific success, fetch exactly two jobs pages with filter=all; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_complete_pagination_and_partial_rerun_successes_are_retained"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-10",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_every_non_success_conclusion_stays_non_green"
+      ],
+      "rust_test": "ci_status::test_every_non_success_conclusion_stays_non_green",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L99-L114; retained assertion: failure/timed_out/action_required become failure; cancelled/skipped/neutral/stale/unknown/null become error; in-progress job and summary remain pending; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_every_non_success_conclusion_stays_non_green"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-11",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_http_timeout_cap_utf8_and_secret_safe_errors"
+      ],
+      "rust_test": "ci_status::test_http_timeout_cap_utf8_and_secret_safe_errors",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L224-L245; retained assertion: valid JSON accepted, HTTP timeout15 and read limit8MiB+1 retained, malformed UTF8/oversize rejected, HTTP403 diagnostic omits token and response body; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_http_timeout_cap_utf8_and_secret_safe_errors"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-12",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_inconsistent_or_unbounded_pages_are_rejected"
+      ],
+      "rust_test": "ci_status::test_inconsistent_or_unbounded_pages_are_rejected",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L189-L198; retained assertion: total1001, empty incomplete page and more rows than total are rejected with no success status; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_inconsistent_or_unbounded_pages_are_rejected"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-13",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_missing_and_retired_jobs_are_explicit_errors"
+      ],
+      "rust_test": "ci_status::test_missing_and_retired_jobs_are_explicit_errors",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L116-L123; retained assertion: missing required job and old retired context both publish error and summary error; strengthened missing initial publisher also errors; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_missing_and_retired_jobs_are_explicit_errors"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-14",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_only_latest_pending_publisher_outcome_affects_summary"
+      ],
+      "rust_test": "ci_status::test_only_latest_pending_publisher_outcome_affects_summary",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L151-L161; retained assertion: newer successful pending publisher supersedes old failure, but latest failed publisher makes summary error; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_only_latest_pending_publisher_outcome_affects_summary"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-15",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_partial_write_failure_leaves_aggregate_error_and_propagates"
+      ],
+      "rust_test": "ci_status::test_partial_write_failure_leaves_aggregate_error_and_propagates",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L216-L222; retained assertion: scientific status POST failure propagates, first summary is pending and final summary error rather than success; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_partial_write_failure_leaves_aggregate_error_and_propagates"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-16",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_pending_resets_expected_and_old_contexts_without_claiming_results"
+      ],
+      "rust_test": "ci_status::test_pending_resets_expected_and_old_contexts_without_claiming_results",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L90-L97; retained assertion: pending resets required+oldCI contexts only, excludes external/check, yields eleven unique contexts all pending; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_pending_resets_expected_and_old_contexts_without_claiming_results"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-17",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_redirects_never_forward_credentials"
+      ],
+      "rust_test": "ci_status::test_redirects_never_forward_credentials",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L247-L250; retained assertion: redirect not followed; real local HTTP302 fixture verifies no credentialed request reaches redirect destination; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_redirects_never_forward_credentials"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-18",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_required_census_matches_all_existing_matrix_and_reusable_jobs"
+      ],
+      "rust_test": "ci_status::test_required_census_matches_all_existing_matrix_and_reusable_jobs",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L63-L70; retained assertion: exact nine validation buckets cover both native security jobs, CodeQL, dependency review, three portable OSes, scientific and quality; Python minor suffixes removed only with Rust runtime migration; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_required_census_matches_all_existing_matrix_and_reusable_jobs"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-19",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_rerun_replaces_only_jobs_with_a_newer_actual_result"
+      ],
+      "rust_test": "ci_status::test_rerun_replaces_only_jobs_with_a_newer_actual_result",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L136-L149; retained assertion: ten contexts after partial rerun, native success points to newer job60, quality failure retained, unchanged scientific explicitly describes attempt1; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_rerun_replaces_only_jobs_with_a_newer_actual_result"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-20",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_superseded_attempt_never_overwrites_new_results_with_failure"
+      ],
+      "rust_test": "ci_status::test_superseded_attempt_never_overwrites_new_results_with_failure",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L200-L214; retained assertion: run attempt changes during job fetch, publication aborts with exactly one initial pending status and no stale error overwrite; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_superseded_attempt_never_overwrites_new_results_with_failure"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-21",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_workflow_retains_manual_trigger_and_complete_final_dependency_set"
+      ],
+      "rust_test": "ci_status::test_workflow_retains_manual_trigger_and_complete_final_dependency_set",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L252-L262; retained assertion: manual root/no workflow_run, always final reporter needs all seven aggregate dependencies, actionsread/statuswrite permissions and no continue-on-error; Rust migration requirement explicitly enables push/PR/manual root triggers and retains reusable-only children; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_workflow_retains_manual_trigger_and_complete_final_dependency_set"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-22",
+      "baseline_ids": [
+        "tests/test_ci_status.py::CiStatusTest::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes"
+      ],
+      "rust_test": "ci_status::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes",
+      "assertions": [
+        "source-anchor: tests/test_ci_status.py@4e24f3d:L163-L172; retained assertion: wrong run id/fullSHA/attempt/workflow path/repository fails before any POST; unknown/workflow_run/pull_request_target/workflow_call events are rejected; push/PR/manual root events are accepted under the requested automatic-CI contract; Rust anchor: crates/revayat-scientific/tests/ci_status.rs::test_wrong_run_revision_attempt_event_repository_or_workflow_never_publishes"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-23",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_author_and_committer_are_checked_independently"
+      ],
+      "rust_test": "commit_identity::test_author_and_committer_are_checked_independently",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L83-L90; retained assertion: three bad-author/bad-committer/both commits produce exact perSHA role vectors and count3; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_author_and_committer_are_checked_independently"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-24",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_email_comparison_is_exact"
+      ],
+      "rust_test": "commit_identity::test_email_comparison_is_exact",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L110-L112; retained assertion: lowercased owner address is not accepted and exact stored badSHA author is reported; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_email_comparison_is_exact"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-25",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_empty_introduced_range_and_invalid_refs_are_distinct"
+      ],
+      "rust_test": "commit_identity::test_empty_introduced_range_and_invalid_refs_are_distinct",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L103-L108; retained assertion: valid head..head returns(0,[]) but missinghead/missingbase/--all revisions all fail; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_empty_introduced_range_and_invalid_refs_are_distinct"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-26",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_exact_service_identities_pass_in_permitted_roles"
+      ],
+      "rust_test": "commit_identity::test_exact_service_identities_pass_in_permitted_roles",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L51-L57; retained assertion: exactDependabot/owner five permitted author-committer pairs includingGitHubcommitter yieldcount5/no failures; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_exact_service_identities_pass_in_permitted_roles"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-27",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_github_service_identity_is_committer_only"
+      ],
+      "rust_test": "commit_identity::test_github_service_identity_is_committer_only",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L59-L63; retained assertion: noreplyGitHub author rejected whether committer owner orGitHub, exact reverse-chronological badSHA author vectors retained; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_github_service_identity_is_committer_only"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-28",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_introduced_range_does_not_claim_legacy_history_passed"
+      ],
+      "rust_test": "commit_identity::test_introduced_range_does_not_claim_legacy_history_passed",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L92-L96; retained assertion: introduced good commit passescount1 while fullhistory still reports one earlierbadidentity; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_introduced_range_does_not_claim_legacy_history_passed"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-29",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_mailmap_cannot_hide_stored_identity_mismatch"
+      ],
+      "rust_test": "commit_identity::test_mailmap_cannot_hide_stored_identity_mismatch",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L98-L101; retained assertion: mailmap mappingbadaddress toowner cannot change raw stored badSHA author report; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_mailmap_cannot_hide_stored_identity_mismatch"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-30",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_matching_complete_history_passes"
+      ],
+      "rust_test": "commit_identity::test_matching_complete_history_passes",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L47-L49; retained assertion: two exact owner commits produce(2,[]) over fullhistory; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_matching_complete_history_passes"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-31",
+      "baseline_ids": [
+        "tests/test_commit_identity.py::CommitIdentityTest::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role"
+      ],
+      "rust_test": "commit_identity::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role",
+      "assertions": [
+        "source-anchor: tests/test_commit_identity.py@4e24f3d:L65-L81; retained assertion: spoofedDependabot/GitHubnames plusmailmap cannot hide fourteen exact author/committer failures acrosssevenaddresslookalikes/case/suffixvariants; Rust anchor: crates/revayat-scientific/tests/commit_identity.rs::test_service_names_lookalikes_and_mailmap_cannot_hide_other_role"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-32",
+      "baseline_ids": [
+        "tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input"
+      ],
+      "rust_test": "workflow_lint::test_actual_callee_contract_still_rejects_missing_input",
+      "assertions": [
+        "source-anchor: tests/test_workflow_lint.py@4e24f3d:L85-L93; retained assertion: portable internal local-callee contract rejects removed required base_ref input; separate explicit ignored counterpart retains actual equipped linter execution without an internal environment-only branch; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_actual_callee_contract_still_rejects_missing_input"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-32-scientific",
+      "baseline_ids": [
+        "tests/test_workflow_lint.py::WorkflowLintTest::test_actual_callee_contract_still_rejects_missing_input"
+      ],
+      "rust_test": "workflow_lint::equipped_actionlint_rejects_missing_callee_input",
+      "assertions": [
+        "source-anchor: tests/test_workflow_lint.py@4e24f3d:L85-L93; retained assertion: actual actionlint receives the original workflow filename and missing-base_ref stdin, returns nonzero and reports the required input; explicit ignored test is selected once in equipped tier and registered as canonical additional_rust_tests; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::equipped_actionlint_rejects_missing_callee_input"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "tier": "scientific"
+    },
+    {
+      "id": "B08-33",
+      "baseline_ids": [
+        "tests/test_workflow_lint.py::WorkflowLintTest::test_only_three_literal_job_references_change_in_memory"
+      ],
+      "rust_test": "workflow_lint::test_only_three_literal_job_references_change_in_memory",
+      "assertions": [
+        "source-anchor: tests/test_workflow_lint.py@4e24f3d:L18-L30; retained assertion: onlythree$to.dot byteschange, length/sourceunchanged, allthreecallee paths/baseinput survive and CRLFpreserved; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_only_three_literal_job_references_change_in_memory"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-34",
+      "baseline_ids": [
+        "tests/test_workflow_lint.py::WorkflowLintTest::test_original_filename_and_failed_linter_exit_are_preserved"
+      ],
+      "rust_test": "workflow_lint::test_original_filename_and_failed_linter_exit_are_preserved",
+      "assertions": [
+        "source-anchor: tests/test_workflow_lint.py@4e24f3d:L95-L104; retained assertion: exactactionlint -stdin-filename originalpath - argv,repositoryCWD,UTF8translatedstdin,30sbound and exit7retained atrealrunnerseam; equippedactualinvalidworkflowreturnsaggregate1+originalfilename; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_original_filename_and_failed_linter_exit_are_preserved"
+      ],
+      "platforms": [
+        "linux"
+      ],
+      "tier": "scientific"
+    },
+    {
+      "id": "B08-35",
+      "baseline_ids": [
+        "tests/test_workflow_lint.py::WorkflowLintTest::test_unsupported_references_never_disappear_from_validation"
+      ],
+      "rust_test": "workflow_lint::test_unsupported_references_never_disappear_from_validation",
+      "assertions": [
+        "source-anchor: tests/test_workflow_lint.py@4e24f3d:L32-L47; retained assertion: remote-tagcallee/wrongjob/missingcallee/unsupportedcomment$/ andnonrootcompatibilityallreject, ordinaryYAMLunchanged; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_unsupported_references_never_disappear_from_validation"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-36",
+      "baseline_ids": [
+        "tests/test_workflow_lint.py::WorkflowLintTest::test_windows_browser_selection_uses_paired_managed_binary"
+      ],
+      "rust_test": "workflow_lint::test_windows_browser_selection_uses_paired_managed_binary",
+      "assertions": [
+        "source-anchor: tests/test_workflow_lint.py@4e24f3d:L49-L83; retained assertion: provider-selected executable mustexist; Rust-onlyadaptation usesexplicit/defaultnativediscovery thenrealboundedDevToolsfixturepreflight beforeUTF8appendGITHUB_ENV, preservingpriorbytes; missing/earlyexitpublishnothing; PythonPlaywrightinstallreplacedbyhostednativebrowserverification, notanoptionaltest; Rust anchor: crates/revayat-scientific/tests/workflow_lint.rs::test_windows_browser_selection_uses_paired_managed_binary"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-037",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_controller_bootstrap_markers_preserve_fixed_validation_order"
+      ],
+      "rust_test": "windows_contract::bootstrap::controller_markers_preserve_validation_order",
+      "assertions": [
+        "mapped-counterpart: Native Rust controller markers preserve validation order preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::controller_markers_preserve_validation_order"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-038",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_keeps_capture_once_after_reader_cleanup"
+      ],
+      "rust_test": "windows_contract::bootstrap::timeout_keeps_capture_after_reader_cleanup",
+      "assertions": [
+        "mapped-counterpart: Native Rust timeout keeps capture after reader cleanup preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::timeout_keeps_capture_after_reader_cleanup"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-039",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_primary_and_recovery_failures_remain_ordered_in_sanitized_report"
+      ],
+      "rust_test": "windows_contract::bootstrap::primary_and_recovery_failures_remain_ordered",
+      "assertions": [
+        "mapped-counterpart: Native Rust primary and recovery failures remain ordered preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::primary_and_recovery_failures_remain_ordered"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-040",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_outer_recovery_requires_reaping_and_handle_cleanup"
+      ],
+      "rust_test": "windows_contract::bootstrap::recovery_requires_reaping",
+      "assertions": [
+        "mapped-counterpart: Native Rust recovery requires reaping preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::recovery_requires_reaping"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-041",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_success_keeps_capture_once"
+      ],
+      "rust_test": "windows_contract::bootstrap::success_keeps_capture_once",
+      "assertions": [
+        "mapped-counterpart: Native Rust success keeps capture once preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::success_keeps_capture_once"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-042",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_and_cleanup_failure_preserve_both_and_capture"
+      ],
+      "rust_test": "windows_contract::bootstrap::timeout_and_cleanup_failure_are_both_preserved",
+      "assertions": [
+        "mapped-counterpart: Native Rust timeout and cleanup failure are both preserved preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::timeout_and_cleanup_failure_are_both_preserved"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-043",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_timeout_and_invalid_utf8_preserve_both_failures"
+      ],
+      "rust_test": "windows_contract::bootstrap::timeout_and_invalid_encoding_are_distinct",
+      "assertions": [
+        "mapped-counterpart: Native Rust timeout and invalid encoding are distinct preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::timeout_and_invalid_encoding_are_distinct"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-044",
+      "baseline_ids": [
+        "tests/test_windows_bootstrap.py::BootstrapCaptureTest::test_failure_categories_are_bounded_redacted_and_nonzero"
+      ],
+      "rust_test": "windows_contract::bootstrap::failure_categories_are_closed_and_bounded",
+      "assertions": [
+        "mapped-counterpart: Native Rust failure categories are closed and bounded preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::bootstrap::failure_categories_are_closed_and_bounded"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-045",
+      "baseline_ids": [
+        "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_fixed_token_capture_keeps_arguments_current_directory_and_cap"
+      ],
+      "rust_test": "windows_contract::kernel_descendants::token_capture_keeps_role_and_cap",
+      "assertions": [
+        "mapped-counterpart: Native Rust token capture keeps role and cap preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::kernel_descendants::token_capture_keeps_role_and_cap"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-046",
+      "baseline_ids": [
+        "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_capture_failure_keeps_original_and_cleanup_but_zeroes_private_stderr"
+      ],
+      "rust_test": "windows_contract::kernel_descendants::capture_failure_retains_original_and_redacts_private_stderr",
+      "assertions": [
+        "mapped-counterpart: Native Rust capture failure retains original and redacts private stderr preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::kernel_descendants::capture_failure_retains_original_and_redacts_private_stderr"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-047",
+      "baseline_ids": [
+        "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_closed_sleep_and_pid_roles_retain_exact_standard_allowlist"
+      ],
+      "rust_test": "windows_contract::kernel_descendants::child_roles_retain_exact_allowlist",
+      "assertions": [
+        "mapped-counterpart: Native Rust child roles retain exact allowlist preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::kernel_descendants::child_roles_retain_exact_allowlist"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-048",
+      "baseline_ids": [
+        "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_partial_duplicates_and_all_close_failures_remain_fatal"
+      ],
+      "rust_test": "windows_contract::kernel_descendants::partial_acquisition_and_close_failures_remain_fatal",
+      "assertions": [
+        "mapped-counterpart: Native Rust partial acquisition and close failures remain fatal preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::kernel_descendants::partial_acquisition_and_close_failures_remain_fatal"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-049",
+      "baseline_ids": [
+        "tests/test_windows_kernel_descendants.py::KernelDescendantTest::test_extra_pid_denial_catch_contains_only_real_popen"
+      ],
+      "rust_test": "windows_contract::kernel_descendants::extra_pid_denial_cannot_be_reported_as_success",
+      "assertions": [
+        "mapped-counterpart: Native Rust extra pid denial cannot be reported as success preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::kernel_descendants::extra_pid_denial_cannot_be_reported_as_success"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-050",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_exact_control_request_and_bound_cleanup"
+      ],
+      "rust_test": "windows_contract::private_creator::exact_control_request_rejects_path_escape",
+      "assertions": [
+        "mapped-counterpart: Native Rust exact control request rejects path escape preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::exact_control_request_rejects_path_escape"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-051",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_acquisition_and_qualification_failures_never_reach_controls"
+      ],
+      "rust_test": "windows_contract::private_creator::acquisition_failures_never_reach_resume",
+      "assertions": [
+        "mapped-counterpart: Native Rust acquisition failures never reach resume preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::acquisition_failures_never_reach_resume"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-052",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_creation_and_binding_fail_at_distinct_boundaries"
+      ],
+      "rust_test": "windows_contract::private_creator::creation_and_binding_have_distinct_boundaries",
+      "assertions": [
+        "mapped-counterpart: Native Rust creation and binding have distinct boundaries preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::creation_and_binding_have_distinct_boundaries"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-053",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_clean_cleanup_preserves_original_exception_identity"
+      ],
+      "rust_test": "windows_contract::private_creator::clean_cleanup_preserves_original_failure",
+      "assertions": [
+        "mapped-counterpart: Native Rust clean cleanup preserves original failure preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::clean_cleanup_preserves_original_failure"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-054",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_original_and_independent_cleanup_failures_are_retained"
+      ],
+      "rust_test": "windows_contract::private_creator::independent_cleanup_failures_are_retained",
+      "assertions": [
+        "mapped-counterpart: Native Rust independent cleanup failures are retained preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::independent_cleanup_failures_are_retained"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-055",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_cleanup_refuses_foreign_identity_and_keeps_all_close_attempts"
+      ],
+      "rust_test": "windows_contract::private_creator::cleanup_refuses_foreign_path_identity",
+      "assertions": [
+        "mapped-counterpart: Native Rust cleanup refuses foreign path identity preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::cleanup_refuses_foreign_path_identity"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-056",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_native_root_shape_is_exact_and_does_not_use_dos_translation"
+      ],
+      "rust_test": "windows_contract::private_creator::native_root_shape_refuses_dos_device_names",
+      "assertions": [
+        "mapped-counterpart: Native Rust native root shape refuses dos device names preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::native_root_shape_refuses_dos_device_names"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-057",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_native_error_is_immediate_and_success_never_reads_stale_error"
+      ],
+      "rust_test": "windows_contract::private_creator::success_never_reads_stale_native_error",
+      "assertions": [
+        "mapped-counterpart: Native Rust success never reads stale native error preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::success_never_reads_stale_native_error"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-058",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_private_parent_is_bound_and_removed_before_reviewed_admission"
+      ],
+      "rust_test": "windows_contract::private_creator::private_parent_binding_is_checked_before_admission",
+      "assertions": [
+        "mapped-counterpart: Native Rust private parent binding is checked before admission preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::private_parent_binding_is_checked_before_admission"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-059",
+      "baseline_ids": [
+        "tests/test_windows_private_creator.py::PrivateCreatorTest::test_authority_consumer_retains_original_actual_controls"
+      ],
+      "rust_test": "windows_contract::private_creator::authority_consumer_retains_actual_controls",
+      "assertions": [
+        "mapped-counterpart: Native Rust authority consumer retains actual controls preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::private_creator::authority_consumer_retains_actual_controls"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-060",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::PythonTokenTest::test_existing_token_predicates_keep_first_failure_and_occurrence"
+      ],
+      "rust_test": "windows_contract::token::predicates_keep_first_failure_and_occurrence",
+      "assertions": [
+        "mapped-counterpart: Native Rust predicates keep first failure and occurrence preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::predicates_keep_first_failure_and_occurrence"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-061",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::PythonTokenTest::test_privileges_require_full_canonical_identity_without_a_resolver"
+      ],
+      "rust_test": "windows_contract::token::privileges_require_complete_luid",
+      "assertions": [
+        "mapped-counterpart: Native Rust privileges require complete luid preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::privileges_require_complete_luid"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-062",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::PythonTokenTest::test_restrictions_decode_only_the_successful_returned_span"
+      ],
+      "rust_test": "windows_contract::token::restrictions_decode_only_returned_span",
+      "assertions": [
+        "mapped-counterpart: Native Rust restrictions decode only returned span preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::restrictions_decode_only_returned_span"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-063",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::PythonTokenTest::test_actual_preamble_stops_at_each_existing_boundary"
+      ],
+      "rust_test": "windows_contract::token::preamble_stops_at_each_boundary",
+      "assertions": [
+        "mapped-counterpart: Native Rust preamble stops at each boundary preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::preamble_stops_at_each_boundary"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-064",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::PythonTokenTest::test_operation_close_and_report_failures_remain_fatal"
+      ],
+      "rust_test": "windows_contract::token::operation_close_and_report_failures_are_fatal",
+      "assertions": [
+        "mapped-counterpart: Native Rust operation close and report failures are fatal preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::operation_close_and_report_failures_are_fatal"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-065",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::PythonTokenTest::test_closed_phases_descendant_retention_and_transport_limits"
+      ],
+      "rust_test": "windows_contract::token::closed_phases_retain_exit_and_transport_limits",
+      "assertions": [
+        "mapped-counterpart: Native Rust closed phases retain exit and transport limits preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::closed_phases_retain_exit_and_transport_limits"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-066",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::PythonTokenTest::test_controller_and_actual_call_sites_share_closed_phase_inventory"
+      ],
+      "rust_test": "windows_contract::token::controller_and_authority_share_closed_token_inventory",
+      "assertions": [
+        "mapped-counterpart: Native Rust controller and authority share closed token inventory preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::controller_and_authority_share_closed_token_inventory"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-067",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::OrdinaryTokenTest::test_private_policy_uses_exact_token_user_without_changing_negative_inputs"
+      ],
+      "rust_test": "windows_contract::token::private_policy_requires_primary_unelevated_restricted_identity",
+      "assertions": [
+        "mapped-counterpart: Native Rust private policy requires primary unelevated restricted identity preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::private_policy_requires_primary_unelevated_restricted_identity"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-068",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::OrdinaryTokenTest::test_private_creator_keeps_exact_call_and_immediate_error"
+      ],
+      "rust_test": "windows_contract::token::native_failure_reads_last_error_once",
+      "assertions": [
+        "mapped-counterpart: Native Rust native failure reads last error once preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::native_failure_reads_last_error_once"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-069",
+      "baseline_ids": [
+        "tests/test_windows_python_token.py::OrdinaryTokenTest::test_actual_ordinary_privilege_inventory_without_name_lookup"
+      ],
+      "rust_test": "windows_contract::token::ordinary_privileges_do_not_resolve_names",
+      "assertions": [
+        "mapped-counterpart: Native Rust ordinary privileges do not resolve names preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::token::ordinary_privileges_do_not_resolve_names"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-070",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_standard_handles_and_observed_exit_including_259"
+      ],
+      "rust_test": "windows_contract::registry_descendant::observed_exit_includes_natural_259",
+      "assertions": [
+        "mapped-counterpart: Native Rust observed exit includes natural 259 preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::observed_exit_includes_natural_259"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-071",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_primary_windows_output_keeps_exact_two_record_wire"
+      ],
+      "rust_test": "windows_contract::registry_descendant::primary_output_has_exact_two_record_schema",
+      "assertions": [
+        "mapped-counterpart: Native Rust primary output has exact two record schema preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::primary_output_has_exact_two_record_schema"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-072",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_extra_terminators_are_not_trimmed_into_host_success"
+      ],
+      "rust_test": "windows_contract::registry_descendant::extra_terminators_cannot_be_trimmed_into_success",
+      "assertions": [
+        "mapped-counterpart: Native Rust extra terminators cannot be trimmed into success preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::extra_terminators_cannot_be_trimmed_into_success"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-073",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_universal_newlines_follow_raw_caps_and_strict_ascii"
+      ],
+      "rust_test": "windows_contract::registry_descendant::newline_conversion_cannot_precede_raw_caps",
+      "assertions": [
+        "mapped-counterpart: Native Rust newline conversion cannot precede raw caps preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::newline_conversion_cannot_precede_raw_caps"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-074",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_non_ascii_failure_receipt_retains_private_decode_fault"
+      ],
+      "rust_test": "windows_contract::registry_descendant::nonascii_receipt_retains_decode_fault",
+      "assertions": [
+        "mapped-counterpart: Native Rust nonascii receipt retains decode fault preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::nonascii_receipt_retains_decode_fault"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-075",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_each_acquisition_failure_closes_only_obtained_owners"
+      ],
+      "rust_test": "windows_contract::registry_descendant::acquisition_failures_have_closed_native_stage",
+      "assertions": [
+        "mapped-counterpart: Native Rust acquisition failures have closed native stage preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::acquisition_failures_have_closed_native_stage"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-076",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_caps_allow_live_empty_peek_but_refuse_overflow_and_missing_eof"
+      ],
+      "rust_test": "windows_contract::registry_descendant::exact_cap_refuses_overflow_and_missing_eof",
+      "assertions": [
+        "mapped-counterpart: Native Rust exact cap refuses overflow and missing eof preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::exact_cap_refuses_overflow_and_missing_eof"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-077",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_invalid_read_and_cleanup_faults_are_fatal_and_exhaustive"
+      ],
+      "rust_test": "windows_contract::registry_descendant::malformed_read_and_cleanup_are_fatal",
+      "assertions": [
+        "mapped-counterpart: Native Rust malformed read and cleanup are fatal preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::malformed_read_and_cleanup_are_fatal"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-078",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_cleanup_overrun_is_fatal_after_every_owner_is_attempted"
+      ],
+      "rust_test": "windows_contract::registry_descendant::cleanup_overrun_is_fatal_after_all_owners",
+      "assertions": [
+        "mapped-counterpart: Native Rust cleanup overrun is fatal after all owners preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::cleanup_overrun_is_fatal_after_all_owners"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-079",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_regular_child_failure_survives_later_transport_and_cleanup_faults"
+      ],
+      "rust_test": "windows_contract::registry_descendant::child_failure_survives_transport_and_cleanup",
+      "assertions": [
+        "mapped-counterpart: Native Rust child failure survives transport and cleanup preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::child_failure_survives_transport_and_cleanup"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-080",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_natural_exit_survives_decode_eof_and_close_failures"
+      ],
+      "rust_test": "windows_contract::registry_descendant::natural_exit_survives_eof_and_close_failure",
+      "assertions": [
+        "mapped-counterpart: Native Rust natural exit survives eof and close failure preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::natural_exit_survives_eof_and_close_failure"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-081",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_timeout_retains_bounded_bootstrap_before_exhaustive_cleanup"
+      ],
+      "rust_test": "windows_contract::registry_descendant::timeout_retains_bounded_bootstrap",
+      "assertions": [
+        "mapped-counterpart: Native Rust timeout retains bounded bootstrap preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::timeout_retains_bounded_bootstrap"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-082",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_native_adapter_owns_outputs_before_failures"
+      ],
+      "rust_test": "windows_contract::registry_descendant::native_adapter_rejects_inconsistent_success_error",
+      "assertions": [
+        "mapped-counterpart: Native Rust native adapter rejects inconsistent success error preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::native_adapter_rejects_inconsistent_success_error"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-083",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_exact_three_standard_duplicates_preserve_type_and_borrowed_ownership"
+      ],
+      "rust_test": "windows_contract::registry_descendant::exact_three_standard_phases_are_closed",
+      "assertions": [
+        "mapped-counterpart: Native Rust exact three standard phases are closed preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::exact_three_standard_phases_are_closed"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-084",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_fixed_ordinary_cap_does_not_change_registry_defaults"
+      ],
+      "rust_test": "windows_contract::registry_descendant::fixed_ordinary_cap_does_not_change_registry_defaults",
+      "assertions": [
+        "mapped-counterpart: Native Rust fixed ordinary cap does not change registry defaults preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::fixed_ordinary_cap_does_not_change_registry_defaults"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-085",
+      "baseline_ids": [
+        "tests/test_windows_registry_descendant.py::DescendantTransportTest::test_actual_spawn_has_no_implicit_pipe_or_nul_route"
+      ],
+      "rust_test": "windows_contract::registry_descendant::spawn_cannot_bypass_detached_job_checks",
+      "assertions": [
+        "mapped-counterpart: Native Rust spawn cannot bypass detached job checks preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_descendant::spawn_cannot_bypass_detached_job_checks"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-086",
+      "baseline_ids": [
+        "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_reusable_kernel_helpers_do_not_initialize_network"
+      ],
+      "rust_test": "windows_contract::registry_loader::reusable_policy_helpers_do_not_launch_children",
+      "assertions": [
+        "mapped-counterpart: Native Rust reusable policy helpers do not launch children preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_loader::reusable_policy_helpers_do_not_launch_children"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-087",
+      "baseline_ids": [
+        "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_scratch_entry_failure_preserves_original_and_bounds_diagnostics"
+      ],
+      "rust_test": "windows_contract::registry_loader::scratch_entry_failure_is_bounded_and_private",
+      "assertions": [
+        "mapped-counterpart: Native Rust scratch entry failure is bounded and private preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_loader::scratch_entry_failure_is_bounded_and_private"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-088",
+      "baseline_ids": [
+        "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_positive_write_preserves_io_and_localizes_failure"
+      ],
+      "rust_test": "windows_contract::registry_loader::positive_write_preserves_exact_bytes",
+      "assertions": [
+        "mapped-counterpart: Native Rust positive write preserves exact bytes preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_loader::positive_write_preserves_exact_bytes"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-089",
+      "baseline_ids": [
+        "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_preflight_failure_frame_is_fixed_source_and_private"
+      ],
+      "rust_test": "windows_contract::registry_loader::preflight_frame_has_closed_source_metadata",
+      "assertions": [
+        "mapped-counterpart: Native Rust preflight frame has closed source metadata preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_loader::preflight_frame_has_closed_source_metadata"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-090",
+      "baseline_ids": [
+        "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_original_receipt_precedes_fixed_loader_effects"
+      ],
+      "rust_test": "windows_contract::registry_loader::first_receipt_precedes_effects",
+      "assertions": [
+        "mapped-counterpart: Native Rust first receipt precedes effects preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_loader::first_receipt_precedes_effects"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-091",
+      "baseline_ids": [
+        "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_fixed_file_binding_and_closed_results_without_native_loading"
+      ],
+      "rust_test": "windows_contract::registry_loader::fixed_file_binding_rejects_noncanonical_identity",
+      "assertions": [
+        "mapped-counterpart: Native Rust fixed file binding rejects noncanonical identity preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_loader::fixed_file_binding_rejects_noncanonical_identity"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-092",
+      "baseline_ids": [
+        "tests/test_windows_registry_loader.py::RegistryLoaderTest::test_first_receipt_survives_unqualified_tail_and_child_timeout"
+      ],
+      "rust_test": "windows_contract::registry_loader::first_receipt_survives_timeout_and_unqualified_tail",
+      "assertions": [
+        "mapped-counterpart: Native Rust first receipt survives timeout and unqualified tail preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::registry_loader::first_receipt_survives_timeout_and_unqualified_tail"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-093",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_python_diagnostics_precede_independent_debugger_controls"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::diagnostics_precede_independent_admission",
+      "assertions": [
+        "mapped-counterpart: Native Rust diagnostics precede independent admission preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::diagnostics_precede_independent_admission"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-094",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_scratch_access_observer_is_read_only_and_not_admission"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::scratch_observer_is_not_admission",
+      "assertions": [
+        "mapped-counterpart: Native Rust scratch observer is not admission preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::scratch_observer_is_not_admission"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-095",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_supported_policy_owns_admission_and_refuses_nested_trial"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::supported_policy_refuses_nested_or_repeated_trial",
+      "assertions": [
+        "mapped-counterpart: Native Rust supported policy refuses nested or repeated trial preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::supported_policy_refuses_nested_or_repeated_trial"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-096",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_standard_trace_has_one_owned_lifecycle_and_outer_recovery"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::owned_lifecycle_recovery_requires_reap",
+      "assertions": [
+        "mapped-counterpart: Native Rust owned lifecycle recovery requires reap preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::owned_lifecycle_recovery_requires_reap"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-097",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_successful_consumer_requires_independent_trace_control"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::successful_consumer_requires_independent_token_control",
+      "assertions": [
+        "mapped-counterpart: Native Rust successful consumer requires independent token control preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::successful_consumer_requires_independent_token_control"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-098",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_authority_keeps_python_diagnostic_separate"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::native_authority_is_distinct_from_diagnostics",
+      "assertions": [
+        "mapped-counterpart: Native Rust native authority is distinct from diagnostics preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::native_authority_is_distinct_from_diagnostics"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-099",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_fixed_dll_preparation_stays_outside_trace_and_admission"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::image_preparation_refuses_unsafe_leaf_names",
+      "assertions": [
+        "mapped-counterpart: Native Rust image preparation refuses unsafe leaf names preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::image_preparation_refuses_unsafe_leaf_names"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-100",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_token_stage_allowlists_match_controller"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::token_stage_allowlist_does_not_accept_private_values",
+      "assertions": [
+        "mapped-counterpart: Native Rust token stage allowlist does not accept private values preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::token_stage_allowlist_does_not_accept_private_values"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-101",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_descendant_stages_preserve_ownership_and_native_error_boundaries"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::descendant_errors_keep_native_boundary",
+      "assertions": [
+        "mapped-counterpart: Native Rust descendant errors keep native boundary preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::descendant_errors_keep_native_boundary"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-102",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_restrictions_query_uses_existing_call_and_failure_only_error"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::restrictions_query_uses_immediate_failure_only",
+      "assertions": [
+        "mapped-counterpart: Native Rust restrictions query uses immediate failure only preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::restrictions_query_uses_immediate_failure_only"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-103",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_rust_privileges_use_full_luid_without_worker_name_resolution"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::privilege_full_luid_cannot_alias_by_low_part",
+      "assertions": [
+        "mapped-counterpart: Native Rust privilege full luid cannot alias by low part preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::privilege_full_luid_cannot_alias_by_low_part"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-104",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_ordinary_admission_uses_fresh_strict_output_after_negative_baseline"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::admission_requires_fresh_exact_record",
+      "assertions": [
+        "mapped-counterpart: Native Rust admission requires fresh exact record preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::admission_requires_fresh_exact_record"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-105",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_csr_host_launch_preserves_aggregate_containment_prerequisites"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::native_launch_preserves_aggregate_job_prerequisites",
+      "assertions": [
+        "mapped-counterpart: Native Rust native launch preserves aggregate job prerequisites preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::native_launch_preserves_aggregate_job_prerequisites"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-106",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::DiagnosticOrderTest::test_preparation_failures_use_one_ordered_controller_boundary"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::preparation_failure_has_one_ordered_boundary",
+      "assertions": [
+        "mapped-counterpart: Native Rust preparation failure has one ordered boundary preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::preparation_failure_has_one_ordered_boundary"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-107",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_bootstrap_import_failures_are_private_and_nonzero"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::prerequisite_failures_are_private_and_nonzero",
+      "assertions": [
+        "mapped-counterpart: Native Rust prerequisite failures are private and nonzero preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::prerequisite_failures_are_private_and_nonzero"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-108",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_bootstrap_reported_import_name_is_closed_metadata"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::reported_metadata_is_closed",
+      "assertions": [
+        "mapped-counterpart: Native Rust reported metadata is closed preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::reported_metadata_is_closed"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-109",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_fixed_controls_without_native_execution"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::fixed_controls_can_be_checked_without_kernel_claim",
+      "assertions": [
+        "mapped-counterpart: Native Rust fixed controls can be checked without kernel claim preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::fixed_controls_can_be_checked_without_kernel_claim"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-110",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::RegistryAuthorityValidationTest::test_failure_projection_preserves_exits_order_and_privacy"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::failure_projection_preserves_exit_order_and_privacy",
+      "assertions": [
+        "mapped-counterpart: Native Rust failure projection preserves exit order and privacy preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::failure_projection_preserves_exit_order_and_privacy"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-111",
+      "baseline_ids": [
+        "tests/test_windows_runtime_preparation.py::RuntimePreparationTest::test_streaming_validation_copy_progress_and_refusal"
+      ],
+      "rust_test": "windows_contract::runtime_preparation::streaming_copy_refuses_reparse_source",
+      "assertions": [
+        "mapped-counterpart: Native Rust streaming copy refuses reparse source preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::runtime_preparation::streaming_copy_refuses_reparse_source"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-112",
+      "baseline_ids": [
+        "tests/test_windows_scratch_attachment.py::ScratchAttachmentTest::test_owned_lifetime_and_host_only_descriptor_model"
+      ],
+      "rust_test": "windows_contract::scratch_attachment::owned_lifetime_does_not_admit_host_descriptor",
+      "assertions": [
+        "mapped-counterpart: Native Rust owned lifetime does not admit host descriptor preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::scratch_attachment::owned_lifetime_does_not_admit_host_descriptor"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-113",
+      "baseline_ids": [
+        "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_suspended_lifetime_and_managed_discovery"
+      ],
+      "rust_test": "windows_contract::scratch_attachment::suspended_lifetime_precedes_discovery",
+      "assertions": [
+        "mapped-counterpart: Native Rust suspended lifetime precedes discovery preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::scratch_attachment::suspended_lifetime_precedes_discovery"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-114",
+      "baseline_ids": [
+        "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_receipt_precedes_possible_mutation_and_recovery_precedes_detach"
+      ],
+      "rust_test": "windows_contract::scratch_attachment::receipt_precedes_mutation_and_recovery_precedes_detach",
+      "assertions": [
+        "mapped-counterpart: Native Rust receipt precedes mutation and recovery precedes detach preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::scratch_attachment::receipt_precedes_mutation_and_recovery_precedes_detach"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-115",
+      "baseline_ids": [
+        "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_phase_handles_close_and_frames_follow_restore"
+      ],
+      "rust_test": "windows_contract::scratch_attachment::frames_follow_restore_and_retain_close_failure",
+      "assertions": [
+        "mapped-counterpart: Native Rust frames follow restore and retain close failure preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::scratch_attachment::frames_follow_restore_and_retain_close_failure"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-116",
+      "baseline_ids": [
+        "tests/test_windows_scratch_attachment.py::ScratchVolumePolicyTest::test_supported_role_qualification_and_cleanup_order"
+      ],
+      "rust_test": "windows_contract::scratch_attachment::supported_role_qualification_is_exact",
+      "assertions": [
+        "mapped-counterpart: Native Rust supported role qualification is exact preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::scratch_attachment::supported_role_qualification_is_exact"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-117",
+      "baseline_ids": [
+        "tests/test_windows_scratch_attachment.py::ScratchFileAccessTest::test_fixed_create_only_request_and_owned_cleanup"
+      ],
+      "rust_test": "windows_contract::scratch_attachment::create_only_request_never_overwrites_foreign_file",
+      "assertions": [
+        "mapped-counterpart: Native Rust create only request never overwrites foreign file preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::scratch_attachment::create_only_request_never_overwrites_foreign_file"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    },
+    {
+      "id": "B08-118",
+      "baseline_ids": [
+        "tests/test_windows_scratch_attachment.py::ScratchVolumeAccessTest::test_fixed_handle_only_differential_and_discovery"
+      ],
+      "rust_test": "windows_contract::scratch_attachment::handle_only_identity_refuses_utf16_aliases",
+      "assertions": [
+        "mapped-counterpart: Native Rust handle only identity refuses utf16 aliases preserves this controller boundary; obsolete interpreter-specific call sites are replaced by native policy/protocol assertions. Actual LPAC/Win32 proof runs separately in the required windows_native target, with explicit owned-fixture scope.; Rust anchor: windows_contract::scratch_attachment::handle_only_identity_refuses_utf16_aliases"
+      ],
+      "platforms": [
+        "linux",
+        "windows"
+      ],
+      "tier": "portable"
+    }
   ]
 }
