@@ -2,7 +2,7 @@
 use super::super::{ffi::*, token};
 use crate::windows_security::kernel_controls::KernelPlan;
 use anyhow::{Result, ensure};
-use registry_authority::native::{NtQueryKey, NtQueryObject};
+use registry_authority::native::{Attributes, NtOpenKeyEx, NtQueryKey, NtQueryObject, Unicode};
 use std::ptr::null_mut;
 #[link(name = "userenv")]
 unsafe extern "system" {
@@ -104,18 +104,68 @@ fn qualify(key: Raw, requested: u32) -> Result<String> {
     basic.fill(0);
     result
 }
+// The userenv location API resolves the profile registry through the
+// process's predefined HKCU and the intermediate Classes/Storage keys. The
+// LPAC access check denies those opens inside the raw lowbox worker: neither
+// the Classes root nor the Storage parent carries a package ACE, while the
+// sealed location key itself grants the package read. The worker therefore
+// opens the location by its absolute NT path, built from its own token user
+// SID and the profile moniker the plan already carries (the parent directory
+// of profile_ac), and binds the opened key's NT name to that exact path.
+fn location_path(plan: &KernelPlan) -> Result<String> {
+    let inventory = token::current(&plan.quota.package)?;
+    let moniker = plan
+        .quota
+        .profile_ac
+        .parent()
+        .and_then(|parent| parent.file_name())
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow::anyhow!("kernel profile moniker unavailable from owned plan"))?;
+    Ok(format!(
+        "\\Registry\\User\\{}_Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppContainer\\Storage\\{}",
+        inventory.user.canonical(),
+        moniker
+    ))
+}
+
+fn open_location(path: &str, access: u32) -> (i32, Raw) {
+    let units: Vec<u16> = path.encode_utf16().collect();
+    let unicode = Unicode {
+        length: (units.len() * 2) as u16,
+        maximum: (units.len() * 2) as u16,
+        buffer: units.as_ptr(),
+    };
+    let attributes = Attributes {
+        length: std::mem::size_of::<Attributes>() as u32,
+        root: null_mut(),
+        name: &unicode,
+        flags: 0x40,
+        descriptor: null_mut(),
+        qos: null_mut(),
+    };
+    let mut handle: Raw = null_mut();
+    // SAFETY: fixed absolute path built above; handle is caller-owned.
+    let status = unsafe { NtOpenKeyEx(&mut handle, access, &attributes, 0) };
+    (status, handle)
+}
+
 pub(super) fn controls(plan: &KernelPlan) -> Result<()> {
-    token::current(&plan.quota.package)?;
-    let mut raw = null_mut();
-    let status = unsafe { GetAppContainerRegistryLocation(0x20019, &mut raw) };
+    let path = location_path(plan)?;
+    let (status, raw) = open_location(&path, 0x20019);
     let mut locator = Key(if valid(raw) { raw } else { null_mut() });
     let operation = (|| {
         token::current(&plan.quota.package)?;
         ensure!(
             status == 0 && valid(raw),
-            "kernel sealed profile registry read positive failed"
+            "kernel sealed profile registry read positive failed ntstatus={:08X} valid={}",
+            status as u32,
+            valid(raw)
         );
         let identity = qualify(raw, 0x20019)?;
+        ensure!(
+            crate::windows_security::sxs::ordinal_path_equal(&identity, &path)?,
+            "kernel profile key identity differs from owned location"
+        );
         for access in [0x20019, 2, 4, 0x10000, 0x40000, 0x80000, 0x20006] {
             let mut raw = null_mut();
             let status = unsafe { RegOpenKeyExW(locator.0, [0u16].as_ptr(), 0, access, &mut raw) };
