@@ -57,9 +57,12 @@ mode; it is not the required owned-fixture gate and receives no automatic host
 ACL grants. Owned-fixture success makes no claim about machine SideBySide
 access, VHD disk quotas, ETW traces, or interpreter activation.
 
-The native-stage collector and several census contracts remain unfinished; see
-the [outstanding acceptance gates](../../../docs/development.md#outstanding-acceptance-gates).
-Passing the six native gate cases is not a complete Windows migration result.
+The native-stage collector and census operation reports are required separately
+from this narrow gate. The [recorded hosted baseline](../../../docs/development.md#recorded-hosted-baseline)
+includes those reports for its exact revision; the
+[execution and parity boundaries](../../../docs/development.md#execution-and-parity-boundaries)
+still apply. Passing the six native gate cases alone is not a complete Windows
+migration result.
 
 Normal document tools use a job to own their process trees. This lifetime
 ownership does not itself provide an LPAC file or network sandbox. The required
