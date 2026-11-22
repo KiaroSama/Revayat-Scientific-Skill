@@ -75,10 +75,14 @@ Reject: «مبادرت به بازگرداندن ۴۰۴ می‌کند» / «در
 
 ## How to use
 
-1. Fluency reader brief points here as the gold standard beside Canonical
-   manner.
-2. After a register/ensemble edit, score a draft of G1–G3 (or the
-   bake-off span) and expect `OK` on gold-like prose.
+1. Before Step 4 and throughout drafting and review, apply the
+   [vendored Persian voice guidance](voice/README.md#stage-routes). Use these
+   examples to calibrate written scholarly Persian without officialese or
+   forced conversation. Run the mandatory
+   [live name and term lookup](terminology.md#verify-names-and-unfamiliar-terms)
+   before locking `WORK/terms.tsv` or drafting.
+2. After changing the register guidance, score a draft of G1–G3 (or the
+   comparison span) and expect `OK` on prose that matches the examples.
 3. Pick the gold id that matches the book's genre; do not force web-server
    wording onto an ML or database text.
 4. Do not paste this whole file into every translator prompt — only the

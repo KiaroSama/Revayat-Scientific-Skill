@@ -12,9 +12,23 @@ Persian-only lint rule conflicts. Preserve bibliography direction per entry rath
 than assuming every source reference is English. The old English examples below
 illustrate LTR handling, not a source-language restriction.
 
-**Agent chat is not the RTL surface.** Do not right-align the
-conversation. For papers, articles, and books the deliverable is a
-PDF (`references/pdf-output.md`) with maximum bidi precision.
+## English-led Persian sentences
+
+When a Persian sentence starts with an English word, use the Unicode Right-to-Left Isolate (`RLI`, `U+2067`) before the sentence and Pop Directional Isolate (`PDI`, `U+2069`) after it to ensure correct right-to-left (RTL) rendering and prevent bidirectional text display issues.
+
+In plain text and Markdown, wrap the whole sentence, including its final
+punctuation. On `dir="auto"` surfaces such as chat, Markdown renderers and UI,
+put Right-to-Left Mark (`RLM`, `U+200F`) immediately before the opening `RLI`
+at the start of the line. Automatic direction detection skips the isolate;
+`RLM` supplies the first strong RTL character and locks paragraph alignment
+while `RLI` and `PDI` isolate the sentence from surrounding text.
+
+In HTML and XeLaTeX document bodies, keep RTL paragraph markup and wrap the
+LTR run with `<span dir="ltr">…</span>` or `\lr{…}` respectively. Keep
+Unicode isolates balanced wherever they appear in prose. `revayat-scientific
+lint` checks isolate balance in its supported HTML and TeX inputs; check
+plain-text and Markdown drafts for balanced pairs before conversion and review
+the rendered result for paragraph direction.
 
 When the print engine is XeLaTeX, isolate with `\lr{…}` / `\en{…}` and
 put listings in a `latin` environment (see `assets/rtl-document.tex`).
@@ -213,8 +227,9 @@ closing `</span>` and before `.`:
 این روش بر پایه <span dir="ltr">backpropagation</span>‏.
 ```
 
-Do not scatter RLM/LRM through the file as decoration. Isolation first;
-RLM only for a leftover end-of-sentence period.
+Do not scatter RLM/LRM through the file. In an explicitly RTL document body,
+use this trailing `RLM` only to correct a misplaced sentence-final period. The
+leading `RLM` rule above applies separately to `dir="auto"`.
 
 ## What must stay LTR
 

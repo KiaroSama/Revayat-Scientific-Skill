@@ -6,6 +6,23 @@
   "plugins": [
     {
       "name": "revayat-scientific",
+      "version": "2.1.0",
+      "description": "Translate scientific and technical work into natural Persian. Verify names and pronunciations online, check RLI/PDI isolation, and split book batches across agents. Includes Vazirmatn for offline use.",
+      "keywords": [
+        "scientific",
+        "translation",
+        "persian",
+        "farsi",
+        "rtl",
+        "pdf",
+        "rust",
+        "docx",
+        "document-integrity",
+        "pronunciation-verification",
+        "bidi-isolation",
+        "multi-agent-book-translation",
+        "vazirmatn"
+      ],
       "source": {
         "source": "url",
         "url": "https://github.com/KiaroSama/Revayat-Scientific-Skill.git"

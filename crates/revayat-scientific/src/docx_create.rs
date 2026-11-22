@@ -235,8 +235,27 @@ pub fn paragraph_xml(
         )?;
         let value = text(&item["text"])?;
         let run_rtl = boolean(item.get("rtl"), rtl)?;
+        let run_lang = selected_language(item.get("language"), lang)?;
         out.push_str("<w:r><w:rPr>");
         out.push_str(&on_off("rtl", run_rtl));
+        let font = match item.get("font") {
+            Some(font) => Some(text(font)?),
+            None if run_rtl
+                || run_lang
+                    .split('-')
+                    .next()
+                    .is_some_and(|tag| tag.eq_ignore_ascii_case("fa")) =>
+            {
+                Some("Vazirmatn")
+            }
+            None => None,
+        };
+        if let Some(font) = font {
+            let font = attr(font);
+            out.push_str(&format!(
+                "<w:rFonts w:ascii=\"{font}\" w:hAnsi=\"{font}\" w:cs=\"{font}\"/>"
+            ));
+        }
         for (key, simple, complex) in [("bold", "b", "bCs"), ("italic", "i", "iCs")] {
             if let Some(value) = item.get(key) {
                 let enabled = boolean(Some(value), false)?;
@@ -244,19 +263,13 @@ pub fn paragraph_xml(
                 out.push_str(&on_off(complex, enabled));
             }
         }
-        if let Some(font) = item.get("font") {
-            let font = attr(text(font)?);
-            out.push_str(&format!(
-                "<w:rFonts w:ascii=\"{font}\" w:hAnsi=\"{font}\" w:cs=\"{font}\"/>"
-            ));
-        }
         if let Some(size) = item.get("size_pt") {
             let size = (number(size, 1., 200.)? * 2.).floor() as u32;
             out.push_str(&format!(
                 "<w:sz w:val=\"{size}\"/><w:szCs w:val=\"{size}\"/>"
             ));
         }
-        let lang = attr(selected_language(item.get("language"), lang)?);
+        let lang = attr(run_lang);
         out.push_str(&format!(
             "<w:lang w:val=\"{lang}\" w:bidi=\"{lang}\"/></w:rPr>"
         ));
@@ -583,4 +596,43 @@ pub fn create_document(content_path: &Path, destination: &Path) -> Result<()> {
         &protected,
         Some(128 * 1024 * 1024),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rtl_and_persian_runs_default_to_vazirmatn_unless_overridden() {
+        let paragraph = paragraph_xml(
+            &json!({"runs":[
+                {"text":"Persian locale", "language":"FA-IR"},
+                {"text":"RTL run", "rtl":true},
+                {"text":"Explicit font", "rtl":true, "font":"Custom & Font"},
+                {"text":"LTR run"}
+            ]}),
+            "en-US",
+            false,
+        )
+        .unwrap();
+        let xml = format!("<w:root xmlns:w=\"{W}\">{paragraph}</w:root>");
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let families: Vec<_> = doc
+            .descendants()
+            .filter(|node| node.has_tag_name((W, "r")))
+            .map(|run| {
+                let fonts = run.descendants().find(|n| n.has_tag_name((W, "rFonts")));
+                ["ascii", "hAnsi", "cs"].map(|script| fonts.and_then(|n| n.attribute((W, script))))
+            })
+            .collect();
+        assert_eq!(
+            families,
+            [
+                [Some("Vazirmatn"); 3],
+                [Some("Vazirmatn"); 3],
+                [Some("Custom & Font"); 3],
+                [None; 3],
+            ]
+        );
+    }
 }

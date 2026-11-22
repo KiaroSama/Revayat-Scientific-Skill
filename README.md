@@ -84,7 +84,7 @@ From the repository, prefix commands with `cargo run --locked --release --bin re
 
 ```console
 revayat-scientific doctor
-revayat-scientific fonts job/fonts
+revayat-scientific fonts --offline job/fonts
 revayat-scientific term-brief job/source.txt --terms job/terms.tsv --language en
 revayat-scientific lint job/doc.tex --level journal --terms job/terms.tsv --manifest job/manifest.txt --strict
 revayat-scientific build job/doc.tex --out delivery/article.pdf --engine tex --level journal --verify
@@ -92,6 +92,8 @@ revayat-scientific text-order delivery/article.pdf --source job/doc.tex
 revayat-scientific docx --help
 revayat-scientific pdf --help
 ```
+
+Western-digit Vazirmatn v33.003 (SIL OFL 1.1) is the default Persian font for HTML/PDF, XeLaTeX and Persian DOCX runs. The native Rust executable embeds the repository's [regular](crates/revayat-scientific/assets/fonts/Vazirmatn-Regular.ttf) and [bold](crates/revayat-scientific/assets/fonts/Vazirmatn-Bold.ttf) fonts and their [license](crates/revayat-scientific/assets/fonts/OFL.txt). Use `revayat-scientific fonts --offline <dir>` to extract them without a download. DOCX references the family by name, so install the extracted pair where you render the document.
 
 `--engine weasyprint` selects the actual optional WeasyPrint engine in the isolated document image. Its Rust adapter stages a closed, checked resource view and uses the same finite output quota and owned cleanup as TeX. WeasyPrint and its Python dependencies are external image packages; ordinary installed tools require no host Python installation. The Windows security fixtures retain one fixed CPython import dispatcher to exercise the genuine external runtime; its authority operations are implemented in Rust. TeX input needs an existing sibling `.html`. Automatic discovery preserves the order TeX, Chromium, WeasyPrint and never aliases their engine identities.
 

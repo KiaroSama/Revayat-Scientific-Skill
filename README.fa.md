@@ -100,7 +100,7 @@ codex plugin add revayat-scientific@revayat-scientific-skill
 
 ```console
 revayat-scientific doctor
-revayat-scientific fonts job/fonts
+revayat-scientific fonts --offline job/fonts
 revayat-scientific term-brief job/source.txt --terms job/terms.tsv --language en
 revayat-scientific lint job/doc.tex --level journal --terms job/terms.tsv --manifest job/manifest.txt --strict
 revayat-scientific build job/doc.tex --out delivery/article.pdf --engine tex --level journal --verify
@@ -110,6 +110,8 @@ revayat-scientific pdf --help
 ```
 
 </div>
+
+‏⁧قلم پیش‌فرض فارسی برای HTML/PDF، زی‌لاتک و متن فارسی در DOCX، وزیرمتن نسخهٔ `33.003` با رقم‌های لاتین و مجوز `SIL OFL 1.1` است. فایل‌های [معمولی](crates/revayat-scientific/assets/fonts/Vazirmatn-Regular.ttf)، [ضخیم](crates/revayat-scientific/assets/fonts/Vazirmatn-Bold.ttf) و [مجوز](crates/revayat-scientific/assets/fonts/OFL.txt) در مخزن هستند و بخشی از برنامهٔ اجرایی Rust به‌شمار می‌روند. فرمان `revayat-scientific fonts --offline <dir>` این فایل‌ها را بدون نیاز به اینترنت استخراج می‌کند. در DOCX فقط نام قلم ثبت می‌شود؛ برای نمایش درست سند، هر دو فایل قلم را روی سیستمی که سند را باز می‌کند نصب کنید.⁩
 
 گزینهٔ `--engine weasyprint` خودِ موتور اختیاری WeasyPrint را داخل image ایزولهٔ اسناد اجرا می‌کند. آداپتر Rust منابع مجاز را بررسی و آماده می‌کند و همان quota محدود خروجی و پاک‌سازی مالکانهٔ TeX را به کار می‌گیرد. WeasyPrint و وابستگی‌های Python آن بسته‌های خارجی داخل image هستند؛ ابزارهای معمول نصب‌شده به Python میزبان نیاز ندارند. تست‌های امنیت ویندوز یک فایل ثابت برای import کردن ماژول‌های CPython واقعی نگه می‌دارند و عملیات اصلی آن تست در Rust پیاده شده است. برای ورودی TeX باید فایل هم‌نام `.html` موجود باشد. کشف خودکار به ترتیب TeX، Chromium و WeasyPrint انجام می‌شود و هویت موتورها مستقل است.
 

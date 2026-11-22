@@ -6,9 +6,13 @@ to translated Persian prose, not verbatim source quotes, code or formulas.
 
 ## Register follows the deliverable
 
-Use standard written Persian. A casual user request does not turn a research paper
-into chatty prose. Preserve the author's voice, scope and degree of confidence;
-clarity is not permission to simplify away scientific distinctions.
+Read the [vendored Persian voice guidance](voice/README.md#stage-routes) before
+Step 4 and apply it during drafting and review. Use the register of the source
+and deliverable. Do not give scholarly or book prose the tone of a staged
+conversation («مثل مکالمهٔ ساختگی») or add theatrical turns of phrase. Preserve
+the author's voice, scope and degree of confidence. Before locking
+`WORK/terms.tsv` and drafting, follow the mandatory
+[live name and term lookup](terminology.md#verify-names-and-unfamiliar-terms).
 
 | Genre | Voice |
 | --- | --- |
@@ -16,10 +20,13 @@ clarity is not permission to simplify away scientific distinctions.
 | Tutorial | Clear instructional Persian; direct address only when the source uses it; familiar tooling terms where appropriate |
 | Reference or operational manual | Compact definitions and instructions; exact artifact and command names; low rhetorical density |
 
-Use full forms such as می‌شود and می‌خواهد. Prefer direct verbs over ceremonial
-phrases: بررسی کردیم instead of اقدام به انجام بررسی نمودیم. Judge alternatives
-in their sentence. ارائه می‌کند, آغاز می‌شود, نشان داده شد and فراهم می‌کند are
-legitimate scholarly expressions; do not ban them because a shorter synonym exists.
+Use full forms such as می‌شود and می‌خواهد. Reject artificial officialese such
+as «می‌باشد» and «مورد استفاده قرار می‌گیرد», the calqued indefinite «یک …»,
+literal English passives with «توسط», formulaic «نه تنها … بلکه» and English
+clause order carried over word for word. Prefer direct verbs: بررسی کردیم
+instead of اقدام به انجام بررسی نمودیم. Read the result aloud in the source's
+register. ارائه می‌کند, آغاز می‌شود, نشان داده شد and فراهم می‌کند are legitimate
+scholarly expressions; keep them where they fit.
 Do not impose a universal active-voice rule: a methods section may correctly use
 an impersonal passive. Never invent the actor while rewriting one.
 

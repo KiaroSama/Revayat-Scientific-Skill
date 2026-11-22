@@ -52,6 +52,26 @@ comparable publications in that discipline. Record the source/evidence and reaso
 Neither a rare coinage nor the shortest English form is automatically superior.
 A disputed community proposal is a candidate, not a settled standard.
 
+## Verify names and unfamiliar terms
+
+Before locking `WORK/terms.tsv` or drafting, run a live web search for foreign
+proper nouns, author names, eponyms, geographic and institutional names, and
+unfamiliar specialist terms. Confirm the exact entity or sense in the source's
+discipline. Prefer recordings or pronunciation guides from the named person,
+institution or native-language sources, and check Persian transliteration in
+credible Persian publications in that field. For unfamiliar specialist terms,
+verify the definition and established Persian usage in the relevant discipline.
+Use only public names and terms in queries; keep unpublished source context local.
+
+Record the chosen form and supporting source URLs in the ledger's `evidence`
+column. When the web is unavailable or pronunciation remains unverified, retain
+the original spelling, mark the row `[unverified pronunciation]` in `evidence`,
+and leave any proposed transliteration provisional. Raise identity ambiguities
+that could change a claim; never guess a pronunciation from spelling alone.
+Consult the [vendored Persian voice guidance](voice/README.md#stage-routes) for
+natural phrasing during drafting and review; it does not replace the search or
+change a verified identity.
+
 ## One concept, one preferred form
 
 Create `WORK/terms.tsv` before drafting; retain it with the editable document.

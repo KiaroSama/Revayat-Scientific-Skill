@@ -1,9 +1,9 @@
 {
   "$schema": "https://code.claude.com/schemas/marketplace.json",
   "name": "revayat-scientific-skill",
-  "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
+  "description": "Translate scientific and technical work into natural Persian. Verify names and pronunciations online, check RLI/PDI isolation, and split book batches across agents. Includes Vazirmatn for offline use.",
   "metadata": {
-    "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs."
+    "description": "Translate scientific and technical work into natural Persian. Verify names and pronunciations online, check RLI/PDI isolation, and split book batches across agents. Includes Vazirmatn for offline use."
   },
   "owner": {
     "name": "Kiaro Sama",
@@ -13,7 +13,7 @@
     {
       "name": "revayat-scientific",
       "source": "./",
-      "description": "Translate scientific papers and technical documents into Persian with consistent terminology, preserved scientific content and verified RTL PDFs.",
+      "description": "Translate scientific and technical work into natural Persian. Verify names and pronunciations online, check RLI/PDI isolation, and split book batches across agents. Includes Vazirmatn for offline use.",
       "version": "2.1.0",
       "author": {
         "name": "Kiaro Sama",
@@ -31,7 +31,11 @@
         "pdf",
         "rust",
         "docx",
-        "document-integrity"
+        "document-integrity",
+        "pronunciation-verification",
+        "bidi-isolation",
+        "multi-agent-book-translation",
+        "vazirmatn"
       ]
     }
   ]

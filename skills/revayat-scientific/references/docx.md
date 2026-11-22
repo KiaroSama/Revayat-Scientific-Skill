@@ -86,7 +86,18 @@ office editor if needed, retaining the pre-edit source and reviewing the result.
 
 ## Create a new document
 
-Creation accepts a UTF-8 JSON document with explicit physical dimensions. Example:
+Creation accepts a UTF-8 JSON document with explicit physical dimensions.
+Persian/RTL runs default to `Vazirmatn` when no explicit `font` is set. The
+native executable embeds Western-digit Vazirmatn v33.003 (SIL OFL 1.1) from
+`crates/revayat-scientific/assets/fonts/`: `Vazirmatn-Regular.ttf`,
+`Vazirmatn-Bold.ttf` and `OFL.txt`. Extract the pair and license without a
+network connection with `revayat-scientific fonts --offline <dir>`.
+
+DOCX records the font family; it does not embed the TTFs in the Word file.
+Install the extracted pair on the machine that renders the DOCX to avoid font
+substitution. An explicit `font` on a run still takes precedence.
+
+Example:
 
 ```json
 {

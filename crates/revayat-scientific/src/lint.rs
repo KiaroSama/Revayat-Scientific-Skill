@@ -246,6 +246,56 @@ pub fn check(
             .map(|m| (m.start(), m.as_str().into()))
             .collect())
     };
+    let mut line_start = 0;
+    let mut bidi_findings = 0;
+    // HTML's prose projection uses NUL to separate blocks and excluded text.
+    for line in prose.split_inclusive([
+        '\0', '\r', '\n', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}', '\u{2029}',
+    ]) {
+        let mut depth = 0;
+        let mut open = 0;
+        let mut stray = None;
+        for (offset, control) in
+            line.match_indices(['\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}'])
+        {
+            let pos = located(line_start + offset);
+            if matches!(src, Source::Tex(_)) && src.is_protected(pos) {
+                continue;
+            }
+            if control == "\u{2069}" {
+                if depth == 0 {
+                    stray.get_or_insert(pos);
+                } else {
+                    depth -= 1;
+                }
+            } else {
+                if depth == 0 {
+                    open = pos;
+                }
+                depth += 1;
+            }
+        }
+        line_start += line.len();
+        for (pos, message) in [
+            (
+                stray,
+                "Remove PDI (U+2069) or add its opening isolate on the same prose line",
+            ),
+            (
+                (depth > 0).then_some(open),
+                "Close the LRI, RLI, or FSI isolate with PDI (U+2069) on the same prose line",
+            ),
+        ] {
+            if let Some(pos) = pos {
+                add("error", "bidi-isolate", pos, message.into());
+                bidi_findings += 1;
+            }
+        }
+        // Bound location lookups and diagnostics on malformed inputs.
+        if bidi_findings >= 64 {
+            break;
+        }
+    }
     for (_, _, pos, token) in prose_hits("[كي]")? {
         add(
             "error",

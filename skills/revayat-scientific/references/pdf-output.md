@@ -4,7 +4,7 @@ Use the native Rust executable for readiness, source lint, rendering and verific
 
 ```console
 revayat-scientific doctor
-revayat-scientific fonts job/fonts
+revayat-scientific fonts --offline job/fonts
 ```
 
 `doctor` emits JSON with native runtime/version, discovered Chromium, container runtime and native verification tool availability. Discovery is not proof of effective sandboxing or a successful render. Missing tools cannot support a verified-delivery claim.
@@ -49,7 +49,14 @@ Inspect page count and physical page boxes, embedded fonts, representative first
 
 ## Fonts and logical order
 
-The font command validates a complete regular/bold pair, OFL license and provenance, then publishes them together. It accepts a validated local/cache pair in offline mode and never treats a half-installed pair as complete. Keep the license and provenance beside delivered font files.
+The default Persian font in the HTML/PDF and XeLaTeX templates is Western-digit
+Vazirmatn v33.003 (SIL OFL 1.1). The repository keeps `Vazirmatn-Regular.ttf`,
+`Vazirmatn-Bold.ttf` and `OFL.txt` in `crates/revayat-scientific/assets/fonts/`;
+the native executable embeds all three. Run `revayat-scientific fonts --offline <dir>`
+to unpack the validated bundle with provenance, without a download.
+Use a `fonts/` directory next to the editable HTML or TeX source so the templates
+find the pair. A complete validated existing or cached pair can be reused.
+Keep the license and provenance beside delivered font files.
 
 Persian stays in logical Unicode order. Use the template's RTL paragraphs and complete LTR isolates around formulas, identifiers and numeric units. Do not reverse strings or insert pre-shaped text to imitate a renderer. The text-order checker compares NFKC-normalized Persian source phrases with actual Poppler extraction; report failed/inconclusive results and sampled coverage. Viewer clipboard behavior and semantic accuracy remain separate observations.
 

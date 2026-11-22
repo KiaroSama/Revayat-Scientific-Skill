@@ -170,6 +170,34 @@ neighbor context needed for referents and argument continuity. Look up establish
 decisions first, then inspect earlier source passages when a pronoun, acronym or
 claim depends on them. Do not guess across a context boundary or duplicate overlap.
 
+## Book checkpoints and assembly
+
+Use the [book and batch protocol](parallel-work.md#book-and-batch-orchestration)
+for approved parallel work, whether chapter shards share one book or a wave
+contains chapters from several books. The coordinator maintains a
+`progress.md` and a coverage map under `WORK/<book_id>/` for each book, keyed
+by chapter and shard IDs from `WORK/batch-manifest.json`.
+
+- At each submission and acceptance, record the source range and hash,
+  glossary revision, draft or accepted artifact path and hash, checks run,
+  unresolved issues and next action. Keep the previous accepted artifact
+  until its replacement passes review. The manifest records assignment state;
+  `progress.md` records draft, lint and review evidence.
+- To resume, read the manifest first, then compare each checkpoint with the
+  actual source, committed glossary snapshot, artifact and log. Keep unchanged
+  accepted work. Review complete submissions; treat `running` work with no
+  live owner or valid submission as failed. Requeue only missing, failed or
+  stale units. Recheck affected spans and neighboring joins when the source or
+  terminology changes. Ignore partially written glossary revisions that the
+  manifest never committed.
+- Assemble accepted shards in the chapters' and sections' source order. Reject
+  gaps, overlaps and duplicated coverage before building. At each join, inspect
+  boundary sentences, pronoun referents, definitions, terminology, figure/table/
+  equation numbering, and citation targets against the source. In a multi-book
+  batch, compare preferred terms for the same concept across books before final
+  delivery. Keep each book's accepted glossary with its editable output; the
+  manifest's book order determines delivery order, not which worker finishes first.
+
 ## Assembly and verification
 
 1. Lint every part, then the assembled document.

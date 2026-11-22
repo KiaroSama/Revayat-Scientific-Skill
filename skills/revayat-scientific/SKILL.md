@@ -95,8 +95,9 @@ including zero; never claim an unread file was applied:
 [YYYY-MM-DD HH:mm:ss UTC] [INFO] [FLUENCY] Voice guidance applied: <files>; spans revised: <n>; suggestions rejected by precedence: <n>
 ```
 
-If vendored guidance is missing or unreadable, log a `[WARNING] [FLUENCY]` entry
-naming the unavailable files and continue with [fluency-gold.md](references/fluency-gold.md).
+If required vendored guidance is missing or unreadable, log a `[WARNING] [FLUENCY]`
+entry naming the files. Use [fluency-gold.md](references/fluency-gold.md) for a
+provisional pass and report the mandatory voice pass as incomplete.
 
 Keep the log current throughout the workflow, not just in a final recap. If the
 translation is delivered in another directory, deliver its completed log beside
@@ -127,8 +128,10 @@ and the translation log. Only an affirmative answer enables subagents. Refusal
 or no answer means sequential work; do not wait to begin independent sequential
 steps. Reuse the recorded choice on resume unless the user changes it.
 If approved, read [parallel-work.md](references/parallel-work.md) before assigning
-translation, review or correction. If the host cannot spawn subagents, disclose
-that and continue sequentially.
+translation, review or correction. For one book split by chapter or for a batch
+of books, create `WORK/batch-manifest.json` and follow the
+[long-document checkpoints](references/long-documents.md#book-checkpoints-and-assembly).
+If the host cannot spawn subagents, disclose that and continue sequentially.
 
 ```bash
 "$REVAYAT" doctor
@@ -143,12 +146,15 @@ The report is JSON and records native tool discovery. Availability does not prov
 | Local Linux Docker/Podman toolchain image with effective resource controls ready | TeX output is available through the isolated toolchain; native XeLaTeX alone is not readiness |
 | Sandboxed Edge / Chrome / Chromium available | HTML rendering is available when selected |
 | No PDF engine | Text work can continue; PDF delivery remains unperformed |
-| No Persian font | Obtain a suitable font before rendering |
+| Default Persian font | Use the bundled Western-digit `Vazirmatn` v33.003 (SIL OFL 1.1) for HTML/PDF, XeLaTeX and Persian/RTL DOCX runs unless the user specifies another font. Run `revayat-scientific fonts --offline <dir>` to unpack it without a download. |
 | Poppler unavailable | PDF verification cannot be claimed complete |
 
-Read the native tool table and build instructions in
-[pdf-output.md](references/pdf-output.md) when selecting fonts or a renderer.
-The helpers do not install prerequisites automatically.
+The executable embeds `Vazirmatn-Regular.ttf`, `Vazirmatn-Bold.ttf` and
+`OFL.txt` from `crates/revayat-scientific/assets/fonts/`. Extract to `WORK/fonts/`
+for the HTML and XeLaTeX templates. For DOCX, install the extracted pair where
+Word or LibreOffice will render it; the DOCX references the family by name.
+See [pdf-output.md](references/pdf-output.md) for renderer prerequisites.
+The helpers do not install those prerequisites automatically.
 
 ## Step 2 — Extract and inspect
 
@@ -212,7 +218,19 @@ terms; a technical concept is not automatically English-only.
 | Claim-changing ambiguity | Ask the user before locking the affected translation |
 | Stylistic uncertainty | Record it for review without inventing a scientific resolution |
 
-Finish the initial ledger before drafting. Retain it with the editable source.
+Before locking the ledger or drafting, run the mandatory
+[live name and term lookup](references/terminology.md#verify-names-and-unfamiliar-terms)
+for foreign names, author names, eponyms, places, institutions and unfamiliar
+specialist terms. Verify native pronunciation, established Persian
+transliteration and domain context. If the web is unavailable, retain the
+original spelling and mark the row `[unverified pronunciation]` in
+`WORK/terms.tsv`. Retain the ledger with the editable source.
+
+Before Step 4, read the [vendored Persian drafting and review route](references/voice/README.md#stage-routes)
+and all five files it names: `SKILL.md`, `ai-tells.md`, `pitfalls.md`,
+`register-guide.md` and `lexicon.md`. Apply them from the first draft through
+review. No separate Persian skill installation is needed.
+
 For reviewed extracted text, `term-brief` selects only matching approved ledger
 rows and records source/ledger hashes; inspect ambiguous candidates before use:
 
@@ -221,6 +239,10 @@ rows and records source/ledger hashes; inspect ambiguous candidates before use:
 ```
 
 ## Step 4 — Prepare figures and document objects
+
+Before preparing or drafting captions, labels or other Persian text, apply the
+[vendored Persian drafting rules](references/voice/README.md#stage-routes).
+Keep them in use from object preparation through translation and review.
 
 Read [layout-and-images.md](references/layout-and-images.md). Preserve original
 assets and vectors where possible. Record printed dimensions and effective PPI;
@@ -243,12 +265,22 @@ Continue when every inventoried object has a source and a placement plan.
 
 ## Step 5 — Translate the selected source
 
-Read [translation-policy.md](references/translation-policy.md),
-[rtl-bidi.md](references/rtl-bidi.md), and the relevant scientific-style guidance.
-Use the current host model. For approved parallel work, follow
-[parallel-work.md](references/parallel-work.md): assign disjoint parts against
-one glossary revision, collect separate drafts, then integrate and review the
-assembled document. Record which workers actually ran.
+Read [translation-policy.md](references/translation-policy.md) and apply the
+[vendored Persian guidance](references/voice/README.md#stage-routes) while
+writing and reviewing each draft. Write idiomatic Persian at the document's
+actual register. Reject machine-like officialese, English clause-order and
+passive calques, and contrived chatty or theatrical phrasing in scholarly prose.
+Follow the [English-led Persian sentence rule](references/rtl-bidi.md#english-led-persian-sentences):
+wrap plain-text and Markdown sentences that start with an English word in
+`RLI` (`U+2067`) and `PDI` (`U+2069`). On `dir="auto"` surfaces, put `RLM`
+(`U+200F`) immediately before `RLI`. Keep `<span dir="ltr">` and `\lr{…}`
+for LTR runs in HTML and XeLaTeX bodies respectively.
+
+Use the current host model. For approved parallel book work, use the
+[batch protocol](references/parallel-work.md#book-and-batch-orchestration):
+assign disjoint shards against a read-only `terms.tsv` snapshot per wave;
+the coordinator alone accepts drafts and reconciles glossary proposals.
+Record which workers actually ran.
 
 Start from `assets/rtl-document.tex` or `assets/rtl-document.html` and replace
 all demonstration content. Set the measured source page dimensions before layout;
@@ -284,16 +316,12 @@ Back-translate a small sample into its original language as an additional check,
 not a substitute for source comparison. Use the same terminology revision and
 neighbor context for drafting and review; label actual coverage and error severity.
 
-Then read the Persian for fluency using
-[fluency-gold.md](references/fluency-gold.md). After fidelity review, for Persian
-targets also read [ai-tells.md](references/voice/persian/references/ai-tells.md),
-[pitfalls.md](references/voice/persian/references/pitfalls.md),
-[register-guide.md](references/voice/persian/references/register-guide.md),
-[review-lenses.md](references/voice/persian/references/review-lenses.md) (only the
-ai-tells, fluency-eloquence, modern-standards and oral/read-aloud lenses), and
-[humanizer patterns](references/voice/humanizer/SKILL.md), under the canonical
-[precedence rule](references/voice/README.md#precedence). Revise only fluency spans,
-recheck their scientific meaning and log which guidance was actually applied.
+After fidelity review, reapply the
+[vendored Persian review route](references/voice/README.md#stage-routes) and
+compare prose with the matching examples in [fluency-gold.md](references/fluency-gold.md).
+Check officialese, calques and forced conversation against the source register.
+Follow the [precedence rule](references/voice/README.md#precedence). Recheck each
+fluency edit for scientific meaning and log the guidance actually used.
 
 Approved review/correction workers receive completed draft snapshots and return
 located findings or separate patches. The coordinator alone accepts corrections

@@ -75,6 +75,58 @@ Submissions include the exact covered units, artifact and log paths, input/gloss
 revision, actual checks, located findings, proposed terms and unresolved questions.
 A worker's success message alone does not establish complete coverage or review.
 
+## Book and batch orchestration
+
+Use this coordinator protocol for approved parallel book work. The manifest
+is a job record, not a command or a replacement for `coverage.tsv`.
+
+1. **Plan.** Create `WORK/batch-manifest.json` with a stable `job_id`,
+   `mode` (`"single-book-chapters"` or `"multi-book-batch"`), and `books[]` in
+   the declared delivery order. Each book entry has `book_id`, `source_path`,
+   `work_dir` (`WORK/<book_id>/`), `chapters[]` in source order,
+   `glossary_revision` and `status`. Each `chapters[]` entry records a
+   `chapter_id`, its exact source range and ordered `shard_units[]`. Each
+   `shard_unit` has `unit_id`, `book_id`, `chapter_id`, `assigned_worker`,
+   `staging_path` and `status`. Start units as `pending`. Use stable IDs and
+   source positions, not a worker's finish time or a filename sort, as the
+   assembly keys.
+2. **Dispatch.** In `single-book-chapters` mode, split one book by chapter or,
+   if necessary, by section. For each unit give the worker a short summary of
+   the preceding and following units, including definitions and referents the
+   unit depends on. In `multi-book-batch` mode, schedule ready units from
+   different books in the same bounded wave; keep sources, coverage, progress,
+   drafts and delivery in their own book's workspace. Give each assignment a
+   disjoint path such as `WORK/<book_id>/staging/<chapter_id>/<unit_id>/<attempt>/`.
+   Pin the source and a read-only `terms.tsv` snapshot for the whole wave for
+   each book; all its workers use the same revision. Include the mandatory
+   [Persian drafting route](voice/README.md#stage-routes) in the brief.
+3. **Collect.** The coordinator alone updates manifest and progress for
+   `pending` → `running` → `submitted` → `accepted`, or `failed` on an
+   interrupted or rejected attempt. Workers write only in their assigned
+   staging paths and return a draft, log and any term proposals. The coordinator
+   checks source/ledger revisions, covered IDs and review evidence before
+   acceptance. Retry a failed unit with a fresh attempt path once its previous
+   owner has stopped; retain the last accepted artifact unchanged.
+4. **Reconcile.** Record proposals in the append-only
+   `WORK/glossary-proposals.tsv` merge queue. The coordinator is its sole writer;
+   workers submit proposal files under their own staging paths. Record a stable
+   proposal ID, book/unit IDs, base revision, source term and sense/domain,
+   proposed form and evidence. Between waves, compare shared concepts across
+   books, agreeing on one form for the same sense and recording justified
+   differences. Write complete revised snapshots to
+   `WORK/<book_id>/glossaries/<revision>/terms.tsv`. Append each decision with
+   its proposal ID and resulting revision, then atomically replace the manifest
+   from a staged file in the same directory to commit the new revisions together.
+   Only revisions recorded as committed in the manifest or its retained history
+   count as merged. If interrupted before replacement, retain the old revisions
+   and reconcile the outstanding proposals on resume. Never edit a frozen
+   snapshot. Invalidate review for affected spans and recheck them before acceptance.
+5. **Resume and assemble.** Follow the
+   [per-book and per-chapter checkpoints](long-documents.md#book-checkpoints-and-assembly).
+   The coordinator assembles accepted shards in source order within each book,
+   checks joins and terminology across the batch, and runs ordinary delivery
+   verification for each book before publication.
+
 ## Integrate and verify
 
 Only the coordinator writes canonical output and accepts glossary changes. Check
