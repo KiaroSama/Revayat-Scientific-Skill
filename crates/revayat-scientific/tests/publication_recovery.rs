@@ -123,6 +123,159 @@ fn late_destination_mutation_retains_foreign_bytes_and_recovery_evidence() {
         );
     }
 }
+
+#[test]
+fn last_disposal_callback_retains_foreign_destination_and_all_previous_bytes() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let entries = plans(&root);
+    let mut visits = 0;
+    let result = publish_observed(&entries, &[], None, |event, _| {
+        if event == Boundary::BeforeBackupDisposal {
+            visits += 1;
+            if visits == entries.len() {
+                fs::write(&entries[0].1, b"foreign owner edit")?;
+            }
+        }
+        Ok(())
+    });
+    assert_eq!(visits, 2);
+    assert!(
+        result.is_err(),
+        "the final callback changed an earlier destination"
+    );
+    assert_eq!(fs::read(&entries[0].1).unwrap(), b"foreign owner edit");
+    assert_eq!(fs::read(&entries[1].1).unwrap(), b"candidate B");
+    for record in retained(&root, 2) {
+        let label = if record["destination"] == entries[0].1.to_str().unwrap() {
+            "A"
+        } else {
+            "B"
+        };
+        assert_eq!(
+            fs::read(record["backup"].as_str().unwrap()).unwrap(),
+            format!("approved {label}").as_bytes()
+        );
+    }
+}
+
+#[test]
+fn last_disposal_callback_retains_modified_backup_bytes() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let entries = plans(&root);
+    let mut first: Option<(PathBuf, revayat_scientific::identity::ObjectId)> = None;
+    let mut changed = false;
+    let result = publish_observed(&entries, &[], None, |event, path| {
+        if event == Boundary::BeforeBackupDisposal {
+            if let Some((earlier, identity)) = &first {
+                fs::write(earlier, b"foreign backup edit")?;
+                assert_eq!(path_object_id(earlier)?, *identity);
+                changed = true;
+            } else {
+                first = Some((path.to_owned(), path_object_id(path)?));
+            }
+        }
+        Ok(())
+    });
+    assert!(changed);
+    assert!(result.is_err(), "an in-place backup revision was discarded");
+    assert_eq!(fs::read(&entries[0].1).unwrap(), b"candidate A");
+    assert_eq!(fs::read(&entries[1].1).unwrap(), b"candidate B");
+    let first = first.unwrap().0;
+    for record in retained(&root, 2) {
+        let backup = Path::new(record["backup"].as_str().unwrap());
+        let expected = if backup == first {
+            b"foreign backup edit".as_slice()
+        } else {
+            b"approved B".as_slice()
+        };
+        assert_eq!(fs::read(backup).unwrap(), expected);
+    }
+}
+
+#[test]
+fn failed_publication_retains_a_destination_changed_during_disposal() {
+    for fail_after_first_commit in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let entries = plans(&root);
+        let mut failed = false;
+        let mut changed = false;
+        let error = publish_observed(&entries, &[], None, |event, path| {
+            let failure_index = usize::from(fail_after_first_commit);
+            if event == Boundary::BeforeCommit && path == entries[failure_index].1 {
+                failed = true;
+                bail!("controlled publication failure before cleanup");
+            }
+            if event == Boundary::BeforeBackupDisposal && !changed {
+                fs::write(&entries[1].1, b"foreign owner edit")?;
+                changed = true;
+            }
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(failed && changed);
+        assert_eq!(fs::read(&entries[0].1).unwrap(), b"approved A");
+        assert_eq!(fs::read(&entries[1].1).unwrap(), b"foreign owner edit");
+        let primary = &error
+            .downcast_ref::<RetainedPrimary>()
+            .expect("cleanup must retain the original failure")
+            .0;
+        assert!(
+            primary
+                .to_string()
+                .contains("controlled publication failure")
+        );
+        let records = retained(&root, 2);
+        let second = records
+            .iter()
+            .find(|record| record["destination"] == entries[1].1.to_str().unwrap())
+            .unwrap();
+        assert_eq!(
+            fs::read(second["backup"].as_str().unwrap()).unwrap(),
+            b"approved B"
+        );
+    }
+}
+
+#[test]
+fn disposal_callback_cannot_hide_a_displaced_later_backup() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let entries = plans(&root);
+    let displaced = root.join("displaced-backup");
+    let mut changed = false;
+    let result = publish_observed(&entries, &[], None, |event, _| {
+        if event == Boundary::BeforeBackupDisposal && !changed {
+            let records = retained(&root, 2);
+            let later = records
+                .iter()
+                .find(|record| record["destination"] == entries[1].1.to_str().unwrap())
+                .unwrap();
+            fs::rename(later["backup"].as_str().unwrap(), &displaced)?;
+            changed = true;
+        }
+        Ok(())
+    });
+    assert!(changed);
+    assert!(
+        result.is_err(),
+        "an admitted backup disappeared without being restored"
+    );
+    assert_eq!(fs::read(&entries[0].1).unwrap(), b"candidate A");
+    assert_eq!(fs::read(&entries[1].1).unwrap(), b"candidate B");
+    assert_eq!(fs::read(&displaced).unwrap(), b"approved B");
+    let records = retained(&root, 2);
+    let first = records
+        .iter()
+        .find(|record| record["destination"] == entries[0].1.to_str().unwrap())
+        .unwrap();
+    assert_eq!(
+        fs::read(first["backup"].as_str().unwrap()).unwrap(),
+        b"approved A"
+    );
+}
 #[test]
 fn test_interrupted_rollback_retains_previous_bytes() {
     for cancellation in [Cancellation::Signal, Cancellation::Requested] {
@@ -414,16 +567,14 @@ fn test_publication_cleanup_cancellation_retains_journal_and_owned_lock() {
                     "B"
                 };
                 let backup = Path::new(record["backup"].as_str().unwrap());
-                if boundary == Boundary::BeforeBackupDisposal && skip == 1 && label == "A" {
-                    assert!(!backup.exists(), "earlier disposal already completed");
-                } else {
-                    assert_eq!(
-                        fs::read(backup).unwrap(),
-                        format!("approved {label}").as_bytes()
-                    );
-                }
+                // Every disposal callback must finish before any backup is removed.
+                assert_eq!(
+                    fs::read(backup).unwrap(),
+                    format!("approved {label}").as_bytes()
+                );
             }
             assert_eq!(fs::read(&entries[0].1).unwrap(), b"candidate A");
+            assert_eq!(fs::read(&entries[1].1).unwrap(), b"candidate B");
         }
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();

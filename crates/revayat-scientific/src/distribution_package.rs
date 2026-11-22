@@ -170,7 +170,7 @@ fn verify_archive(path: &Path, payload: &Payload) -> Result<()> {
         archive.len() == payload.files.len(),
         "archive payload entry count changed"
     );
-    let expected: std::collections::BTreeMap<_, _> = payload
+    let mut expected: std::collections::BTreeMap<_, _> = payload
         .files
         .iter()
         .map(|f| {
@@ -191,10 +191,10 @@ fn verify_archive(path: &Path, payload: &Payload) -> Result<()> {
         let mut file = archive.by_index(i)?;
         let name = file.name()?;
         let (row, mode) = expected
-            .get(name.as_ref())
-            .context("unexpected archive payload entry")?;
+            .remove(name.as_ref())
+            .context("unexpected or repeated archive payload entry")?;
         ensure!(
-            file.system() == zip::System::Unix && file.unix_mode() == Some(*mode),
+            file.system() == zip::System::Unix && file.unix_mode() == Some(mode),
             "archive payload type or permissions differ from the collected member"
         );
         ensure!(
@@ -211,6 +211,7 @@ fn verify_archive(path: &Path, payload: &Payload) -> Result<()> {
             "archive payload bytes differ from source"
         );
     }
+    ensure!(expected.is_empty(), "archive payload member is missing");
     Ok(())
 }
 pub fn cli_package(args: &[String]) -> Result<i32> {
@@ -248,6 +249,9 @@ mod tests {
             b"---\nname: revayat-scientific\n---\n",
         )?;
         fs::write(source.join("LICENSE"), b"GPL-3.0-or-later")?;
+        fs::create_dir(source.join("references"))?;
+        fs::write(source.join("references/café.md"), b"sample reference")?;
+        fs::write(source.join("references/miss.md"), b"sample reference")?;
         let binary = root.join("native-binary");
         fs::write(&binary, b"synthetic native executable")?;
         fs::write(
@@ -287,6 +291,60 @@ mod tests {
             let (_temp, path, payload) = fixture(target)?;
             verify_archive(&path, &payload)?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_archive_rejects_decoded_aliases_and_preserves_previous_delivery() -> Result<()> {
+        let mut accepted = Vec::new();
+        for target in crate::release_bundle::REQUIRED_TARGETS {
+            let (_temp, path, payload) = fixture(target)?;
+            let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
+            let omitted = archive.by_name(&format!("{NAME}/references/miss.md"))?;
+            let local = omitted.header_start();
+            let central = omitted.central_header_start();
+            let mut alias = format!("{NAME}/references/caf").into_bytes();
+            alias.extend_from_slice(b"\x82.md");
+            assert_eq!(alias.len(), omitted.name_raw().len());
+            drop(omitted);
+            drop(archive);
+            let mut file = fs::OpenOptions::new().write(true).open(&path)?;
+            // The omitted name and the CP437 alias have equal raw lengths. Patch both
+            // headers so the archive stays structurally valid with distinct raw names.
+            for offset in [local + 30, central + 46] {
+                file.seek(SeekFrom::Start(offset))?;
+                file.write_all(&alias)?;
+            }
+            drop(file);
+            let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
+            archive.validate_header_consistency()?;
+            assert_eq!(archive.len(), payload.files.len());
+            let mut names = Vec::new();
+            for index in 0..archive.len() {
+                let member = archive.by_index(index)?;
+                if member.name()? == format!("{NAME}/references/café.md") {
+                    names.push(member.name_raw().to_owned());
+                }
+            }
+            assert_eq!(names.len(), 2);
+            assert_ne!(names[0], names[1]);
+            assert!(
+                archive
+                    .by_name(&format!("{NAME}/references/miss.md"))
+                    .is_err()
+            );
+            drop(archive);
+            let output = path.with_file_name("approved.skill");
+            fs::write(&output, b"approved previous archive")?;
+            let result = publish_archive(&path, &output, &[], &payload, |_, _| Ok(()));
+            if result.is_ok() || fs::read(&output)? != b"approved previous archive" {
+                accepted.push(target);
+            }
+        }
+        assert!(
+            accepted.is_empty(),
+            "decoded aliases replaced a missing member and the previous delivery: {accepted:?}"
+        );
         Ok(())
     }
 
