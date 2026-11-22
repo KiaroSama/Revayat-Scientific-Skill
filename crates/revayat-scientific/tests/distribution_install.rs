@@ -4,6 +4,8 @@ use std::{fs, path::Path, process::Command};
 #[path = "support/distribution_fixture.rs"]
 mod support;
 use support::*;
+#[path = "support/distribution_relative_roots.rs"]
+mod relative_roots;
 
 fn assert_payload(f: &Fixture, target: &Path) {
     assert_collected_payload(&f.payload(), target);
@@ -174,6 +176,41 @@ fn test_case_colliding_destination_is_refused() {
 }
 #[test]
 fn test_source_overlap_is_refused_without_changes() {
+    let test = "test_source_overlap_is_refused_without_changes";
+    if relative_roots::is_worker(test) {
+        let source = Path::new("skills/revayat-scientific");
+        let payload = Payload::collect(source, None).unwrap();
+        let old = d::snapshot(source).unwrap();
+        for destination in [
+            source.to_owned(),
+            source.join("child"),
+            source.parent().unwrap().to_owned(),
+        ] {
+            let result = d::install_targets(&[destination], true, source, Path::new("."), &payload);
+            assert!(
+                result.is_err(),
+                "relative repository root replaced its own source"
+            );
+            assert!(result.unwrap_err().to_string().contains("overlaps source"));
+            assert_eq!(d::snapshot(source).unwrap(), old);
+        }
+        let destination = Path::new("safe-install");
+        d::install_targets(
+            &[destination.to_owned()],
+            false,
+            source,
+            Path::new("."),
+            &payload,
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(destination.join("references/kept.md")).unwrap(),
+            b"retained reference"
+        );
+        assert!(!destination.join("local-note.txt").exists());
+        assert_eq!(d::snapshot(source).unwrap(), old);
+        return;
+    }
     let f = Fixture::new();
     let old = d::snapshot(&f.source).unwrap();
     for path in [
@@ -181,9 +218,10 @@ fn test_source_overlap_is_refused_without_changes() {
         f.source.join("child"),
         f.source.parent().unwrap().to_owned(),
     ] {
-        assert!(f.install(&[path], true).is_err());
+        assert!(f.install(std::slice::from_ref(&path), true).is_err());
     }
     assert_eq!(d::snapshot(&f.source).unwrap(), old);
+    relative_roots::run(test);
 }
 #[test]
 fn test_late_existing_target_preflight_does_not_install_first() {
@@ -303,6 +341,36 @@ fn test_payload_limit_refuses_before_any_target_mutation() {
     )
     .unwrap();
     assert!(Payload::collect(&f.source, None).is_err());
+    assert_eq!(d::snapshot(&f.first).unwrap(), old);
+    fs::remove_file(f.source.join("assets/large.bin")).unwrap();
+
+    let binary = f.root.join("native-binary");
+    fs::write(&binary, b"native payload").unwrap();
+    fs::write(
+        f.root.join(if cfg!(windows) {
+            "revayat-quota-worker.exe"
+        } else {
+            "revayat-process-owner"
+        }),
+        b"required companion",
+    )
+    .unwrap();
+    for index in 0..9995 {
+        fs::write(
+            f.source
+                .join("references")
+                .join(format!("entry-{index}.md")),
+            b"bounded reference",
+        )
+        .unwrap();
+    }
+    let exact = Payload::collect(&f.source, Some(&binary)).unwrap();
+    assert_eq!(exact.files.len(), 10_000);
+    fs::write(f.source.join("references/over-limit.md"), b"one more").unwrap();
+    assert!(
+        Payload::collect(&f.source, Some(&binary)).is_err(),
+        "native companions must count toward the complete payload file limit"
+    );
     assert_eq!(d::snapshot(&f.first).unwrap(), old);
 }
 #[test]

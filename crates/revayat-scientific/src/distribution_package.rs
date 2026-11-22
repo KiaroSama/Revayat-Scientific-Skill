@@ -111,52 +111,107 @@ fn package_payload(
     stage.as_file().sync_all()?;
     observe(PackageBoundary::Staged, stage.path())?;
     payload.verify()?;
-    {
-        let mut archive = zip::ZipArchive::new(File::open(stage.path())?)?;
-        ensure!(
-            archive.len() == payload.files.len(),
-            "archive payload entry count changed"
-        );
-        let expected: std::collections::BTreeMap<_, _> = payload
-            .files
-            .iter()
-            .map(|f| {
-                (
-                    format!("{NAME}/{}", f.relative.to_string_lossy().replace('\\', "/")),
-                    &f.fingerprint,
-                )
-            })
-            .collect();
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i)?;
-            let name = file.name()?;
-            let row = expected
-                .get(name.as_ref())
-                .context("unexpected archive payload entry")?;
-            ensure!(
-                file.size() == row.size,
-                "archive payload size differs from source"
-            );
-            let mut bytes = Vec::new();
-            file.by_ref()
-                .take(MAX_PAYLOAD_BYTES + 1)
-                .read_to_end(&mut bytes)?;
-            use sha2::{Digest, Sha256};
-            ensure!(
-                bytes.len() as u64 == row.size
-                    && format!("{:x}", Sha256::digest(&bytes)) == row.sha256,
-                "archive payload bytes differ from source"
-            );
-        }
-    }
-    observe(PackageBoundary::BeforePublish, &output)?;
-    protected_location(&output, repository, source, false)?;
-    crate::publication::publish_observed(
-        &[(stage.path().to_owned(), output)],
+    publish_archive(
+        stage.path(),
+        &output,
         &protected,
+        &payload,
+        |boundary, path| {
+            observe(boundary, path)?;
+            if matches!(
+                boundary,
+                PackageBoundary::BeforePublish
+                    | PackageBoundary::Publication(crate::publication::Boundary::BeforeReplace)
+            ) {
+                protected_location(path, repository, source, false)?;
+            }
+            Ok(())
+        },
+    )
+}
+fn publish_archive(
+    stage: &Path,
+    output: &Path,
+    protected: &[PathBuf],
+    payload: &Payload,
+    mut observe: impl FnMut(PackageBoundary, &Path) -> Result<()>,
+) -> Result<()> {
+    let verified = crate::identity::file_identity(stage, Some(MAX_PAYLOAD_BYTES))?;
+    verify_archive(stage, payload)?;
+    ensure!(
+        crate::identity::file_identity(stage, Some(MAX_PAYLOAD_BYTES))? == verified,
+        "archive changed during payload verification"
+    );
+    observe(PackageBoundary::BeforePublish, output)?;
+    crate::publication::publish_observed(
+        &[(stage.to_owned(), output.to_owned())],
+        protected,
         Some(MAX_PAYLOAD_BYTES),
-        |boundary, path| observe(PackageBoundary::Publication(boundary), path),
+        |boundary, path| {
+            observe(PackageBoundary::Publication(boundary), path)?;
+            if boundary == crate::publication::Boundary::BeforeReplace {
+                ensure!(
+                    crate::identity::file_identity(stage, Some(MAX_PAYLOAD_BYTES))?
+                        .same_bytes(&verified),
+                    "verified archive changed before publication"
+                );
+            }
+            Ok(())
+        },
     )?;
+    Ok(())
+}
+fn verify_archive(path: &Path, payload: &Payload) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(File::open(path)?)?;
+    archive
+        .validate_header_consistency()
+        .context("archive payload headers are inconsistent")?;
+    ensure!(
+        archive.len() == payload.files.len(),
+        "archive payload entry count changed"
+    );
+    let mut expected: std::collections::BTreeMap<_, _> = payload
+        .files
+        .iter()
+        .map(|f| {
+            (
+                format!("{NAME}/{}", f.relative.to_string_lossy().replace('\\', "/")),
+                (
+                    &f.fingerprint,
+                    if f.relative.starts_with("bin") {
+                        0o100755
+                    } else {
+                        0o100644
+                    },
+                ),
+            )
+        })
+        .collect();
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let name = file.name()?;
+        let (row, mode) = expected
+            .remove(name.as_ref())
+            .context("unexpected or repeated archive payload entry")?;
+        ensure!(
+            file.system() == zip::System::Unix && file.unix_mode() == Some(mode),
+            "archive payload type or permissions differ from the collected member"
+        );
+        ensure!(
+            file.size() == row.size,
+            "archive payload size differs from source"
+        );
+        let mut bytes = Vec::new();
+        file.by_ref()
+            .take(MAX_PAYLOAD_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        use sha2::{Digest, Sha256};
+        ensure!(
+            bytes.len() as u64 == row.size && format!("{:x}", Sha256::digest(&bytes)) == row.sha256,
+            "archive payload bytes differ from source"
+        );
+    }
+    ensure!(expected.is_empty(), "archive payload member is missing");
     Ok(())
 }
 pub fn cli_package(args: &[String]) -> Result<i32> {
@@ -177,4 +232,238 @@ pub fn cli_package(args: &[String]) -> Result<i32> {
     )?;
     println!("Packaged {}", opts.output.display());
     Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Seek, SeekFrom};
+
+    fn fixture(target: &str) -> Result<(tempfile::TempDir, PathBuf, Payload)> {
+        let temp = tempfile::tempdir()?;
+        let root = temp.path().canonicalize()?;
+        let source = root.join("source");
+        fs::create_dir(&source)?;
+        fs::write(
+            source.join("SKILL.md"),
+            b"---\nname: revayat-scientific\n---\n",
+        )?;
+        fs::write(source.join("LICENSE"), b"GPL-3.0-or-later")?;
+        fs::create_dir(source.join("references"))?;
+        fs::write(source.join("references/café.md"), b"sample reference")?;
+        fs::write(source.join("references/miss.md"), b"sample reference")?;
+        let binary = root.join("native-binary");
+        fs::write(&binary, b"synthetic native executable")?;
+        fs::write(
+            root.join(if target.contains("windows") {
+                "revayat-quota-worker.exe"
+            } else {
+                "revayat-process-owner"
+            }),
+            b"synthetic native companion",
+        )?;
+        let payload = Payload::collect_for_target(&source, &binary, target)?;
+        let path = root.join("bundle.skill");
+        let mut archive = zip::ZipWriter::new(File::create(&path)?);
+        for row in &payload.files {
+            archive.start_file(
+                format!(
+                    "{NAME}/{}",
+                    row.relative.to_string_lossy().replace('\\', "/")
+                ),
+                zip::write::SimpleFileOptions::default()
+                    .system(zip::System::Unix)
+                    .unix_permissions(if row.relative.starts_with("bin") {
+                        0o755
+                    } else {
+                        0o644
+                    }),
+            )?;
+            archive.write_all(&fs::read(&row.source)?)?;
+        }
+        archive.finish()?;
+        Ok((temp, path, payload))
+    }
+
+    #[test]
+    fn staged_archive_accepts_complete_native_payloads_for_every_target() -> Result<()> {
+        for target in crate::release_bundle::REQUIRED_TARGETS {
+            let (_temp, path, payload) = fixture(target)?;
+            verify_archive(&path, &payload)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_archive_rejects_decoded_aliases_and_preserves_previous_delivery() -> Result<()> {
+        let mut accepted = Vec::new();
+        for target in crate::release_bundle::REQUIRED_TARGETS {
+            let (_temp, path, payload) = fixture(target)?;
+            let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
+            let omitted = archive.by_name(&format!("{NAME}/references/miss.md"))?;
+            let local = omitted.header_start();
+            let central = omitted.central_header_start();
+            let mut alias = format!("{NAME}/references/caf").into_bytes();
+            alias.extend_from_slice(b"\x82.md");
+            assert_eq!(alias.len(), omitted.name_raw().len());
+            drop(omitted);
+            drop(archive);
+            let mut file = fs::OpenOptions::new().write(true).open(&path)?;
+            // The omitted name and the CP437 alias have equal raw lengths. Patch both
+            // headers so the archive stays structurally valid with distinct raw names.
+            for offset in [local + 30, central + 46] {
+                file.seek(SeekFrom::Start(offset))?;
+                file.write_all(&alias)?;
+            }
+            drop(file);
+            let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
+            archive.validate_header_consistency()?;
+            assert_eq!(archive.len(), payload.files.len());
+            let mut names = Vec::new();
+            for index in 0..archive.len() {
+                let member = archive.by_index(index)?;
+                if member.name()? == format!("{NAME}/references/café.md") {
+                    names.push(member.name_raw().to_owned());
+                }
+            }
+            assert_eq!(names.len(), 2);
+            assert_ne!(names[0], names[1]);
+            assert!(
+                archive
+                    .by_name(&format!("{NAME}/references/miss.md"))
+                    .is_err()
+            );
+            drop(archive);
+            let output = path.with_file_name("approved.skill");
+            fs::write(&output, b"approved previous archive")?;
+            let result = publish_archive(&path, &output, &[], &payload, |_, _| Ok(()));
+            if result.is_ok() || fs::read(&output)? != b"approved previous archive" {
+                accepted.push(target);
+            }
+        }
+        assert!(
+            accepted.is_empty(),
+            "decoded aliases replaced a missing member and the previous delivery: {accepted:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn late_verified_archive_mutations_preserve_the_previous_delivery() -> Result<()> {
+        let mut accepted = Vec::new();
+        for mutation in [
+            PackageBoundary::BeforePublish,
+            PackageBoundary::Publication(crate::publication::Boundary::BeforeReplace),
+        ] {
+            let (_temp, path, payload) = fixture("x86_64-unknown-linux-gnu")?;
+            let output = path.with_file_name("approved.skill");
+            fs::write(&output, b"approved previous archive")?;
+            let mut changed = false;
+            let result = publish_archive(&path, &output, &[], &payload, |at, _| {
+                if at == mutation {
+                    fs::write(&path, b"different unvalidated bytes")?;
+                    changed = true;
+                }
+                Ok(())
+            });
+            assert!(changed, "the actual publication mutation must execute");
+            if result.is_ok() || fs::read(&output)? != b"approved previous archive" {
+                accepted.push(mutation);
+            }
+        }
+        assert!(
+            accepted.is_empty(),
+            "verified archive mutations replaced the previous delivery: {accepted:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn staged_archive_rejects_inconsistent_local_filenames() -> Result<()> {
+        let (_temp, path, payload) = fixture("x86_64-unknown-linux-gnu")?;
+        let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
+        let offset = archive.by_name(&format!("{NAME}/SKILL.md"))?.header_start();
+        drop(archive);
+        let mut file = fs::OpenOptions::new().write(true).open(&path)?;
+        file.seek(SeekFrom::Start(offset + 30 + NAME.len() as u64 + 1))?;
+        file.write_all(b"X")?;
+        drop(file);
+        assert!(
+            verify_archive(&path, &payload).is_err(),
+            "local-header filename differs from the collected member"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn staged_archive_rejects_changed_member_types_and_permissions() -> Result<()> {
+        let mut accepted = Vec::new();
+        for (label, name, mode) in [
+            ("symlink", "SKILL.md", 0o120644_u32),
+            ("data-permissions", "SKILL.md", 0o100777_u32),
+            (
+                "nonexecutable-binary",
+                "bin/revayat-scientific",
+                0o100644_u32,
+            ),
+        ] {
+            let (_temp, path, payload) = fixture("x86_64-unknown-linux-gnu")?;
+            let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
+            let offset = archive
+                .by_name(&format!("{NAME}/{name}"))?
+                .central_header_start();
+            drop(archive);
+            let mut file = fs::OpenOptions::new().write(true).open(&path)?;
+            file.seek(SeekFrom::Start(offset + 38))?;
+            file.write_all(&(mode << 16).to_le_bytes())?;
+            drop(file);
+            if verify_archive(&path, &payload).is_ok() {
+                accepted.push(label);
+            }
+        }
+        assert!(
+            accepted.is_empty(),
+            "invalid archive member metadata accepted: {accepted:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn staged_archive_rejects_duplicate_central_directory_entries() -> Result<()> {
+        let (_temp, path, payload) = fixture("x86_64-unknown-linux-gnu")?;
+        let mut archive = zip::ZipArchive::new(File::open(&path)?)?;
+        let offset = archive
+            .by_name(&format!("{NAME}/SKILL.md"))?
+            .central_header_start() as usize;
+        drop(archive);
+        let mut bytes = fs::read(&path)?;
+        let end = bytes
+            .windows(4)
+            .rposition(|value| value == b"PK\x05\x06")
+            .unwrap();
+        let count = u16::from_le_bytes(bytes[end + 10..end + 12].try_into()?);
+        let size = u32::from_le_bytes(bytes[end + 12..end + 16].try_into()?);
+        let length = 46
+            + [28, 30, 32]
+                .into_iter()
+                .map(|field| {
+                    u16::from_le_bytes(
+                        bytes[offset + field..offset + field + 2]
+                            .try_into()
+                            .unwrap(),
+                    ) as usize
+                })
+                .sum::<usize>();
+        let duplicate = bytes[offset..offset + length].to_vec();
+        bytes[end + 8..end + 10].copy_from_slice(&(count + 1).to_le_bytes());
+        bytes[end + 10..end + 12].copy_from_slice(&(count + 1).to_le_bytes());
+        bytes[end + 12..end + 16].copy_from_slice(&(size + length as u32).to_le_bytes());
+        bytes.splice(end..end, duplicate);
+        fs::write(&path, bytes)?;
+        assert!(
+            verify_archive(&path, &payload).is_err(),
+            "duplicate central directory member was accepted"
+        );
+        Ok(())
+    }
 }

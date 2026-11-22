@@ -142,7 +142,9 @@ struct Entry {
     directory: PathBuf,
     directory_identity: ObjectId,
     published: Option<Fingerprint>,
+    settled: Option<Fingerprint>,
     backup_identity: Option<ObjectId>,
+    backup_fingerprint: Option<Fingerprint>,
 }
 
 fn owned(path: &Path, identity: ObjectId) -> Result<()> {
@@ -158,6 +160,7 @@ fn copied(
     destination: &Path,
     max_bytes: Option<u64>,
     created: &mut Option<ObjectId>,
+    admitted: &mut Option<Fingerprint>,
     boundary: &mut impl FnMut(Boundary, &Path) -> Result<()>,
 ) -> Result<()> {
     let original = file_identity(source, max_bytes)?;
@@ -182,6 +185,13 @@ fn copied(
     output.sync_all()?;
     drop(input);
     drop(output);
+    owned(destination, id)?;
+    let backup = file_identity(destination, max_bytes)?;
+    ensure!(
+        backup.same_bytes(&original),
+        "publication copied backup differs"
+    );
+    *admitted = Some(backup.clone());
     boundary(Boundary::BackupPrepared, destination)?;
     owned(destination, id)?;
     ensure!(
@@ -189,8 +199,8 @@ fn copied(
         "publication source changed during copying"
     );
     ensure!(
-        file_identity(destination, max_bytes)?.same_bytes(&original),
-        "publication copied backup differs"
+        file_identity(destination, max_bytes)? == backup,
+        "publication copied backup changed after preparation"
     );
     Ok(())
 }
@@ -380,7 +390,9 @@ pub fn publish_with_identity(
                 directory,
                 directory_identity,
                 published: Some(published),
+                settled: previous.clone(),
                 backup_identity: None,
+                backup_fingerprint: None,
             });
             let plan = plans.last_mut().unwrap();
             let journal = plan.directory.join("recovery.json");
@@ -399,6 +411,7 @@ pub fn publish_with_identity(
                     &backup,
                     max_bytes,
                     &mut plan.backup_identity,
+                    &mut plan.backup_fingerprint,
                     &mut boundary,
                 )?;
                 ensure!(
@@ -408,7 +421,7 @@ pub fn publish_with_identity(
             }
             boundary(Boundary::BackupReady, destination)?;
         }
-        for (index, plan) in plans.iter().enumerate() {
+        for (index, plan) in plans.iter_mut().enumerate() {
             let recovery = &plan.recovery;
             boundary(Boundary::BeforeCommit, &recovery.destination)?;
             validate_destination(&recovery.destination, protected)?;
@@ -422,9 +435,23 @@ pub fn publish_with_identity(
             );
             committed.push(index);
             boundary(Boundary::BeforeReplace, &recovery.destination)?;
+            validate_destination(&recovery.destination, protected)?;
+            ensure!(
+                !is_link(&recovery.stage)? && fs::metadata(&recovery.stage)?.is_file(),
+                "staged output must be a regular non-linked file"
+            );
+            ensure!(
+                fingerprint(&recovery.destination, max_bytes)? == recovery.previous,
+                "destination changed before publication"
+            );
+            ensure!(
+                Some(file_identity(&recovery.stage, max_bytes)?) == plan.published,
+                "stage changed before publication"
+            );
             // rename replaces files atomically on supported Unix and Windows.
             // On Windows std::fs::rename uses MoveFileExW(REPLACE_EXISTING).
             fs::rename(&recovery.stage, &recovery.destination)?;
+            plan.settled = plan.published.clone();
             boundary(Boundary::AfterCommit, &recovery.destination)?;
         }
         Ok(())
@@ -433,7 +460,7 @@ pub fn publish_with_identity(
     let mut secondary = Vec::new();
     if operation.is_err() {
         for &index in committed.iter().rev() {
-            let plan = &plans[index];
+            let plan = &mut plans[index];
             let recovery = &plan.recovery;
             let mut retained = None;
             let restored = (|| -> Result<()> {
@@ -441,6 +468,7 @@ pub fn publish_with_identity(
                 validate_destination(&recovery.destination, protected)?;
                 let current = fingerprint(&recovery.destination, max_bytes)?;
                 if current == recovery.previous {
+                    plan.settled = current;
                     return Ok(());
                 }
                 ensure!(
@@ -460,6 +488,9 @@ pub fn publish_with_identity(
                     );
                     retained = Some(backup.clone());
                     fs::rename(&recovery.backup, &recovery.destination)?;
+                    plan.backup_identity = None;
+                    plan.backup_fingerprint = None;
+                    plan.settled = Some(backup.clone());
                     boundary(Boundary::AfterRollback, &recovery.destination)?;
                     ensure!(
                         file_identity(&recovery.destination, max_bytes)? == backup,
@@ -467,6 +498,7 @@ pub fn publish_with_identity(
                     );
                 } else {
                     fs::remove_file(&recovery.destination)?;
+                    plan.settled = None;
                     boundary(Boundary::AfterRollback, &recovery.destination)?;
                     ensure!(
                         !recovery.destination.try_exists()?,
@@ -501,7 +533,11 @@ pub fn publish_with_identity(
                     })
                 })()
                 .unwrap_or(false);
-                if !reconciled {
+                if reconciled {
+                    plan.backup_identity = None;
+                    plan.backup_fingerprint = None;
+                    plan.settled = retained;
+                } else {
                     failures.push(plan.directory.join("recovery.json"));
                 }
                 secondary.push(restore_error);
@@ -519,9 +555,40 @@ pub fn publish_with_identity(
             .context("publication failed; rollback completed with secondary diagnostics"))
     };
     let cleanup = (|| -> Result<()> {
+        // Admit owned partial copies before cleanup observers can change them.
+        // Completed copies retain their earlier pre-observer revision instead.
+        for plan in &mut plans {
+            if let Some(identity) = plan.backup_identity
+                && plan.backup_fingerprint.is_none()
+            {
+                owned(&plan.directory, plan.directory_identity)?;
+                owned(&plan.recovery.backup, identity)?;
+                plan.backup_fingerprint = Some(file_identity(&plan.recovery.backup, max_bytes)?);
+            }
+        }
         for plan in &plans {
             boundary(Boundary::BeforeCleanup, &plan.recovery.destination)?;
             owned(&plan.directory, plan.directory_identity)?;
+        }
+        // Complete every disposal observer before deleting any previous bytes.
+        // Later observers may change an earlier destination or recovery object.
+        for plan in &plans {
+            if let Some(identity) = plan.backup_identity {
+                owned(&plan.recovery.backup, identity)?;
+                boundary(Boundary::BeforeBackupDisposal, &plan.recovery.backup)?;
+            }
+        }
+        for plan in &plans {
+            owned(&plan.directory, plan.directory_identity)?;
+        }
+        // Validate both successful publication and the exact post-rollback state.
+        // A concurrent foreign revision is retained with its recovery records.
+        for plan in &plans {
+            validate_destination(&plan.recovery.destination, protected)?;
+            ensure!(
+                fingerprint(&plan.recovery.destination, max_bytes)? == plan.settled,
+                "settled destination changed before recovery disposal"
+            );
         }
         for lock in &locks {
             owned(&lock.path, lock.identity)?;
@@ -530,24 +597,27 @@ pub fn publish_with_identity(
         // A foreign later backup must not cause earlier owned backups to vanish.
         for plan in &plans {
             let path = &plan.recovery.backup;
-            if path.try_exists()? {
-                owned(
-                    path,
-                    plan.backup_identity
-                        .context("backup ownership was not recorded")?,
-                )?;
+            if let Some(identity) = plan.backup_identity {
+                owned(path, identity)?;
+                let expected = plan
+                    .backup_fingerprint
+                    .as_ref()
+                    .context("backup revision was not admitted")?;
+                ensure!(
+                    file_identity(path, max_bytes)?.eq(expected),
+                    "saved backup changed before recovery disposal"
+                );
+            } else {
+                ensure!(
+                    !is_link(path)? && !path.try_exists()?,
+                    "unexpected backup appeared before recovery disposal"
+                );
             }
         }
         for plan in &plans {
             let path = &plan.recovery.backup;
-            if path.try_exists()? {
-                owned(
-                    path,
-                    plan.backup_identity
-                        .context("backup ownership was not recorded")?,
-                )?;
-                boundary(Boundary::BeforeBackupDisposal, path)?;
-                owned(path, plan.backup_identity.unwrap())?;
+            if let Some(identity) = plan.backup_identity {
+                owned(path, identity)?;
                 fs::remove_file(path)?;
             }
         }

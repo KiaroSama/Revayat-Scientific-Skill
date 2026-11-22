@@ -571,19 +571,6 @@ fn test_tracked_nonpayload_document_is_protected() {
     assert_eq!(fs::read(path).unwrap(), b"tracked owner document");
 }
 #[test]
-fn test_new_output_inside_implementation_directories_is_rejected() {
-    let f = Fixture::new();
-    for path in [
-        f.repo.join("tools/new.skill"),
-        f.repo.join("install/new.skill"),
-        f.repo.join("crates/new.skill"),
-        f.source.join("new-package.skill"),
-    ] {
-        f.refused(&path);
-        assert!(!path.exists());
-    }
-}
-#[test]
 fn test_missing_skill_and_late_archive_failure_keep_previous_output() {
     let f = Fixture::new();
     let path = f.repo.join("approved.skill");

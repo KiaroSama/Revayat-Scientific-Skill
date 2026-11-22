@@ -176,9 +176,65 @@ fn test_install_launchers_replacement_and_logs() -> Result<()> {
     assert_document_commands(&executable, &f.root)?;
     Ok(())
 }
+fn payload_exclusion_fixture() -> Result<(Fixture, [&'static str; 14])> {
+    let f = Fixture::new();
+    let excluded = [
+        "references/lower/secrets.md",
+        "references/upper/Secrets.MD",
+        "references/lower/logs/private.txt",
+        "references/upper/LOGS/private.txt",
+        "references/lower/fonts/private.ttf",
+        "references/upper/FONTS/private.ttf",
+        "references/lower/AGENTS.md",
+        "references/upper/agents.MD",
+        "assets/lower/worker.py",
+        "assets/upper/worker.PY",
+        "assets/lower/worker.ps1",
+        "assets/upper/worker.PS1",
+        "assets/lower/worker.log",
+        "assets/upper/worker.LOG",
+    ];
+    for relative in excluded {
+        let path = f.source.join(relative);
+        fs::create_dir_all(path.parent().unwrap())?;
+        fs::write(path, b"excluded local payload")?;
+    }
+    fs::write(f.source.join("references/KEPT.MD"), b"eligible reference")?;
+    let collected = d::Payload::collect(&f.source, None)?;
+    for relative in excluded {
+        assert!(
+            !collected
+                .files
+                .iter()
+                .any(|row| row.relative == Path::new(relative)),
+            "excluded local payload was collected: {relative}"
+        );
+    }
+    for relative in [
+        "SKILL.md",
+        "LICENSE",
+        "NOTICE.md",
+        "references/KEPT.MD",
+        "references/contract.md",
+    ] {
+        assert!(
+            collected
+                .files
+                .iter()
+                .any(|row| row.relative == Path::new(relative)),
+            "eligible payload was omitted: {relative}"
+        );
+    }
+    Ok((f, excluded))
+}
+#[test]
+fn payload_collection_excludes_case_variants_before_publication() -> Result<()> {
+    payload_exclusion_fixture()?;
+    Ok(())
+}
 #[test]
 fn test_archive_is_self_contained() -> Result<()> {
-    let f = Fixture::new();
+    let (f, excluded) = payload_exclusion_fixture()?;
     let binary = f.root.join("native-binary");
     fs::write(&binary, b"synthetic executable payload")?;
     let target = f.repo.join("bundle.skill");
@@ -207,6 +263,17 @@ fn test_archive_is_self_contained() -> Result<()> {
     }
     d::package(&f.source, &f.repo, &target, Some(&binary))?;
     let mut archive = zip::ZipArchive::new(fs::File::open(target)?)?;
+    for relative in excluded {
+        assert!(
+            archive.by_name(&format!("{NAME}/{relative}")).is_err(),
+            "excluded payload was published: {relative}"
+        );
+    }
+    let mut kept = Vec::new();
+    archive
+        .by_name(&format!("{NAME}/references/KEPT.MD"))?
+        .read_to_end(&mut kept)?;
+    assert_eq!(kept, b"eligible reference");
     for name in ["SKILL.md", "LICENSE", "NOTICE.md", "references/contract.md"] {
         assert_eq!(archive.by_name(&format!("{NAME}/{name}"))?.unix_mode().unwrap() & 0o777, 0o644);
     }
@@ -284,12 +351,35 @@ fn archive_corruption_is_rejected_before_previous_delivery_changes() {
     let f = Fixture::new();
     let target = f.repo.join("approved.skill");
     fs::write(&target, "approved").unwrap();
+    let mut damaged = false;
     assert!(package_observed(&f.source, &f.repo, &target, None, |at, path| {
         if at == B::Staged {
             let mut file = fs::OpenOptions::new().write(true).open(path)?;
             file.write_all(b"damaged archive")?;
+            damaged = true;
         }
         Ok(())
     }).is_err());
-    assert_eq!(fs::read(target).unwrap(), b"approved");
+    assert!(damaged, "the actual archive corruption boundary must execute");
+    assert_eq!(fs::read(&target).unwrap(), b"approved");
+    let mut changed = false;
+    let inconsistent = package_observed(&f.source, &f.repo, &target, None, |at, path| {
+        if at == B::Staged {
+            use std::io::{Seek, SeekFrom};
+            let mut archive = zip::ZipArchive::new(fs::File::open(path)?)?;
+            let offset = archive.by_name(&format!("{NAME}/SKILL.md"))?.header_start();
+            drop(archive);
+            let mut file = fs::OpenOptions::new().write(true).open(path)?;
+            file.seek(SeekFrom::Start(offset + 30 + NAME.len() as u64 + 1))?;
+            file.write_all(b"X")?;
+            changed = true;
+        }
+        Ok(())
+    });
+    assert!(changed, "the actual archive header mutation must execute");
+    assert!(
+        inconsistent.is_err(),
+        "a mismatched local archive filename was published"
+    );
+    assert_eq!(fs::read(&target).unwrap(), b"approved");
 }

@@ -28,6 +28,9 @@ pub mod owner;
 mod unix;
 
 pub const MAX_DIAGNOSTICS: usize = 32 * 1024 * 1024;
+#[path = "runtime_cli.rs"]
+mod cli;
+pub use cli::run_check as cli_run_check;
 #[path = "runtime_completed.rs"]
 mod completed;
 pub use completed::{retained_command_output, with_command_cleanup};
@@ -40,7 +43,10 @@ pub struct CommandSpec {
     pub env: BTreeMap<OsString, OsString>,
     /// Remove inherited variables in this child only, before explicit overrides.
     pub env_remove: Vec<OsString>,
+    /// Unix ownership encodes whole milliseconds in 1..=86_400_000.
+    /// Windows retains the native Duration precision and range.
     pub timeout: Duration,
+    /// Unix ownership requires positive whole milliseconds representable as u64.
     pub idle_timeout: Option<Duration>,
     pub max_output: usize,
     #[cfg(windows)]
@@ -662,45 +668,4 @@ pub fn run_supervised(spec: &CommandSpec) -> Result<CommandOutput> {
         let result = run(&owned);
         with_cleanup(result, scope.finish())
     }
-}
-
-pub fn cli_run_check(args: &[String]) -> Result<i32> {
-    let mut timeout = 120.0;
-    let mut idle = None;
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--" => {
-                index += 1;
-                break;
-            }
-            "--timeout" => {
-                index += 1;
-                timeout = args.get(index).context("timeout missing")?.parse::<f64>()?;
-                index += 1;
-            }
-            "--idle" | "--idle-timeout" => {
-                index += 1;
-                idle = Some(
-                    args.get(index)
-                        .context("idle timeout missing")?
-                        .parse::<f64>()?,
-                );
-                index += 1;
-            }
-            _ => break,
-        }
-    }
-    ensure!(
-        timeout.is_finite() && timeout > 0.0 && idle.is_none_or(|d| d.is_finite() && d > 0.0),
-        "timeouts must be positive finite seconds"
-    );
-    let mut spec = CommandSpec::new(args.get(index).context("run-check requires command")?);
-    spec.args = args[index + 1..].iter().map(OsString::from).collect();
-    spec.timeout = Duration::from_secs_f64(timeout);
-    spec.idle_timeout = idle.map(Duration::from_secs_f64);
-    let output = run_supervised(&spec)?;
-    std::io::stdout().write_all(output.stdout_text().as_bytes())?;
-    std::io::stderr().write_all(output.stderr_text().as_bytes())?;
-    Ok(output.code)
 }

@@ -24,12 +24,16 @@ const TOKEN: &str = "REVAYAT_RUNTIME_ACCOUNTING_TOKEN";
 const PARENT: &str = "REVAYAT_RUNTIME_PARENT";
 // JSON byte arrays can use four bytes per binary byte; input+output are bounded separately.
 const LIMIT: usize = 140 * 1024 * 1024;
+pub(super) const MAX_TIMEOUT_MILLIS: u64 = 24 * 60 * 60 * 1000;
 #[path = "runtime_owner_client.rs"]
 mod client;
+#[path = "runtime_owner_diagnostics.rs"]
+mod diagnostics;
 #[path = "runtime_owner_transport.rs"]
 mod transport;
 pub use client::Interactive;
 pub use client::run;
+use diagnostics::{AccountingFailure, CleanupDiagnostic};
 const CLEANUP_LIMIT: Duration = Duration::from_secs(30);
 thread_local! { static FINALIZING_CONTAINERS: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) }; }
 
@@ -70,6 +74,7 @@ fn finish_containers(
 pub struct Accounting {
     nodes: BTreeMap<String, (Option<String>, bool, bool, Option<Instant>)>,
     failed: bool,
+    failure: Option<AccountingFailure>,
 }
 impl Accounting {
     pub fn new() -> Self {
@@ -90,7 +95,7 @@ impl Accounting {
                     .nodes
                     .get(id)
                     .context("ownership parent is not active")?;
-                ensure!(!node.1, "ownership ancestor is already finalizing");
+                ensure!(!node.1, AccountingFailure::RegistrationAfterStop);
                 ancestor = node.0.as_deref();
             }
         } else {
@@ -143,7 +148,11 @@ impl Accounting {
         Ok(())
     }
     pub fn failed(&mut self) {
+        self.failed_with(AccountingFailure::PeerFailed);
+    }
+    fn failed_with(&mut self, failure: AccountingFailure) {
         self.failed = true;
+        self.failure.get_or_insert(failure);
     }
     pub fn retire(&mut self, id: &str) -> Result<()> {
         ensure!(self.settled(id), "cannot retire unsettled owner");
@@ -184,6 +193,38 @@ struct Peer {
     may_clean: bool,
     started: Instant,
 }
+
+fn dispatch_registration(
+    peer: &mut Peer,
+    accounting: &mut Accounting,
+    request: Registration,
+    token: &str,
+) -> Result<()> {
+    ensure!(
+        request.token == token,
+        "ownership registration token mismatch"
+    );
+    if let Err(error) = accounting.register(&request.id, request.parent.as_deref()) {
+        if error.downcast_ref::<AccountingFailure>()
+            == Some(&AccountingFailure::RegistrationAfterStop)
+        {
+            // Authentication and identity checks already passed. Refuse this
+            // unstarted command without discarding previously admitted owners.
+            peer.done = true;
+            diagnostics::registration_denied();
+            return Ok(());
+        }
+        return Err(error);
+    }
+    peer.id = Some(request.id);
+    peer.stream.write_all(b"R")?;
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "runtime_registration_checks.rs"]
+mod registration_checks;
+
 struct RootAccounting {
     _directory: tempfile::TempDir,
     stop: Arc<AtomicBool>,
@@ -294,7 +335,7 @@ fn accounting_server(listener: UnixListener, token: String, stop: Arc<AtomicBool
             let mut bytes = [0; 512];
             match peer.stream.read(&mut bytes) {
                 Ok(0) => {
-                    accounting.failed();
+                    accounting.failed_with(AccountingFailure::PeerEof);
                     peer.done = true;
                 }
                 Ok(count) => {
@@ -306,14 +347,11 @@ fn accounting_server(listener: UnixListener, token: String, stop: Arc<AtomicBool
                         if peer.bytes.len() >= size + 4 {
                             let request: Registration =
                                 serde_json::from_slice(&peer.bytes[4..size + 4])?;
-                            ensure!(
-                                request.token == token,
-                                "ownership registration token mismatch"
-                            );
-                            accounting.register(&request.id, request.parent.as_deref())?;
-                            peer.id = Some(request.id);
+                            dispatch_registration(peer, &mut accounting, request, &token)?;
                             peer.bytes.drain(..size + 4);
-                            peer.stream.write_all(b"R")?;
+                            if peer.done {
+                                continue;
+                            }
                         }
                     }
                     if let Some(id) = &peer.id
@@ -345,7 +383,7 @@ fn accounting_server(listener: UnixListener, token: String, stop: Arc<AtomicBool
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => (),
                 Err(_) => {
-                    accounting.failed();
+                    accounting.failed_with(AccountingFailure::PeerTransport);
                     peer.done = true;
                 }
             }
@@ -388,7 +426,7 @@ fn accounting_server(listener: UnixListener, token: String, stop: Arc<AtomicBool
     }
     ensure!(
         !accounting.failed && accounting.nodes.is_empty(),
-        "nested ownership cleanup incomplete"
+        accounting.failure.unwrap_or(AccountingFailure::Other)
     );
     Ok(())
 }
@@ -542,7 +580,7 @@ pub fn cli() -> Result<()> {
     let request: Request = receive(&mut lifeline, LIMIT, Duration::from_secs(5))?;
     ensure!(
         request.timeout_ms > 0
-            && request.timeout_ms <= 24 * 60 * 60 * 1000
+            && request.timeout_ms <= MAX_TIMEOUT_MILLIS
             && request.idle_ms.is_none_or(|value| value > 0)
             && request.max_output > 0
             && request.max_output <= super::MAX_DIAGNOSTICS
@@ -685,6 +723,7 @@ pub fn cli() -> Result<()> {
             Ok((Instant::now() + Duration::from_millis(remaining))
                 .min(cleanup_started + CLEANUP_LIMIT))
         })();
+    let descendants_failed = descendants.is_err();
     let container_cleanup = match descendants {
         Ok(deadline) => finish_containers(scope, deadline),
         Err(error) => {
@@ -714,12 +753,20 @@ pub fn cli() -> Result<()> {
         Ok(())
     };
     let cleanup_complete = own_cleanup_complete && done.is_ok() && root_result.is_ok();
-    let response = completed_response(
+    let diagnostic = CleanupDiagnostic::collect(
+        owned.cleanup_complete,
+        descendants_failed,
+        !descendants_failed && container_cleanup.is_err(),
+        &done,
+        &root_result,
+    );
+    let mut response = completed_response(
         owned.result,
         container_cleanup,
         cleanup_complete,
         termination_signal,
     );
+    diagnostic.attach(&mut response);
     lifeline.set_nonblocking(false)?;
     lifeline.set_write_timeout(Some(Duration::from_secs(2)))?;
     // Caller death may close the response endpoint; cleanup above still ran.

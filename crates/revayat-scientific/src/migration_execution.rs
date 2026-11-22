@@ -251,6 +251,7 @@ fn failure_summary(error: &anyhow::Error, depth: usize) -> String {
             ),
             ("ownership response exceeds byte limit", "response-limit"),
             ("runtime companion cleanup incomplete", "cleanup-incomplete"),
+            ("runtime companion exited unsuccessfully", "companion-exit"),
             ("runtime caller cancelled or disconnected", "cancelled"),
         ] {
             if message == text {
