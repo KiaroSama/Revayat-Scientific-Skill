@@ -24,6 +24,7 @@ const TOKEN: &str = "REVAYAT_RUNTIME_ACCOUNTING_TOKEN";
 const PARENT: &str = "REVAYAT_RUNTIME_PARENT";
 // JSON byte arrays can use four bytes per binary byte; input+output are bounded separately.
 const LIMIT: usize = 140 * 1024 * 1024;
+pub(super) const MAX_TIMEOUT_MILLIS: u64 = 24 * 60 * 60 * 1000;
 #[path = "runtime_owner_client.rs"]
 mod client;
 #[path = "runtime_owner_transport.rs"]
@@ -542,7 +543,7 @@ pub fn cli() -> Result<()> {
     let request: Request = receive(&mut lifeline, LIMIT, Duration::from_secs(5))?;
     ensure!(
         request.timeout_ms > 0
-            && request.timeout_ms <= 24 * 60 * 60 * 1000
+            && request.timeout_ms <= MAX_TIMEOUT_MILLIS
             && request.idle_ms.is_none_or(|value| value > 0)
             && request.max_output > 0
             && request.max_output <= super::MAX_DIAGNOSTICS

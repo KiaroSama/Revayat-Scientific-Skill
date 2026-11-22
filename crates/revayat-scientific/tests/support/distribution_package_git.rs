@@ -1,4 +1,80 @@
 // Git-layout admission cases retain their root libtest identities via include!.
+#[path = "distribution_relative_roots.rs"]
+mod relative_roots;
+#[test]
+fn test_new_output_inside_implementation_directories_is_rejected() {
+    let test = "test_new_output_inside_implementation_directories_is_rejected";
+    if relative_roots::is_worker(test) {
+        for path in [
+            "tools/new.skill",
+            "install/new.skill",
+            "crates/new.skill",
+            "skills/revayat-scientific/new.skill",
+        ] {
+            let result = revayat_scientific::distribution_paths::protected_location(
+                Path::new(path),
+                Path::new("."),
+                Path::new("skills/revayat-scientific"),
+                false,
+            );
+            assert!(
+                result.is_err(),
+                "relative repository root admitted protected output: {path}"
+            );
+            assert!(result.unwrap_err().to_string().contains("overlaps source"));
+            assert!(!Path::new(path).exists());
+        }
+        let source = Path::new("skills/revayat-scientific");
+        let output = Path::new("dist/new.skill");
+        let admitted = revayat_scientific::distribution_paths::protected_location(
+            output,
+            Path::new("."),
+            source,
+            false,
+        )
+        .unwrap();
+        assert_eq!(admitted, std::env::current_dir().unwrap().join(output));
+        for (repository, source) in [
+            (Path::new("nested/.."), source),
+            (
+                Path::new("."),
+                Path::new("skills/../skills/revayat-scientific"),
+            ),
+        ] {
+            assert!(
+                revayat_scientific::distribution_paths::protected_location(
+                    output, repository, source, false
+                )
+                .is_err()
+            );
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(".", "repository-alias").unwrap();
+            assert!(
+                revayat_scientific::distribution_paths::protected_location(
+                    output,
+                    Path::new("repository-alias"),
+                    source,
+                    false
+                )
+                .is_err()
+            );
+        }
+        return;
+    }
+    let f = Fixture::new();
+    for path in [
+        f.repo.join("tools/new.skill"),
+        f.repo.join("install/new.skill"),
+        f.repo.join("crates/new.skill"),
+        f.source.join("new-package.skill"),
+    ] {
+        f.refused(&path);
+        assert!(!path.exists());
+    }
+    relative_roots::run(test);
+}
 #[test]
 fn test_ordinary_git_config_index_head_and_new_objects_are_protected() {
     let f = Fixture::new();

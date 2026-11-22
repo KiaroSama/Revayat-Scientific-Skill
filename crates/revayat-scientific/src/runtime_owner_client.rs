@@ -25,6 +25,28 @@ pub(super) enum Event {
     Complete(Response),
 }
 
+fn wire_deadlines(spec: &CommandSpec) -> Result<(u64, Option<u64>)> {
+    let wall = spec.timeout.as_millis();
+    ensure!(
+        wall > 0 && wall <= u128::from(super::MAX_TIMEOUT_MILLIS),
+        "wall timeout must encode as 1..={} milliseconds on Unix",
+        super::MAX_TIMEOUT_MILLIS
+    );
+    let idle = spec
+        .idle_timeout
+        .map(|duration| -> Result<u64> {
+            let milliseconds = u64::try_from(duration.as_millis())
+                .context("idle timeout exceeds representable milliseconds on Unix")?;
+            ensure!(
+                milliseconds > 0,
+                "idle timeout must encode as positive milliseconds on Unix"
+            );
+            Ok(milliseconds)
+        })
+        .transpose()?;
+    Ok((wall as u64, idle))
+}
+
 fn wait_response(socket: Option<&UnixStream>, deadline: Instant) -> Result<()> {
     let tick = (Instant::now() + Duration::from_millis(5)).min(deadline);
     if let Some(socket) = socket {
@@ -69,6 +91,7 @@ impl Interactive {
     }
     fn start(spec: &CommandSpec, input: Option<&[u8]>, interactive: bool) -> Result<Self> {
         super::super::validate_spec(spec)?;
+        let (timeout_ms, idle_ms) = wire_deadlines(spec)?;
         let request = Request {
             program: spec.program.as_bytes().into(),
             args: spec
@@ -90,11 +113,8 @@ impl Interactive {
                 .iter()
                 .map(|key| key.as_bytes().into())
                 .collect(),
-            timeout_ms: spec.timeout.as_millis().try_into()?,
-            idle_ms: spec
-                .idle_timeout
-                .map(|value| value.as_millis().try_into())
-                .transpose()?,
+            timeout_ms,
+            idle_ms,
             max_output: spec.max_output,
             input: input.map(Into::into),
             interactive,
@@ -498,6 +518,27 @@ fn valid_operation_label(label: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wire_deadline_boundaries_match_the_companion_protocol() -> Result<()> {
+        let mut spec = CommandSpec::new("must-not-execute");
+        spec.timeout = Duration::from_millis(1);
+        spec.idle_timeout = Some(Duration::from_millis(u64::MAX));
+        assert_eq!(wire_deadlines(&spec)?, (1, Some(u64::MAX)));
+        spec.timeout =
+            Duration::from_millis(super::super::MAX_TIMEOUT_MILLIS) + Duration::from_nanos(999_999);
+        assert_eq!(wire_deadlines(&spec)?.0, super::super::MAX_TIMEOUT_MILLIS);
+        spec.timeout += Duration::from_nanos(1);
+        assert!(wire_deadlines(&spec).is_err());
+        spec.timeout = Duration::from_nanos(1);
+        assert!(wire_deadlines(&spec).is_err());
+        spec.timeout = Duration::from_millis(1);
+        spec.idle_timeout = Some(Duration::from_nanos(1));
+        assert!(wire_deadlines(&spec).is_err());
+        spec.idle_timeout = Some(Duration::MAX);
+        assert!(wire_deadlines(&spec).is_err());
+        Ok(())
+    }
     fn completion() -> Vec<u8> {
         let event = Event::Complete(Response {
             code: Some(0),

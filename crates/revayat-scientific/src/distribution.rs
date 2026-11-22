@@ -122,7 +122,8 @@ impl Payload {
                             "secrets.md",
                             "explain-AI.md",
                         ]
-                        .contains(&p.as_ref())
+                        .iter()
+                        .any(|name| p.eq_ignore_ascii_case(name))
                 }) {
                     continue;
                 }
@@ -145,14 +146,11 @@ impl Payload {
                 if binary.is_some() && top == "bin" {
                     continue;
                 }
+                let extension = path.extension().unwrap_or_default().to_string_lossy();
                 if !allowed
-                    || ["py", "pyc", "ps1", "sh", "cs", "c", "log"].contains(
-                        &path
-                            .extension()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .as_ref(),
-                    )
+                    || ["py", "pyc", "ps1", "sh", "cs", "c", "log"]
+                        .iter()
+                        .any(|blocked| extension.eq_ignore_ascii_case(blocked))
                 {
                     continue;
                 }
@@ -197,7 +195,10 @@ impl Payload {
                 );
                 let fingerprint = file_identity(&path, Some(MAX_PAYLOAD_BYTES))?;
                 total += fingerprint.size;
-                ensure!(total <= MAX_PAYLOAD_BYTES, "payload exceeds 64 MiB");
+                ensure!(
+                    total <= MAX_PAYLOAD_BYTES && files.len() < 10_000,
+                    "payload exceeds 64 MiB or 10000 files"
+                );
                 files.push(PayloadFile {
                     source: path,
                     relative: PathBuf::from("bin").join(name),

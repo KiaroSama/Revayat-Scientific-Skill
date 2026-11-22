@@ -323,6 +323,8 @@ pub fn protected_location(
     source: &Path,
     directory: bool,
 ) -> Result<PathBuf> {
+    let repository = directory_path(repository)?;
+    let source = directory_path(source)?;
     let destination = if directory {
         directory_path(destination)?
     } else {
@@ -347,7 +349,7 @@ pub fn protected_location(
         repository.join("tools"),
         repository.join("crates"),
     ];
-    protected.extend(git_paths(repository)?);
+    protected.extend(git_paths(&repository)?);
     protected.extend(git_paths(&destination)?);
     for path in protected {
         ensure!(

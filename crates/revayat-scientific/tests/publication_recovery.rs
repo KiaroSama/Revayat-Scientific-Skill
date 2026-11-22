@@ -63,6 +63,66 @@ fn retained(root: &Path, count: usize) -> Vec<serde_json::Value> {
     );
     records
 }
+
+#[test]
+fn late_stage_mutation_preserves_the_previous_delivery() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let entries = plans(&root);
+    let mut changed = false;
+    let result = publish_observed(&entries[..1], &[], None, |at, _| {
+        if at == Boundary::BeforeReplace {
+            fs::write(&entries[0].0, b"unvalidated candidate")?;
+            changed = true;
+        }
+        Ok(())
+    });
+    assert!(changed);
+    assert!(
+        result.is_err(),
+        "a changed stage was published after its final check"
+    );
+    assert_eq!(fs::read(&entries[0].1).unwrap(), b"approved A");
+    assert_eq!(fs::read(&entries[0].0).unwrap(), b"unvalidated candidate");
+    assert!(artifacts(&root).is_empty());
+}
+
+#[test]
+fn late_destination_mutation_retains_foreign_bytes_and_recovery_evidence() {
+    for mutation in [
+        Boundary::BeforeReplace,
+        Boundary::AfterCommit,
+        Boundary::BeforeCleanup,
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let entries = plans(&root);
+        let mut changed = false;
+        let result = publish_observed(&entries[..1], &[], None, |at, path| {
+            if at == mutation {
+                fs::write(path, b"foreign owner edit")?;
+                changed = true;
+            }
+            Ok(())
+        });
+        assert!(changed);
+        assert!(
+            result.is_err(),
+            "a foreign destination revision was accepted at {mutation:?}"
+        );
+        assert_eq!(fs::read(&entries[0].1).unwrap(), b"foreign owner edit");
+        if mutation == Boundary::BeforeReplace {
+            assert_eq!(fs::read(&entries[0].0).unwrap(), b"candidate A");
+        } else {
+            assert!(!entries[0].0.exists());
+        }
+        let records = retained(&root, 1);
+        assert_eq!(
+            fs::read(records[0]["backup"].as_str().unwrap()).unwrap(),
+            b"approved A"
+        );
+    }
+}
 #[test]
 fn test_interrupted_rollback_retains_previous_bytes() {
     for cancellation in [Cancellation::Signal, Cancellation::Requested] {

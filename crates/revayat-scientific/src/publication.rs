@@ -422,6 +422,15 @@ pub fn publish_with_identity(
             );
             committed.push(index);
             boundary(Boundary::BeforeReplace, &recovery.destination)?;
+            validate_destination(&recovery.destination, protected)?;
+            ensure!(
+                fingerprint(&recovery.destination, max_bytes)? == recovery.previous,
+                "destination changed before publication"
+            );
+            ensure!(
+                Some(file_identity(&recovery.stage, max_bytes)?) == plan.published,
+                "stage changed before publication"
+            );
             // rename replaces files atomically on supported Unix and Windows.
             // On Windows std::fs::rename uses MoveFileExW(REPLACE_EXISTING).
             fs::rename(&recovery.stage, &recovery.destination)?;
@@ -522,6 +531,17 @@ pub fn publish_with_identity(
         for plan in &plans {
             boundary(Boundary::BeforeCleanup, &plan.recovery.destination)?;
             owned(&plan.directory, plan.directory_identity)?;
+        }
+        // Observe the whole committed set before disposing of any previous bytes.
+        // A concurrent foreign revision is retained with its recovery records.
+        if operation.is_ok() {
+            for plan in &plans {
+                validate_destination(&plan.recovery.destination, protected)?;
+                ensure!(
+                    fingerprint(&plan.recovery.destination, max_bytes)? == plan.published,
+                    "published destination changed before recovery disposal"
+                );
+            }
         }
         for lock in &locks {
             owned(&lock.path, lock.identity)?;
