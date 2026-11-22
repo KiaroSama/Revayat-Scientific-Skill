@@ -9,7 +9,7 @@
 [![GitHub Actions CI workflow on main](https://img.shields.io/badge/CI-GitHub%20Actions-16a34a)](.github/workflows/ci.yml)
 [![GNU General Public License v3.0 or later](https://img.shields.io/badge/license-GPL--3.0--or--later-2563eb)](LICENSE)
 [![Release v2.1.0 standalone Rust packages](https://img.shields.io/badge/release-v2.1.0-ea580c)](.github/workflows/release.yml)
-[![1021 verified Rust test cases across workspace suites](https://img.shields.io/badge/tests-1021%20cases-0d9488)](.github/workflows/ci.yml)
+[![Rust debug and release tests; inspect the exact revision's CI evidence](https://img.shields.io/badge/tests-Debug%20%2B%20Release-0d9488)](.github/workflows/ci.yml)
 [![Rust 1.100.0 toolchain measured via rustc](https://img.shields.io/badge/Rust-1.100.0-8b5cf6)](rust-toolchain.toml)
 [![Runs on Linux x64, Linux arm64, Windows x64, and Windows arm64](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%2064--bit-0891b2)](.github/workflows/release.yml)
 [![Prebuilt signed release ZIP and installable .skill archive](https://img.shields.io/badge/install-Prebuilt%20ZIP%20%7C%20.skill-4f46e5)](docs/installation.md)
@@ -48,7 +48,7 @@
 <div dir="ltr">
 
 ```console
-git clone --branch rewrite/rust-complete https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+git clone --branch main https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
@@ -58,7 +58,7 @@ cargo run --locked --release --bin revayat-scientific -- install --agent codex
 
 گزینهٔ `--agent all` میزبان‌های شناسایی‌شده، `--scope project --path <directory>` پروژه و `--dest <directory>` مقصد سفارشی را انتخاب می‌کند. جایگزینی با `--force` فقط برای نصب دارای هویت روشن روایت مجاز است. همهٔ مقصدها پیش از فعال‌سازی آماده می‌شوند و نسخهٔ قبلی در `skill-backups` می‌ماند. [جزئیات نصب](docs/installation.md).
 
-jobهای CI برای هر سیستم‌عامل فایل اجرایی و آرشیو `.skill` می‌سازند؛ پذیرش نهایی بازنویسی هنوز تأیید نشده است. در Linux، دو فایل `bin/revayat-scientific` و `bin/revayat-process-owner` را از همان build و revision کنار هم نگه دارید. در Windows نیز `bin/revayat-scientific.exe` و `bin/revayat-quota-worker.exe`، ورکر ثابت سهمیه و کنترل‌های بومی هسته، باید از همان build کنار هم باشند. آرشیو شامل اسکیل، مراجع، assetهای مجاز، فرادادهٔ ایجنت، مجوز و اعلان‌ها نیز هست. نصب ساخته‌شده به مفسر زبان دیگری نیاز ندارد، اما موتورهای پردازش سند جدا هستند.
+کارهای CI برای هر سیستم‌عامل فایل اجرایی و آرشیو `.skill` می‌سازند. آرشیوهای ZIP امضاشده در [انتشارهای GitHub](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases) در دسترس‌اند؛ خروجی CI و انتشار نهایی سابقهٔ بررسی جداگانه دارند. در Linux، دو فایل `bin/revayat-scientific` و `bin/revayat-process-owner` را از همان build و revision کنار هم نگه دارید. در Windows نیز `bin/revayat-scientific.exe` و `bin/revayat-quota-worker.exe`، ورکر ثابت سهمیه و کنترل‌های بومی هسته، باید از همان build کنار هم باشند. آرشیو شامل اسکیل، مراجع، assetهای مجاز، فرادادهٔ ایجنت، مجوز و اعلان‌ها نیز هست. نصب ساخته‌شده به مفسر زبان دیگری نیاز ندارد، اما موتورهای پردازش سند جدا هستند.
 
 پیش از نصب، بسته‌بندی یا استفاده از فرمان‌های سورس، همهٔ binaryها را با فرمان بالا بسازید. `cargo run --bin revayat-scientific` به‌تنهایی برنامهٔ همراه هر پلتفرم را دوباره نمی‌سازد. companion مفقود، لینک‌شده یا غیرعادی رد می‌شود؛ کنارهم‌بودن و بایت‌های جمع‌آوری‌شده بررسی می‌شوند، نه اصالت امضاشده یا سازگاری نسخهٔ دو برنامه.
 
@@ -148,7 +148,7 @@ revayat-scientific pdf --help
 
 ## توسعه
 
-CI در هر push و pull request خودکار اجرا می‌شود و اجرای دستی هم دارد. شاخهٔ مرجع `rewrite/rust-native` است و ادامهٔ آن در `rewrite/rust-complete` انجام می‌شود. [راهنمای توسعه و راستی‌آزمایی مهاجرت](docs/development.md) فرمان‌های محلی و شرط‌های پذیرش باقی‌مانده را توضیح می‌دهد.
+اجرای CI در هر push و pull request خودکار انجام می‌شود و اجرای دستی هم دارد. توسعهٔ بومی Rust روی `main` نگهداری می‌شود؛ نام‌های `rewrite/rust-native` و `rewrite/rust-complete` فقط مراجع تاریخی مهاجرت هستند. [راهنمای توسعه و راستی‌آزمایی مهاجرت](docs/development.md) فرمان‌های محلی، ماتریس اجرای اجباری و شواهد میزبانی‌شدهٔ وابسته به revision را توضیح می‌دهد.
 
 <div dir="ltr">
 
@@ -166,11 +166,11 @@ cargo run --locked --release --bin revayat-scientific -- package
 
 </div>
 
-فرمان‌های runner به اطلاعات اجرای GitHub Actions و تطابق SHA با checkout نیاز دارند؛ این‌ها فرمان‌های نوشته‌شدهٔ CI هستند، نه دستور پذیرش محلی. caseهای مجهز و قرارداد جمع‌بندی یازده scope در [تست امنیت](docs/security-testing.md) آمده‌اند. collector بومی اکنون harnessهای واقعی Windows و caseهای worker ایزولهٔ Linux را پس از احراز پیش‌نیازها اجرا می‌کند. شاهد bootstrap و دیگر censusهای تو‌در‌تو هنوز کامل نیست؛ برابری کامل ادعا نمی‌شود.
+فرمان‌های runner به اطلاعات اجرای GitHub Actions و تطابق SHA با checkout نیاز دارند؛ این‌ها فرمان‌های نوشته‌شدهٔ CI هستند، نه دستور پذیرش محلی. موارد مجهز و قرارداد جمع‌بندی 8 دامنهٔ اجرا در [تست امنیت](docs/security-testing.md) آمده‌اند. جمع‌آورندهٔ بومی harnessهای واقعی Windows و موارد worker ایزولهٔ Linux را پس از احراز پیش‌نیازها اجرا می‌کند. [اجرای مبنای ثبت‌شده](docs/development.md#recorded-hosted-baseline) گزارش bootstrap و دیگر فهرست‌های تو‌در‌تو را دارد. مقدار `final_parity_verified=false` در گزارش‌ها حفظ می‌شود؛ اجرای موفق و تطبیق ساختاری، برابری معنایی کامل assertionها را اثبات نمی‌کنند.
 
-نگاشت مهاجرت ۵۸۳ شناسهٔ تست عمومی قبلی را نگه می‌دارد؛ فهرست‌های جداگانه نیز ۳۷ بررسی بالادستی و ۴۱ سناریوی مستقل امنیتی را ثبت می‌کنند. این تعدادها و counterpartهای ثبت‌شدهٔ Rust، **برابری assertionها یا اجرای واقعی را اثبات نمی‌کنند**. مرحله‌های bootstrap ویندوز، check/helperهای هم‌پوشان و caseهای مستقل oracle رجیستری به شاهد رفتاری و بومی جدا نیاز دارند؛ استفادهٔ پیاده‌سازی قبلی از زبان دیگر مجوز حذف این تعهدها نیست.
+نگاشت مهاجرت 583 شناسهٔ تست عمومی قبلی را نگه می‌دارد؛ فهرست‌های جداگانه نیز 37 بررسی بالادستی و 41 سناریوی مستقل امنیتی را ثبت می‌کنند. این تعدادها و counterpartهای ثبت‌شدهٔ Rust، **برابری assertionها یا اجرای واقعی را اثبات نمی‌کنند**. مرحله‌های bootstrap ویندوز، check/helperهای هم‌پوشان و caseهای مستقل oracle رجیستری به شاهد رفتاری و بومی جدا نیاز دارند؛ استفادهٔ پیاده‌سازی قبلی از زبان دیگر مجوز حذف این تعهدها نیست.
 
-قرارداد CI شامل buildهای debug/release و تست portable روی Linux و Windows، اجرای مجهز علمی برای caseهای اجباری ignored، امنیت Linux/Windows، CodeQL، بازبینی وابستگی، بررسی workflow و گزارش جمعی fail-closed است. اتصال workflow و شاهد اجرای واقعی هنوز در حال تکمیل است. بازگردانی کامل تشخیص‌های بومی Windows و اثبات کامل حذف کد مرده یا تکراری هنوز کامل نشده‌اند. ممیزی سورس، طبقه‌بندی و سقف ۷۹۹ خط برای هر فایل را کنترل و اندازهٔ قابل‌مقایسهٔ سورس و تست را گزارش می‌کند؛ پایین‌تر بودن مجموع از baseline قبلی شرط نیست. کیفیت به شاهد بازبینی حذف و حفظ رفتار و اجرای واقعی تست نیاز دارد، نه صرفاً تعداد خط کمتر. برابری کامل بومی ادعا نمی‌شود. گزارش کامل job/case و SHA آزمایش‌شدهٔ همان run را بررسی کنید؛ این راهنما موفقیت همهٔ CI یا برابری کامل تست‌ها را ادعا نمی‌کند. Dependabot وابستگی‌های Cargo، Actions و کانتینر را دنبال می‌کند؛ ممیزی سخت‌گیرانهٔ Cargo، rustfmt، Clippy، actionlint و zizmor اجباری‌اند.
+قرارداد CI شامل buildهای debug/release و تست portable روی Linux و Windows، اجرای مجهز علمی برای موارد اجباری ignored، امنیت Linux/Windows، CodeQL، بازبینی وابستگی، بررسی workflow و گزارش جمعی fail-closed است. ممیزی سورس، طبقه‌بندی و سقف 799 خط برای هر فایل را کنترل و اندازهٔ قابل‌مقایسهٔ سورس و تست را گزارش می‌کند؛ پایین‌تر بودن مجموع از baseline قبلی شرط نیست. کیفیت به شاهد بازبینی حذف و حفظ رفتار و اجرای واقعی تست نیاز دارد، نه صرفاً تعداد خط کمتر. گزارش کامل job/case و SHA آزمایش‌شدهٔ همان revision را بررسی کنید؛ موفقیت اجرای مبنا، تغییر بعدی یا برابری کامل رفتار را تأیید نمی‌کند. ابزار Dependabot وابستگی‌های Cargo، Actions و کانتینر را دنبال می‌کند؛ ممیزی سخت‌گیرانهٔ Cargo، rustfmt، Clippy، actionlint و zizmor اجباری‌اند.
 
 گزارش ترجمه را کنار سند و در تمام نه مرحله تکمیل کنید. برنامه گزارش عملیاتی جداگانه با زمان UTC در `./logs` می‌نویسد؛ `REVAYAT_LOG_DIR` محل و `REVAYAT_LOG_LEVEL` یکی از `DEBUG`، `INFO`، `WARNING` یا `ERROR` را تعیین می‌کند. این گزارش فقط نام دستهٔ فرمان، دسته و کد خروج و مدت اجرا را ثبت می‌کند و شامل آرگومان، خروجی ابزار یا مسیر خصوصی نیست. تشخیص‌ها و دفتر بازیابی محلی‌اند.
 

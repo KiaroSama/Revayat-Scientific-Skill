@@ -1,9 +1,9 @@
 # Installation
 
-These native instructions apply to `rewrite/rust-complete`; the default `main` checkout is not yet the completed Rust rewrite. Use the exact reviewed rewrite revision and matching successful hosted CI artifacts for your operating system. Current rewrite package/install acceptance is still being verified; historical or partial CI results do not certify a new revision. CI artifacts are intermediate build outputs, not automatically published or signed final releases.
+The native Rust source is maintained on the default `main` branch. The former rewrite branches are historical references and are no longer installation targets. Use the exact reviewed revision and matching successful hosted CI artifacts for your operating system. The [recorded hosted baseline](development.md#recorded-hosted-baseline) documents one successful revision; historical or partial CI results do not certify a later revision. CI artifacts are intermediate build outputs. Published signed archives have their own [GitHub release records](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases).
 
 ```console
-git clone --branch rewrite/rust-complete https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+git clone --branch main https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
@@ -56,6 +56,6 @@ external resource URLs. Ordinary local HTML, CSS, fonts, images, SVG references
 and bounded data resources pass through the same checked resource policy. Resolve
 unsupported resource syntax in the source before selecting this backend.
 
-Installed/extracted CLI, companion byte/mode/version and real-document regressions are authored but remain unexecuted in this source checkpoint. Neither archive construction nor `doctor` discovery establishes successful document output, effective containment or signed-release trust.
+The [recorded hosted baseline](development.md#recorded-hosted-baseline) includes executed packaging, installation and recovery regressions as well as the required scientific and native security scopes. Verify the reports for the revision you install. Neither archive construction nor `doctor` discovery alone establishes successful document output, effective containment or signed-release trust.
 
 Do not install or publish over source, implementation or Git administration. Failed publication preserves the previous approved archive; unresolved installation recovery names the complete local journal and retains evidence for deliberate recovery.

@@ -1,8 +1,9 @@
 # Rust development and migration verification
 
-The migration continues `rewrite/rust-native` at commit
-`8801758f1bf857e750e15c64635281973986ad39` on `rewrite/rust-complete`.
-The default branch remains unchanged until the migration PR is reviewed and merged.
+Native Rust development is maintained on `main`. The migration originally continued
+`rewrite/rust-native` at commit `8801758f1bf857e750e15c64635281973986ad39`
+on `rewrite/rust-complete`; those historical branch names are no longer source
+installation targets.
 
 ## Local checks
 
@@ -71,7 +72,7 @@ and release execution reports and native executable/skill artifacts. Scientific,
 Linux/Windows security, Rust CodeQL, dependency review and quality jobs remain
 required. Report aggregation must refuse missing, failed or contradictory evidence.
 The obsolete artifact-only dispatch mode is removed, so manual runs also execute
-the three-platform build matrix, execution reports and final statuses.
+the Linux/Windows build matrix, execution reports and final statuses.
 
 For pull requests, execution reports describe the checked-out GitHub merge
 revision, while commit statuses target the PR head revision reported by the
@@ -88,7 +89,7 @@ gate. A passing build alone does not establish behavioral parity.
 Native collector regressions extend the existing collector contract test, keeping
 the reference branch's test registration count while exercising the added checks.
 
-## Outstanding acceptance gates
+## Execution and parity boundaries
 
 The native collector executes the Windows native and standalone harnesses with
 exact, nonignored case selection. On Linux it runs the production containment
@@ -100,13 +101,46 @@ six cases and nineteen requirement sites in existing carrier registrations. Like
 the registry oracle, each writes observations only after its assertions complete;
 the supervisor binds them to the actual passing carrier, run, census digest and
 completed outer cleanup. Debug and release reports remain separate on each OS.
-The native-stage and coverage censuses still contain unresolved source/evidence
-contracts, including the full ordered Windows diagnostic bootstrap. Implemented
-stage helpers remain explicitly unverified until their required native execution
-and relationships have been observed.
-Those gaps must be implemented and actually run before claiming complete parity
-or an all-green migration. The aggregate is kept blocking; it is not replaced by
-registration counts or fabricated successful events.
+The aggregate also requires the native-stage and coverage operation reports,
+including the ordered Windows diagnostic bootstrap, their exact check relationships
+and completed cleanup. Missing or contradictory evidence fails reconciliation;
+registration counts cannot replace actual outcomes. Historical census annotations
+describe the checkpoint at which those inventories were authored. They are not a
+substitute for inspecting a particular run's artifacts.
+
+## Recorded hosted baseline
+
+[CI run 45045532942, attempt 3](https://github.com/KiaroSama/Revayat-Scientific-Skill/actions/runs/45045532942/attempts/3)
+completed successfully on 2026-11-22 for
+`0e68d28af5dcc5954b241dd5c5f3f805e33a2565`. All eleven Actions jobs completed
+successfully. The five execution artifacts contain eight harness reports and
+fifteen operation reports, all bound to that SHA, run and attempt. The downloaded
+ZIP digests matched the GitHub artifact metadata during review.
+
+| Required harness scope | Passed cases | Ignored cases recorded as skipped |
+| --- | ---: | ---: |
+| Linux portable debug | 878 | 48 |
+| Linux portable release | 878 | 48 |
+| Windows portable debug | 973 | 48 |
+| Windows portable release | 973 | 48 |
+| Linux scientific debug | 48 | 0 |
+| Windows scientific debug | 4 | 0 |
+| Linux native debug | 37 | 0 |
+| Windows native debug | 12 | 0 |
+
+Portable ignored cases are not credited as passes. Scientific execution selects
+the reviewed cases for each supported platform. The operation reports cover the
+41 oracle cases, 6 engine cases and 19 runtime-preparation sites in each portable
+OS/profile scope, 3 coverage scenarios per OS, and 57 ordered Windows native-stage
+events. The aggregation job reconciled 2587 public, 147 upstream, 40 verifier and
+140 security obligations; these are per-scope reconciliation counts, not unique
+test counts.
+
+Every report retains `final_parity_verified=false`. This means execution and
+structural reconciliation are bounded evidence, not a proof that every historical
+assertion is semantically equivalent. The run above certifies only its recorded
+revision and configured scopes. A later commit needs its own successful CI run;
+the four-target release build does not extend these execution results to arm64.
 
 Upstream discovery and the documents actually reviewed are recorded in
 [research sources](../skills/revayat-scientific/references/research-sources.md)

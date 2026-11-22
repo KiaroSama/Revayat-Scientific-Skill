@@ -19,16 +19,68 @@ fn decode(response: Response) -> Result<Value> {
     );
     serde_json::from_slice(&bytes).context("GitHub release response is invalid JSON")
 }
-fn json_request(client: &Client, method: Method, url: &str, body: &Value) -> Result<Value> {
-    let request = client
-        .request(method, url)
-        .header("Content-Type", "application/json")
-        .body(serde_json::to_vec(body)?);
-    decode(
-        request
+trait ReleaseApi {
+    fn get(&mut self, path: &str) -> Result<Option<Value>>;
+    fn json(&mut self, method: Method, path: &str, body: &Value) -> Result<Value>;
+    fn delete(&mut self, path: &str) -> Result<()>;
+    fn upload(&mut self, id: u64, name: &str, bytes: Vec<u8>) -> Result<Value>;
+}
+
+struct GitHubRelease {
+    client: Client,
+    repository: String,
+}
+impl GitHubRelease {
+    fn url(&self, path: &str) -> String {
+        format!("https://api.github.com/repos/{}/{path}", self.repository)
+    }
+}
+impl ReleaseApi for GitHubRelease {
+    fn get(&mut self, path: &str) -> Result<Option<Value>> {
+        let response = self
+            .client
+            .get(self.url(path))
             .send()
-            .context("GitHub release request could not complete")?,
-    )
+            .context("GitHub release lookup failed")?;
+        if response.status() == StatusCode::NOT_FOUND {
+            Ok(None)
+        } else {
+            decode(response).map(Some)
+        }
+    }
+    fn json(&mut self, method: Method, path: &str, body: &Value) -> Result<Value> {
+        decode(
+            self.client
+                .request(method, self.url(path))
+                .header("Content-Type", "application/json")
+                .body(serde_json::to_vec(body)?)
+                .send()
+                .context("GitHub release request could not complete")?,
+        )
+    }
+    fn delete(&mut self, path: &str) -> Result<()> {
+        let deleted = self
+            .client
+            .delete(self.url(path))
+            .send()?
+            .status()
+            .is_success();
+        ensure!(deleted, "GitHub release asset replacement failed");
+        Ok(())
+    }
+    fn upload(&mut self, id: u64, name: &str, bytes: Vec<u8>) -> Result<Value> {
+        decode(
+            self.client
+                .post(format!(
+                    "https://uploads.github.com/repos/{}/releases/{id}/assets",
+                    self.repository
+                ))
+                .query(&[("name", name)])
+                .header("Content-Type", "application/octet-stream")
+                .body(bytes)
+                .send()?,
+        )
+    }
 }
 fn release_body() -> String {
     format!(
@@ -69,9 +121,7 @@ pub(super) fn publish(dir: &Path, tag: &str) -> Result<()> {
                     .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
         });
     ensure!(valid_repo, "invalid release repository");
-    let sha = environment("GITHUB_SHA")?;
-    let valid_sha = sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit());
-    ensure!(valid_sha, "invalid release commit SHA");
+    let sha = source::normalized_sha(&environment("GITHUB_SHA")?)?;
     let token = std::env::var("GH_TOKEN")
         .map_err(|_| anyhow::anyhow!("GH_TOKEN is required for publication"))?;
     let valid_token = !token.is_empty() && !token.chars().any(char::is_whitespace);
@@ -95,35 +145,52 @@ pub(super) fn publish(dir: &Path, tag: &str) -> Result<()> {
         .user_agent("revayat-scientific-release")
         .default_headers(headers)
         .build()?;
-    let base = format!("https://api.github.com/repos/{repo}/releases");
-    let response = client
-        .get(format!("{base}/tags/{tag}"))
-        .send()
-        .context("GitHub release lookup failed")?;
-    let release = if response.status() == StatusCode::NOT_FOUND {
-        json_request(
-            &client,
+    publish_verified(
+        &mut GitHubRelease {
+            client,
+            repository: repo,
+        },
+        &dir,
+        tag,
+        &sha,
+        uploads,
+    )
+}
+
+fn publish_verified(
+    api: &mut impl ReleaseApi,
+    dir: &Path,
+    tag: &str,
+    sha: &str,
+    uploads: Vec<(String, crate::identity::Fingerprint)>,
+) -> Result<()> {
+    let sha = source::normalized_sha(sha)?;
+    let tag_existed = require_remote_tag(api, tag, &sha)?;
+    let release = if let Some(release) = api.get(&format!("releases/tags/{tag}"))? {
+        release
+    } else {
+        api.json(
             Method::POST,
-            &base,
+            "releases",
             &json!({"tag_name":tag, "target_commitish":sha,
             "name":format!("Revayat Scientific {tag}"), "draft":true, "prerelease":false, "body":release_body()}),
         )?
-    } else {
-        decode(response)?
     };
     let id = release["id"]
         .as_u64()
         .context("GitHub release ID missing")?;
-    let release_url = format!("{base}/{id}");
+    ensure!(
+        id > 0 && release["tag_name"] == tag,
+        "GitHub release identity differs from the requested tag"
+    );
+    let release_path = format!("releases/{id}");
     // List every asset, including later pages, before replacing only the same owned names.
     let mut old_assets = Vec::new();
     let mut complete = false;
     for page in 1..=100 {
-        let page_value = decode(
-            client
-                .get(format!("{release_url}/assets?per_page=100&page={page}"))
-                .send()?,
-        )?;
+        let page_value = api
+            .get(&format!("{release_path}/assets?per_page=100&page={page}"))?
+            .context("GitHub release asset listing is missing")?;
         let rows = page_value
             .as_array()
             .context("GitHub release asset listing is invalid")?;
@@ -135,7 +202,11 @@ pub(super) fn publish(dir: &Path, tag: &str) -> Result<()> {
     }
     ensure!(complete, "GitHub release asset listing exceeds page limit");
     // Stage a rerun as draft too, so incomplete replacements never advertise a finished release.
-    json_request(&client, Method::PATCH, &release_url, &json!({"draft":true}))?;
+    api.json(
+        Method::PATCH,
+        &release_path,
+        &json!({"draft":true,"target_commitish":sha}),
+    )?;
     for (name, fingerprint) in uploads {
         for asset in old_assets
             .iter()
@@ -144,12 +215,7 @@ pub(super) fn publish(dir: &Path, tag: &str) -> Result<()> {
             let asset_id = asset["id"]
                 .as_u64()
                 .context("GitHub release asset ID missing")?;
-            let deleted = client
-                .delete(format!("{base}/assets/{asset_id}"))
-                .send()?
-                .status()
-                .is_success();
-            ensure!(deleted, "GitHub release asset replacement failed");
+            api.delete(&format!("releases/assets/{asset_id}"))?;
         }
         let bytes = crate::resource::bounded_read(
             &dir.join(&name),
@@ -159,25 +225,73 @@ pub(super) fn publish(dir: &Path, tag: &str) -> Result<()> {
         let unchanged = bytes.len() as u64 == fingerprint.size
             && format!("{:x}", Sha256::digest(&bytes)) == fingerprint.sha256;
         ensure!(unchanged, "verified release asset changed before upload");
-        let uploaded = decode(
-            client
-                .post(format!(
-                    "https://uploads.github.com/repos/{repo}/releases/{id}/assets"
-                ))
-                .query(&[("name", &name)])
-                .header("Content-Type", "application/octet-stream")
-                .body(bytes)
-                .send()?,
-        )?;
+        let uploaded = api.upload(id, &name, bytes)?;
         let matches =
             uploaded["name"].as_str() == Some(name.as_str()) && uploaded["state"] == "uploaded";
         ensure!(matches, "GitHub release upload was not finalized");
     }
-    json_request(
-        &client,
+    let tag_present = require_remote_tag(api, tag, &sha)?;
+    ensure!(
+        !tag_existed || tag_present,
+        "release tag disappeared during publication"
+    );
+    api.json(
         Method::PATCH,
-        &release_url,
-        &json!({"draft":false}),
+        &release_path,
+        &json!({"draft":false,"target_commitish":sha}),
     )?;
     Ok(())
 }
+
+/// Existing tags must peel to the built commit; a missing tag may be created at it.
+fn require_remote_tag(api: &mut impl ReleaseApi, tag: &str, expected: &str) -> Result<bool> {
+    let Some(reference) = api.get(&format!("git/ref/tags/{tag}"))? else {
+        return Ok(false);
+    };
+    ensure!(
+        reference["ref"] == format!("refs/tags/{tag}"),
+        "GitHub tag reference differs from the requested release"
+    );
+    let mut object = reference["object"].clone();
+    let mut visited = std::collections::BTreeSet::new();
+    for depth in 0..=16 {
+        let sha = source::normalized_sha(
+            object["sha"]
+                .as_str()
+                .context("GitHub tag object SHA missing")?,
+        )?;
+        match object["type"].as_str() {
+            Some("commit") => {
+                ensure!(
+                    sha == expected,
+                    "release tag differs from the built source revision"
+                );
+                return Ok(true);
+            }
+            Some("tag") => {
+                ensure!(
+                    depth < 16 && visited.insert(sha.clone()),
+                    "GitHub tag chain is cyclic or too deep"
+                );
+                let annotated = api
+                    .get(&format!("git/tags/{sha}"))?
+                    .context("GitHub annotated tag object is missing")?;
+                ensure!(
+                    source::normalized_sha(
+                        annotated["sha"]
+                            .as_str()
+                            .context("GitHub annotated tag SHA missing")?
+                    )? == sha,
+                    "GitHub annotated tag identity differs"
+                );
+                object = annotated["object"].clone();
+            }
+            _ => anyhow::bail!("release tag does not resolve to a commit"),
+        }
+    }
+    anyhow::bail!("GitHub tag chain is too deep")
+}
+
+#[cfg(test)]
+#[path = "publish_tests.rs"]
+mod tests;

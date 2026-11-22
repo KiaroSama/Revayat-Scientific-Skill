@@ -1,7 +1,10 @@
-# Branch consolidation
+# Historical branch consolidation
 
-All migration work is proposed in PR #33, targeting `main`. No PR is merged into
-`main` by this work. The following histories are retained in the migration branch:
+This record describes the migration proposal in PR #33, targeting `main`, at its
+consolidation checkpoint. It is not a list of active installation branches or the
+current PR status. Native development is now maintained on `main`; see
+[development](development.md) for revision-bound execution evidence. The following
+histories were retained in the migration branch:
 
 | Branch / PR | Decision |
 | --- | --- |
@@ -16,6 +19,7 @@ The merge adds ancestry only and does not silently reintroduce legacy code. The
 source refs can remain as historical pointers; they no longer represent separate
 unresolved migration proposals. The superseded PR descriptions link to PR #33.
 
-This disposition does not waive the unfinished native execution and parity gates
-documented in [development](development.md). The consolidated PR remains a draft
-until those gates actually pass.
+This disposition did not waive the native execution and parity gates documented
+at that checkpoint. It required the consolidated PR to remain a draft until its
+execution gates passed; the current branch state and actual run evidence must be
+reviewed separately from this historical record.

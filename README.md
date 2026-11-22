@@ -7,7 +7,7 @@
 [![GitHub Actions CI workflow on main](https://img.shields.io/badge/CI-GitHub%20Actions-16a34a)](.github/workflows/ci.yml)
 [![GNU General Public License v3.0 or later](https://img.shields.io/badge/license-GPL--3.0--or--later-2563eb)](LICENSE)
 [![Release v2.1.0 standalone Rust packages](https://img.shields.io/badge/release-v2.1.0-ea580c)](.github/workflows/release.yml)
-[![1021 verified Rust test cases across workspace suites](https://img.shields.io/badge/tests-1021%20cases-0d9488)](.github/workflows/ci.yml)
+[![Rust debug and release tests; inspect the exact revision's CI evidence](https://img.shields.io/badge/tests-Debug%20%2B%20Release-0d9488)](.github/workflows/ci.yml)
 [![Rust 1.100.0 toolchain measured via rustc](https://img.shields.io/badge/Rust-1.100.0-8b5cf6)](rust-toolchain.toml)
 [![Runs on Linux x64, Linux arm64, Windows x64, and Windows arm64](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%2064--bit-0891b2)](.github/workflows/release.yml)
 [![Prebuilt signed release ZIP and installable .skill archive](https://img.shields.io/badge/install-Prebuilt%20ZIP%20%7C%20.skill-4f46e5)](docs/installation.md)
@@ -44,7 +44,7 @@ Revayat is an agent skill and a native Rust executable. The host agent performs 
 Install the [pinned Rust toolchain](https://rustup.rs/) to build from source:
 
 ```console
-git clone --branch rewrite/rust-complete https://github.com/KiaroSama/Revayat-Scientific-Skill.git
+git clone --branch main https://github.com/KiaroSama/Revayat-Scientific-Skill.git
 cd Revayat-Scientific-Skill
 cargo build --locked --release --workspace --bins
 cargo run --locked --release --bin revayat-scientific -- install --agent codex
@@ -52,7 +52,7 @@ cargo run --locked --release --bin revayat-scientific -- install --agent codex
 
 Use `--agent all` for detected hosts, `--scope project --path <directory>` for a project, or `--dest <final-skill-directory>` for another host. Existing installations require `--force` and an unambiguous Revayat identity. All targets are staged before activation; previous copies remain in `skill-backups`. See [installation](docs/installation.md).
 
-Native executables and `.skill` archives are produced by the target-specific CI jobs; current rewrite acceptance remains unverified. On Linux, keep `bin/revayat-scientific` and `bin/revayat-process-owner` together from the same build and revision. Windows packages keep `bin/revayat-scientific.exe` with `bin/revayat-quota-worker.exe`, the fixed native quota and kernel-control worker. A native archive also contains `SKILL.md`, references, allowed assets, agent metadata, license and notices. An installed payload needs no language interpreter, but external document engines remain separate.
+Native executables and `.skill` archives are produced by the target-specific CI jobs. Signed release ZIPs are available from [GitHub Releases](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases); CI artifacts and published releases have separate verification records. On Linux, keep `bin/revayat-scientific` and `bin/revayat-process-owner` together from the same build and revision. Windows packages keep `bin/revayat-scientific.exe` with `bin/revayat-quota-worker.exe`, the fixed native quota and kernel-control worker. A native archive also contains `SKILL.md`, references, allowed assets, agent metadata, license and notices. An installed payload needs no language interpreter, but external document engines remain separate.
 
 Build all binaries with the command above before installing, packaging or using source commands. `cargo run --bin revayat-scientific` alone does not rebuild its platform sibling. A missing, linked or nonregular companion is refused; adjacency and collected bytes are checked, not a signed same-build/version handshake.
 
@@ -130,7 +130,7 @@ Mechanical checks do not certify scientific accuracy, every PDF viewer, arbitrar
 
 ## Development
 
-CI runs automatically on every push and pull request, and also supports manual dispatch. The Rust reference branch is `rewrite/rust-native`; this PR continues it on `rewrite/rust-complete`. See [development and migration verification](docs/development.md) for local commands and outstanding acceptance gates.
+CI runs automatically on every push and pull request, and also supports manual dispatch. Native Rust development is maintained on `main`; the former `rewrite/rust-native` and `rewrite/rust-complete` branches are historical migration references. See [development and migration verification](docs/development.md) for local commands, the required execution matrix and revision-bound hosted evidence.
 
 ```console
 cargo fmt --all -- --check
@@ -144,11 +144,11 @@ cargo run --locked --bin revayat-scientific -- validate
 cargo run --locked --release --bin revayat-scientific -- package
 ```
 
-The runner commands require hosted GitHub Actions provenance and matching checked-out SHA; they are source-authored CI commands, not a local acceptance recipe. Equipped cases and the eleven-scope aggregate contract are described in [security testing](docs/security-testing.md). Native collection now runs actual Windows harnesses and qualified isolated Linux worker cases. Bootstrap and other nonflat census evidence remains incomplete; no complete parity report is claimed.
+The runner commands require hosted GitHub Actions provenance and matching checked-out SHA; they are source-authored CI commands, not a local acceptance recipe. Equipped cases and the eight-scope aggregate contract are described in [security testing](docs/security-testing.md). Native collection runs actual Windows harnesses and qualified isolated Linux worker cases. The [recorded baseline run](docs/development.md#recorded-hosted-baseline) includes bootstrap and other nonflat census reports. The reports explicitly retain `final_parity_verified=false`: successful execution and structural reconciliation do not establish complete assertion-level equivalence.
 
 The migration map retains 583 original public test IDs; separate inventories record 37 upstream checks and 41 standalone security cases. These counts and registered Rust counterparts do **not** establish assertion-level parity or execution. Windows bootstrap stages, overlapping check/helper declarations and separate registry-oracle cases require their own behavioral and native evidence; their restoration is not waived because the original implementation used another language.
 
-The CI contract requires debug/release builds and portable tests on Linux and Windows, equipped scientific execution of required ignored cases, Linux/Windows security, CodeQL, dependency review, workflow checks and fail-closed aggregate reporting. Current workflow and execution-evidence integration are still being completed. Full native Windows diagnostic restoration and complete dead/duplicate-removal proof remain incomplete. Source audit enforces classification and the 799-line per-file limit and reports comparable source/test sizes; a lower total than the historical baseline is not required. Quality requires reviewed removal/preservation evidence and actual tests, not a smaller line count. No complete native parity is claimed. Verify the full job/case reports and tested SHA of the actual run; no all-green or complete-parity claim is made here. Dependabot tracks Cargo, Actions and the TeX container base; strict Cargo audit, rustfmt, Clippy, actionlint and zizmor remain required.
+The CI contract requires debug/release builds and portable tests on Linux and Windows, equipped scientific execution of required ignored cases, Linux/Windows security, CodeQL, dependency review, workflow checks and fail-closed aggregate reporting. Source audit enforces classification and the 799-line per-file limit and reports comparable source/test sizes; a lower total than the historical baseline is not required. Quality requires reviewed removal/preservation evidence and actual tests, not a smaller line count. Verify the full job/case reports and tested SHA of the actual revision: a recorded successful baseline does not certify a later change or prove complete behavioral parity. Dependabot tracks Cargo, Actions and the TeX container base; strict Cargo audit, rustfmt, Clippy, actionlint and zizmor remain required.
 
 Keep a translation log beside each document throughout all nine stages. The CLI separately writes content-free UTC operation logs to `./logs` (`REVAYAT_LOG_DIR` overrides the location; `REVAYAT_LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`). Records contain only the command category, exit category/code and duration, without arguments, tool output or private paths. Diagnostics and unresolved recovery journals stay local. See the skill for required delivery records.
 

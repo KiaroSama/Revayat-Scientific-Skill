@@ -9,6 +9,8 @@ use std::{
 mod publish;
 #[path = "release_bundle/signing.rs"]
 mod signing;
+#[path = "release_bundle/source.rs"]
+mod source;
 
 pub const REQUIRED_TARGETS: [&str; 4] = [
     "x86_64-pc-windows-msvc",
@@ -136,18 +138,20 @@ pub fn cli(args: &[String]) -> Result<i32> {
     let options = Options::try_parse_from(
         std::iter::once("release-bundle".to_owned()).chain(args.iter().cloned()),
     )?;
+    let tag = match &options.command {
+        Command::Stage { tag, .. } | Command::Sign { tag, .. } | Command::Publish { tag, .. } => {
+            checked_tag(tag.clone())?
+        }
+    };
+    source::verify_checkout(&crate::distribution::repository_root()?, &tag)?;
     match options.command {
         Command::Stage {
-            target,
-            tag,
-            output_dir,
-        } => stage(target, checked_tag(tag)?, &output_dir)?,
+            target, output_dir, ..
+        } => stage(target, tag, &output_dir)?,
         Command::Sign {
-            tag,
-            dir,
-            public_key,
-        } => signing::sign(&dir, &checked_tag(tag)?, &public_key)?,
-        Command::Publish { tag, dir } => publish::publish(&dir, &checked_tag(tag)?)?,
+            dir, public_key, ..
+        } => signing::sign(&dir, &tag, &public_key)?,
+        Command::Publish { dir, .. } => publish::publish(&dir, &tag)?,
     }
     Ok(0)
 }
