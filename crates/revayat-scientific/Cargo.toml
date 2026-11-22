@@ -39,7 +39,7 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 lopdf = { version = "0.47", default-features = false, features = ["rayon"] }
 png = "0.18"
 gif = "0.13"
-tiff = "0.10"
+tiff = "0.11"
 read-fonts = "0.47"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls-native-roots"] }
 harfrust = "0.16"
