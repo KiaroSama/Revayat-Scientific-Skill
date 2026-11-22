@@ -1,5 +1,5 @@
 //! Caller-side lifeline and interactive process handle for the shared Unix guardian.
-use super::{LIMIT, Request, Response, companion, transfer};
+use super::{LIMIT, Request, Response, companion, diagnostics::split_category, transfer};
 use crate::runtime::{CommandOutput, CommandSpec, DeadlineExceeded};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -266,22 +266,15 @@ impl Interactive {
             );
             wait_response(self.socket.as_ref(), deadline)?;
         }
-        let cleanup = self
-            .response
-            .as_ref()
-            .is_some_and(|response| response.cleanup_complete);
         self.socket.take();
         loop {
             if let Some(status) = self.child.try_wait()? {
-                ensure!(
-                    status.success() && cleanup,
-                    "runtime companion cleanup incomplete"
-                );
-                self.finished = true;
                 let response = self
                     .response
                     .as_ref()
                     .context("runtime completion missing")?;
+                companion_completion(status.success(), response)?;
+                self.finished = true;
                 self.terminal_error = interactive_failure(
                     self.interactive,
                     self.cancel_requested,
@@ -300,6 +293,31 @@ impl Interactive {
         }
     }
 }
+
+fn companion_completion(success: bool, response: &Response) -> Result<()> {
+    // Validation normally occurs at receipt; keep even direct error formatting closed.
+    let category = response.error.as_deref().map_or("none", |label| {
+        if valid_category(label) {
+            label
+        } else {
+            "invalid"
+        }
+    });
+    let failure = if !success {
+        Some("runtime companion exited unsuccessfully")
+    } else if !response.cleanup_complete {
+        Some("runtime companion cleanup incomplete")
+    } else {
+        None
+    };
+    failure.map_or(Ok(()), |message| {
+        Err(anyhow::anyhow!(message)).context(format!(
+            "runtime completion (cleanup_complete={}; category={category})",
+            response.cleanup_complete
+        ))
+    })
+}
+
 impl Drop for Interactive {
     fn drop(&mut self) {
         if !self.finished {
@@ -331,7 +349,12 @@ fn interactive_failure(
     } else if natural.is_some_and(|status| !status.success())
         || (response.error.is_none() && response.code.is_some_and(|code| code != 0))
         || (response.error.is_some()
-            && !(cancelled && response.error.as_deref() == Some("cancelled")))
+            && !(cancelled
+                && response
+                    .error
+                    .as_deref()
+                    .and_then(split_category)
+                    .is_some_and(|(category, _)| category == "cancelled")))
     {
         Some("interactive process failed before deliberate termination")
     } else {
@@ -415,11 +438,13 @@ fn validate_response(response: &Response, spec: &CommandSpec) -> Result<()> {
     );
     if let Some(category) = response.error.as_deref() {
         ensure!(
-            matches!(
-                category,
-                "output-limit" | "input" | "not-found" | "spawn" | "cancelled"
-            ) || valid_operation_label(category),
+            valid_category(category),
             "invalid runtime completion category"
+        );
+        ensure!(
+            split_category(category)
+                .is_some_and(|(_, diagnostic)| diagnostic.is_none() || !response.cleanup_complete),
+            "runtime diagnostic contradicts cleanup result"
         );
     }
     if response.code.is_some() {
@@ -455,6 +480,11 @@ fn validate_response(response: &Response, spec: &CommandSpec) -> Result<()> {
 }
 
 fn primary_result(response: &Response, spec: &CommandSpec) -> Result<()> {
+    let category = response
+        .error
+        .as_deref()
+        .and_then(split_category)
+        .map(|(label, _)| label);
     if let Some(idle) = response.deadline_idle {
         let deadline = anyhow::Error::new(DeadlineExceeded {
             idle,
@@ -471,19 +501,21 @@ fn primary_result(response: &Response, spec: &CommandSpec) -> Result<()> {
                     .as_deref()
                     .filter(|label| valid_operation_label(label))
             {
+                let category = split_category(category).map_or("invalid", |(label, _)| label);
                 deadline.context(format!("owned runtime operation failed ({category})"))
             } else {
                 deadline
             },
         )
-    } else if response.error.as_deref() == Some("not-found") {
+    } else if category == Some("not-found") {
         Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "owned external tool is missing",
         )
         .into())
     } else if let Some(category) = &response.error {
-        Err(anyhow::anyhow!(match category.as_str() {
+        let base = split_category(category).map_or("invalid", |(label, _)| label);
+        Err(anyhow::anyhow!(match base {
             "output-limit" => format!("tool diagnostics exceeded {} byte limit", spec.max_output),
             "input" => "tool did not consume its bounded input".into(),
             "spawn" => "cannot start owned external tool".into(),
@@ -497,7 +529,19 @@ fn primary_result(response: &Response, spec: &CommandSpec) -> Result<()> {
     }
 }
 
+fn valid_category(label: &str) -> bool {
+    split_category(label).is_some_and(|(base, _)| {
+        matches!(
+            base,
+            "output-limit" | "input" | "not-found" | "spawn" | "cancelled"
+        ) || valid_operation_label(base)
+    })
+}
+
 fn valid_operation_label(label: &str) -> bool {
+    let Some((label, _)) = split_category(label) else {
+        return false;
+    };
     ["status-query", "group-cleanup", "child-reap", "unknown"]
         .iter()
         .any(|stage| {
@@ -518,6 +562,93 @@ fn valid_operation_label(label: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cleanup_diagnostics_remain_failures_and_do_not_expose_untrusted_labels() {
+        let spec = CommandSpec::new("controlled-unused-program");
+        let mut response = super::super::completed_response(
+            Ok(CommandOutput {
+                code: 0,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            }),
+            Ok(()),
+            false,
+            None,
+        );
+        let diagnostic = super::super::diagnostics::CleanupDiagnostic::collect(
+            true,
+            true,
+            false,
+            &Err(anyhow::anyhow!("PRIVATE_ACK")),
+            &Err(anyhow::Error::new(
+                super::super::diagnostics::AccountingFailure::PeerEof,
+            )),
+        );
+        diagnostic.attach(&mut response);
+        validate_response(&response, &spec).unwrap();
+        let error = companion_completion(true, &response).unwrap_err();
+        assert!(format!("{error:#}").contains("cleanup=1a;accounting=peer-eof"));
+        assert!(
+            error
+                .chain()
+                .any(|cause| cause.to_string() == "runtime companion cleanup incomplete")
+        );
+        let error = companion_completion(false, &response).unwrap_err();
+        assert!(
+            error
+                .chain()
+                .any(|cause| cause.to_string() == "runtime companion exited unsuccessfully")
+        );
+        assert!(error.to_string().contains("cleanup_complete=false"));
+        assert!(
+            crate::migration::execution::discovery_failure_summary(&error)
+                .contains("runtime=companion-exit")
+        );
+        response.cleanup_complete = true;
+        assert!(validate_response(&response, &spec).is_err());
+        response.cleanup_complete = false;
+        response.error = Some("operation-unknown;cleanup=10;accounting=PRIVATE_TOKEN".into());
+        assert!(validate_response(&response, &spec).is_err());
+        assert!(
+            !format!("{:#}", companion_completion(true, &response).unwrap_err())
+                .contains("PRIVATE")
+        );
+        response.cleanup_complete = true;
+        response.error = None;
+        assert!(companion_completion(true, &response).is_ok());
+        assert!(companion_completion(false, &response).is_err());
+
+        let owned = crate::runtime::with_cleanup::<CommandOutput>(
+            Err(DeadlineExceeded {
+                idle: false,
+                limit: spec.timeout,
+            }
+            .into()),
+            Err(
+                anyhow::Error::new(std::io::Error::from_raw_os_error(libc::ECHILD))
+                    .context("owned-child-reap"),
+            ),
+        );
+        let mut response = super::super::completed_response(
+            owned,
+            Err(anyhow::anyhow!("PRIVATE_RECEIPT_ERROR")),
+            false,
+            None,
+        );
+        diagnostic.attach(&mut response);
+        let cleanup = companion_completion(true, &response);
+        let error = completed_result(response, &spec, cleanup).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<DeadlineExceeded>().unwrap().limit,
+            spec.timeout
+        );
+        assert!(
+            crate::migration::execution::discovery_failure_summary(&error)
+                .contains(&format!("runtime=child-reap os_error={}", libc::ECHILD))
+        );
+        assert!(!format!("{error:#}").contains("PRIVATE"));
+    }
 
     #[test]
     fn wire_deadline_boundaries_match_the_companion_protocol() -> Result<()> {

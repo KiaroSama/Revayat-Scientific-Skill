@@ -437,6 +437,10 @@ pub fn publish_with_identity(
             boundary(Boundary::BeforeReplace, &recovery.destination)?;
             validate_destination(&recovery.destination, protected)?;
             ensure!(
+                !is_link(&recovery.stage)? && fs::metadata(&recovery.stage)?.is_file(),
+                "staged output must be a regular non-linked file"
+            );
+            ensure!(
                 fingerprint(&recovery.destination, max_bytes)? == recovery.previous,
                 "destination changed before publication"
             );

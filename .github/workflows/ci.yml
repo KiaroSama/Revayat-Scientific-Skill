@@ -163,6 +163,7 @@ jobs:
       - name: Collect selected actual rendering, OCR, source and sandbox outcomes
         timeout-minutes: 25
         env:
+          REVAYAT_TEST_OWNER_DIAGNOSTICS: '1'
           SCIENTIFIC_EVIDENCE_DIR: ${{ runner.temp }}/scientific-evidence
         run: target/debug/revayat-test-runner --tier scientific --profile debug --ignored --output execution/scientific-debug.json --timeout 1200
       - name: Preserve scientific execution report even on test failure

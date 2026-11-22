@@ -125,6 +125,78 @@ fn late_stage_mutation_preserves_the_previous_delivery() {
     assert!(artifacts(&root).is_empty());
 }
 
+#[cfg(unix)]
+#[test]
+fn same_referent_stage_link_before_replace_preserves_previous_delivery() {
+    use revayat_scientific::identity::file_identity;
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let entries = plans(&root);
+    let referent = root.join("moved-stage");
+    let expected = file_identity(&entries[0].0, None).unwrap();
+    let mut changed = false;
+    let result = publish_observed(&entries[..1], &[], None, |at, _| {
+        if at == Boundary::BeforeReplace {
+            fs::rename(&entries[0].0, &referent)?;
+            symlink(&referent, &entries[0].0)?;
+            assert_eq!(file_identity(&entries[0].0, None)?, expected);
+            changed = true;
+        }
+        Ok(())
+    });
+    assert!(changed);
+    assert!(result.is_err(), "the substituted stage link was accepted");
+    assert!(
+        !fs::symlink_metadata(&entries[0].1)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "publication replaced the approved destination with a stage link"
+    );
+    assert_eq!(fs::read(&entries[0].1).unwrap(), b"approved A");
+    assert_eq!(fs::read_link(&entries[0].0).unwrap(), referent);
+    assert_eq!(fs::read(&referent).unwrap(), b"candidate A");
+    assert!(artifacts(&root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn same_referent_destination_link_before_replace_retains_recovery() {
+    use revayat_scientific::identity::file_identity;
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let entries = plans(&root);
+    let referent = root.join("moved-approved-delivery");
+    let expected = file_identity(&entries[0].1, None).unwrap();
+    let mut changed = false;
+    let error = publish_observed(&entries[..1], &[], None, |at, path| {
+        if at == Boundary::BeforeReplace {
+            fs::rename(path, &referent)?;
+            symlink(&referent, path)?;
+            assert_eq!(file_identity(path, None)?, expected);
+            changed = true;
+        }
+        Ok(())
+    })
+    .unwrap_err();
+    assert!(changed);
+    assert!(error.downcast_ref::<RetainedPrimary>().is_some());
+    assert_eq!(error.downcast_ref::<RecoveryFailures>().unwrap().0.len(), 1);
+    assert_eq!(fs::read(&entries[0].0).unwrap(), b"candidate A");
+    assert_eq!(fs::read_link(&entries[0].1).unwrap(), referent);
+    assert_eq!(fs::read(&referent).unwrap(), b"approved A");
+    let records = retained(&root, 1);
+    assert_eq!(records[0]["destination"], entries[0].1.to_str().unwrap());
+    assert_eq!(
+        fs::read(records[0]["backup"].as_str().unwrap()).unwrap(),
+        b"approved A"
+    );
+}
+
 #[test]
 fn late_destination_mutation_retains_foreign_bytes_and_recovery_evidence() {
     for mutation in [
