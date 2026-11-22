@@ -10,6 +10,7 @@ use std::ptr::{null, null_mut};
 use std::time::{Duration, Instant};
 
 type Handle = *mut c_void;
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 #[path = "native/native_quota.rs"]
 pub(crate) mod native_quota;
 /// Only the explicit fixed quota-worker binary dispatches this native entry.
