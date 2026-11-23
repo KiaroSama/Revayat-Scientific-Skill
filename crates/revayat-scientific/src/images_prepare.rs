@@ -100,7 +100,7 @@ fn verify_original(
     observe(Boundary::BeforeInputCheck, path)?;
     plain_path(path)?;
     ensure!(
-        identity::file_identity(path, Some(MAX_IMAGE_BYTES))?.same_bytes(expected),
+        identity::file_identity(path, Some(MAX_IMAGE_BYTES))?.same_bytes_and_mode(expected),
         "original image backup changed before source replacement"
     );
     Ok(())
@@ -146,23 +146,30 @@ pub fn prepare_observed(
     let mut inputs = Observations::new();
     let mut originals = BTreeMap::new();
     for source in &files {
-        let destination = source.with_extension("png");
-        ensure!(
-            names.insert(
-                std::path::absolute(&destination)?
-                    .to_string_lossy()
-                    .to_lowercase()
-            ),
-            "image destination collision"
-        );
         let in_place = source
             .extension()
             .is_some_and(|s| s.eq_ignore_ascii_case("png"));
+        let raster = load(source)?;
+        inputs.insert(source.clone(), Some(raster.source.clone()));
+        let (mean, black) = stats(&raster);
+        let invert = invert_dark && mean < 120. && black >= 0.5;
+        if in_place
+            && !invert
+            && !raster.alpha
+            && raster.mode == "Rgb8"
+            && raster.orientation == Orientation::NoTransforms
+        {
+            continue;
+        }
         let destination = if in_place {
             source.clone()
         } else {
-            destination
+            source.with_extension("png")
         };
+        ensure!(
+            names.insert(destination.to_string_lossy().to_lowercase()),
+            "image destination collision"
+        );
         for sibling in fs::read_dir(
             destination
                 .parent()
@@ -195,21 +202,6 @@ pub fn prepare_observed(
         if !in_place {
             inputs.insert(destination.clone(), None);
         }
-        let raster = load(source)?;
-        // Input paths are already absolute and checked for links by the loader.
-        // A read-only source does not need output case-collision admission.
-        let source_path = source.clone();
-        inputs.insert(source_path.clone(), Some(raster.source.clone()));
-        let (mean, black) = stats(&raster);
-        let invert = invert_dark && mean < 120. && black >= 0.5;
-        if in_place
-            && !invert
-            && !raster.alpha
-            && raster.mode == "Rgb8"
-            && raster.orientation == Orientation::NoTransforms
-        {
-            continue;
-        }
         let backup = if in_place {
             let backup = source.with_file_name(format!(
                 "{}.orig",
@@ -226,8 +218,9 @@ pub fn prepare_observed(
             } else {
                 None
             };
+            let expected = original.as_ref().unwrap_or(&raster.source).clone();
             inputs.insert(backup.clone(), original);
-            originals.insert(source_path, (backup.clone(), raster.source.clone()));
+            originals.insert(source.clone(), (backup.clone(), expected));
             Some(backup)
         } else {
             None
@@ -239,9 +232,19 @@ pub fn prepare_observed(
     let mut stages = BTreeMap::new();
     let mut protected = files.clone();
     for (source, dest, backup, raster, invert) in &plan {
-        let dir = tempfile::Builder::new()
+        let mut builder = tempfile::Builder::new();
+        #[cfg(unix)]
+        let private = {
+            use std::os::unix::fs::PermissionsExt;
+            let private = fs::Permissions::from_mode(0o700);
+            builder.permissions(private.clone());
+            private
+        };
+        let dir = builder
             .prefix(".revayat-images-")
             .tempdir_in(source.parent().unwrap())?;
+        #[cfg(unix)]
+        fs::set_permissions(dir.path(), private)?;
         let stage = dir.path().join("figure.png");
         observe(Boundary::BeforeEncode, source)?;
         stages.insert(stage.clone(), write_png(raster, &stage, *invert)?);
@@ -255,15 +258,17 @@ pub fn prepare_observed(
                 protected.push(backup.clone());
             } else {
                 let original = dir.path().join("original");
+                let mut output = raster.source.create_file(&original)?;
                 let count = std::io::copy(
                     &mut fs::File::open(source)?.take(raster.source.size.saturating_add(1)),
-                    &mut fs::File::create(&original)?,
+                    &mut output,
                 )?;
                 #[cfg(unix)]
-                fs::set_permissions(&original, raster.permissions.clone())?;
+                raster.source.restore_mode(&output)?;
+                drop(output);
                 let copied = identity::file_identity(&original, Some(MAX_IMAGE_BYTES))?;
                 ensure!(
-                    count == raster.source.size && copied.same_bytes(&raster.source),
+                    count == raster.source.size && copied.same_bytes_and_mode(&raster.source),
                     "source changed during original backup"
                 );
                 stages.insert(original.clone(), copied);
@@ -312,8 +317,8 @@ pub fn prepare_observed(
                 let current = identity::file_identity(path, max_bytes)?;
                 if let Some(expected) = stages.get(path) {
                     ensure!(
-                        current.same_bytes(expected),
-                        "image stage differs from its producer's bytes"
+                        current.same_bytes_and_mode(expected),
+                        "image stage differs from its producer's bytes or permissions"
                     );
                 }
                 Ok(current)

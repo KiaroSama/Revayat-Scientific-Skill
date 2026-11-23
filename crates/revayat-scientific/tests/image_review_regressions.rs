@@ -63,6 +63,118 @@ fn readonly_source_case_sibling_does_not_collide_with_a_distinct_png_output() {
     assert!(!source.with_extension("png").exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn compliant_png_does_not_need_to_admit_an_output_beside_a_case_variant() {
+    let temp = workspace();
+    let source = temp.path().join("figure.png");
+    let sibling = temp.path().join("FIGURE.PNG");
+    image::RgbImage::from_pixel(6, 6, image::Rgb([30, 80, 160]))
+        .save(&source)
+        .unwrap();
+    if sibling.exists() {
+        return; // This filesystem cannot represent the two distinct names.
+    }
+    fs::write(&sibling, b"unselected sibling").unwrap();
+    let before = fs::read(&source).unwrap();
+
+    assert_eq!(
+        images::prepare(std::slice::from_ref(&source), false).unwrap(),
+        0
+    );
+    assert_eq!(fs::read(&source).unwrap(), before);
+    assert_eq!(fs::read(&sibling).unwrap(), b"unselected sibling");
+    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+}
+
+#[cfg(unix)]
+#[test]
+fn encoded_png_mode_drift_is_rejected_at_stage_admission() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = workspace();
+    let first = temp.path().join("first.jpg");
+    let second = temp.path().join("second.jpg");
+    jpeg(&first, [30, 80, 160]);
+    jpeg(&second, [200, 210, 220]);
+    fs::set_permissions(&first, fs::Permissions::from_mode(0o600)).unwrap();
+    let mut changed = false;
+    let result =
+        images::prepare_observed(&[first.clone(), second.clone()], false, |event, path| {
+            if event == images::Boundary::BeforeEncode && path == second {
+                let stage = fs::read_dir(temp.path())?
+                    .map(|entry| entry.map(|e| e.path().join("figure.png")))
+                    .collect::<std::io::Result<Vec<_>>>()?
+                    .into_iter()
+                    .find(|candidate| candidate.is_file())
+                    .expect("the first encoded PNG must exist before the second encoder");
+                assert_eq!(
+                    fs::metadata(stage.parent().unwrap())?.permissions().mode() & 0o7777,
+                    0o700
+                );
+                assert_eq!(fs::metadata(&stage)?.permissions().mode() & 0o7777, 0o600);
+                fs::set_permissions(&stage, fs::Permissions::from_mode(0o644))?;
+                changed = true;
+            }
+            Ok(())
+        });
+    assert!(changed, "the staged mode must be changed successfully");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("image stage differs")
+    );
+    assert!(!first.with_extension("png").exists());
+    assert!(!second.with_extension("png").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn rollback_refuses_a_backup_with_unchanged_bytes_and_a_different_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = workspace();
+    let stage = temp.path().join("stage");
+    let output = temp.path().join("output");
+    fs::write(&stage, b"proposed bytes").unwrap();
+    fs::write(&output, b"original bytes").unwrap();
+    fs::set_permissions(&output, fs::Permissions::from_mode(0o600)).unwrap();
+    let mut backup = None;
+    let error =
+        publication::publish_observed(&[(stage, output.clone())], &[], None, |event, path| {
+            if event == publication::Boundary::BackupPrepared {
+                backup = Some(path.to_owned());
+            }
+            if event == publication::Boundary::AfterCommit {
+                let path = backup
+                    .as_ref()
+                    .expect("the rollback backup must have been admitted");
+                assert_eq!(fs::metadata(path)?.permissions().mode() & 0o7777, 0o600);
+                fs::set_permissions(path, fs::Permissions::from_mode(0o640))?;
+                anyhow::bail!("test requested rollback after changing backup mode");
+            }
+            Ok(())
+        })
+        .unwrap_err();
+    let failures = &error
+        .downcast_ref::<publication::RecoveryFailures>()
+        .unwrap()
+        .0;
+    assert!(failures.iter().any(|failure| {
+        failure
+            .to_string()
+            .contains("previous backup changed before rollback")
+    }));
+    let backup = backup.unwrap();
+    assert_eq!(fs::read(&backup).unwrap(), b"original bytes");
+    assert_eq!(
+        fs::metadata(&backup).unwrap().permissions().mode() & 0o7777,
+        0o640
+    );
+    assert_eq!(fs::read(&output).unwrap(), b"proposed bytes");
+}
+
 #[test]
 fn earlier_encoded_stage_is_not_readmitted_after_a_later_encode_callback() {
     let temp = workspace();

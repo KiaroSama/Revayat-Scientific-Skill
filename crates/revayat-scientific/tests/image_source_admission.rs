@@ -25,8 +25,8 @@ fn late_destination(backup: bool, boundary: images::Boundary) {
     let mut reached = false;
     let result = images::prepare_observed(std::slice::from_ref(&source), false, |event, path| {
         if event == boundary && (event == images::Boundary::BeforeEncode || path == destination) {
-            reached = true;
             fs::write(&destination, foreign)?;
+            reached = true;
         }
         Ok(())
     });
@@ -74,8 +74,8 @@ fn removed_admitted_backup_refuses_in_place_conversion() {
     let mut reached = false;
     let result = images::prepare_observed(std::slice::from_ref(&source), false, |event, _| {
         if event == images::Boundary::BeforeEncode {
-            reached = true;
             fs::remove_file(&backup)?;
+            reached = true;
         }
         Ok(())
     });
@@ -138,8 +138,8 @@ fn published_original_backup_is_verified_before_source_replacement() {
         if event == images::Boundary::Publication(publication::Boundary::AfterCommit)
             && path == backup
         {
-            reached = true;
             fs::write(&backup, foreign)?;
+            reached = true;
         }
         Ok(())
     });

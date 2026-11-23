@@ -31,9 +31,19 @@ impl FrozenPdf {
     ) -> Result<Self> {
         let limits = limits.validate()?;
         let bytes = inputs.verified_bytes(source)?;
-        let work = tempfile::Builder::new()
+        let mut builder = tempfile::Builder::new();
+        #[cfg(unix)]
+        let private = {
+            use std::os::unix::fs::PermissionsExt;
+            let private = fs::Permissions::from_mode(0o700);
+            builder.permissions(private.clone());
+            private
+        };
+        let work = builder
             .prefix(".revayat-pdf-source-")
             .tempdir_in(std::env::temp_dir().canonicalize()?)?;
+        #[cfg(unix)]
+        fs::set_permissions(work.path(), private)?;
         let path = work.path().join("source.pdf");
         let mut options = fs::OpenOptions::new();
         options.write(true).create_new(true);

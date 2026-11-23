@@ -1,6 +1,18 @@
 use super::*;
 use crate::pdf_revision_fixture as fixture;
 
+#[cfg(unix)]
+#[test]
+fn frozen_pdf_uses_a_private_work_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let f = fixture::Fixture::new(1);
+    let inputs = SourceSnapshot::capture(std::slice::from_ref(&f.source)).unwrap();
+    let frozen = FrozenPdf::capture(&f.source, &inputs, AdmissionLimits::default()).unwrap();
+    let work = fs::metadata(frozen.path().parent().unwrap()).unwrap();
+    assert_eq!(work.permissions().mode() & 0o7777, 0o700);
+}
+
 #[test]
 fn zero_pixel_region_is_rejected_before_backend_invocation() {
     let f = fixture::Fixture::new(1);

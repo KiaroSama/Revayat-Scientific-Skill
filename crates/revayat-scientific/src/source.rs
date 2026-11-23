@@ -202,6 +202,11 @@ impl TexSource {
                     body: source.live[open + 1..close].to_owned(),
                 });
             } else if arg_only.contains(&&cap[1]) {
+                let end = if matches!(&cap[1], "newcommand" | "renewcommand") {
+                    definition_body_end(&source.live, end).unwrap_or(end)
+                } else {
+                    end
+                };
                 source.protected.push((full.start(), end));
                 bidi_exclusions.push((full.start(), end));
             } else {
@@ -319,6 +324,29 @@ impl TexSource {
             .map(|cap| (cap.get(0).unwrap().start(), cap[1].trim().to_owned()))
             .collect()
     }
+}
+
+fn definition_body_end(text: &str, name_end: usize) -> Option<usize> {
+    let mut rest = text[name_end..].trim_start();
+    for _ in 0..2 {
+        let Some(option) = rest.strip_prefix('[') else {
+            break;
+        };
+        rest = option;
+        loop {
+            rest = &rest[rest.find(['\\', '{', ']'])?..];
+            let end = match rest.as_bytes()[0] {
+                b']' => {
+                    rest = rest[1..].trim_start();
+                    break;
+                }
+                b'{' => balanced_argument(rest, 0).ok()?,
+                _ => 1 + rest[1..].chars().next()?.len_utf8(),
+            };
+            rest = &rest[end..];
+        }
+    }
+    balanced_argument(text, text.len() - rest.len()).ok()
 }
 
 fn math_regions(text: &str) -> Vec<(usize, usize)> {

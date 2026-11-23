@@ -59,6 +59,31 @@ fn empty_html_text_does_not_create_an_inline_paragraph_boundary() {
 }
 
 #[test]
+fn html_fallback_text_cannot_close_or_split_a_visible_isolate() {
+    for tag in ["iframe", "noembed", "noframes"] {
+        let body = format!("<div>\u{2067}Rust <{tag}>\u{2069}</{tag}></div>");
+        let findings = bidi_findings("html", &body);
+        assert_eq!(findings.len(), 1, "{tag}: {findings:#?}");
+        assert!(findings[0].message.starts_with("Close the"), "{tag}");
+
+        let body = format!(
+            "<div>\u{2067}Rust <{tag} style=\"white-space: pre\">API\n\u{2029}</{tag}> research\u{2069}</div>"
+        );
+        let findings = bidi_findings("html", &body);
+        assert!(findings.is_empty(), "{tag}: {findings:#?}");
+    }
+}
+
+#[test]
+fn html_isolate_cannot_cross_additional_block_elements() {
+    for tag in ["search", "details", "menu", "listing"] {
+        let body = format!("<div>\u{2067}Rust <{tag}>text</{tag}> research\u{2069}</div>");
+        let findings = bidi_findings("html", &body);
+        assert_eq!(findings.len(), 2, "{tag}: {findings:#?}");
+    }
+}
+
+#[test]
 fn balanced_html_isolate_can_cross_collapsible_source_newline() {
     let findings = bidi_findings("html", "<p>\u{2067}Rust برای\nپژوهش\u{2069}</p>");
     assert!(findings.is_empty(), "{findings:#?}");
@@ -68,6 +93,21 @@ fn balanced_html_isolate_can_cross_collapsible_source_newline() {
 fn tex_isolate_cannot_cross_explicit_paragraph_boundary() {
     let findings = bidi_findings("tex", "\u{2067}Rust برای پژوهش\\par نمونه\u{2069}");
     assert_eq!(findings.len(), 2, "{findings:#?}");
+}
+
+#[test]
+fn uninvoked_tex_macro_definitions_do_not_split_prose() {
+    for definition in [
+        r"\newcommand{\sample}{\par}",
+        r"\newcommand*{\sample}[1]{\item #1}",
+        r"\renewcommand{\sample}{\item}",
+        r"\renewcommand*{\sample}[1][x]{\par #1}",
+        r"\renewcommand*{\sample}[1][{x]y}]{\par #1}",
+    ] {
+        let body = format!("\u{2067}before {definition} after\u{2069}");
+        let findings = bidi_findings("tex", &body);
+        assert!(findings.is_empty(), "{definition}: {findings:#?}");
+    }
 }
 
 #[test]
@@ -171,6 +211,7 @@ fn html_preserved_newlines_follow_known_element_and_inline_style_modes() {
     let content = "\u{2067}Rust\nپژوهش\u{2069}";
     for body in [
         format!("<textarea>{content}</textarea>"),
+        "<xmp>\u{2067}Rust\nresearch\u{2069}</xmp>".into(),
         format!("<p style=\"white-space: pre\">{content}</p>"),
         format!("<p style=\"white-space: pre-wrap\">{content}</p>"),
         format!("<p style=\"white-space: pre-line\">{content}</p>"),

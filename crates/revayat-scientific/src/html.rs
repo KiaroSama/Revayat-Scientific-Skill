@@ -18,6 +18,7 @@ pub(crate) const VOID: &str =
 const INERT: &str = "script style head title pre code kbd samp math";
 const TEXT_EXCLUDED: &str = "head title script style";
 const BREAKS: &str = "address article aside blockquote br caption dd div dl dt fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr li main nav ol option p pre section table tbody td textarea tfoot th thead tr ul xmp";
+const BIDI_BLOCKS: &str = "details listing menu search";
 const RCDATA: &str = "textarea title";
 const RAWTEXT: &str = "script style xmp iframe noembed noframes";
 const FOREIGN_BREAKOUT: &str = "b big blockquote body br center code dd div dl dt em embed h1 h2 h3 h4 h5 h6 head hr i img li listing menu meta nobr ol p pre ruby s small span strong strike sub sup table tt u ul var";
@@ -217,9 +218,14 @@ impl ParsedHtml {
         if member(BREAKS, &n.tag) || n.protected || n.identity {
             self.lint_tokens.push((end, end));
         }
-        if member(BREAKS, &n.tag) && !n.text_excluded {
-            self.text_tokens.push((end, end));
-            self.bidi_tokens.push((end, end, false, false));
+        if !n.text_excluded {
+            let block = member(BREAKS, &n.tag);
+            if block {
+                self.text_tokens.push((end, end));
+            }
+            if block || (n.namespace == "html" && member(BIDI_BLOCKS, &n.tag)) {
+                self.bidi_tokens.push((end, end, false, false));
+            }
         }
         if n.namespace == "html" && member(RCDATA, &n.tag) {
             self.literals.push((n.content, content_end));
@@ -265,7 +271,11 @@ impl ParsedHtml {
         let node = self.stack.last().map(|&i| &self.nodes[i]);
         if node.is_none_or(|n| !n.text_excluded) {
             self.text_tokens.push((start, end));
-            if start != end {
+            if start != end
+                && node.is_none_or(|n| {
+                    n.namespace != "html" || !member("iframe noembed noframes", &n.tag)
+                })
+            {
                 self.bidi_tokens.push((
                     start,
                     end,
@@ -389,9 +399,14 @@ impl ParsedHtml {
         if member(BREAKS, &node.tag) || node.protected || node.identity {
             self.lint_tokens.push((start, start));
         }
-        if member(BREAKS, &node.tag) && !node.text_excluded {
-            self.text_tokens.push((start, start));
-            self.bidi_tokens.push((start, start, false, false));
+        if !node.text_excluded {
+            let block = member(BREAKS, &node.tag);
+            if block {
+                self.text_tokens.push((start, start));
+            }
+            if block || (node.namespace == "html" && member(BIDI_BLOCKS, &node.tag)) {
+                self.bidi_tokens.push((start, start, false, false));
+            }
         }
         let foreign = node.namespace != "html";
         let push = foreign || !member(VOID, &node.tag);

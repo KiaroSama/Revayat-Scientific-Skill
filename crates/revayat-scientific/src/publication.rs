@@ -168,15 +168,10 @@ fn copied(
     let original = file_identity(source, max_bytes)?;
     // Create in the destination's parent so native Windows ACL inheritance is
     // preserved, without copying a private stage's DACL or granting access.
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(destination)?;
+    let mut output = original.create_file(destination)?;
     let id = object_id(&output)?;
     *created = Some(id);
     let mut input = File::open(source)?;
-    #[cfg(unix)]
-    output.set_permissions(input.metadata()?.permissions())?;
     let count = std::io::copy(
         &mut (&mut input).take(original.size.saturating_add(1)),
         &mut output,
@@ -185,6 +180,8 @@ fn copied(
         count == original.size,
         "publication source changed during copying"
     );
+    #[cfg(unix)]
+    original.restore_mode(&output)?;
     output.set_times(fs::FileTimes::new().set_modified(original.modified))?;
     output.sync_all()?;
     drop(input);
@@ -192,7 +189,7 @@ fn copied(
     owned(destination, id)?;
     let backup = file_identity(destination, max_bytes)?;
     ensure!(
-        backup.same_bytes(&original),
+        backup.same_bytes_and_mode(&original),
         "publication copied backup differs"
     );
     *admitted = Some(backup.clone());
@@ -503,7 +500,8 @@ pub fn publish_with_identity(
                     )?;
                     let backup = file_identity(&recovery.backup, max_bytes)?;
                     ensure!(
-                        backup.same_bytes(original),
+                        plan.backup_fingerprint.as_ref() == Some(&backup)
+                            && backup.same_bytes_and_mode(original),
                         "previous backup changed before rollback"
                     );
                     retained = Some(backup.clone());

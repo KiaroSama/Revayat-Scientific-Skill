@@ -98,8 +98,6 @@ pub struct Inspection {
 }
 struct Raster {
     source: identity::Fingerprint,
-    #[cfg(unix)]
-    permissions: fs::Permissions,
     pixels: image::RgbImage,
     alpha: bool,
     mode: String,
@@ -182,10 +180,9 @@ fn load_observed(
     let before = identity::file_identity(source, Some(MAX_IMAGE_BYTES))?;
     let mut raw = Vec::new();
     observe(LoadBoundary::BeforeRead)?;
-    let input = fs::File::open(source)?;
-    #[cfg(unix)]
-    let permissions = input.metadata()?.permissions();
-    input.take(MAX_IMAGE_BYTES + 1).read_to_end(&mut raw)?;
+    fs::File::open(source)?
+        .take(MAX_IMAGE_BYTES + 1)
+        .read_to_end(&mut raw)?;
     observe(LoadBoundary::AfterRead)?;
     ensure!(
         raw.len() as u64 <= MAX_IMAGE_BYTES,
@@ -386,8 +383,6 @@ fn load_observed(
     );
     Ok(Raster {
         source: before,
-        #[cfg(unix)]
-        permissions,
         pixels,
         alpha,
         mode,
@@ -521,13 +516,15 @@ fn write_png(raster: &Raster, destination: &Path, invert: bool) -> Result<identi
     }
     let (encoded_size, encoded_digest) = {
         let mut output = EncodedPng {
-            file: fs::File::create(destination)?,
+            file: raster.source.create_file(destination)?,
             digest: Sha256::new(),
             size: 0,
         };
         let mut writer = png::Encoder::with_info(&mut output, info)?.write_header()?;
         writer.write_image_data(pixels.as_raw())?;
         writer.finish()?;
+        #[cfg(unix)]
+        raster.source.restore_mode(&output.file)?;
         output.file.sync_all()?;
         (output.size, format!("{:x}", output.digest.finalize()))
     };
@@ -554,12 +551,15 @@ fn write_png(raster: &Raster, destination: &Path, invert: bool) -> Result<identi
             "staged PNG lost XMP metadata"
         );
     }
-    #[cfg(unix)]
-    fs::set_permissions(destination, raster.permissions.clone())?;
     let staged = identity::file_identity(destination, Some(MAX_IMAGE_BYTES))?;
     ensure!(
         staged.size == encoded_size && staged.sha256 == encoded_digest,
         "staged PNG differs from the encoded bytes"
+    );
+    #[cfg(unix)]
+    ensure!(
+        staged.mode == raster.source.mode,
+        "staged PNG permissions differ from the admitted source"
     );
     Ok(staged)
 }

@@ -86,11 +86,43 @@ pub struct Fingerprint {
     pub size: u64,
     pub modified: SystemTime,
     pub sha256: String,
+    #[cfg(unix)]
+    #[serde(default)]
+    pub mode: u32,
 }
 
 impl Fingerprint {
     pub fn same_bytes(&self, other: &Self) -> bool {
         self.size == other.size && self.sha256 == other.sha256
+    }
+
+    pub(crate) fn same_bytes_and_mode(&self, other: &Self) -> bool {
+        #[cfg(unix)]
+        if self.mode != other.mode {
+            return false;
+        }
+        self.same_bytes(other)
+    }
+
+    pub(crate) fn create_file(&self, path: &Path) -> std::io::Result<File> {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(self.mode);
+        }
+        options.open(path)
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn restore_mode(&self, file: &File) -> std::io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        // Umask and writes can clear bits even when creation requested the source mode.
+        if file.metadata()?.permissions().mode() & 0o7777 != self.mode {
+            file.set_permissions(fs::Permissions::from_mode(self.mode))?;
+        }
+        Ok(())
     }
 }
 
@@ -100,6 +132,8 @@ struct Observation {
     size: u64,
     modified: SystemTime,
     change_time: (i128, i128),
+    #[cfg(unix)]
+    mode: u32,
 }
 
 fn observation(file: &File, metadata: &Metadata) -> Result<Observation> {
@@ -124,11 +158,15 @@ fn observation(file: &File, metadata: &Metadata) -> Result<Observation> {
     };
     #[cfg(not(unix))]
     let id = object_id(file)?;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     Ok(Observation {
         id,
         size: metadata.len(),
         modified: metadata.modified()?,
         change_time,
+        #[cfg(unix)]
+        mode: metadata.permissions().mode() & 0o7777,
     })
 }
 
@@ -224,5 +262,7 @@ pub fn file_identity_opened(
         size: expected.size,
         modified: expected.modified,
         sha256: format!("{:x}", digest.finalize()),
+        #[cfg(unix)]
+        mode: expected.mode,
     })
 }
