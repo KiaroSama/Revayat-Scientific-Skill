@@ -27,7 +27,7 @@ fn assert_companion_layout(executable: &Path, directory: &Path) -> Result<()> {
     assert_eq!(fs::metadata(&companion)?.permissions().mode() & 0o777, 0o755);
     let version = delivery_command(&companion, directory, &["--version"], None)?;
     assert!(version.success());
-    assert_eq!(std::str::from_utf8(&version.stdout)?.trim(), "revayat-process-owner 2.2.0");
+    assert_eq!(std::str::from_utf8(&version.stdout)?.trim(), "revayat-process-owner 2.2.1");
     let held = companion.with_file_name("retained-owner");
     fs::rename(&companion, &held)?;
     let missing = delivery_command(executable, directory,
@@ -38,7 +38,7 @@ fn assert_companion_layout(executable: &Path, directory: &Path) -> Result<()> {
     let ready = delivery_command(executable, directory,
         &["run-check", "--timeout", "5", "--", companion.to_str().unwrap(), "--version"], None)?;
     assert!(ready.success());
-    assert_eq!(std::str::from_utf8(&ready.stdout)?.trim(), "revayat-process-owner 2.2.0");
+    assert_eq!(std::str::from_utf8(&ready.stdout)?.trim(), "revayat-process-owner 2.2.1");
     Ok(())
 }
 fn assert_document_commands(executable: &Path, directory: &Path) -> Result<()> {

@@ -1,6 +1,6 @@
 {
   "name": "revayat-scientific",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Translate scientific and technical work into natural Persian. Verify names and pronunciations online, check RLI/PDI isolation, and split book batches across agents. Includes Vazirmatn for offline use.",
   "author": {
     "name": "Kiaro Sama",
