@@ -31,6 +31,7 @@ pub struct TexSource {
     pub direction_scopes: BTreeMap<String, Vec<(usize, usize)>>,
     pub preamble_end: usize,
     pub body_end: usize,
+    pub(crate) bidi_paragraphs: Vec<usize>,
     waivers: BTreeMap<(PathBuf, usize), BTreeSet<String>>,
 }
 
@@ -56,6 +57,7 @@ impl TexSource {
                 .into(),
             preamble_end,
             body_end,
+            bidi_paragraphs: Vec::new(),
             waivers: BTreeMap::new(),
         };
         for region in ignored_regions(source.text())? {
@@ -176,6 +178,7 @@ impl TexSource {
                 }
             }
         }
+        let mut bidi_exclusions = source.protected.clone();
         for cap in
             Regex::new(r"\\([A-Za-z@]+)\*?\s*(?:\[[^\]]*\])?\s*\{")?.captures_iter(&source.live)
         {
@@ -192,6 +195,7 @@ impl TexSource {
             };
             if ["lr", "en", "textenglish", "lasttext"].contains(&&cap[1]) {
                 source.protected.push((open + 1, close));
+                bidi_exclusions.push((open + 1, close));
                 source.isolates.push(Isolate {
                     start: full.start(),
                     end,
@@ -199,11 +203,27 @@ impl TexSource {
                 });
             } else if arg_only.contains(&&cap[1]) {
                 source.protected.push((full.start(), end));
+                bidi_exclusions.push((full.start(), end));
             } else {
                 source.protected.push((full.start(), open));
             }
         }
+        // Classify paragraph commands before ordinary command names become
+        // protected; arguments, comments, literals, and math remain excluded.
+        let mut exclusions = bidi_exclusions;
+        exclusions.sort_unstable();
+        let mut maximum_end = 0;
+        for (_, end) in &mut exclusions {
+            maximum_end = maximum_end.max(*end);
+            *end = maximum_end;
+        }
         for item in Regex::new(r"\\[A-Za-z@]+\*?")?.find_iter(&source.live) {
+            if matches!(item.as_str().trim_end_matches('*'), "\\par" | "\\item") {
+                let i = exclusions.partition_point(|&(start, _)| start <= item.start());
+                if i == 0 || item.start() >= exclusions[i - 1].1 {
+                    source.bidi_paragraphs.push(item.start());
+                }
+            }
             source.protected.push((item.start(), item.end()));
         }
         // Directives inside a protected identity/code/math region are data,

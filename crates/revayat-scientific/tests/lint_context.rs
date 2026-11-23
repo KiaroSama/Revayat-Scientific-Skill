@@ -2,7 +2,7 @@ use revayat_scientific::lint::{self, Source};
 use std::fs;
 
 #[test]
-fn bidi_isolates_balance_within_checked_prose_lines() {
+fn bidi_isolates_balance_within_checked_prose_paragraphs() {
     let directory = tempfile::tempdir().unwrap();
     for (extension, prefix, suffix) in [
         (
@@ -27,7 +27,7 @@ fn bidi_isolates_balance_within_checked_prose_lines() {
             ("\u{2066}Rust\n", &[3]),
             ("\u{2068}نمونه\n", &[3]),
             ("Rust برای پژوهش\u{2069}\n", &[3]),
-            ("\u{2067}Rust برای پژوهش\nنمونه\u{2069}\n", &[3, 4]),
+            ("\u{2067}Rust برای پژوهش\nنمونه\u{2069}\n", &[]),
         ] {
             fs::write(&path, format!("{prefix}{text}{suffix}")).unwrap();
             let findings =

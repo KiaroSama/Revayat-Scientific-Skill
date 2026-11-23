@@ -7,6 +7,8 @@ use anyhow::{Result, bail};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+#[path = "html_bidi.rs"]
+mod bidi;
 
 pub(crate) fn member(set: &str, value: &str) -> bool {
     set.split_ascii_whitespace().any(|x| x == value)
@@ -36,6 +38,7 @@ pub struct HtmlNode {
     pub identity: bool,
     pub protected: bool,
     pub text_excluded: bool,
+    preserve_bidi_newlines: bool,
 }
 impl HtmlNode {
     pub fn attr(&self, name: &str) -> &str {
@@ -66,6 +69,7 @@ pub struct ParsedHtml {
     markup: Vec<(usize, usize)>,
     text_tokens: Vec<(usize, usize)>,
     lint_tokens: Vec<(usize, usize)>,
+    bidi_tokens: Vec<(usize, usize, bool, bool)>,
 }
 impl ParsedHtml {
     pub fn parse(text: &str) -> Result<Self> {
@@ -87,6 +91,7 @@ impl ParsedHtml {
             markup: Vec::new(),
             text_tokens: Vec::new(),
             lint_tokens: Vec::new(),
+            bidi_tokens: Vec::new(),
         };
         p.tokenize()?;
         while let Some(index) = p.stack.pop() {
@@ -214,6 +219,7 @@ impl ParsedHtml {
         }
         if member(BREAKS, &n.tag) && !n.text_excluded {
             self.text_tokens.push((end, end));
+            self.bidi_tokens.push((end, end, false, false));
         }
         if n.namespace == "html" && member(RCDATA, &n.tag) {
             self.literals.push((n.content, content_end));
@@ -259,6 +265,12 @@ impl ParsedHtml {
         let node = self.stack.last().map(|&i| &self.nodes[i]);
         if node.is_none_or(|n| !n.text_excluded) {
             self.text_tokens.push((start, end));
+            self.bidi_tokens.push((
+                start,
+                end,
+                node.is_none_or(|n| !n.protected && !n.identity),
+                node.is_some_and(|n| n.preserve_bidi_newlines),
+            ));
         }
         if node.is_none_or(|n| !n.protected && !n.identity) {
             self.lint_tokens.push((start, end));
@@ -343,6 +355,11 @@ impl ParsedHtml {
         if namespace == "html" && member("template plaintext", &tag) {
             bail!("HTML template/plaintext requires an explicitly reviewed static document");
         }
+        let preserve_bidi_newlines = bidi::preserved_newlines(
+            &tag,
+            attrs.get("style").map_or("", String::as_str),
+            parent.is_some_and(|p| p.preserve_bidi_newlines),
+        );
         let node = HtmlNode {
             namespace,
             tag,
@@ -356,6 +373,7 @@ impl ParsedHtml {
             identity,
             text_excluded: false,
             protected: false,
+            preserve_bidi_newlines,
         };
         let mut node = node;
         node.text_excluded = member(TEXT_EXCLUDED, &node.tag)
@@ -371,6 +389,7 @@ impl ParsedHtml {
         }
         if member(BREAKS, &node.tag) && !node.text_excluded {
             self.text_tokens.push((start, start));
+            self.bidi_tokens.push((start, start, false, false));
         }
         let foreign = node.namespace != "html";
         let push = foreign || !member(VOID, &node.tag);
@@ -673,6 +692,7 @@ pub struct HtmlSource {
     pub path: PathBuf,
     pub html: ParsedHtml,
     waivers: BTreeMap<usize, BTreeSet<String>>,
+    newlines: Vec<u32>,
 }
 impl HtmlSource {
     pub fn load(path: &Path) -> Result<Self> {
@@ -681,15 +701,16 @@ impl HtmlSource {
     }
     pub fn from_text(path: &Path, text: &str) -> Result<Self> {
         let html = ParsedHtml::parse(text)?;
+        let newlines: Vec<_> = text
+            .match_indices('\n')
+            .map(|(pos, _)| pos as u32)
+            .collect();
         let mut waivers: BTreeMap<usize, BTreeSet<String>> = BTreeMap::new();
         let re = Regex::new(r"fa-lint:\s*allow\s+([\w-]+)")?;
         for &(a, b) in &html.waiver_comments {
             for m in re.captures_iter(&html.text[a..b]) {
-                let line = 1 + html.raw
-                    [..html.original_offset(a + m.get(0).expect("match").start())]
-                    .bytes()
-                    .filter(|&c| c == b'\n')
-                    .count();
+                let pos = html.original_offset(a + m.get(0).expect("match").start());
+                let line = 1 + newlines.partition_point(|&newline| (newline as usize) < pos);
                 waivers.entry(line).or_default().insert(m[1].into());
             }
         }
@@ -697,13 +718,14 @@ impl HtmlSource {
             path: path.to_owned(),
             html,
             waivers,
+            newlines,
         })
     }
     pub fn line_of(&self, pos: usize) -> usize {
-        1 + self.html.raw[..self.html.original_offset(pos).min(self.html.raw.len())]
-            .bytes()
-            .filter(|&c| c == b'\n')
-            .count()
+        let pos = self.html.original_offset(pos).min(self.html.raw.len());
+        1 + self
+            .newlines
+            .partition_point(|&newline| (newline as usize) < pos)
     }
     pub fn location(&self, pos: usize) -> (PathBuf, usize) {
         (self.path.clone(), self.line_of(pos))

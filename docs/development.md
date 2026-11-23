@@ -7,6 +7,9 @@ installation targets.
 
 ## Local checks
 
+The [Unicode isolate lint contract](bidi-lint.md) documents supported prose
+boundaries, whitespace handling, waivers and the static check's rendering limits.
+
 Owned application, CI and authority operations are Rust. The single residual
 Python source, `tests/security/windows/python-authority/import_dispatch.py`,
 preserves the original genuine CPython import/exception boundary and calls the
