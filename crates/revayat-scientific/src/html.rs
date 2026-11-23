@@ -265,12 +265,14 @@ impl ParsedHtml {
         let node = self.stack.last().map(|&i| &self.nodes[i]);
         if node.is_none_or(|n| !n.text_excluded) {
             self.text_tokens.push((start, end));
-            self.bidi_tokens.push((
-                start,
-                end,
-                node.is_none_or(|n| !n.protected && !n.identity),
-                node.is_some_and(|n| n.preserve_bidi_newlines),
-            ));
+            if start != end {
+                self.bidi_tokens.push((
+                    start,
+                    end,
+                    node.is_none_or(|n| !n.protected && !n.identity),
+                    node.is_some_and(|n| n.preserve_bidi_newlines),
+                ));
+            }
         }
         if node.is_none_or(|n| !n.protected && !n.identity) {
             self.lint_tokens.push((start, end));

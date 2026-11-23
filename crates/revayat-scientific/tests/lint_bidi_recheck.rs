@@ -35,6 +35,30 @@ fn balanced_html_isolate_survives_excluded_inline_content() {
 }
 
 #[test]
+fn empty_html_text_does_not_create_an_inline_paragraph_boundary() {
+    for inline in [
+        "<iframe></iframe>",
+        "<noembed></noembed>",
+        "<noframes></noframes>",
+        "<iframe>API</iframe>",
+        "<noembed>API</noembed>",
+        "<noframes>API</noframes>",
+        "<span></span>",
+        "<span hidden></span>",
+        "<script></script>",
+        "<style></style>",
+    ] {
+        let source = format!("<div>\u{2067}Rust {inline} برای پژوهش\u{2069}</div>");
+        let findings = bidi_findings("html", &source);
+        assert!(findings.is_empty(), "{inline}: {findings:#?}");
+    }
+    for block in ["<div></div>", "<xmp></xmp>", "<textarea></textarea>"] {
+        let source = format!("<div>\u{2067}Rust {block} برای پژوهش\u{2069}</div>");
+        assert_eq!(bidi_findings("html", &source).len(), 2, "{block}");
+    }
+}
+
+#[test]
 fn balanced_html_isolate_can_cross_collapsible_source_newline() {
     let findings = bidi_findings("html", "<p>\u{2067}Rust برای\nپژوهش\u{2069}</p>");
     assert!(findings.is_empty(), "{findings:#?}");
@@ -175,8 +199,9 @@ fn html_preserved_newlines_follow_known_element_and_inline_style_modes() {
 #[test]
 fn tex_paragraph_findings_keep_their_original_included_file_locations() {
     let directory = tempfile::tempdir().unwrap();
-    let main = directory.path().join("main.tex");
-    let chapter = directory.path().join("chapter.tex");
+    let root = directory.path().canonicalize().unwrap();
+    let main = root.join("main.tex");
+    let chapter = root.join("chapter.tex");
     fs::write(&main, "\\documentclass{article}\n\\begin{document}\n\u{2067}Rust \\input{chapter}\n\\end{document}").unwrap();
     fs::write(&chapter, "\\par\nپژوهش\u{2069}\n").unwrap();
     let findings: Vec<_> = lint::check(&Source::load(&main).unwrap(), &[], None, "system-docs")
