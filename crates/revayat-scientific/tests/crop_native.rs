@@ -218,6 +218,66 @@ fn test_explicit_edge_crop_and_late_failures_preserve_batch() {
     assert_eq!(image.dimensions(), (22, 80));
     assert!(image.pixels().any(|p| p.0 == [255, 0, 0]));
     assert_eq!(fs::read(&x.source).unwrap(), source);
+
+    let replacement = x.temp.path().join("replacement.pdf");
+    let held = x.temp.path().join("held.pdf");
+    let mut changed = painted_page([0., 0., 612., 792.], [598., 712., 608., 772.]);
+    let page = pages(&changed)[0];
+    changed
+        .change_page_content(page, b"q 0 0 1 rg 598 712 10 60 re f Q".to_vec())
+        .unwrap();
+    changed.save(&replacement).unwrap();
+    let mut renders = 0;
+    assert_eq!(
+        c::crop_document_observed(&a, Default::default(), |boundary, _| {
+            if boundary == c::CropBoundary::BeforeRender {
+                renders += 1;
+                if renders == 1 {
+                    fs::rename(&x.source, &held)?;
+                    fs::copy(&replacement, &x.source)?;
+                } else {
+                    fs::remove_file(&x.source)?;
+                    fs::rename(&held, &x.source)?;
+                }
+            }
+            Ok(())
+        })
+        .unwrap(),
+        2
+    );
+    assert_eq!(renders, 2);
+    assert_eq!(fs::read(&x.source).unwrap(), source);
+    for name in ["fig-first.png", "fig-second.png"] {
+        let raster = image::open(a.out.join(name)).unwrap().to_rgb8();
+        assert!(raster.pixels().any(|p| p.0 == [255, 0, 0]));
+        assert!(!raster.pixels().any(|p| p.0 == [0, 0, 255]));
+    }
+
+    let second = a.out.join("fig-second.png");
+    let approved = [fs::read(&output).unwrap(), fs::read(&second).unwrap()];
+    let mut substituted = false;
+    let result = c::crop_document_observed(&a, Default::default(), |boundary, path| {
+        if boundary == c::CropBoundary::BeforeRender && path.ends_with("fig-second.png") {
+            let staging = fs::read_dir(&a.out)?
+                .find_map(|entry| {
+                    let path = entry.ok()?.path();
+                    path.file_name()?
+                        .to_string_lossy()
+                        .starts_with(".revayat-crops-")
+                        .then_some(path)
+                })
+                .expect("the first native render must have a private staged PNG");
+            image::RgbImage::new(22, 80).save(staging.join("fig-first.png"))?;
+            substituted = true;
+        }
+        Ok(())
+    });
+    assert!(substituted);
+    assert!(result.is_err(), "a substituted native crop was published");
+    assert_eq!(fs::read(&output).unwrap(), approved[0]);
+    assert_eq!(fs::read(&second).unwrap(), approved[1]);
+    assert_eq!(fs::read(&x.source).unwrap(), source);
+    assert_eq!(fs::read_dir(&a.out).unwrap().count(), 2);
 }
 #[test]
 #[ignore = "requires Poppler"]

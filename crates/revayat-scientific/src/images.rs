@@ -6,9 +6,10 @@ use clap::Parser;
 use image::metadata::Orientation;
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::{Cursor, Read},
+    io::{Cursor, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -97,6 +98,8 @@ pub struct Inspection {
 }
 struct Raster {
     source: identity::Fingerprint,
+    #[cfg(unix)]
+    permissions: fs::Permissions,
     pixels: image::RgbImage,
     alpha: bool,
     mode: String,
@@ -162,15 +165,35 @@ fn remove_exif_orientation(data: &mut [u8]) -> Result<bool> {
     }
 }
 fn load(source: &Path) -> Result<Raster> {
+    load_observed(source, |_| Ok(()))
+}
+
+#[derive(Clone, Copy)]
+enum LoadBoundary {
+    BeforeRead,
+    AfterRead,
+}
+
+fn load_observed(
+    source: &Path,
+    mut observe: impl FnMut(LoadBoundary) -> Result<()>,
+) -> Result<Raster> {
     plain_path(source)?;
     let before = identity::file_identity(source, Some(MAX_IMAGE_BYTES))?;
     let mut raw = Vec::new();
-    fs::File::open(source)?
-        .take(MAX_IMAGE_BYTES + 1)
-        .read_to_end(&mut raw)?;
+    observe(LoadBoundary::BeforeRead)?;
+    let input = fs::File::open(source)?;
+    #[cfg(unix)]
+    let permissions = input.metadata()?.permissions();
+    input.take(MAX_IMAGE_BYTES + 1).read_to_end(&mut raw)?;
+    observe(LoadBoundary::AfterRead)?;
     ensure!(
         raw.len() as u64 <= MAX_IMAGE_BYTES,
         "image exceeds bounded read limit"
+    );
+    ensure!(
+        raw.len() as u64 == before.size && format!("{:x}", Sha256::digest(&raw)) == before.sha256,
+        "decoded image bytes differ from the admitted source"
     );
     let format = image::guess_format(&raw)?;
     ensure!(
@@ -363,6 +386,8 @@ fn load(source: &Path) -> Result<Raster> {
     );
     Ok(Raster {
         source: before,
+        #[cfg(unix)]
+        permissions,
         pixels,
         alpha,
         mode,
@@ -372,6 +397,58 @@ fn load(source: &Path) -> Result<Raster> {
         xmp,
         density,
     })
+}
+
+#[cfg(test)]
+mod read_tests {
+    use super::*;
+
+    #[test]
+    fn decoded_bytes_must_match_the_admitted_source_after_aba_replacement() {
+        let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let source = temp.path().join("figure.jpg");
+        let replacement = temp.path().join("replacement.jpg");
+        for (path, color) in [(&source, [30, 80, 160]), (&replacement, [200, 210, 220])] {
+            image::RgbImage::from_pixel(6, 6, image::Rgb(color))
+                .save(path)
+                .unwrap();
+        }
+        let admitted = fs::read(&source).unwrap();
+        let foreign = fs::read(&replacement).unwrap();
+        let modified = fs::metadata(&source).unwrap().modified().unwrap();
+        let mut changed = false;
+        let mut restored = false;
+        let result = load_observed(&source, |boundary| {
+            match boundary {
+                LoadBoundary::BeforeRead => {
+                    fs::write(&source, &foreign)?;
+                    changed = true;
+                }
+                LoadBoundary::AfterRead => {
+                    fs::write(&source, &admitted)?;
+                    fs::File::options()
+                        .write(true)
+                        .open(&source)?
+                        .set_times(fs::FileTimes::new().set_modified(modified))?;
+                    restored = true;
+                }
+            }
+            Ok(())
+        });
+        assert!(
+            changed && restored,
+            "both actual source mutation boundaries must execute"
+        );
+        assert_eq!(fs::read(&source).unwrap(), admitted);
+        assert!(
+            result.is_err(),
+            "foreign pixels were paired with the restored source fingerprint"
+        );
+        assert!(
+            load(&source).is_ok(),
+            "unchanged admitted image must still decode"
+        );
+    }
 }
 
 fn stats(raster: &Raster) -> (f64, f64) {
@@ -402,7 +479,30 @@ pub fn inspect(source: &Path) -> Result<Inspection> {
     })
 }
 
-fn write_png(raster: &Raster, destination: &Path, invert: bool) -> Result<()> {
+struct EncodedPng {
+    file: fs::File,
+    digest: Sha256,
+    size: u64,
+}
+
+impl Write for EncodedPng {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let available = MAX_IMAGE_BYTES.saturating_sub(self.size) as usize;
+        if available == 0 && !bytes.is_empty() {
+            return Err(std::io::Error::other("encoded PNG exceeds byte limit"));
+        }
+        let count = self.file.write(&bytes[..bytes.len().min(available)])?;
+        self.digest.update(&bytes[..count]);
+        self.size += count as u64;
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
+
+fn write_png(raster: &Raster, destination: &Path, invert: bool) -> Result<identity::Fingerprint> {
     let mut pixels = raster.pixels.clone();
     if invert {
         image::imageops::invert(&mut pixels);
@@ -419,12 +519,18 @@ fn write_png(raster: &Raster, destination: &Path, invert: bool) -> Result<()> {
             std::str::from_utf8(xmp)?,
         ));
     }
-    {
-        let file = fs::File::create(destination)?;
-        let mut writer = png::Encoder::with_info(file, info)?.write_header()?;
+    let (encoded_size, encoded_digest) = {
+        let mut output = EncodedPng {
+            file: fs::File::create(destination)?,
+            digest: Sha256::new(),
+            size: 0,
+        };
+        let mut writer = png::Encoder::with_info(&mut output, info)?.write_header()?;
         writer.write_image_data(pixels.as_raw())?;
         writer.finish()?;
-    }
+        output.file.sync_all()?;
+        (output.size, format!("{:x}", output.digest.finalize()))
+    };
     let check = image::open(destination)?.to_rgb8();
     ensure!(
         check == pixels,
@@ -448,7 +554,14 @@ fn write_png(raster: &Raster, destination: &Path, invert: bool) -> Result<()> {
             "staged PNG lost XMP metadata"
         );
     }
-    Ok(())
+    #[cfg(unix)]
+    fs::set_permissions(destination, raster.permissions.clone())?;
+    let staged = identity::file_identity(destination, Some(MAX_IMAGE_BYTES))?;
+    ensure!(
+        staged.size == encoded_size && staged.sha256 == encoded_digest,
+        "staged PNG differs from the encoded bytes"
+    );
+    Ok(staged)
 }
 
 #[path = "images_prepare.rs"]

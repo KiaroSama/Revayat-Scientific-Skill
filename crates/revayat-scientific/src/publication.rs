@@ -17,7 +17,7 @@ pub use cancellation::{
     retain_recovery,
 };
 
-fn absolute(path: &Path) -> Result<PathBuf> {
+pub(crate) fn absolute(path: &Path) -> Result<PathBuf> {
     let raw = std::path::absolute(path)?;
     let mut normalized = PathBuf::new();
     for part in raw.components() {
@@ -109,6 +109,8 @@ pub enum Boundary {
     AfterRollback,
     BeforeCleanup,
     BeforeBackupDisposal,
+    /// Once after cleanup observers, while a rejected batch can still roll back.
+    BeforeFinalize,
 }
 
 /// Hooks identify real publication boundaries for deterministic failure/race
@@ -173,6 +175,8 @@ fn copied(
     let id = object_id(&output)?;
     *created = Some(id);
     let mut input = File::open(source)?;
+    #[cfg(unix)]
+    output.set_permissions(input.metadata()?.permissions())?;
     let count = std::io::copy(
         &mut (&mut input).take(original.size.saturating_add(1)),
         &mut output,
@@ -328,7 +332,7 @@ pub fn publish_with_identity(
     let mut locks: Vec<HeldLock> = Vec::new();
     let mut plans: Vec<Entry> = Vec::new();
     let mut committed = Vec::new();
-    let operation = (|| -> Result<()> {
+    let mut operation = (|| -> Result<()> {
         let mut ordered = destinations.clone();
         ordered.sort_by_key(|p| case_key(p));
         for destination in ordered {
@@ -456,6 +460,22 @@ pub fn publish_with_identity(
         }
         Ok(())
     })();
+    let mut cleanup_observed = false;
+    if operation.is_ok() {
+        if let Err(error) = observe_cleanup(&mut plans, max_bytes, &mut boundary) {
+            return Err(if cancelled(&error) {
+                retain_cancellation(None, error)
+                    .context("publication cleanup cancelled; owned recovery records retained")
+            } else {
+                retain_recovery(None, vec![error])
+                    .context("publication cleanup needs recovery; owned records retained")
+            });
+        }
+        cleanup_observed = true;
+        if let Some(plan) = plans.first() {
+            operation = boundary(Boundary::BeforeFinalize, &plan.recovery.destination);
+        }
+    }
     let mut failures = Vec::new();
     let mut secondary = Vec::new();
     if operation.is_err() {
@@ -555,28 +575,8 @@ pub fn publish_with_identity(
             .context("publication failed; rollback completed with secondary diagnostics"))
     };
     let cleanup = (|| -> Result<()> {
-        // Admit owned partial copies before cleanup observers can change them.
-        // Completed copies retain their earlier pre-observer revision instead.
-        for plan in &mut plans {
-            if let Some(identity) = plan.backup_identity
-                && plan.backup_fingerprint.is_none()
-            {
-                owned(&plan.directory, plan.directory_identity)?;
-                owned(&plan.recovery.backup, identity)?;
-                plan.backup_fingerprint = Some(file_identity(&plan.recovery.backup, max_bytes)?);
-            }
-        }
-        for plan in &plans {
-            boundary(Boundary::BeforeCleanup, &plan.recovery.destination)?;
-            owned(&plan.directory, plan.directory_identity)?;
-        }
-        // Complete every disposal observer before deleting any previous bytes.
-        // Later observers may change an earlier destination or recovery object.
-        for plan in &plans {
-            if let Some(identity) = plan.backup_identity {
-                owned(&plan.recovery.backup, identity)?;
-                boundary(Boundary::BeforeBackupDisposal, &plan.recovery.backup)?;
-            }
+        if !cleanup_observed {
+            observe_cleanup(&mut plans, max_bytes, &mut boundary)?;
         }
         for plan in &plans {
             owned(&plan.directory, plan.directory_identity)?;
@@ -644,4 +644,35 @@ pub fn publish_with_identity(
         });
     }
     operation
+}
+
+fn observe_cleanup(
+    plans: &mut [Entry],
+    max_bytes: Option<u64>,
+    boundary: &mut impl FnMut(Boundary, &Path) -> Result<()>,
+) -> Result<()> {
+    // Admit incomplete owned copies before observers. Completed copies retain
+    // their original fingerprint, including when preparation itself failed.
+    for plan in &mut *plans {
+        if let Some(identity) = plan.backup_identity
+            && plan.backup_fingerprint.is_none()
+        {
+            owned(&plan.directory, plan.directory_identity)?;
+            owned(&plan.recovery.backup, identity)?;
+            plan.backup_fingerprint = Some(file_identity(&plan.recovery.backup, max_bytes)?);
+        }
+    }
+    for plan in &*plans {
+        boundary(Boundary::BeforeCleanup, &plan.recovery.destination)?;
+        owned(&plan.directory, plan.directory_identity)?;
+    }
+    // Every observer runs before the caller's final batch check and disposal.
+    // The final check must reject stale derived outputs while rollback is possible.
+    for plan in &*plans {
+        if let Some(identity) = plan.backup_identity {
+            owned(&plan.recovery.backup, identity)?;
+            boundary(Boundary::BeforeBackupDisposal, &plan.recovery.backup)?;
+        }
+    }
+    Ok(())
 }

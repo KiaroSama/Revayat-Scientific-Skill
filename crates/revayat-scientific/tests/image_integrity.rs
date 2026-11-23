@@ -368,7 +368,7 @@ fn test_save_and_publication_failure_roll_back_full_batch() {
 #[test]
 fn test_changed_source_before_encode_preserves_batch() {
     for extension in ["png", "jpg"] {
-        let t = tempfile::tempdir().unwrap();
+        let t = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let first = t.path().join("first.png");
         let second = t.path().join(format!("second.{extension}"));
         image::RgbaImage::from_pixel(6, 6, image::Rgba([20, 30, 40, 20]))
@@ -405,7 +405,7 @@ fn test_changed_source_before_encode_preserves_batch() {
 
 #[test]
 fn test_changed_source_during_publication_preserves_delivery() {
-    let t = tempfile::tempdir().unwrap();
+    let t = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let source = t.path().join("figure.jpg");
     image::RgbImage::from_pixel(6, 6, image::Rgb([20, 30, 40]))
         .save(&source)

@@ -67,8 +67,8 @@ fn substituted_valid_json_preserves_previous_report() {
         std::slice::from_ref(&fixture.source),
         |boundary, path| {
             if boundary == PdfBoundary::StageWritten {
-                reached = true;
                 fs::write(path, b"null\n")?;
+                reached = true;
             }
             Ok(())
         },
@@ -100,13 +100,13 @@ fn substituted_pdf_with_equal_geometry_preserves_previous_delivery() {
         |_| Ok(()),
         |boundary, path| {
             if boundary == PdfBoundary::StageWritten {
-                reached = true;
                 let mut replacement = common::blank();
                 replacement.change_page_content(
                     common::pages(&replacement)[0],
                     b"BT /F1 12 Tf 30 250 Td (Substituted scientific result) Tj ET".to_vec(),
                 )?;
                 replacement.save(path)?;
+                reached = true;
             }
             Ok(())
         },

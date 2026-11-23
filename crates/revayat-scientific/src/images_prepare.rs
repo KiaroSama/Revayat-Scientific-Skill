@@ -106,6 +106,29 @@ fn verify_original(
     Ok(())
 }
 
+fn verify_final_batch(
+    inputs: &Observations,
+    originals: &BTreeMap<PathBuf, (PathBuf, identity::Fingerprint)>,
+    observe: &mut impl FnMut(Boundary, &Path) -> Result<()>,
+) -> Result<()> {
+    // Finish every observer before validating the final batch. A later observer
+    // must not invalidate a source or original that was already checked.
+    for (path, expected) in inputs {
+        if expected.is_some() {
+            observe(Boundary::BeforeInputCheck, path)?;
+        }
+    }
+    for (backup, _) in originals.values() {
+        observe(Boundary::BeforeInputCheck, backup)?;
+    }
+    let mut silent = |_: Boundary, _: &Path| Ok(());
+    verify_inputs(inputs, &mut silent)?;
+    for (backup, expected) in originals.values() {
+        verify_original(backup, expected, &mut silent)?;
+    }
+    Ok(())
+}
+
 pub fn prepare(paths: &[PathBuf], invert_dark: bool) -> Result<usize> {
     prepare_observed(paths, invert_dark, |_, _| Ok(()))
 }
@@ -116,8 +139,8 @@ pub fn prepare_observed(
 ) -> Result<usize> {
     let files = iter_images(paths)?
         .into_iter()
-        .map(std::path::absolute)
-        .collect::<std::io::Result<Vec<_>>>()?;
+        .map(|path| publication::absolute(&path))
+        .collect::<Result<Vec<_>>>()?;
     let mut names = HashSet::new();
     let mut plan = Vec::new();
     let mut inputs = Observations::new();
@@ -173,7 +196,9 @@ pub fn prepare_observed(
             inputs.insert(destination.clone(), None);
         }
         let raster = load(source)?;
-        let source_path = publication::validate_destination(source, &[])?;
+        // Input paths are already absolute and checked for links by the loader.
+        // A read-only source does not need output case-collision admission.
+        let source_path = source.clone();
         inputs.insert(source_path.clone(), Some(raster.source.clone()));
         let (mean, black) = stats(&raster);
         let invert = invert_dark && mean < 120. && black >= 0.5;
@@ -211,6 +236,7 @@ pub fn prepare_observed(
     }
     let mut dirs = Vec::new();
     let mut entries = Vec::new();
+    let mut stages = BTreeMap::new();
     let mut protected = files.clone();
     for (source, dest, backup, raster, invert) in &plan {
         let dir = tempfile::Builder::new()
@@ -218,7 +244,7 @@ pub fn prepare_observed(
             .tempdir_in(source.parent().unwrap())?;
         let stage = dir.path().join("figure.png");
         observe(Boundary::BeforeEncode, source)?;
-        write_png(raster, &stage, *invert)?;
+        stages.insert(stage.clone(), write_png(raster, &stage, *invert)?);
         if let Some(backup) = backup {
             protected.retain(|p| p != source);
             if inputs
@@ -233,12 +259,14 @@ pub fn prepare_observed(
                     &mut fs::File::open(source)?.take(raster.source.size.saturating_add(1)),
                     &mut fs::File::create(&original)?,
                 )?;
+                #[cfg(unix)]
+                fs::set_permissions(&original, raster.permissions.clone())?;
+                let copied = identity::file_identity(&original, Some(MAX_IMAGE_BYTES))?;
                 ensure!(
-                    count == raster.source.size
-                        && identity::file_identity(&original, Some(MAX_IMAGE_BYTES))?
-                            .same_bytes(&raster.source),
+                    count == raster.source.size && copied.same_bytes(&raster.source),
                     "source changed during original backup"
                 );
+                stages.insert(original.clone(), copied);
                 entries.push((original, backup.clone()));
             }
         }
@@ -248,7 +276,7 @@ pub fn prepare_observed(
     verify_inputs(&inputs, &mut observe)?;
     if !entries.is_empty() {
         let mut committed = 0;
-        publication::publish_observed(
+        publication::publish_with_identity(
             &entries,
             &protected,
             Some(MAX_IMAGE_BYTES),
@@ -275,7 +303,20 @@ pub fn prepare_observed(
                         }
                     }
                 }
+                if boundary == publication::Boundary::BeforeFinalize {
+                    verify_final_batch(&inputs, &originals, &mut observe)?;
+                }
                 Ok(())
+            },
+            |path, max_bytes| {
+                let current = identity::file_identity(path, max_bytes)?;
+                if let Some(expected) = stages.get(path) {
+                    ensure!(
+                        current.same_bytes(expected),
+                        "image stage differs from its producer's bytes"
+                    );
+                }
+                Ok(current)
             },
         )?;
     }

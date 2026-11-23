@@ -99,14 +99,20 @@ fn batch_source_verification_work_grows_linearly() {
             sources.push(source);
         }
         let mut reads = 0;
-        images::prepare_observed(&sources, false, |boundary, _| {
+        let mut checked = std::collections::HashSet::new();
+        images::prepare_observed(&sources, false, |boundary, path| {
             if boundary == images::Boundary::BeforeInputCheck {
                 reads += 1;
+                checked.insert(path.to_path_buf());
             }
             Ok(())
         })
         .unwrap();
         assert!(reads >= count, "all sources must actually be checked");
+        assert!(
+            sources.iter().all(|source| checked.contains(source)),
+            "every admitted source must actually be checked"
+        );
         assert!(
             reads <= 6 * count,
             "source fingerprint work must grow linearly: {reads} checks for {count} images"

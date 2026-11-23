@@ -15,7 +15,8 @@ pub fn extract_tables_observed(
     mut observer: impl FnMut(pdf::PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
     let inputs = pdf::SourceSnapshot::capture(&[source.to_owned()])?;
-    let doc = pdf::open_pdf(source, false)?;
+    observer(pdf::PdfBoundary::SourceCaptured, source)?;
+    let doc = inputs.open_pdf(source, false, pdf::AdmissionLimits::default())?;
     let mut pages = Vec::new();
     for (index, id) in pdf::page_ids(&doc)?.into_iter().enumerate() {
         observer(pdf::PdfBoundary::TableDiscovery, source)?;
@@ -163,8 +164,16 @@ fn image_bytes(stream: &Stream) -> Result<(&'static str, Vec<u8>)> {
     Ok(("png", out))
 }
 pub fn extract_images(source: &Path, directory: &Path) -> Result<()> {
+    extract_images_observed(source, directory, |_, _| Ok(()))
+}
+pub fn extract_images_observed(
+    source: &Path,
+    directory: &Path,
+    mut observer: impl FnMut(pdf::PdfBoundary, &Path) -> Result<()>,
+) -> Result<()> {
     let inputs = pdf::SourceSnapshot::capture(&[source.to_owned()])?;
-    let doc = pdf::open_pdf(source, false)?;
+    observer(pdf::PdfBoundary::SourceCaptured, source)?;
+    let doc = inputs.open_pdf(source, false, pdf::AdmissionLimits::default())?;
     publication::validate_destination(&directory.join("images.json"), &[source.to_owned()])?;
     ensure!(
         !directory.exists() || directory.is_dir(),
@@ -240,11 +249,21 @@ pub fn extract_images(source: &Path, directory: &Path) -> Result<()> {
         .prefix(".revayat-pdf-images-")
         .tempdir_in(directory)?;
     let mut entries = Vec::new();
+    let mut expected = Vec::new();
     for (name, bytes) in outputs {
         let p = stage.path().join(&name);
         fs::write(&p, &bytes)?;
-        ensure!(fs::read(&p)? == bytes, "staged image changed bytes");
+        let fingerprint = crate::identity::file_identity(&p, Some(pdf::MAX_PDF_BYTES))?;
+        ensure!(
+            fingerprint.size == bytes.len() as u64
+                && fingerprint.sha256 == format!("{:x}", Sha256::digest(&bytes)),
+            "staged image changed bytes"
+        );
+        expected.push(fingerprint);
+        observer(pdf::PdfBoundary::StageWritten, &p)?;
         entries.push((p, directory.join(name)));
     }
-    inputs.publish(&entries, |_, _| Ok(()))
+    inputs.publish_expected(&entries, &expected, |boundary, path| {
+        observer(pdf::PdfBoundary::Publication(boundary), path)
+    })
 }

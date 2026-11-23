@@ -203,6 +203,7 @@ fn late_destination_mutation_retains_foreign_bytes_and_recovery_evidence() {
         Boundary::BeforeReplace,
         Boundary::AfterCommit,
         Boundary::BeforeCleanup,
+        Boundary::BeforeFinalize,
     ] {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();

@@ -49,3 +49,6 @@ pub mod pdf_layout;
 
 pub mod resource_preflight;
 pub mod security_cases;
+
+#[cfg(test)]
+mod pdf_revision_fixture;

@@ -21,6 +21,9 @@ pub struct Figure {
 pub fn load_map(path: &Path) -> Result<BTreeMap<usize, Vec<Figure>>> {
     crate::images::plain_path(path)?;
     let raw = fs::read_to_string(path)?;
+    parse_map(&raw)
+}
+fn parse_map(raw: &str) -> Result<BTreeMap<usize, Vec<Figure>>> {
     let text = raw.trim_start_matches('\u{feff}');
     ensure!(!text.trim().is_empty(), "crop map empty");
     ensure!(
@@ -220,8 +223,24 @@ pub fn crop_document(args: &Args) -> Result<usize> {
 pub fn crop_document_observed(
     args: &Args,
     limits: pdf::AdmissionLimits,
-    mut observe: impl FnMut(CropBoundary, &Path) -> Result<()>,
+    observe: impl FnMut(CropBoundary, &Path) -> Result<()>,
 ) -> Result<usize> {
+    crop_document_with_renderer(args, limits, observe, pdf::render_region_stage)
+}
+fn crop_document_with_renderer(
+    args: &Args,
+    limits: pdf::AdmissionLimits,
+    mut observe: impl FnMut(CropBoundary, &Path) -> Result<()>,
+    mut render: impl FnMut(
+        &Path,
+        &[pdf::PageGeometry],
+        usize,
+        u32,
+        Rect,
+        &Path,
+    ) -> Result<crate::identity::Fingerprint>,
+) -> Result<usize> {
+    let limits = limits.validate()?;
     ensure!(
         (72..=2400).contains(&args.dpi),
         "--dpi must be between 72 and 2400"
@@ -232,13 +251,25 @@ pub fn crop_document_observed(
     );
     let mut protected = vec![args.pdf.clone()];
     protected.extend(args.map.clone());
-    let inputs = pdf::SourceSnapshot::capture(&protected)?;
-    let doc = pdf::open_pdf_with_limits(&args.pdf, false, limits)?;
-    let geometry = pdf::geometry(&doc)?;
+    let maximums = protected
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            if index == 0 {
+                limits.max_bytes
+            } else {
+                pdf::MAX_PDF_BYTES
+            }
+        })
+        .collect::<Vec<_>>();
+    let inputs = pdf::SourceSnapshot::capture_with_limits(&protected, &maximums)?;
+    let frozen = pdf::FrozenPdf::capture(&args.pdf, &inputs, limits)?;
+    let doc = frozen.document();
+    let geometry = frozen.geometry();
     let by_page = args
         .map
         .as_ref()
-        .map(|p| load_map(p))
+        .map(|p| parse_map(std::str::from_utf8(&inputs.verified_bytes(p)?)?))
         .transpose()?
         .unwrap_or_default();
     let mut planned = Vec::new();
@@ -248,7 +279,7 @@ pub fn crop_document_observed(
             "requested PDF page out of range"
         );
         let page = geometry[number - 1].rect;
-        let (rects, images) = pdf_content::artwork(&doc, number)?;
+        let (rects, images) = pdf_content::artwork(doc, number)?;
         let explicit = figures.iter().filter(|f| f.rectangle.is_some()).count();
         ensure!(
             explicit == 0 || explicit == figures.len(),
@@ -298,7 +329,7 @@ pub fn crop_document_observed(
                 "requested PDF page out of range"
             );
             let page = geometry[number - 1].rect;
-            let (_, images) = pdf_content::artwork(&doc, number)?;
+            let (_, images) = pdf_content::artwork(doc, number)?;
             let area = (page[2] - page[0]) * (page[3] - page[1]);
             let candidates: Vec<_> = images
                 .iter()
@@ -353,19 +384,30 @@ pub fn crop_document_observed(
         .prefix(".revayat-crops-")
         .tempdir_in(&args.out)?;
     let mut entries = Vec::new();
+    let mut expected = Vec::new();
     for (number, clip, dpi, destination) in &planned {
         let stage = work
             .path()
             .join(destination.file_name().context("crop filename missing")?);
         observe(CropBoundary::BeforeRender, destination)?;
-        pdf::render_region(&args.pdf, *number, *dpi, *clip, &stage)?;
+        expected.push(render(
+            frozen.path(),
+            geometry,
+            *number,
+            *dpi,
+            *clip,
+            &stage,
+        )?);
         entries.push((stage, destination.clone()));
     }
-    inputs.publish(&entries, |boundary, path| {
+    inputs.publish_expected(&entries, &expected, |boundary, path| {
         observe(CropBoundary::Publication(boundary), path)
     })?;
     Ok(entries.len())
 }
+#[cfg(test)]
+#[path = "crop_revision_checks.rs"]
+mod revision_checks;
 pub fn cli(args: &[String]) -> Result<i32> {
     let a = Args::try_parse_from(
         std::iter::once("crop-source-figures".to_owned()).chain(args.iter().cloned()),

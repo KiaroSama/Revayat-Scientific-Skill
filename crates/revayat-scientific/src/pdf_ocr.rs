@@ -150,7 +150,8 @@ pub fn ocr_with_tools(
         "OCR DPI must be 72..600 and timeout 1..600 seconds"
     );
     let destination = crate::publication::validate_destination(destination, &[source.to_owned()])?;
-    let _ = pdf::open_pdf(source, true)?;
+    let inputs = pdf::SourceSnapshot::capture(&[source.to_owned()])?;
+    let _ = inputs.open_pdf(source, true, pdf::AdmissionLimits::default())?;
     let program = find()?;
     let mut spec = CommandSpec::new(program.as_os_str());
     spec.args = vec!["--list-langs".into()];
@@ -168,7 +169,7 @@ pub fn ocr_with_tools(
     let work = tempfile::Builder::new()
         .prefix(".revayat-ocr-")
         .tempdir_in(parent)?;
-    ocr_with_backend(source, &destination, |index, admitted| {
+    ocr_with_backend_bound(source, &destination, &inputs, |index, admitted| {
         let id = pdf::page_ids(admitted)?[index];
         let mut unrotated = admitted.clone();
         unrotated
@@ -210,11 +211,19 @@ pub fn ocr_with_tools(
 pub fn ocr_with_backend(
     source: &Path,
     destination: &Path,
-    mut backend: impl FnMut(usize, &Document) -> Result<Document>,
+    backend: impl FnMut(usize, &Document) -> Result<Document>,
 ) -> Result<()> {
     let destination = crate::publication::validate_destination(destination, &[source.to_owned()])?;
     let inputs = pdf::SourceSnapshot::capture(&[source.to_owned()])?;
-    let mut doc = pdf::open_pdf(source, true)?;
+    ocr_with_backend_bound(source, &destination, &inputs, backend)
+}
+fn ocr_with_backend_bound(
+    source: &Path,
+    destination: &Path,
+    inputs: &pdf::SourceSnapshot,
+    mut backend: impl FnMut(usize, &Document) -> Result<Document>,
+) -> Result<()> {
+    let mut doc = inputs.open_pdf(source, true, pdf::AdmissionLimits::default())?;
     let expected = pdf::geometry(&doc)?;
     let mut planned = 0;
     let mut recognized = 0;
@@ -238,8 +247,8 @@ pub fn ocr_with_backend(
     inputs.verify()?;
     pdf::save_document_bound(
         &mut doc,
-        &destination,
-        &inputs,
+        destination,
+        inputs,
         &expected,
         |_| Ok(()),
         |_, _| Ok(()),

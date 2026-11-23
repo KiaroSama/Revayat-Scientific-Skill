@@ -7,6 +7,7 @@ mod transaction;
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, Subcommand};
 use lopdf::{Document, Object, ObjectId, dictionary};
+pub(crate) use render::{FrozenPdf, render_region_stage};
 pub use render::{render_page, render_region, render_sample_set};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -19,7 +20,9 @@ pub use transaction::{
     AdmissionLimits, PdfBoundary, open_pdf, open_pdf_with_limits, save_document,
     save_document_observed, write_report, write_report_observed,
 };
-pub(crate) use transaction::{SourceSnapshot, save_document_bound, write_report_bound};
+pub(crate) use transaction::{
+    SourceSnapshot, parse_pdf_bytes, save_document_bound, write_report_bound,
+};
 
 pub const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_PDF_PAGES: usize = 10000;
@@ -136,15 +139,18 @@ pub fn validate_pdf(path: &Path) -> Result<()> {
 }
 pub fn inspect_pdf(source: &Path) -> Result<Value> {
     let d = open_pdf(source, false)?;
+    inspect_document(&d)
+}
+fn inspect_document(d: &Document) -> Result<Value> {
     let xfa = d
         .catalog()?
         .get(b"AcroForm")
         .ok()
-        .map(|o| nav::resolved(&d, o).and_then(|v| Ok(v.as_dict()?.has(b"XFA"))))
+        .map(|o| nav::resolved(d, o).and_then(|v| Ok(v.as_dict()?.has(b"XFA"))))
         .transpose()?
         .unwrap_or(false);
     Ok(
-        json!({"format":"pdf","pages":geometry(&d)?,"fields":pdf_forms::inventory(&d)?,"signature_bearing":pdf_forms::signature_present(&d)?,"xfa":xfa,"embedded_file_count":embedded_count(&d)?,"validation":"parsed-structure","visual_review":"not-performed"}),
+        json!({"format":"pdf","pages":geometry(d)?,"fields":pdf_forms::inventory(d)?,"signature_bearing":pdf_forms::signature_present(d)?,"xfa":xfa,"embedded_file_count":embedded_count(d)?,"validation":"parsed-structure","visual_review":"not-performed"}),
     )
 }
 fn embedded_count(doc: &Document) -> Result<usize> {
@@ -178,7 +184,7 @@ pub fn merge_pdfs(sources: &[PathBuf], destination: &Path) -> Result<()> {
 pub fn merge_pdfs_observed(
     sources: &[PathBuf],
     destination: &Path,
-    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+    mut observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
     ensure!(
         (1..=1000).contains(&sources.len()),
@@ -191,7 +197,8 @@ pub fn merge_pdfs_observed(
     let mut links = Vec::new();
     let mut outlines = Vec::new();
     for source in sources {
-        let doc = open_pdf(source, true)?;
+        observer(PdfBoundary::SourceCaptured, source)?;
+        let doc = inputs.open_pdf(source, true, AdmissionLimits::default())?;
         ensure!(
             pdf_forms::widgets(&doc)?.is_empty()
                 && !doc.catalog()?.has(b"AcroForm")
@@ -294,16 +301,18 @@ pub fn extract_pages_observed(
     first: usize,
     last: usize,
     limits: AdmissionLimits,
-    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+    mut observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
     ensure!(
         first > 0 && last >= first,
         "page range must be positive and ordered"
     );
+    let limits = limits.validate()?;
     let protected = [source.to_owned()];
     publication::validate_destination(destination, &protected)?;
-    let inputs = SourceSnapshot::capture(&protected)?;
-    let mut doc = open_pdf_with_limits(source, true, limits)?;
+    let inputs = SourceSnapshot::capture_with_limits(&protected, &[limits.max_bytes])?;
+    observer(PdfBoundary::SourceCaptured, source)?;
+    let mut doc = inputs.open_pdf(source, true, limits)?;
     let all = page_ids(&doc)?;
     ensure!(last <= all.len(), "requested range exceeds source pages");
     let expected_links = nav::links(&doc, first - 1, last - 1, 0)?;
@@ -368,9 +377,10 @@ fn fill_pdf_bound(
     destination: &Path,
     values: &serde_json::Map<String, Value>,
     inputs: &SourceSnapshot,
-    observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
+    mut observer: impl FnMut(PdfBoundary, &Path) -> Result<()>,
 ) -> Result<()> {
-    let mut doc = open_pdf(source, true)?;
+    observer(PdfBoundary::SourceCaptured, source)?;
+    let mut doc = inputs.open_pdf(source, true, AdmissionLimits::default())?;
     let expected = geometry(&doc)?;
     let plan = pdf_forms::plan_fill(&doc, values)?;
     pdf_forms::apply_fill(&mut doc, &plan)?;
@@ -411,7 +421,7 @@ pub fn stored_pdf_text(source: &Path) -> Result<String> {
 }
 pub fn extract_text(source: &Path, destination: &Path) -> Result<()> {
     let inputs = SourceSnapshot::capture(&[source.to_owned()])?;
-    let d = open_pdf(source, false)?;
+    let d = inputs.open_pdf(source, false, AdmissionLimits::default())?;
     let mut pages = Vec::new();
     let mut text_bytes = 0usize;
     for g in geometry(&d)? {
@@ -490,7 +500,11 @@ pub fn cli(args: &[String]) -> Result<i32> {
         Commands::Inspect { source, output } => {
             if let Some(p) = output {
                 let inputs = SourceSnapshot::capture(std::slice::from_ref(&source))?;
-                let v = inspect_pdf(&source)?;
+                let v = inspect_document(&inputs.open_pdf(
+                    &source,
+                    false,
+                    AdmissionLimits::default(),
+                )?)?;
                 write_report_bound(&v, &p, &inputs, |_, _| Ok(()))?;
             } else {
                 let v = inspect_pdf(&source)?;
@@ -514,9 +528,12 @@ pub fn cli(args: &[String]) -> Result<i32> {
                 fs::metadata(&fields)?.len() <= 8 * 1024 * 1024,
                 "fields JSON exceeds size limit"
             );
-            let inputs = SourceSnapshot::capture(&[source.clone(), fields.clone()])?;
+            let inputs = SourceSnapshot::capture_with_limits(
+                &[source.clone(), fields.clone()],
+                &[MAX_PDF_BYTES, 8 * 1024 * 1024],
+            )?;
             let values: crate::pdf_content::UniqueFields =
-                serde_json::from_slice(&crate::resource::bounded_read(&fields, 8 * 1024 * 1024)?)?;
+                serde_json::from_slice(&inputs.verified_bytes(&fields)?)?;
             fill_pdf_bound(&source, &output, &values.0, &inputs, |_, _| Ok(()))?;
         }
         Commands::Ocr {

@@ -222,15 +222,17 @@ fn test_admission_limits_apply_before_publication() {
         },
     ] {
         assert!(p::open_pdf_with_limits(&x.source, true, limits).is_err());
-        let mut published = false;
+        let mut output_started = false;
         assert!(
-            p::extract_pages_observed(&x.source, &x.output, 1, 1, limits, |_, _| {
-                published = true;
+            p::extract_pages_observed(&x.source, &x.output, 1, 1, limits, |boundary, _| {
+                // Source capture precedes parsing; no producer or publication
+                // boundary may run when any admission budget is exceeded.
+                output_started |= boundary != p::PdfBoundary::SourceCaptured;
                 Ok(())
             })
             .is_err()
         );
-        assert!(!published);
+        assert!(!output_started);
         x.preserved();
         assert_eq!(fs::read(&x.source).unwrap(), source);
     }
