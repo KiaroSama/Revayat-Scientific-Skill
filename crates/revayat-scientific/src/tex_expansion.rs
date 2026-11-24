@@ -439,7 +439,9 @@ impl Expansion {
                     }
                     definitions::Completion::Invalid { unfinished } => {
                         pending.markers.apply(&mut self.document);
-                        if unfinished {
+                        // A settled end retains strict lexical validation;
+                        // it must not create a new recovery context afterward.
+                        if unfinished && !self.document.ended() {
                             cursor.block_continuation();
                         }
                     }

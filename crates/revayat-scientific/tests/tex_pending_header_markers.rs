@@ -98,6 +98,15 @@ fn completed_count_headers_keep_document_markers_unexpanded_across_returns() {
                                     "{label}: a raw count marker ended the document"
                                 ));
                             }
+                            // Only the real root begin is followed by a newline.
+                            // The public boundary ends at the token, not its EOL.
+                            let live_begin = model.text().find("\\begin{document}\n").unwrap()
+                                + r"\begin{document}".len();
+                            if model.preamble_end != live_begin {
+                                failures.push(format!(
+                                    "{label}: a raw count marker ended the preamble"
+                                ));
+                            }
                             let findings: Vec<_> = lint::check(&source, &[], None, "system-docs")
                                 .unwrap()
                                 .into_iter()

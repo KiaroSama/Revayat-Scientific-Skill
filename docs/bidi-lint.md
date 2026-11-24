@@ -91,6 +91,9 @@ unresolved at root EOF, their original ordered document-state transitions apply
 before further dependency discovery. Recursive returns carry the same bounded
 effect. This handles a count expression containing document tokens without
 evaluating that expression or prematurely ending source discovery.
+If settling that effect ends the document, the rejected return must not newly
+enable malformed-definition literal recovery in the following ordinary source.
+Existing recovery contexts and unfinished live declarations keep their behavior.
 
 The lexical projection follows that same collection context. Comments retain
 their TeX line semantics. Literal syntax stays opaque in ordinary source, while
