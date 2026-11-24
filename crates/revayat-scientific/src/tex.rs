@@ -129,7 +129,7 @@ pub struct Snapshot {
     #[serde(skip)]
     definition_starts: Option<Vec<usize>>,
     #[serde(skip)]
-    literal_candidates: Option<Vec<(usize, usize)>>,
+    literal_spans: Option<Vec<(usize, usize)>>,
     #[serde(skip)]
     definition_context: bool,
     #[serde(skip)]
@@ -180,7 +180,7 @@ impl Snapshot {
             blank_line_breaks,
             definition_ranges: None,
             definition_starts: None,
-            literal_candidates: None,
+            literal_spans: None,
             definition_context: false,
             definition_eof: false,
             lexical_regions: None,
@@ -315,6 +315,45 @@ fn include_argument(text: &str, mut pos: usize) -> Result<IncludeArgument> {
     bail!("unsupported dynamic or missing TeX include")
 }
 
+fn include_source(
+    text: &str,
+    argument_start: usize,
+    limit: usize,
+    name: &str,
+    inside_data: bool,
+) -> Result<Option<(IncludeArgument, PathBuf)>> {
+    if inside_data && argument_start >= limit {
+        return Ok(None);
+    }
+    let argument = include_argument(&text[..limit], argument_start)?;
+    let reference = argument.reference.trim();
+    if inside_data && reference.is_empty() {
+        return Ok(None);
+    }
+    ensure!(
+        name != "includeonly",
+        "includeonly requires an explicit reviewed source closure"
+    );
+    ensure!(
+        !reference.is_empty() && !reference.contains(['\\', '#', '$', '%', '~', '^', '&']),
+        "unsupported dynamic TeX include"
+    );
+    let mut child = PathBuf::from(reference);
+    if child.extension().is_none() {
+        child.set_extension("tex");
+    }
+    let extension = child
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    ensure!(
+        matches!(extension.as_str(), "tex" | "ltx"),
+        "unsupported TeX include type"
+    );
+    Ok(Some((argument, child)))
+}
+
 struct Expansion {
     root: PathBuf,
     closure: SourceClosure,
@@ -354,6 +393,38 @@ impl Expansion {
             // separator. It belongs to a declaration continuing after EOF too.
             self.snapshots[visit].snapshot.definition_eof = true;
         }
+    }
+
+    fn append_data(
+        &mut self,
+        text: &str,
+        view: definitions::DataView,
+        visit: usize,
+        stack: &mut Vec<PathBuf>,
+        append_start: &mut usize,
+    ) -> Result<()> {
+        self.snapshots[visit]
+            .snapshot
+            .literal_spans
+            .as_mut()
+            .unwrap()
+            .extend(view.literal_spans);
+        for input in view.includes {
+            if input.start < *append_start {
+                continue;
+            }
+            let Some((argument, child)) =
+                include_source(text, input.argument_start, input.limit, input.name, true)?
+            else {
+                continue;
+            };
+            self.append(&text[*append_start..input.start], visit, *append_start);
+            // The data cursor admits complete references outside literals. Raw
+            // comments and argument ownership are recorded by the other walk.
+            self.expand(&self.root.join(child), stack, true)?;
+            *append_start = argument.end;
+        }
+        Ok(())
     }
 
     fn finish(mut self) -> SourceClosure {
@@ -422,7 +493,7 @@ impl Expansion {
         let mut snapshot = Snapshot::new(path.clone(), Arc::from(text.as_str()))?;
         snapshot.definition_ranges = Some(Vec::new());
         snapshot.definition_starts = Some(Vec::new());
-        snapshot.literal_candidates = Some(Vec::new());
+        snapshot.literal_spans = Some(Vec::new());
         snapshot.lexical_regions = Some(Vec::new());
         snapshot.definition_context = definition_context;
         let visit = self.snapshots.len();
@@ -438,6 +509,10 @@ impl Expansion {
         let mut reference_scopes = definitions::ReferenceScopes::default();
         let mut local_pending = None;
         let mut continued = None;
+        if definition_context && !self.ended {
+            let view = definitions.data_view(0, text.len(), None)?;
+            self.append_data(&text, view, visit, stack, &mut append_start)?;
+        }
         while let Some(item) = definitions.next(
             &mut cursor,
             if definition_context {
@@ -468,6 +543,10 @@ impl Expansion {
                     owned_end = end;
                     collected_end = end;
                     reference_scopes.select(references);
+                    if !self.ended {
+                        let view = definitions.data_view(start, end, Some(references))?;
+                        self.append_data(&text, view, visit, stack, &mut append_start)?;
+                    }
                     continue;
                 }
                 definitions::Item::Pending(pending) => {
@@ -503,17 +582,6 @@ impl Expansion {
                 reference_scopes.observe(pos, nested_references, Some(text.len()));
             let tail = &text[pos..];
             let inside_definition = definition_context || pos < owned_end;
-            if inside_definition
-                && let Some(limit) = reference_limit
-                && definitions::literal_start(&text, pos)
-            {
-                self.snapshots[visit]
-                    .snapshot
-                    .literal_candidates
-                    .as_mut()
-                    .unwrap()
-                    .push((pos, limit));
-            }
             if tail.starts_with("\\begin{document}") {
                 if !inside_definition {
                     self.started = true;
@@ -524,6 +592,11 @@ impl Expansion {
                 if self.started && !inside_definition {
                     self.ended = true;
                 }
+                continue;
+            }
+            if inside_definition {
+                // Owned dependencies were consumed by the independent data
+                // view, including control starts exposed by a literal closer.
                 continue;
             }
             let Some(command) = text[pos..token_end].strip_prefix('\\') else {
@@ -541,39 +614,17 @@ impl Expansion {
             };
             let argument_start = pos + 1 + length;
             let inside_data = definition_context || !reference_scopes.is_empty();
-            if inside_data && argument_start >= limit {
+            let Some((argument, child)) =
+                include_source(&text, argument_start, limit, name, inside_data)?
+            else {
                 continue;
-            }
-            let argument = include_argument(&text[..limit], argument_start)?;
-            let reference = argument.reference.trim();
-            if inside_data && reference.is_empty() {
-                continue;
-            }
-            ensure!(
-                name != "includeonly",
-                "includeonly requires an explicit reviewed source closure"
-            );
-            ensure!(
-                !reference.is_empty() && !reference.contains(['\\', '#', '$', '%', '~', '^', '&']),
-                "unsupported dynamic TeX include"
-            );
-            let mut child = PathBuf::from(reference);
-            if child.extension().is_none() {
-                child.set_extension("tex");
-            }
-            let extension = child
-                .extension()
-                .and_then(|x| x.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            ensure!(
-                matches!(extension.as_str(), "tex" | "ltx"),
-                "unsupported TeX include type"
-            );
+            };
             self.append(&text[append_start..pos], visit, append_start);
             // Includes remain conservative dependencies even in a definition;
             // their document-marker tokens still belong to replacement data.
             let pending = self.expand(&self.root.join(child), stack, inside_definition)?;
+            append_start = argument.end;
+            definitions.advance(&mut cursor, argument.end);
             if name == "input"
                 && !argument.braced
                 && !inside_definition
@@ -592,6 +643,8 @@ impl Expansion {
                         owned_end = end;
                         collected_end = end;
                         reference_scopes.select(references);
+                        let view = definitions.data_view(argument.end, end, Some(references))?;
+                        self.append_data(&text, view, visit, stack, &mut append_start)?;
                     }
                     definitions::Completion::Pending(state) => {
                         pending.state = state;
@@ -605,8 +658,6 @@ impl Expansion {
                     definitions::Completion::Invalid => (),
                 }
             }
-            append_start = argument.end;
-            definitions.advance(&mut cursor, argument.end);
         }
         self.append(&text[append_start..], visit, append_start);
         if stack.len() > 1 && !text.is_empty() && !text.ends_with(['\n', '\r']) {

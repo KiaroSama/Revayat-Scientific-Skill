@@ -78,10 +78,6 @@ impl ReferenceScopes {
     }
 }
 
-pub(crate) fn literal_start(text: &str, start: usize) -> bool {
-    literal_start_observed(text, start, &mut || {})
-}
-
 pub(super) fn literal_start_observed(text: &str, start: usize, visit: &mut impl FnMut()) -> bool {
     let tail = &text[start..];
     visit();

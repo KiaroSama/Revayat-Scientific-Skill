@@ -124,15 +124,13 @@ impl SourceClosure {
             &self.text,
             &self.projected_definition_ranges(true)?,
             &self.lexical_regions()?,
-            &self.literal_candidates()?,
+            &self.literal_spans()?,
         )
     }
 
-    pub(crate) fn literal_candidates(&self) -> Result<Vec<(usize, usize)>> {
+    pub(crate) fn literal_spans(&self) -> Result<Vec<(usize, usize)>> {
         if self.segments.is_empty() {
-            return Ok(definitions::Index::new(&self.text)
-                .analyze()?
-                .literal_candidates);
+            return Ok(definitions::Index::new(&self.text).analyze()?.literal_spans);
         }
         #[derive(Clone, Copy)]
         struct Piece {
@@ -192,37 +190,38 @@ impl SourceClosure {
             };
             let group = &groups[group];
             let piece = group[piece];
-            let candidates = match &segment.snapshot.literal_candidates {
-                Some(candidates) => candidates,
+            let spans = match &segment.snapshot.literal_spans {
+                Some(spans) => spans,
                 None => match defaults.entry(Arc::as_ptr(&segment.snapshot)) {
                     Entry::Occupied(entry) => entry.into_mut(),
                     Entry::Vacant(entry) => entry.insert(
                         definitions::Index::new(&segment.snapshot.text)
                             .analyze()?
-                            .literal_candidates,
+                            .literal_spans,
                     ),
                 },
             };
-            let first = candidates.partition_point(|&(start, _)| start < piece.original_start);
-            for &(start, limit) in &candidates[first..] {
+            let first = spans.partition_point(|&(start, _)| start < piece.original_start);
+            for &(start, end) in &spans[first..] {
                 if start >= piece.original_end {
                     break;
                 }
-                // Map the upper bound through this visit, not just this piece:
-                // an included child's bytes may lie between the two endpoints.
-                let following = group.partition_point(|part| part.original_end < limit);
-                let projected_limit = group.get(following).map_or_else(
+                // Project the accepted endpoint through this original visit.
+                // A literal may cross several manually supplied source pieces;
+                // its ownership and endpoint must not be reparsed per piece.
+                let following = group.partition_point(|part| part.original_end < end);
+                let projected_end = group.get(following).map_or_else(
                     || group.last().unwrap().output_end,
                     |part| {
                         part.output_start
-                            + limit
+                            + end
                                 .saturating_sub(part.original_start)
                                 .min(part.output_end - part.output_start)
                     },
                 );
                 let projected_start = piece.output_start + start - piece.original_start;
-                if projected_start < projected_limit {
-                    result.push((projected_start, projected_limit));
+                if projected_start < projected_end {
+                    result.push((projected_start, projected_end));
                 }
             }
         }

@@ -1,5 +1,5 @@
 //! Analyze one original file with shared declaration data-role tracking.
-use super::{Analysis, Cursor, Index, Item, ReferenceScopes, references};
+use super::{Analysis, Cursor, Index, Item};
 use anyhow::Result;
 
 impl Index<'_> {
@@ -19,10 +19,9 @@ impl Index<'_> {
             ranges: Vec::new(),
             pending: None,
             regions: Vec::new(),
-            literal_candidates: Vec::new(),
+            literal_spans: Vec::new(),
         };
         let mut collected_until = 0;
-        let mut scopes = ReferenceScopes::default();
         while let Some(item) = self.next_observed(&mut cursor, collected_until, visit)? {
             match item {
                 Item::Definition {
@@ -32,25 +31,17 @@ impl Index<'_> {
                 } => {
                     result.ranges.push((start, end));
                     collected_until = end;
-                    scopes.select(references);
+                    result.literal_spans.extend(
+                        self.data_view_observed(start, end, Some(references), visit)?
+                            .literal_spans,
+                    );
                 }
                 Item::Pending(pending) => {
                     result.pending = Some(pending);
                     collected_until = self.text.len();
-                    scopes.pending(self.text.len());
                 }
                 Item::Ignored(region) => result.regions.push(region),
-                Item::Token {
-                    start,
-                    references: nested,
-                    ..
-                } => {
-                    if let Some(limit) = scopes.observe_observed(start, nested, None, visit)
-                        && references::literal_start_observed(self.text, start, visit)
-                    {
-                        result.literal_candidates.push((start, limit));
-                    }
-                }
+                Item::Token { .. } => (),
             }
         }
         Ok(result)

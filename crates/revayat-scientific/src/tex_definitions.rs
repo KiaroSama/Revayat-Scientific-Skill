@@ -6,9 +6,14 @@ mod lexical;
 use lexical::{Kind, Token, Tokens};
 #[path = "tex_definition_references.rs"]
 mod references;
-pub(crate) use references::{ReferenceScopes, References, literal_start};
+pub(crate) use references::{ReferenceScopes, References};
 #[path = "tex_definition_analysis.rs"]
 mod analysis;
+#[path = "tex_definition_data.rs"]
+mod data;
+#[path = "tex_literal_index.rs"]
+mod literals;
+pub(crate) use data::DataView;
 
 #[cfg(test)]
 fn ranges(masked: &str) -> Vec<(usize, usize)> {
@@ -27,13 +32,14 @@ pub(crate) struct Index<'a> {
     text: &'a str,
     tokens: Tokens,
     candidates: Vec<Candidate>,
+    literal_index: std::cell::OnceCell<literals::LiteralIndex>,
 }
 
 pub(crate) struct Analysis {
     pub ranges: Vec<(usize, usize)>,
     pub pending: Option<Pending>,
     pub regions: Vec<Region>,
-    pub literal_candidates: Vec<(usize, usize)>,
+    pub literal_spans: Vec<(usize, usize)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +115,7 @@ impl<'a> Index<'a> {
             text,
             tokens: lexical::tokenize(text, visit),
             candidates: Vec::new(),
+            literal_index: std::cell::OnceCell::new(),
         };
         for pos in 0..index.tokens.values.len() {
             visit();

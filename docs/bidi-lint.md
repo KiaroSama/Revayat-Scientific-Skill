@@ -25,9 +25,10 @@ rendering. Review the rendered document when layout or external styles affect
 direction. `U+2028` is a line separator, distinct from the bidi paragraph
 separator `U+2029`.
 
-TeX dependency discovery remains conservative: complete literal includes within
-default arguments or braced replacement arguments, and image references inside
-definitions, are still admitted and checked. Declaration names and single-token
+TeX dependency discovery remains conservative: complete includes with literal
+filenames within default arguments or braced replacement arguments, and image
+references inside definitions, are still admitted and checked when they are
+outside accepted inline/verbatim literal spans. Declaration names and single-token
 replacement arguments do not dispatch includes. Each reference is bounded by its
 own data argument, including nested declarations and supported caller
 continuations; following prose cannot supply its filename. Definition-body
@@ -41,16 +42,21 @@ environment pairs are matched with declaration data masked; they may still span
 an unused declaration. Escaped math delimiters cannot terminate these matches.
 Paired math inside each declaration is removed separately,
 so a delimiter cannot pair with live prose or another declaration's data. Complete
-inline/verbatim literal spans hide their delimiters only in this owner-local
-matching view; retained output still follows raw replacement-text extraction.
-Eligible literal starts and their data limits come from original file visits.
+inline/verbatim literal spans hide their delimiters in this owner-local matching
+view; retained output still follows raw replacement-text extraction.
+One data cursor supplies accepted literal spans and dependency events from each
+original file visit. It resumes at the exact literal endpoint, including after a
+backslash delimiter, while the separate raw collector retains comment and brace
+semantics. Matching masks literals before normalizing remaining backslashes.
 Declaration names, count headers and single-token replacements cannot supply
 literal starts. Incomplete literal spelling does not introduce an extraction
 error, borrow a closer beyond its data/owner boundary, or repeatedly scan a suffix.
 These extraction rules do not change unexpanded argument collection. Original
 declaration starts separate adjacent owners while keeping one owner's included
-and continued fragments together. Direction checks use the same live-source view
-as admitted image and listing references. This does not expand macro invocations
+and continued fragments together. Image, listing and direction checks consume
+the same accepted literal spans. A real listing environment still supplies its
+opener for direction checks; command-looking inline-literal payload does not.
+This does not expand macro invocations
 or change the existing source-closure limits.
 
 Include dispatch retains the existing ASCII-letter command boundary, so both
@@ -128,6 +134,15 @@ cover live and owned math/environment pairs, adjacent owners, included and
 continued fragments, retained replacement text, bounded literal matching,
 declaration-header and malformed-literal controls, public snapshots and a dense
 valid-declaration workload.
+The [literal boundary tests](../crates/revayat-scientific/tests/tex_definition_literal_boundaries.rs)
+compare active and escaped math/literal boundaries against neutral-prefix
+controls, including Unicode delimiters and inherited source bounds.
+The [literal caller tests](../crates/revayat-scientific/tests/tex_definition_literal_callers.rs)
+exercise actual image inventory, lint findings, original locations and comment
+resumption alongside genuine image, listing and input controls.
+The [literal dependency tests](../crates/revayat-scientific/tests/tex_literal_dependencies.rs)
+cover complete literal payloads, exact endpoint resumption, active and escaped
+inputs, declaration roles, original argument limits and raw comment endings.
 The
 [large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
 production source loading and extraction with 100,000 incomplete declarations;
