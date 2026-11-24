@@ -278,8 +278,10 @@ pub fn prepare_observed(
         entries.push((stage, dest.clone()));
         dirs.push(dir);
     }
-    verify_inputs(&inputs, &mut observe)?;
-    if !entries.is_empty() {
+    if entries.is_empty() {
+        verify_final_batch(&inputs, &originals, &mut observe)?;
+    } else {
+        verify_inputs(&inputs, &mut observe)?;
         let mut committed = 0;
         publication::publish_with_identity(
             &entries,
