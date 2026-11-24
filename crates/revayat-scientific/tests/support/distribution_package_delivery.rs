@@ -33,7 +33,7 @@ fn test_metadata_and_references() -> Result<()> {
     ] {
         let value: serde_json::Value = serde_json::from_slice(&fs::read(root.join(name))?)?;
         assert_eq!(value["name"], "revayat-scientific", "{name}");
-        assert_eq!(value["version"], "2.2.1", "{name}");
+        assert_eq!(value["version"], "2.2.2", "{name}");
         assert_eq!(value["license"], "GPL-3.0-or-later", "{name}");
         assert!(
             value["keywords"].as_array().unwrap().iter().any(|v| v == "rust"),
@@ -75,7 +75,7 @@ fn test_metadata_and_references() -> Result<()> {
     assert_eq!(claude_mkt["name"], "revayat-scientific-skill");
     assert_eq!(claude_mkt["plugins"][0]["name"], "revayat-scientific");
     assert_eq!(claude_mkt["plugins"][0]["source"], "./");
-    assert_eq!(claude_mkt["plugins"][0]["version"], "2.2.1");
+    assert_eq!(claude_mkt["plugins"][0]["version"], "2.2.2");
     let codex_mkt: serde_json::Value =
         serde_json::from_slice(&fs::read(root.join(".agents/plugins/marketplace.json"))?)?;
     assert_eq!(codex_mkt["name"], "revayat-scientific-skill");
@@ -136,7 +136,7 @@ fn test_install_launchers_replacement_and_logs() -> Result<()> {
     let executable = target.join("bin").join(if cfg!(windows) { "revayat-scientific.exe" } else { "revayat-scientific" });
     let output = delivery_command(&executable, &f.root, &["--version"], None)?;
     assert!(output.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("2.2.1"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("2.2.2"));
     assert!(target.join("LICENSE").is_file());
     #[cfg(unix)]
     assert_companion_layout(&executable, &f.root)?;

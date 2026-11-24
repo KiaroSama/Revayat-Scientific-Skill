@@ -47,16 +47,16 @@ fn argument_collection_boundaries_do_not_become_eof_continuations() {
     ] {
         assert_eq!(Index::new(prefix).local().pending, None, "{prefix}");
     }
-    for (state, suffix) in [
-        (Continuation::Command, "*"),
-        (Continuation::Command, "{"),
-        (Continuation::AfterName, "["),
-        (Continuation::AfterFirstOption, "[default]"),
-        (Continuation::AfterName, "{open"),
+    for (state, suffix, unfinished) in [
+        (Continuation::Command, "*", false),
+        (Continuation::Command, "{", true),
+        (Continuation::AfterName, "[", true),
+        (Continuation::AfterFirstOption, "[default]", false),
+        (Continuation::AfterName, "{open", true),
     ] {
         assert_eq!(
             Index::new(suffix).resume(0, state),
-            Completion::Invalid,
+            Completion::Invalid { unfinished },
             "{state:?}: {suffix}"
         );
     }

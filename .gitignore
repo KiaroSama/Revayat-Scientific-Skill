@@ -53,6 +53,7 @@ Thumbs.db
 /.revayat-tex-owner-*/
 /tests/security/windows/registry-authority/target/
 /target/
+/bin/
 /var/cache/fontconfig/
 
 # Tracked Codex plugin marketplace catalog inside ignored /.agents/

@@ -193,29 +193,33 @@ impl TexSource {
             "pdfstringdefDisableCommands",
             "IfFontExistsTF",
         ];
-        let optional_brackets = query::BracketIndex::new(&prose, preamble_end, body_end);
-        for item in Regex::new(r"\\[A-Za-z@]+\*?\s*\[")?.find_iter(&prose) {
-            if item.start() < preamble_end || item.start() >= body_end {
-                continue;
-            }
-            let start = item.end() - 1;
-            if let Some(end) = optional_brackets.end(start) {
-                source.protected.push((start, end));
-            }
-        }
+        let body = &prose[..body_end];
+        let delimiters = query::DelimiterIndex::new(body, preamble_end);
         let mut bidi_exclusions = source.protected.clone();
-        for cap in Regex::new(r"\\([A-Za-z@]+)\*?\s*(?:\[[^\]]*\])?\s*\{")?.captures_iter(&prose) {
+        let mut header_end = preamble_end;
+        for cap in Regex::new(r"\\([A-Za-z@]+)\*?\s*(\[|\{)")?.captures_iter(body) {
             let full = cap.get(0).unwrap();
-            if source.inert(full.start()) {
+            if full.start() < preamble_end {
                 continue;
             }
-            let open = full.end() - 1;
-            let end = balanced_argument(&prose, open).unwrap_or(prose.len());
-            let close = if end > open && prose.as_bytes().get(end - 1) == Some(&b'}') {
-                end - 1
-            } else {
-                end
+            let mut open = full.end() - 1;
+            if &cap[2] == "[" {
+                let Some(end) = delimiters.end(open) else {
+                    continue;
+                };
+                source.protected.push((open, end));
+                bidi_exclusions.push((open, end));
+                open = body.len() - body[end..].trim_start().len();
+            }
+            if full.start() < header_end || body.as_bytes().get(open) != Some(&b'{') {
+                continue;
+            }
+            // Optional contents can be matched again by the header regex.
+            header_end = open + 1;
+            let Some(end) = delimiters.end(open) else {
+                continue;
             };
+            let close = end - 1;
             if ["lr", "en", "textenglish", "lasttext"].contains(&&cap[1]) {
                 source.protected.push((open + 1, close));
                 bidi_exclusions.push((open + 1, close));

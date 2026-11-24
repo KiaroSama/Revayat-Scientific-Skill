@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "revayat-scientific",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Translate scientific and technical work into natural Persian. Verify names and pronunciations online, check RLI/PDI isolation, and split book batches across agents. Includes Vazirmatn for offline use.",
   "author": {
     "name": "Kiaro Sama",

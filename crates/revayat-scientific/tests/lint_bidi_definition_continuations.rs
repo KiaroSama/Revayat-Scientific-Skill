@@ -246,6 +246,32 @@ fn continued_control_symbol_names_preserve_following_paragraph_commands() {
 }
 
 #[test]
+fn an_unfinished_resumed_group_cannot_export_a_nested_continuation() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().canonicalize().unwrap();
+    let main = root.join("main.tex");
+    let middle = root.join("middle.tex");
+    let declaration = root.join("declaration.tex");
+    fs::write(&declaration, r"\newcommand").unwrap();
+    fs::write(&middle, r"\input declaration \sample{\newcommand").unwrap();
+    fs::write(
+        &main,
+        r"\begin{document}\input middle \other{\end{document}}\input{missing}\end{document}",
+    )
+    .unwrap();
+
+    let source = Source::load(&main).unwrap();
+    let Source::Tex(model) = &source else {
+        unreachable!()
+    };
+    assert_eq!(model.closure.sources, [main, middle, declaration]);
+    assert_eq!(
+        model.body_end,
+        model.text().find(r"\end{document}").unwrap()
+    );
+}
+
+#[test]
 fn a_real_document_end_prevents_later_continuation_and_dependency_reads() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().canonicalize().unwrap();

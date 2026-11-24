@@ -24,47 +24,48 @@ pub(crate) fn allowed(
     })
 }
 
-pub(crate) struct BracketIndex {
-    pairs: Vec<(usize, usize)>,
+pub(crate) struct DelimiterIndex {
+    start: usize,
+    ends: Vec<u32>,
 }
 
-impl BracketIndex {
-    pub fn new(text: &str, start: usize, end: usize) -> Self {
-        let end = end.min(text.len());
-        Self::from_reader(start.min(end)..end, |position| text.as_bytes()[position])
+impl DelimiterIndex {
+    pub fn new(text: &str, start: usize) -> Self {
+        Self::from_reader(start..text.len(), |position| text.as_bytes()[position])
     }
 
     fn from_reader(positions: std::ops::Range<usize>, mut read: impl FnMut(usize) -> u8) -> Self {
-        let mut pairs = Vec::new();
-        let mut stack = Vec::new();
+        let start = positions.start;
+        let mut ends = vec![0; positions.len()];
+        let (mut brackets, mut braces) = (Vec::new(), Vec::new());
+        // Square brackets retain raw pairing; braces honor TeX escapes.
+        let mut escaped = false;
         for position in positions {
-            match read(position) {
+            let byte = read(position);
+            let open = match byte {
                 b'[' => {
-                    stack.push(pairs.len());
-                    pairs.push((position, 0));
+                    brackets.push(position);
+                    None
                 }
-                b']' => {
-                    if let Some(index) = stack.pop() {
-                        pairs[index].1 = position + 1;
-                    }
+                b']' => brackets.pop(),
+                b'{' if !escaped => {
+                    braces.push(position);
+                    None
                 }
-                _ => (),
+                b'}' if !escaped => braces.pop(),
+                _ => None,
+            };
+            if let Some(open) = open {
+                ends[open - start] = u32::try_from(position + 1).expect("bounded TeX byte offset");
             }
+            escaped = byte == b'\\' && !escaped;
         }
-        Self { pairs }
+        Self { start, ends }
     }
 
-    pub fn end(&self, start: usize) -> Option<usize> {
-        self.end_with_key(start, |position| position)
-    }
-
-    fn end_with_key(&self, start: usize, mut key: impl FnMut(usize) -> usize) -> Option<usize> {
-        let index = self
-            .pairs
-            .binary_search_by_key(&start, |&(position, _)| key(position))
-            .ok()?;
-        let end = self.pairs[index].1;
-        (end != 0).then_some(end)
+    pub fn end(&self, open: usize) -> Option<usize> {
+        let end = *self.ends.get(open.checked_sub(self.start)?)?;
+        (end != 0).then_some(end as usize)
     }
 }
 
@@ -81,7 +82,7 @@ mod tests {
             ("§[a]", vec![(2, Some(5))]),
             ("[incomplete", vec![(0, None)]),
         ] {
-            let index = BracketIndex::new(text, 0, text.len());
+            let index = DelimiterIndex::new(text, 0);
             for (start, end) in expected {
                 assert_eq!(index.end(start), end, "{text:?}/{start}");
             }
@@ -89,51 +90,47 @@ mod tests {
         }
         let text = "[before] [inside] [after]";
         let start = text.find("[inside]").unwrap();
-        let index = BracketIndex::new(text, start, start + "[inside]".len());
-        assert_eq!(index.end(start), Some(start + "[inside]".len()));
+        let end = start + "[inside]".len();
+        let index = DelimiterIndex::new(&text[..end], start);
+        assert_eq!(index.end(start), Some(end));
         assert_eq!(index.end(0), None);
         assert_eq!(index.end(text.find("[after]").unwrap()), None);
-        assert_eq!(BracketIndex::new("[x]", 0, 2).end(0), None);
+        assert_eq!(DelimiterIndex::new("[x", 0).end(0), None);
     }
 
     #[test]
-    fn optional_bracket_scan_and_queries_have_bounded_actual_work() {
-        for length in [0usize, 1, 128, 4096, 100_000] {
-            for complete in [false, true] {
-                let text = format!(
-                    "{}{}",
-                    "[".repeat(length),
+    fn brace_pairs_skip_escaped_braces_and_stop_at_the_document_bound() {
+        let text = r"{\} {x} \\} {past}";
+        let end = text.find("past").unwrap();
+        let index = DelimiterIndex::new(&text[..end], 0);
+        let nested = text.find("{x}").unwrap();
+        assert_eq!(index.end(0), Some(text.find(" {past}").unwrap()));
+        assert_eq!(index.end(nested), Some(nested + "{x}".len()));
+        assert_eq!(index.end(end - 1), None);
+    }
+
+    #[test]
+    fn delimiter_index_reads_each_body_byte_once() {
+        for (open, close) in [("[", "]"), ("{", "}")] {
+            for length in [0, 1, 128, 4096, 100_000] {
+                for complete in [false, true] {
+                    let mut text = open.repeat(length);
                     if complete {
-                        "]".repeat(length)
-                    } else {
-                        String::new()
+                        text.push_str(&close.repeat(length));
                     }
-                );
-                let mut reads = 0;
-                let index = BracketIndex::from_reader(0..text.len(), |position| {
-                    assert_eq!(position, reads);
-                    reads += 1;
-                    text.as_bytes()[position]
-                });
-                assert_eq!(reads, text.len());
-                let maximum = (usize::BITS - length.leading_zeros()) as usize + 1;
-                for start in 0..length {
-                    let mut queries = 0;
-                    let actual = index.end_with_key(start, |position| {
-                        queries += 1;
-                        position
+                    let mut reads = 0;
+                    let index = DelimiterIndex::from_reader(0..text.len(), |position| {
+                        assert_eq!(position, reads);
+                        reads += 1;
+                        text.as_bytes()[position]
                     });
-                    assert_eq!(actual, complete.then_some(2 * length - start));
-                    assert!(queries <= maximum, "{length}/{start}: {queries}");
+                    assert_eq!(reads, text.len());
+                    for start in 0..length {
+                        assert_eq!(index.end(start), complete.then_some(2 * length - start));
+                    }
                 }
             }
         }
-        // The callbacks supply values consumed by the actual implementation.
-        assert_eq!(BracketIndex::from_reader(0..3, |_| b' ').end(0), None);
-        assert_eq!(
-            BracketIndex::new("[]", 0, 2).end_with_key(0, |_| usize::MAX),
-            None
-        );
     }
 
     #[test]

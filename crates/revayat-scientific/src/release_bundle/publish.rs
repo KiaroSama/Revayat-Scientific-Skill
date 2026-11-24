@@ -205,7 +205,7 @@ fn publish_verified(
     api.json(
         Method::PATCH,
         &release_path,
-        &json!({"draft":true,"target_commitish":sha}),
+        &json!({"tag_name": tag, "draft": true, "target_commitish": sha}),
     )?;
     for (name, fingerprint) in uploads {
         for asset in old_assets
@@ -235,11 +235,15 @@ fn publish_verified(
         !tag_existed || tag_present,
         "release tag disappeared during publication"
     );
-    api.json(
+    let published = api.json(
         Method::PATCH,
         &release_path,
-        &json!({"draft":false,"target_commitish":sha}),
+        &json!({"tag_name": tag, "draft": false, "target_commitish": sha}),
     )?;
+    ensure!(
+        published["tag_name"] == tag && published["draft"] == false,
+        "GitHub did not confirm publication under the requested tag {tag}"
+    );
     Ok(())
 }
 

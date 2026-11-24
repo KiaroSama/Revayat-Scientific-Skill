@@ -5,7 +5,7 @@ on:
       tag:
         description: Release tag
         required: true
-        default: v2.2.1
+        default: v2.2.2
         type: string
 permissions:
   contents: read

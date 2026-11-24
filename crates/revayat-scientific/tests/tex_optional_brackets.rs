@@ -52,6 +52,58 @@ fn many_owned_closers_do_not_turn_live_openers_into_repeated_suffix_scans() {
 }
 
 #[test]
+fn label_arguments_cannot_close_an_optional_bracket_after_document_end() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("source.tex");
+    let text = "\\begin{document}\n\\label[\u{2067}ok\u{2069}]{x}\n\\label[\u{2067}Visible\n\\end{document}\n]{x}";
+    fs::write(&path, text).unwrap();
+    let source = Source::load(&path).unwrap();
+    let Source::Tex(model) = &source else {
+        unreachable!()
+    };
+    assert!(model.is_protected(text.find("\u{2067}ok").unwrap()));
+    assert!(model.is_protected(text.find("{x}").unwrap() + 1));
+    assert!(!model.is_protected(text.find("\u{2067}Visible").unwrap()));
+    let findings: Vec<_> = lint::check(&source, &[], None, "system-docs")
+        .unwrap()
+        .into_iter()
+        .filter(|finding| finding.check == "bidi-isolate")
+        .collect();
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert_eq!(findings[0].line, 3);
+    assert!(
+        findings[0]
+            .message
+            .starts_with("Close the LRI, RLI, or FSI isolate")
+    );
+}
+
+#[test]
+fn repeated_unfinished_definition_groups_leave_live_prose_unprotected() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("source.tex");
+    let repetitions = 20_000;
+    let text = format!(
+        "\\begin{{document}}\n{}\u{2067}Visible\n\\end{{document}}",
+        "\\newcommand{\n".repeat(repetitions)
+    );
+    fs::write(&path, &text).unwrap();
+    let source = Source::load(&path).unwrap();
+    let Source::Tex(model) = &source else {
+        unreachable!()
+    };
+    assert_eq!(model.body_end, text.find(r"\end{document}").unwrap());
+    assert!(!model.is_protected(text.find("\u{2067}Visible").unwrap()));
+    let lines: Vec<_> = lint::check(&source, &[], None, "system-docs")
+        .unwrap()
+        .into_iter()
+        .filter(|finding| finding.check == "bidi-isolate")
+        .map(|finding| finding.line)
+        .collect();
+    assert_eq!(lines, [repetitions + 2]);
+}
+
+#[test]
 fn optional_bracket_protection_obeys_nested_and_original_document_bounds() {
     for (body, suffix, hidden) in [
         (

@@ -665,7 +665,11 @@ impl Expansion {
                         reference_scopes.select(references);
                         continued = Some(pending);
                     }
-                    definitions::Completion::Invalid => (),
+                    definitions::Completion::Invalid { unfinished } => {
+                        if unfinished {
+                            cursor.block_continuation();
+                        }
+                    }
                 }
             }
         }

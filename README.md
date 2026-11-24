@@ -6,7 +6,7 @@
 
 [![GitHub Actions CI workflow on main](https://img.shields.io/badge/CI-GitHub%20Actions-16a34a)](.github/workflows/ci.yml)
 [![GNU General Public License v3.0 or later](https://img.shields.io/badge/license-GPL--3.0--or--later-2563eb)](LICENSE)
-[![Release v2.2.1 standalone Rust packages](https://img.shields.io/badge/release-v2.2.1-ea580c)](.github/workflows/release.yml)
+[![Release v2.2.2 standalone Rust packages](https://img.shields.io/badge/release-v2.2.2-ea580c)](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases/tag/v2.2.2)
 [![Rust debug and release tests; inspect the exact revision's CI evidence](https://img.shields.io/badge/tests-Debug%20%2B%20Release-0d9488)](.github/workflows/ci.yml)
 [![Rust 1.100.0 toolchain measured via rustc](https://img.shields.io/badge/Rust-1.100.0-8b5cf6)](rust-toolchain.toml)
 [![Runs on Linux x64, Linux arm64, Windows x64, and Windows arm64](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%2064--bit-0891b2)](.github/workflows/release.yml)

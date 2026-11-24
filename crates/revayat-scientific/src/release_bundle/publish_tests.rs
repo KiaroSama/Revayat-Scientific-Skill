@@ -10,6 +10,7 @@ struct FakeApi {
     mutations: Vec<(String, Value)>,
     fail_get: Option<String>,
     tag_after_upload: Option<Option<Value>>,
+    publish_response: Value,
 }
 impl FakeApi {
     fn new() -> Self {
@@ -27,6 +28,7 @@ impl FakeApi {
             mutations: Vec::new(),
             fail_get: None,
             tag_after_upload: None,
+            publish_response: json!({"id":123,"tag_name":TAG,"draft":false}),
         }
     }
 }
@@ -41,7 +43,10 @@ impl ReleaseApi for FakeApi {
     fn json(&mut self, method: Method, path: &str, body: &Value) -> Result<Value> {
         self.mutations
             .push((format!("{method} {path}"), body.clone()));
-        Ok(json!({"id":123,"tag_name":TAG}))
+        if method == Method::PATCH && body["draft"] == false {
+            return Ok(self.publish_response.clone());
+        }
+        Ok(json!({"id":123,"tag_name":TAG,"draft":true}))
     }
     fn delete(&mut self, path: &str) -> Result<()> {
         self.mutations.push((format!("DELETE {path}"), Value::Null));
@@ -121,7 +126,7 @@ fn lightweight_and_nested_annotated_tags_must_resolve_to_the_built_commit() {
         assert_eq!(final_update.0, "PATCH releases/123");
         assert_eq!(
             final_update.1,
-            json!({"draft":false,"target_commitish":TEST_SHA})
+            json!({"tag_name":TAG,"draft":false,"target_commitish":TEST_SHA})
         );
     }
 }
@@ -156,7 +161,34 @@ fn a_missing_tag_is_created_at_the_explicit_built_commit_including_draft_reruns(
                 .iter()
                 .all(|(_, body)| body["target_commitish"] == TEST_SHA)
         );
-        assert_eq!(updates.last().unwrap().1["draft"], false);
+        let patches = &updates[updates.len() - 2..];
+        for ((request, body), draft) in patches.iter().zip([true, false]) {
+            assert_eq!(request, "PATCH releases/123");
+            assert_eq!(
+                *body,
+                json!({"tag_name":TAG,"draft":draft,"target_commitish":TEST_SHA})
+            );
+        }
+    }
+}
+
+#[test]
+fn final_update_must_confirm_the_requested_tag_and_published_state() {
+    for response in [
+        json!({"id":123,"tag_name":"untagged-123456","draft":false}),
+        json!({"id":123,"tag_name":TAG,"draft":true}),
+    ] {
+        let (temp, uploads) = fixture();
+        let mut api = FakeApi::new();
+        api.publish_response = response.clone();
+        let error = publish_verified(&mut api, temp.path(), TAG, TEST_SHA, uploads)
+            .expect_err("an invalid final release response must fail publication");
+        assert!(
+            error
+                .to_string()
+                .contains("GitHub did not confirm publication"),
+            "response {response} produced an unexpected error: {error:#}"
+        );
     }
 }
 

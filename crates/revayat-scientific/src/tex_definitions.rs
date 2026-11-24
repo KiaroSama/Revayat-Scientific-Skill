@@ -60,7 +60,7 @@ pub(crate) enum Continuation {
 pub(crate) enum Completion {
     Complete(usize),
     Pending(Continuation),
-    Invalid,
+    Invalid { unfinished: bool },
 }
 
 pub(crate) enum Item {
@@ -89,6 +89,10 @@ pub(crate) struct Cursor {
 impl Cursor {
     pub fn allows_continuation(&self) -> bool {
         !self.blocked && !self.pending_header
+    }
+
+    pub fn block_continuation(&mut self) {
+        self.blocked = true;
     }
 }
 
@@ -247,7 +251,7 @@ impl<'a> Index<'a> {
                         cursor.pending_header = true;
                         return Ok(Some(Item::Pending(Pending { start, state })));
                     }
-                    End::Invalid { unfinished: true } => cursor.blocked = true,
+                    End::Invalid { unfinished: true } => cursor.block_continuation(),
                     _ => (),
                 }
             }
@@ -337,7 +341,7 @@ impl<'a> Index<'a> {
         visit();
         let mut references = References::default();
         if offset > self.text.len() {
-            return (Completion::Invalid, references);
+            return (Completion::Invalid { unfinished: false }, references);
         }
         let pos = self.tokens.values.partition_point(|token| {
             visit();
@@ -346,7 +350,7 @@ impl<'a> Index<'a> {
         let completion = match self.definition_end(pos, offset, state, &mut references, visit) {
             End::Complete(end) => Completion::Complete(end),
             End::Pending(state) => Completion::Pending(state),
-            End::Invalid { .. } => Completion::Invalid,
+            End::Invalid { unfinished } => Completion::Invalid { unfinished },
         };
         (completion, references)
     }

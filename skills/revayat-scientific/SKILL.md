@@ -3,7 +3,7 @@ name: revayat-scientific
 description: Translate scientific papers, theses, scholarly books and technical documentation from any source language into accurate Persian, with source-language review and natural scholarly register. Preserve claims, equations, citations, page dimensions and image fidelity; deliver editable sources and a verified PDF. Use for scientific Persian translation or review (فارسی).
 license: GPL-3.0-or-later
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, Agent, AskUserQuestion
-metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"native Rust executable 2.2.1","dependencies":"Optional native render/verification tools; see references/pdf-output.md"}
+metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"native Rust executable 2.2.2","dependencies":"Optional native render/verification tools; see references/pdf-output.md"}
 ---
 
 # Revayat Scientific — scientific documents into Persian
