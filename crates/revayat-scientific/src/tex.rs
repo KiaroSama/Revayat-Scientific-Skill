@@ -5,6 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[path = "tex_definitions.rs"]
+pub(crate) mod definitions;
+
 pub const MAX_FILES: usize = 128;
 pub const MAX_DEPTH: usize = 32;
 pub const MAX_BYTES: usize = 16 * 1024 * 1024;
@@ -212,7 +215,12 @@ impl Expansion {
         self.closure.text.push_str(text);
     }
 
-    fn expand(&mut self, path: &Path, stack: &mut Vec<PathBuf>) -> Result<()> {
+    fn expand(
+        &mut self,
+        path: &Path,
+        stack: &mut Vec<PathBuf>,
+        definition_context: bool,
+    ) -> Result<()> {
         let path = fs::canonicalize(path)
             .with_context(|| format!("missing literal TeX include: {}", path.display()))?;
         ensure!(
@@ -246,6 +254,7 @@ impl Expansion {
             self.closure.sources.push(path.clone());
         }
         let live = masked_tex(&text)?;
+        let definition_ranges = definitions::ranges(&live);
         stack.push(path);
         let mut cursor = 0;
         let mut pos = 0;
@@ -259,13 +268,18 @@ impl Expansion {
                 pos += 2;
                 continue;
             }
+            let definition_index = definition_ranges.partition_point(|&(start, _)| start <= pos);
+            let inside_definition = definition_context
+                || (definition_index > 0 && pos < definition_ranges[definition_index - 1].1);
             if tail.starts_with("\\begin{document}") {
-                self.started = true;
+                if !inside_definition {
+                    self.started = true;
+                }
                 pos += "\\begin{document}".len();
                 continue;
             }
             if tail.starts_with("\\end{document}") {
-                if self.started {
+                if self.started && !inside_definition {
                     self.ended = true;
                 }
                 pos += "\\end{document}".len();
@@ -329,7 +343,9 @@ impl Expansion {
                 "unsupported TeX include type"
             );
             self.append(&text[cursor..pos], &snapshot, cursor);
-            self.expand(&self.root.join(child), stack)?;
+            // Includes remain conservative dependencies even in a definition;
+            // their document-marker tokens still belong to replacement data.
+            self.expand(&self.root.join(child), stack, inside_definition)?;
             cursor = argument_end;
             pos = argument_end;
         }
@@ -359,7 +375,7 @@ pub fn source_closure(source: &Path, root: Option<&Path>) -> Result<SourceClosur
         started: false,
         ended: false,
     };
-    expansion.expand(&source, &mut Vec::new())?;
+    expansion.expand(&source, &mut Vec::new(), false)?;
     Ok(expansion.closure)
 }
 
@@ -409,7 +425,8 @@ pub fn balanced_argument(text: &str, open: usize) -> Result<usize> {
 pub fn plain_tex(text: &str) -> Result<String> {
     use regex::Regex;
     let live = live_tex(text)?;
-    let (start, end) = document_extent(&live);
+    let definition_ranges = definitions::ranges(&masked_tex(text)?);
+    let (start, end) = document_extent(&definitions::mask(&live, &definition_ranges));
     let mut body = live[start..end].to_owned();
     for env in [
         "latin",

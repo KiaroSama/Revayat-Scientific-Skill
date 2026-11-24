@@ -1,7 +1,7 @@
 //! Located immutable source model shared by lint, inventory and verification.
 use crate::tex::{
-    RegionKind, SourceClosure, balanced_argument, document_extent, ignored_regions, live_tex,
-    source_closure,
+    RegionKind, SourceClosure, balanced_argument, definitions, document_extent, ignored_regions,
+    live_tex, masked_tex, source_closure,
 };
 use anyhow::Result;
 use regex::Regex;
@@ -41,7 +41,11 @@ impl TexSource {
         let closure = source_closure(&path, None)?;
         let live = live_tex(&closure.text)?;
         let mut structural = live.as_bytes().to_vec();
-        let (preamble_end, body_end) = document_extent(&live);
+        // Definition names retain control-symbol backslashes; the separate
+        // prose projection preserves byte offsets and document boundaries.
+        let definition_ranges = definitions::ranges(&masked_tex(&closure.text)?);
+        let prose = definitions::mask(&live, &definition_ranges);
+        let (preamble_end, body_end) = document_extent(&prose);
         let mut source = Self {
             path,
             closure,
@@ -51,7 +55,7 @@ impl TexSource {
             literals: Vec::new(),
             isolates: Vec::new(),
             identity: Vec::new(),
-            protected: Vec::new(),
+            protected: definition_ranges,
             direction_scopes: ["latin", "LTR", "LR"]
                 .map(|s| (s.to_owned(), Vec::new()))
                 .into(),
@@ -77,6 +81,8 @@ impl TexSource {
         }
         source.structural =
             String::from_utf8(structural).expect("ASCII literal opener replacement");
+        // Direction scopes share the conservative live-source view used by
+        // listing and image discovery, including references in definitions.
         let mut stack: Vec<(String, usize)> = Vec::new();
         for cap in Regex::new(r"\\(begin|end)\{([^{}]+)\}")?.captures_iter(&source.live) {
             let full = cap.get(0).unwrap();
@@ -120,14 +126,14 @@ impl TexSource {
                 regex::escape(&format!("\\begin{{{env}}}")),
                 regex::escape(&format!("\\end{{{env}}}"))
             );
-            for item in Regex::new(&pattern)?.find_iter(&source.live) {
+            for item in Regex::new(&pattern)?.find_iter(&prose) {
                 source.protected.push((item.start(), item.end()));
                 if env == "latin" {
                     source.identity.push((item.start(), item.end()));
                 }
             }
         }
-        source.protected.extend(math_regions(&source.live));
+        source.protected.extend(math_regions(&prose));
         let arg_only = [
             "begin",
             "end",
@@ -163,10 +169,10 @@ impl TexSource {
             "pdfstringdefDisableCommands",
             "IfFontExistsTF",
         ];
-        for item in Regex::new(r"\\[A-Za-z@]+\*?\s*\[")?.find_iter(&source.live) {
+        for item in Regex::new(r"\\[A-Za-z@]+\*?\s*\[")?.find_iter(&prose) {
             let start = item.end() - 1;
             let mut nesting = 0;
-            for (offset, c) in source.live[start..].char_indices() {
+            for (offset, c) in prose[start..].char_indices() {
                 if c == '[' {
                     nesting += 1;
                 } else if c == ']' {
@@ -179,16 +185,14 @@ impl TexSource {
             }
         }
         let mut bidi_exclusions = source.protected.clone();
-        for cap in
-            Regex::new(r"\\([A-Za-z@]+)\*?\s*(?:\[[^\]]*\])?\s*\{")?.captures_iter(&source.live)
-        {
+        for cap in Regex::new(r"\\([A-Za-z@]+)\*?\s*(?:\[[^\]]*\])?\s*\{")?.captures_iter(&prose) {
             let full = cap.get(0).unwrap();
             if source.inert(full.start()) {
                 continue;
             }
             let open = full.end() - 1;
-            let end = balanced_argument(&source.live, open).unwrap_or(source.live.len());
-            let close = if end > open && source.live.as_bytes().get(end - 1) == Some(&b'}') {
+            let end = balanced_argument(&prose, open).unwrap_or(prose.len());
+            let close = if end > open && prose.as_bytes().get(end - 1) == Some(&b'}') {
                 end - 1
             } else {
                 end
@@ -202,11 +206,6 @@ impl TexSource {
                     body: source.live[open + 1..close].to_owned(),
                 });
             } else if arg_only.contains(&&cap[1]) {
-                let end = if matches!(&cap[1], "newcommand" | "renewcommand") {
-                    definition_body_end(&source.live, end).unwrap_or(end)
-                } else {
-                    end
-                };
                 source.protected.push((full.start(), end));
                 bidi_exclusions.push((full.start(), end));
             } else {
@@ -222,7 +221,7 @@ impl TexSource {
             maximum_end = maximum_end.max(*end);
             *end = maximum_end;
         }
-        for item in Regex::new(r"\\[A-Za-z@]+\*?")?.find_iter(&source.live) {
+        for item in Regex::new(r"\\[A-Za-z@]+\*?")?.find_iter(&prose) {
             if matches!(item.as_str().trim_end_matches('*'), "\\par" | "\\item") {
                 let i = exclusions.partition_point(|&(start, _)| start <= item.start());
                 if i == 0 || item.start() >= exclusions[i - 1].1 {
@@ -324,29 +323,6 @@ impl TexSource {
             .map(|cap| (cap.get(0).unwrap().start(), cap[1].trim().to_owned()))
             .collect()
     }
-}
-
-fn definition_body_end(text: &str, name_end: usize) -> Option<usize> {
-    let mut rest = text[name_end..].trim_start();
-    for _ in 0..2 {
-        let Some(option) = rest.strip_prefix('[') else {
-            break;
-        };
-        rest = option;
-        loop {
-            rest = &rest[rest.find(['\\', '{', ']'])?..];
-            let end = match rest.as_bytes()[0] {
-                b']' => {
-                    rest = rest[1..].trim_start();
-                    break;
-                }
-                b'{' => balanced_argument(rest, 0).ok()?,
-                _ => 1 + rest[1..].chars().next()?.len_utf8(),
-            };
-            rest = &rest[end..];
-        }
-    }
-    balanced_argument(text, text.len() - rest.len()).ok()
 }
 
 fn math_regions(text: &str) -> Vec<(usize, usize)> {

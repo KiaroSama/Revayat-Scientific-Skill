@@ -13,10 +13,10 @@ including decoded HTML entities and included TeX files.
 | Ordinary HTML inline elements | A prose isolate can span an inline element; excluding its English/code content from lexical checks does not by itself end the paragraph. |
 | HTML block elements and explicit breaks | Block elements, including `search`, `listing`, `menu`, and `details`, and explicit breaks end the static prose paragraph. A closer in a later block cannot repair an opener in an earlier block. |
 | Ordinary HTML source CR/LF | Collapsible formatting whitespace does not end a rendered prose paragraph. |
-| HTML preserved-newline contexts | `pre`, `textarea`, and `xmp` preserve newlines by default. Recognized literal inline `white-space` declarations can preserve or collapse newlines, and their settings can be inherited. Visible protected inline text can still contain a paragraph break. |
+| HTML preserved-newline contexts | `pre`, `textarea`, `xmp`, and `listing` preserve newlines by default. Recognized literal inline `white-space` declarations can preserve or collapse newlines, and their settings can be inherited. Visible protected inline text can still contain a paragraph break. |
 | Hidden HTML content | Hidden content and fallback text in `iframe`, `noembed`, and `noframes` can neither end a prose paragraph nor close a visible isolate. |
 | TeX prose | Explicit `\par`, list-item boundaries and blank lines end the paragraph. Ordinary wrapped source lines do not. |
-| TeX protected content | Comments, escaped commands, math/code and protected arguments do not create prose boundaries. For `\newcommand` and `\renewcommand`, including their starred forms, the linter protects the command name, optional arguments, and braced definition body. |
+| TeX protected content | Comments, escaped commands, math/code and protected arguments do not create prose boundaries. For `\newcommand` and `\renewcommand`, including their starred forms, the linter protects the braced or unbraced command name, optional arguments, and braced definition body. Command names may be control words or control symbols; spaces and comments between definition tokens are supported. Complete definitions are excluded before document-boundary and prose-region detection, so unused body tokens cannot start/end the document or open math or argument regions in following prose. |
 
 The HTML check is a static source analysis. It recognizes supported element
 behavior and literal inline whitespace declarations; it does not compute an
@@ -24,6 +24,12 @@ external stylesheet cascade, script-driven layout or a browser's final bidi
 rendering. Review the rendered document when layout or external styles affect
 direction. `U+2028` is a line separator, distinct from the bidi paragraph
 separator `U+2029`.
+
+TeX dependency discovery remains conservative: literal includes and image
+references inside definitions are still admitted and checked. Definition-body
+document markers cannot stop later include discovery. Direction checks use the
+same live-source view as admitted image and listing references. This does not
+expand macro invocations or change the existing source-closure limits.
 
 ## Waivers and bounded reporting
 
@@ -43,7 +49,13 @@ The [bidi regression tests](../crates/revayat-scientific/tests/lint_bidi_recheck
 and [lint context tests](../crates/revayat-scientific/tests/lint_context.rs) cover
 inline exclusions, hidden and block content, ordinary and preserved newlines,
 entities, TeX paragraph and protected regions, include locations, nested
-waivers, and the reporting ceiling. Normal portable CI discovers both suites.
+waivers, and the reporting ceiling. The
+[definition syntax tests](../crates/revayat-scientific/tests/lint_bidi_definitions.rs),
+[definition caller tests](../crates/revayat-scientific/tests/lint_bidi_definition_callers.rs),
+and [listing whitespace tests](../crates/revayat-scientific/tests/lint_bidi_listing.rs)
+cover definition-token variants, real document boundaries, dependency/direction
+compatibility, and explicit whitespace overrides. Normal portable CI discovers
+all these suites.
 
 References: [Unicode Bidirectional Algorithm](https://www.unicode.org/reports/tr9/)
 and [CSS whitespace processing](https://www.w3.org/TR/css-text-3/#white-space-processing).
