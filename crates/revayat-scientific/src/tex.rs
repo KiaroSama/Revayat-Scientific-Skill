@@ -7,8 +7,12 @@ use std::sync::Arc;
 
 #[path = "tex_definitions.rs"]
 pub(crate) mod definitions;
+#[path = "tex_plain.rs"]
+mod plain;
 #[path = "tex_provenance.rs"]
 mod provenance;
+pub use plain::plain_tex;
+use plain::plain_tex_with_ranges;
 
 pub const MAX_FILES: usize = 128;
 pub const MAX_DEPTH: usize = 32;
@@ -123,6 +127,8 @@ pub struct Snapshot {
     #[serde(skip)]
     definition_ranges: Option<Vec<(usize, usize)>>,
     #[serde(skip)]
+    definition_starts: Option<Vec<usize>>,
+    #[serde(skip)]
     definition_context: bool,
     #[serde(skip)]
     definition_eof: bool,
@@ -171,6 +177,7 @@ impl Snapshot {
             newlines,
             blank_line_breaks,
             definition_ranges: None,
+            definition_starts: None,
             definition_context: false,
             definition_eof: false,
             lexical_regions: None,
@@ -330,6 +337,14 @@ impl Expansion {
     }
 
     fn complete_definition(&mut self, pending: PendingDefinition) {
+        if let Some(&(visit, start, _)) = pending.owners.first() {
+            self.snapshots[visit]
+                .snapshot
+                .definition_starts
+                .as_mut()
+                .unwrap()
+                .push(start);
+        }
         for (visit, start, end) in pending.owners {
             self.snapshots[visit].continued_ranges.push((start, end));
             // An included file without a final newline receives a synthetic
@@ -403,6 +418,7 @@ impl Expansion {
         let definitions = definitions::Index::new(&text);
         let mut snapshot = Snapshot::new(path.clone(), Arc::from(text.as_str()))?;
         snapshot.definition_ranges = Some(Vec::new());
+        snapshot.definition_starts = Some(Vec::new());
         snapshot.lexical_regions = Some(Vec::new());
         snapshot.definition_context = definition_context;
         let visit = self.snapshots.len();
@@ -415,6 +431,7 @@ impl Expansion {
         let mut cursor = definitions.cursor(0);
         let mut owned_end = 0;
         let mut collected_end = 0;
+        let mut reference_scopes: Vec<definitions::References> = Vec::new();
         let mut local_pending = None;
         let mut continued = None;
         while let Some(item) = definitions.next(
@@ -425,8 +442,12 @@ impl Expansion {
                 collected_end
             },
         )? {
-            let (pos, token_end) = match item {
-                definitions::Item::Definition { start, end } => {
+            let (pos, token_end, nested_references) = match item {
+                definitions::Item::Definition {
+                    start,
+                    end,
+                    references,
+                } => {
                     self.snapshots[visit].snapshot.definition_eof |= definitions.owns_eof(end);
                     self.snapshots[visit]
                         .snapshot
@@ -434,8 +455,16 @@ impl Expansion {
                         .as_mut()
                         .unwrap()
                         .push((start, end));
+                    self.snapshots[visit]
+                        .snapshot
+                        .definition_starts
+                        .as_mut()
+                        .unwrap()
+                        .push(start);
                     owned_end = end;
                     collected_end = end;
+                    reference_scopes.clear();
+                    reference_scopes.push(references);
                     continue;
                 }
                 definitions::Item::Pending(pending) => {
@@ -444,6 +473,10 @@ impl Expansion {
                     // Keep those tokens unexpanded without granting ownership
                     // until an eventual caller establishes the complete body.
                     collected_end = text.len();
+                    reference_scopes.clear();
+                    let mut references = definitions::References::default();
+                    references.end = text.len();
+                    reference_scopes.push(references);
                     continue;
                 }
                 definitions::Item::Ignored(region) => {
@@ -455,12 +488,35 @@ impl Expansion {
                         .push(region);
                     continue;
                 }
-                definitions::Item::Token { start, end } => (start, end),
+                definitions::Item::Token {
+                    start,
+                    end,
+                    references,
+                } => (start, end, references),
             };
             // Keep lexical validation/projection of the original tail, but do
             // not discover dependencies or resume definitions after the end.
             if self.ended {
                 continue;
+            }
+            while reference_scopes
+                .last()
+                .is_some_and(|scope| pos >= scope.end)
+            {
+                reference_scopes.pop();
+            }
+            let reference_limit = reference_scopes
+                .last()
+                .map_or(Some(text.len()), |scope| scope.limit(pos));
+            if let Some(mut references) = nested_references
+                && let Some(limit) = reference_limit
+                && references.end > pos
+            {
+                // Nested declarations inside raw replacement/default data do
+                // not acquire new prose ownership, but their names are still
+                // names rather than conservative include invocations.
+                references.end = references.end.min(limit);
+                reference_scopes.push(references);
             }
             let tail = &text[pos..];
             let inside_definition = definition_context || pos < owned_end;
@@ -476,18 +532,33 @@ impl Expansion {
                 }
                 continue;
             }
-            let Some(name) = text[pos..token_end].strip_prefix('\\') else {
+            let Some(command) = text[pos..token_end].strip_prefix('\\') else {
                 continue;
             };
+            // Dependency dispatch retains the established default-catcode
+            // boundary. Definition-name tokenization separately supports @.
+            let length = command.bytes().take_while(u8::is_ascii_alphabetic).count();
+            let name = &command[..length];
             if !matches!(name, "input" | "include" | "includeonly") {
+                continue;
+            }
+            let Some(limit) = reference_limit else {
+                continue;
+            };
+            let argument_start = pos + 1 + length;
+            let inside_data = definition_context || !reference_scopes.is_empty();
+            if inside_data && argument_start >= limit {
+                continue;
+            }
+            let argument = include_argument(&text[..limit], argument_start)?;
+            let reference = argument.reference.trim();
+            if inside_data && reference.is_empty() {
                 continue;
             }
             ensure!(
                 name != "includeonly",
                 "includeonly requires an explicit reviewed source closure"
             );
-            let argument = include_argument(&text, token_end)?;
-            let reference = argument.reference.trim();
             ensure!(
                 !reference.is_empty() && !reference.contains(['\\', '#', '$', '%', '~', '^', '&']),
                 "unsupported dynamic TeX include"
@@ -515,7 +586,9 @@ impl Expansion {
                 && cursor.allows_continuation()
                 && let Some(mut pending) = pending
             {
-                match definitions.resume(argument.end, pending.state) {
+                let (completion, references) =
+                    definitions.resume_with_references(argument.end, pending.state);
+                match completion {
                     definitions::Completion::Complete(end) => {
                         self.complete_definition(pending);
                         self.snapshots[visit].snapshot.definition_eof |= definitions.owns_eof(end);
@@ -524,11 +597,17 @@ impl Expansion {
                             .push((argument.end, end));
                         owned_end = end;
                         collected_end = end;
+                        reference_scopes.clear();
+                        reference_scopes.push(references);
                     }
                     definitions::Completion::Pending(state) => {
                         pending.state = state;
                         pending.owners.push((visit, argument.end, text.len()));
                         collected_end = text.len();
+                        reference_scopes.clear();
+                        let mut references = references;
+                        references.end = text.len();
+                        reference_scopes.push(references);
                         continued = Some(pending);
                     }
                     definitions::Completion::Invalid => (),
@@ -650,105 +729,4 @@ pub fn balanced_argument(text: &str, open: usize) -> Result<usize> {
         pos += text[pos..].chars().next().unwrap().len_utf8();
     }
     bail!("unbalanced TeX prose argument")
-}
-
-pub fn plain_tex(text: &str) -> Result<String> {
-    let analysis = definitions::Index::new(text).analyze()?;
-    plain_tex_with_ranges(text, &analysis.ranges, &analysis.regions)
-}
-
-fn plain_tex_with_ranges(
-    text: &str,
-    definition_ranges: &[(usize, usize)],
-    regions: &[Region],
-) -> Result<String> {
-    use regex::Regex;
-    let live = mask_regions(text, regions).replace("\\\\", "  ");
-    let (start, end) = document_extent(&definitions::mask(&live, definition_ranges));
-    let mut body = live[start..end].to_owned();
-    for env in [
-        "latin",
-        "equation",
-        "equation*",
-        "align",
-        "align*",
-        "displaymath",
-        "math",
-    ] {
-        let pattern = format!(
-            "(?s){}.*?{}",
-            regex::escape(&format!("\\begin{{{env}}}")),
-            regex::escape(&format!("\\end{{{env}}}"))
-        );
-        body = Regex::new(&pattern)?.replace_all(&body, " ").into_owned();
-    }
-    for (open, close) in [("$$", "$$"), ("$", "$"), ("\\[", "\\]"), ("\\(", "\\)")] {
-        let mut pos = 0;
-        let mut result = String::new();
-        while let Some(index) = body[pos..].find(open) {
-            let index = pos + index;
-            if index > 0 && body.as_bytes()[index - 1] == b'\\' {
-                result.push_str(&body[pos..index + open.len()]);
-                pos = index + open.len();
-                continue;
-            }
-            let Some(end) = body[index + open.len()..].find(close) else {
-                break;
-            };
-            result.push_str(&body[pos..index]);
-            result.push(' ');
-            pos = index + open.len() + end + close.len();
-        }
-        result.push_str(&body[pos..]);
-        body = result;
-    }
-    fn unwrap(text: &str, depth: usize) -> Result<String> {
-        ensure!(depth < MAX_DEPTH, "TeX formatting depth exceeds 32");
-        let command = Regex::new(r"^\\([A-Za-z@]+)\*?(?:\[[^\]]*\])?\s*")?;
-        let discard = [
-            "en",
-            "lr",
-            "textenglish",
-            "texttt",
-            "url",
-            "label",
-            "ref",
-            "eqref",
-            "cite",
-            "includegraphics",
-            "begin",
-            "end",
-        ];
-        let mut result = String::new();
-        let mut pos = 0;
-        while pos < text.len() {
-            if let Some(capture) = command.captures(&text[pos..]) {
-                pos += capture.get(0).unwrap().end();
-                if text[pos..].starts_with('{') {
-                    let end = balanced_argument(text, pos)?;
-                    if discard.contains(&&capture[1]) {
-                        result.push(' ');
-                    } else {
-                        result.push_str(&unwrap(&text[pos + 1..end - 1], depth + 1)?);
-                    }
-                    pos = end;
-                } else {
-                    result.push(' ');
-                }
-            } else {
-                let next = text[pos..].chars().next().unwrap();
-                result.push(if matches!(next, '{' | '}' | '\\') {
-                    ' '
-                } else {
-                    next
-                });
-                pos += next.len_utf8();
-            }
-        }
-        Ok(result)
-    }
-    Ok(unwrap(&body, 0)?
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" "))
 }

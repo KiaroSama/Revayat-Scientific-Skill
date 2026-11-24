@@ -83,7 +83,7 @@ fn monotone_resumption_discards_consumed_candidates_without_losing_recovery() {
     let mut selected = Vec::new();
     let mut collected_until = prefix.len();
     while let Some(item) = index.next(&mut cursor, collected_until).unwrap() {
-        if let Item::Definition { start, end } = item {
+        if let Item::Definition { start, end, .. } = item {
             selected.push((start, end));
             collected_until = end;
         }

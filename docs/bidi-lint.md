@@ -25,16 +25,31 @@ rendering. Review the rendered document when layout or external styles affect
 direction. `U+2028` is a line separator, distinct from the bidi paragraph
 separator `U+2029`.
 
-TeX dependency discovery remains conservative: literal includes and image
-references inside definitions are still admitted and checked. Definition-body
+TeX dependency discovery remains conservative: complete literal includes within
+default arguments or braced replacement arguments, and image references inside
+definitions, are still admitted and checked. Declaration names and single-token
+replacement arguments do not dispatch includes. Each reference is bounded by its
+own data argument, including nested declarations and supported caller
+continuations; following prose cannot supply its filename. Definition-body
 document markers cannot stop later include discovery. Definition ownership is
 retained on each original file visit and mapped through closure segments, so
 braces in a conservatively discovered child cannot end its parent's definition.
 The same file can be definition data in one visit and visible prose in another.
-Plain-text extraction uses this ownership for document boundaries while retaining
-its existing body extraction behavior. Direction checks use the same live-source
-view as admitted image and listing references. This does not expand macro
-invocations or change the existing source-closure limits.
+Plain-text extraction uses this ownership for document boundaries and delimiter
+matching while retaining ordinary replacement text. Live math and excluded
+environment pairs are matched with declaration data masked; they may still span
+an unused declaration. Escaped math delimiters cannot terminate these matches.
+Paired math inside each declaration is removed separately,
+so a delimiter cannot pair with live prose or another declaration's data. Original
+declaration starts separate adjacent owners while keeping one owner's included
+and continued fragments together. Direction checks use the same live-source view
+as admitted image and listing references. This does not expand macro invocations
+or change the existing source-closure limits.
+
+Include dispatch retains the existing ASCII-letter command boundary, so both
+`\input@chapter` and `\input @chapter` discover `@chapter.tex` in the default
+lexical model. Definition names can still contain `@`. This does not evaluate
+arbitrary category-code changes such as a redefined `\input@chapter` command.
 
 For literal unbraced `\input file `, a definition can continue in the caller
 after the included file ends at a supported LaTeX lookahead position: after the
@@ -98,6 +113,13 @@ The [lexical ownership tests](../crates/revayat-scientific/tests/lint_bidi_defin
 cover comment-only and blank lines, raw argument collection versus ordinary
 literals, single-token replacement bodies, malformed-name/pending recovery,
 continuation precedence and the shared lint/plain-text projection.
+The [definition dependency tests](../crates/revayat-scientific/tests/tex_definition_dependencies.rs)
+cover include-command boundaries, names versus references, bounded defaults and
+replacement arguments, nested declarations, inherited data and caller returns.
+The [definition extraction tests](../crates/revayat-scientific/tests/tex_definition_extraction.rs)
+cover live and owned math/environment pairs, adjacent owners, included and
+continued fragments, retained replacement text, public snapshots and a dense
+valid-declaration workload.
 The
 [large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
 production source loading and extraction with 100,000 incomplete declarations;

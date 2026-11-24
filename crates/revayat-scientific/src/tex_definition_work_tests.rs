@@ -93,9 +93,38 @@ fn ignored_regions_do_not_supply_definition_tokens_or_delimiters() {
     );
     let declaration = "\\newcommand% comment\n*\\?% comment\n[1][{x]y}]{\\{#1\\}}";
     let text = format!("{prefix}{declaration} after\\par");
-    let masked = crate::tex::masked_tex(&text).unwrap();
+    let analysis = Index::new(&text).analyze().unwrap();
     assert_eq!(
-        ranges(&masked),
+        analysis.ranges,
         [(prefix.len(), prefix.len() + declaration.len())]
     );
+    let comment_end = prefix.find('\n').unwrap();
+    let verb_start = comment_end + 1;
+    let verb_end = verb_start + prefix[verb_start..].find('\n').unwrap();
+    let mut expected = vec![
+        Region {
+            start: 0,
+            end: comment_end,
+            kind: RegionKind::Comment,
+        },
+        Region {
+            start: verb_start,
+            end: verb_end,
+            kind: RegionKind::Literal,
+        },
+        Region {
+            start: verb_end + 1,
+            end: prefix.len() - 1,
+            kind: RegionKind::Literal,
+        },
+    ];
+    expected.extend(
+        text.match_indices("% comment")
+            .map(|(start, comment)| Region {
+                start,
+                end: start + comment.len(),
+                kind: RegionKind::Comment,
+            }),
+    );
+    assert_eq!(analysis.regions, expected);
 }

@@ -4,6 +4,9 @@ use anyhow::Result;
 #[path = "tex_definition_tokens.rs"]
 mod lexical;
 use lexical::{Kind, Token, Tokens};
+#[path = "tex_definition_references.rs"]
+mod references;
+pub(crate) use references::References;
 
 #[cfg(test)]
 fn ranges(masked: &str) -> Vec<(usize, usize)> {
@@ -51,10 +54,18 @@ pub(crate) enum Completion {
 }
 
 pub(crate) enum Item {
-    Definition { start: usize, end: usize },
+    Definition {
+        start: usize,
+        end: usize,
+        references: References,
+    },
     Pending(Pending),
     Ignored(Region),
-    Token { start: usize, end: usize },
+    Token {
+        start: usize,
+        end: usize,
+        references: Option<References>,
+    },
 }
 
 pub(crate) struct Cursor {
@@ -82,6 +93,7 @@ enum End {
 struct Candidate {
     token: usize,
     end: End,
+    references: References,
 }
 
 impl<'a> Index<'a> {
@@ -98,13 +110,19 @@ impl<'a> Index<'a> {
         for pos in 0..index.tokens.values.len() {
             visit();
             if index.tokens.values[pos].kind == Kind::Definition {
+                let mut references = References::default();
                 let end = index.definition_end(
                     index.tokens.values[pos].next as usize,
                     0,
                     Continuation::Command,
+                    &mut references,
                     visit,
                 );
-                index.candidates.push(Candidate { token: pos, end });
+                index.candidates.push(Candidate {
+                    token: pos,
+                    end,
+                    references,
+                });
             }
         }
         index
@@ -197,14 +215,23 @@ impl<'a> Index<'a> {
             })));
         }
         let collected = start < collected_until;
+        let candidate = self
+            .candidates
+            .get(cursor.candidate)
+            .filter(|candidate| candidate.token == token_pos);
         if !collected && !cursor.pending_header {
             if token.kind == Kind::Definition
-                && let Some(candidate) = self.candidates.get(cursor.candidate)
-                && candidate.token == token_pos
+                && let Some(candidate) = candidate
             {
                 visit();
                 match candidate.end {
-                    End::Complete(end) => return Ok(Some(Item::Definition { start, end })),
+                    End::Complete(end) => {
+                        return Ok(Some(Item::Definition {
+                            start,
+                            end,
+                            references: candidate.references,
+                        }));
+                    }
                     End::Pending(state) if !cursor.blocked => {
                         cursor.pending_header = true;
                         return Ok(Some(Item::Pending(Pending { start, state })));
@@ -229,9 +256,14 @@ impl<'a> Index<'a> {
             return Ok(Some(Item::Token {
                 start,
                 end: collected_until,
+                references: None,
             }));
         }
-        Ok(Some(Item::Token { start, end }))
+        Ok(Some(Item::Token {
+            start,
+            end,
+            references: candidate.map(|candidate| candidate.references),
+        }))
     }
 
     pub fn analyze(&self) -> Result<Analysis> {
@@ -254,7 +286,7 @@ impl<'a> Index<'a> {
         let mut collected_until = 0;
         while let Some(item) = self.next_observed(&mut cursor, collected_until, visit)? {
             match item {
-                Item::Definition { start, end } => {
+                Item::Definition { start, end, .. } => {
                     result.ranges.push((start, end));
                     collected_until = end;
                 }
@@ -279,29 +311,50 @@ impl<'a> Index<'a> {
         self.analyze_observed(visit).expect("valid scanner fixture")
     }
 
-    pub fn resume(&self, offset: usize, state: Continuation) -> Completion {
+    pub fn resume_with_references(
+        &self,
+        offset: usize,
+        state: Continuation,
+    ) -> (Completion, References) {
+        self.resume_references_observed(offset, state, &mut || {})
+    }
+
+    #[cfg(test)]
+    fn resume(&self, offset: usize, state: Continuation) -> Completion {
         self.resume_observed(offset, state, &mut || {})
     }
 
+    #[cfg(test)]
     fn resume_observed(
         &self,
         offset: usize,
         state: Continuation,
         visit: &mut impl FnMut(),
     ) -> Completion {
+        self.resume_references_observed(offset, state, visit).0
+    }
+
+    fn resume_references_observed(
+        &self,
+        offset: usize,
+        state: Continuation,
+        visit: &mut impl FnMut(),
+    ) -> (Completion, References) {
         visit();
+        let mut references = References::default();
         if offset > self.text.len() {
-            return Completion::Invalid;
+            return (Completion::Invalid, references);
         }
         let pos = self.tokens.values.partition_point(|token| {
             visit();
             (token.start as usize) < offset
         });
-        match self.definition_end(pos, offset, state, visit) {
+        let completion = match self.definition_end(pos, offset, state, &mut references, visit) {
             End::Complete(end) => Completion::Complete(end),
             End::Pending(state) => Completion::Pending(state),
             End::Invalid { .. } => Completion::Invalid,
-        }
+        };
+        (completion, references)
     }
 
     fn definition_end(
@@ -309,6 +362,7 @@ impl<'a> Index<'a> {
         mut pos: usize,
         mut offset: usize,
         mut state: Continuation,
+        references: &mut References,
         visit: &mut impl FnMut(),
     ) -> End {
         let invalid = End::Invalid { unfinished: false };
@@ -341,8 +395,12 @@ impl<'a> Index<'a> {
                         return invalid;
                     }
                     pos = name.endpoint as usize;
+                    references.end = self.token(pos - 1, visit).unwrap().end as usize;
                 }
-                Kind::Control | Kind::Definition => pos = name.next as usize,
+                Kind::Control | Kind::Definition => {
+                    pos = name.next as usize;
+                    references.end = name.end as usize;
+                }
                 _ => return invalid,
             }
             offset = 0;
@@ -357,6 +415,7 @@ impl<'a> Index<'a> {
                     return End::Invalid { unfinished: true };
                 }
                 pos = option.endpoint as usize;
+                references.end = self.token(pos - 1, visit).unwrap().end as usize;
                 offset = 0;
                 state = Continuation::AfterFirstOption;
             } else {
@@ -372,6 +431,9 @@ impl<'a> Index<'a> {
                     return End::Invalid { unfinished: true };
                 }
                 pos = option.endpoint as usize;
+                let close = self.token(pos - 1, visit).unwrap();
+                references.end = close.end as usize;
+                references.default = Some((option.end as usize, close.start as usize));
                 offset = 0;
             } else {
                 pos = option_pos;
@@ -384,7 +446,9 @@ impl<'a> Index<'a> {
             Kind::OpenBrace if body.endpoint == 0 => End::Invalid { unfinished: true },
             Kind::OpenBrace => {
                 let close = self.token(body.endpoint as usize - 1, visit).unwrap();
-                End::Complete(close.end as usize)
+                references.end = close.end as usize;
+                references.body = Some((body.end as usize, close.start as usize));
+                End::Complete(references.end)
             }
             Kind::CloseBrace => invalid,
             Kind::Text => {
@@ -394,9 +458,13 @@ impl<'a> Index<'a> {
                     body.start as usize
                 };
                 visit();
-                End::Complete(start + self.text[start..].chars().next().unwrap().len_utf8())
+                references.end = start + self.text[start..].chars().next().unwrap().len_utf8();
+                End::Complete(references.end)
             }
-            _ => End::Complete(body.end as usize),
+            _ => {
+                references.end = body.end as usize;
+                End::Complete(references.end)
+            }
         }
     }
 }
