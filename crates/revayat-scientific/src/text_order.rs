@@ -32,7 +32,7 @@ pub fn source_plain(path: &Path) -> Result<String> {
         .to_ascii_lowercase();
     if ["tex", "ltx"].contains(&ext.as_str()) {
         let closure = tex::source_closure(path, None)?;
-        tex::plain_tex(&closure.text)
+        closure.plain_text()
     } else {
         let bytes = bounded_read(path, 16 * 1024 * 1024)?;
         let text = std::str::from_utf8(&bytes)?;

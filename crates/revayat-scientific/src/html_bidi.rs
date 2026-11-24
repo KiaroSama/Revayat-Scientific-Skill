@@ -2,7 +2,7 @@
 use super::ParsedHtml;
 
 pub(super) fn preserved_newlines(tag: &str, style: &str, inherited: bool) -> bool {
-    let mut preserve = matches!(tag, "pre" | "textarea" | "xmp") || inherited;
+    let mut preserve = matches!(tag, "pre" | "textarea" | "xmp" | "listing") || inherited;
     let mut important = false;
     // This tracks literal inline declarations, not a computed stylesheet cascade.
     for declaration in style.split(';') {
