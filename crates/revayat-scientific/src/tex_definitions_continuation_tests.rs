@@ -75,7 +75,7 @@ fn empty_returns_and_successive_lookahead_phases_preserve_pending_state() {
             Completion::Pending(expected)
         );
         state = expected;
-        let empty = Index::new(" \r\n\t");
+        let empty = Index::new("");
         for _ in 0..crate::tex::MAX_DEPTH {
             assert_eq!(empty.resume(0, state), Completion::Pending(state));
         }

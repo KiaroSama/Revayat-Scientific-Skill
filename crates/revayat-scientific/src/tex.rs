@@ -93,15 +93,19 @@ pub fn ignored_regions(text: &str) -> Result<Vec<Region>> {
 }
 
 pub fn masked_tex(text: &str) -> Result<String> {
+    Ok(mask_regions(text, &ignored_regions(text)?))
+}
+
+pub(crate) fn mask_regions(text: &str, regions: &[Region]) -> String {
     let mut bytes = text.as_bytes().to_vec();
-    for region in ignored_regions(text)? {
+    for region in regions {
         for byte in &mut bytes[region.start..region.end] {
             if !matches!(byte, b'\r' | b'\n') {
                 *byte = b' ';
             }
         }
     }
-    Ok(String::from_utf8(bytes).expect("mask preserves UTF-8"))
+    String::from_utf8(bytes).expect("mask preserves UTF-8")
 }
 
 pub fn live_tex(text: &str) -> Result<String> {
@@ -115,11 +119,15 @@ pub struct Snapshot {
     #[serde(skip)]
     newlines: Vec<u32>,
     #[serde(skip)]
+    blank_line_breaks: Vec<u32>,
+    #[serde(skip)]
     definition_ranges: Option<Vec<(usize, usize)>>,
     #[serde(skip)]
     definition_context: bool,
     #[serde(skip)]
     definition_eof: bool,
+    #[serde(skip)]
+    lexical_regions: Option<Vec<Region>>,
 }
 
 impl Snapshot {
@@ -128,19 +136,44 @@ impl Snapshot {
             text.len() <= u32::MAX as usize,
             "source snapshot exceeds indexed size"
         );
-        let newlines = text
-            .bytes()
-            .enumerate()
-            .filter(|(_, c)| *c == b'\n')
-            .map(|(pos, _)| pos as u32)
-            .collect();
+        let mut newlines = Vec::new();
+        let mut blank_line_breaks = Vec::new();
+        let mut blank = true;
+        let mut previous_cr = false;
+        let mut line_start = 0;
+        for (pos, byte) in text.bytes().enumerate() {
+            if byte == b'\n' {
+                newlines.push(pos as u32);
+            }
+            match byte {
+                b'\r' | b'\n' => {
+                    if blank && !(byte == b'\n' && previous_cr) {
+                        blank_line_breaks.push(pos as u32);
+                    }
+                    blank = true;
+                    previous_cr = byte == b'\r';
+                    line_start = pos + 1;
+                }
+                _ => {
+                    blank &= matches!(byte, b' ' | b'\t');
+                    previous_cr = false;
+                }
+            }
+        }
+        // TeX supplies an endline for a nonempty final physical line. The
+        // closure's generated separator represents that EOF boundary.
+        if blank && line_start < text.len() {
+            blank_line_breaks.push(text.len() as u32);
+        }
         Ok(Self {
             path,
             text,
             newlines,
+            blank_line_breaks,
             definition_ranges: None,
             definition_context: false,
             definition_eof: false,
+            lexical_regions: None,
         })
     }
 
@@ -158,6 +191,7 @@ impl Snapshot {
             + 1
     }
 
+    /// Bytes used by the public newline index; paragraph metadata is separate.
     pub fn index_bytes(&self) -> usize {
         self.newlines.len() * size_of::<u32>()
     }
@@ -218,6 +252,57 @@ struct PendingSegment {
 struct PendingDefinition {
     state: definitions::Continuation,
     owners: Vec<(usize, usize, usize)>,
+}
+
+struct IncludeArgument {
+    reference: String,
+    end: usize,
+    braced: bool,
+}
+
+fn include_argument(text: &str, mut pos: usize) -> Result<IncludeArgument> {
+    loop {
+        pos += text[pos..].len() - text[pos..].trim_start().len();
+        if !text[pos..].starts_with('%') {
+            break;
+        }
+        pos += text[pos..].find(['\r', '\n']).unwrap_or(text.len() - pos);
+    }
+    let braced = text[pos..].starts_with('{');
+    if !braced {
+        let length = text[pos..]
+            .find(|c: char| c.is_whitespace() || matches!(c, '{' | '}' | '%'))
+            .unwrap_or(text.len() - pos);
+        return Ok(IncludeArgument {
+            reference: text[pos..pos + length].to_owned(),
+            end: pos + length,
+            braced,
+        });
+    }
+    pos += 1;
+    let mut reference = String::new();
+    while let Some(character) = text[pos..].chars().next() {
+        match character {
+            '}' => {
+                return Ok(IncludeArgument {
+                    reference,
+                    end: pos + 1,
+                    braced,
+                });
+            }
+            '{' => bail!("unsupported dynamic TeX include"),
+            '%' => {
+                let length = text[pos..].find(['\r', '\n']).unwrap_or(text.len() - pos);
+                reference.extend(std::iter::repeat_n(' ', length));
+                pos += length;
+            }
+            _ => {
+                reference.push(character);
+                pos += character.len_utf8();
+            }
+        }
+    }
+    bail!("unsupported dynamic or missing TeX include")
 }
 
 struct Expansion {
@@ -315,92 +400,94 @@ impl Expansion {
         if !self.closure.sources.contains(&path) {
             self.closure.sources.push(path.clone());
         }
-        let live = masked_tex(&text)?;
-        let definitions = definitions::Index::new(&live);
-        let local = definitions.local();
+        let definitions = definitions::Index::new(&text);
         let mut snapshot = Snapshot::new(path.clone(), Arc::from(text.as_str()))?;
-        snapshot.definition_ranges = Some(local.ranges.clone());
+        snapshot.definition_ranges = Some(Vec::new());
+        snapshot.lexical_regions = Some(Vec::new());
         snapshot.definition_context = definition_context;
         let visit = self.snapshots.len();
         self.snapshots.push(PendingVisit {
             snapshot,
             continued_ranges: Vec::new(),
         });
-        let definition_ranges = &local.ranges;
         stack.push(path);
-        let mut cursor = 0;
-        let mut pos = 0;
-        let mut continuation_end = 0;
+        let mut append_start = 0;
+        let mut cursor = definitions.cursor(0);
+        let mut owned_end = 0;
+        let mut collected_end = 0;
+        let mut local_pending = None;
         let mut continued = None;
-        while pos < live.len() && !self.ended {
-            let tail = &live[pos..];
-            if !tail.starts_with('\\') {
-                pos += tail.chars().next().unwrap().len_utf8();
+        while let Some(item) = definitions.next(
+            &mut cursor,
+            if definition_context {
+                text.len()
+            } else {
+                collected_end
+            },
+        )? {
+            let (pos, token_end) = match item {
+                definitions::Item::Definition { start, end } => {
+                    self.snapshots[visit].snapshot.definition_eof |= definitions.owns_eof(end);
+                    self.snapshots[visit]
+                        .snapshot
+                        .definition_ranges
+                        .as_mut()
+                        .unwrap()
+                        .push((start, end));
+                    owned_end = end;
+                    collected_end = end;
+                    continue;
+                }
+                definitions::Item::Pending(pending) => {
+                    local_pending.get_or_insert(pending);
+                    // A pending header has already collected its name/options.
+                    // Keep those tokens unexpanded without granting ownership
+                    // until an eventual caller establishes the complete body.
+                    collected_end = text.len();
+                    continue;
+                }
+                definitions::Item::Ignored(region) => {
+                    self.snapshots[visit]
+                        .snapshot
+                        .lexical_regions
+                        .as_mut()
+                        .unwrap()
+                        .push(region);
+                    continue;
+                }
+                definitions::Item::Token { start, end } => (start, end),
+            };
+            // Keep lexical validation/projection of the original tail, but do
+            // not discover dependencies or resume definitions after the end.
+            if self.ended {
                 continue;
             }
-            if tail.starts_with("\\\\") {
-                pos += 2;
-                continue;
-            }
-            let definition_index = definition_ranges.partition_point(|&(start, _)| start <= pos);
-            let inside_definition = definition_context
-                || pos < continuation_end
-                || (definition_index > 0 && pos < definition_ranges[definition_index - 1].1);
+            let tail = &text[pos..];
+            let inside_definition = definition_context || pos < owned_end;
             if tail.starts_with("\\begin{document}") {
                 if !inside_definition {
                     self.started = true;
                 }
-                pos += "\\begin{document}".len();
                 continue;
             }
             if tail.starts_with("\\end{document}") {
                 if self.started && !inside_definition {
                     self.ended = true;
                 }
-                pos += "\\end{document}".len();
                 continue;
             }
-            let command_length = tail[1..]
-                .bytes()
-                .take_while(u8::is_ascii_alphabetic)
-                .count();
-            let name = &tail[1..1 + command_length];
+            let Some(name) = text[pos..token_end].strip_prefix('\\') else {
+                continue;
+            };
             if !matches!(name, "input" | "include" | "includeonly") {
-                pos += 1 + command_length;
-                if command_length == 0 {
-                    pos += live[pos..].chars().next().map_or(0, char::len_utf8);
-                }
                 continue;
             }
             ensure!(
                 name != "includeonly",
                 "includeonly requires an explicit reviewed source closure"
             );
-            let mut argument_start = pos + 1 + command_length;
-            argument_start +=
-                live[argument_start..].len() - live[argument_start..].trim_start().len();
-            let braced = live[argument_start..].starts_with('{');
-            let (name_start, name_end, argument_end) = if braced {
-                let close = live[argument_start + 1..]
-                    .find('}')
-                    .context("unsupported dynamic or missing TeX include")?;
-                let end = argument_start + 1 + close;
-                ensure!(
-                    !live[argument_start + 1..end].contains('{'),
-                    "unsupported dynamic TeX include"
-                );
-                (argument_start + 1, end, end + 1)
-            } else {
-                let length = live[argument_start..]
-                    .find(|c: char| c.is_whitespace() || matches!(c, '{' | '}'))
-                    .unwrap_or(live.len() - argument_start);
-                (
-                    argument_start,
-                    argument_start + length,
-                    argument_start + length,
-                )
-            };
-            let reference = live[name_start..name_end].trim();
+            let argument = include_argument(&text, token_end)?;
+            let reference = argument.reference.trim();
             ensure!(
                 !reference.is_empty() && !reference.contains(['\\', '#', '$', '%', '~', '^', '&']),
                 "unsupported dynamic TeX include"
@@ -418,38 +505,39 @@ impl Expansion {
                 matches!(extension.as_str(), "tex" | "ltx"),
                 "unsupported TeX include type"
             );
-            self.append(&text[cursor..pos], visit, cursor);
+            self.append(&text[append_start..pos], visit, append_start);
             // Includes remain conservative dependencies even in a definition;
             // their document-marker tokens still belong to replacement data.
             let pending = self.expand(&self.root.join(child), stack, inside_definition)?;
-            // LaTeX's unbraced input delegates to primitive input. Its normal
-            // lookahead can return to the caller at selected definition phases;
-            // braced input and include insert their own following hook tokens.
             if name == "input"
-                && !braced
+                && !argument.braced
                 && !inside_definition
+                && cursor.allows_continuation()
                 && let Some(mut pending) = pending
             {
-                match definitions.resume(argument_end, pending.state) {
+                match definitions.resume(argument.end, pending.state) {
                     definitions::Completion::Complete(end) => {
                         self.complete_definition(pending);
+                        self.snapshots[visit].snapshot.definition_eof |= definitions.owns_eof(end);
                         self.snapshots[visit]
                             .continued_ranges
-                            .push((argument_end, end));
-                        continuation_end = end;
+                            .push((argument.end, end));
+                        owned_end = end;
+                        collected_end = end;
                     }
                     definitions::Completion::Pending(state) => {
                         pending.state = state;
-                        pending.owners.push((visit, argument_end, text.len()));
+                        pending.owners.push((visit, argument.end, text.len()));
+                        collected_end = text.len();
                         continued = Some(pending);
                     }
                     definitions::Completion::Invalid => (),
                 }
             }
-            cursor = argument_end;
-            pos = argument_end;
+            append_start = argument.end;
+            definitions.advance(&mut cursor, argument.end);
         }
-        self.append(&text[cursor..], visit, cursor);
+        self.append(&text[append_start..], visit, append_start);
         if stack.len() > 1 && !text.is_empty() && !text.ends_with(['\n', '\r']) {
             self.append("\n", visit, text.len());
         }
@@ -458,13 +546,10 @@ impl Expansion {
             return Ok(None);
         }
         Ok(continued.or_else(|| {
-            local
-                .pending
-                .filter(|pending| pending.start >= continuation_end)
-                .map(|pending| PendingDefinition {
-                    state: pending.state,
-                    owners: vec![(visit, pending.start, text.len())],
-                })
+            local_pending.map(|pending| PendingDefinition {
+                state: pending.state,
+                owners: vec![(visit, pending.start, text.len())],
+            })
         }))
     }
 }
@@ -568,13 +653,17 @@ pub fn balanced_argument(text: &str, open: usize) -> Result<usize> {
 }
 
 pub fn plain_tex(text: &str) -> Result<String> {
-    let definition_ranges = definitions::ranges(&masked_tex(text)?);
-    plain_tex_with_ranges(text, &definition_ranges)
+    let analysis = definitions::Index::new(text).analyze()?;
+    plain_tex_with_ranges(text, &analysis.ranges, &analysis.regions)
 }
 
-fn plain_tex_with_ranges(text: &str, definition_ranges: &[(usize, usize)]) -> Result<String> {
+fn plain_tex_with_ranges(
+    text: &str,
+    definition_ranges: &[(usize, usize)],
+    regions: &[Region],
+) -> Result<String> {
     use regex::Regex;
-    let live = live_tex(text)?;
+    let live = mask_regions(text, regions).replace("\\\\", "  ");
     let (start, end) = document_extent(&definitions::mask(&live, definition_ranges));
     let mut body = live[start..end].to_owned();
     for env in [

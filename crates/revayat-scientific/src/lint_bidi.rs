@@ -97,8 +97,6 @@ pub(super) fn findings(source: &Source) -> Vec<(usize, &'static str)> {
         }
         Source::Tex(source) => {
             let mut paragraphs = source.bidi_paragraphs.iter().copied().peekable();
-            let mut blank_line = true;
-            let mut previous_cr = false;
             for (pos, c) in source.text().char_indices() {
                 if paragraphs.peek() == Some(&pos) {
                     paragraphs.next();
@@ -107,19 +105,14 @@ pub(super) fn findings(source: &Source) -> Vec<(usize, &'static str)> {
                     }
                 }
                 if matches!(c, '\r' | '\n') {
-                    if !(c == '\n' && previous_cr)
-                        && blank_line
+                    if source.closure.is_blank_line_break(pos)
                         && !source.is_protected(pos)
                         && balance.paragraph_end()
                     {
                         break;
                     }
-                    previous_cr = c == '\r';
-                    blank_line = true;
                     continue;
                 }
-                previous_cr = false;
-                blank_line &= matches!(c, ' ' | '\t');
                 if !explicit_paragraph_break(c)
                     && !matches!(c, '\u{2066}' | '\u{2067}' | '\u{2068}' | '\u{2069}')
                 {

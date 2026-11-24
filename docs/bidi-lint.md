@@ -15,8 +15,8 @@ including decoded HTML entities and included TeX files.
 | Ordinary HTML source CR/LF | Collapsible formatting whitespace does not end a rendered prose paragraph. |
 | HTML preserved-newline contexts | `pre`, `textarea`, `xmp`, and `listing` preserve newlines by default. Recognized literal inline `white-space` declarations can preserve or collapse newlines, and their settings can be inherited. Visible protected inline text can still contain a paragraph break. |
 | Hidden HTML content | Hidden content and fallback text in `iframe`, `noembed`, and `noframes` can neither end a prose paragraph nor close a visible isolate. |
-| TeX prose | Explicit `\par`, list-item boundaries and blank lines end the paragraph. Ordinary wrapped source lines do not. |
-| TeX protected content | Comments, escaped commands, math/code and protected arguments do not create prose boundaries. For `\newcommand` and `\renewcommand`, including their starred forms, the linter protects the braced or unbraced command name, optional arguments, and braced definition body. Command names may be control words or control symbols; spaces and comments between definition tokens are supported. Complete definitions are excluded before document-boundary and prose-region detection, so unused body tokens cannot start/end the document or open math or argument regions in following prose. |
+| TeX prose | Explicit `\par`, list-item boundaries and blank physical source lines end the paragraph. Ordinary wrapped source lines do not. Original per-file line indexes distinguish actual blank lines from adjacent newline bytes created by include expansion. CRLF pairing belongs to its original file; a nonempty whitespace-only final line retains its implicit EOF paragraph. |
+| TeX protected content | Comments, escaped commands, math/code and protected arguments do not create prose boundaries. For `\newcommand` and `\renewcommand`, including their starred forms, the linter protects the braced or unbraced command name, optional arguments, and complete replacement argument: a balanced group or one unexpanded token. A braced name must contain exactly one control word or control symbol. Spaces and comments between definition tokens are supported; a blank line contributes a paragraph token rather than ordinary whitespace. Complete definitions are excluded before document-boundary and prose-region detection, so unused body tokens cannot start/end the document or open math or argument regions in following prose. |
 
 The HTML check is a static source analysis. It recognizes supported element
 behavior and literal inline whitespace declarations; it does not compute an
@@ -39,13 +39,24 @@ invocations or change the existing source-closure limits.
 For literal unbraced `\input file `, a definition can continue in the caller
 after the included file ends at a supported LaTeX lookahead position: after the
 definition command, its complete name, or its first complete optional argument.
-The caller's body must be complete in one original file. Recursive returns and
+The replacement argument must be collected completely in one original file.
+Recursive returns and
 their generated newline separators retain ownership only after that body is
 established. A star without its name, an open argument/body, or a second optional
 argument without its body cannot transfer across EOF. Braced `\input{file}` and
 `\include{file}` do not transfer this state because their file-handling wrappers
 insert following tokens. These rules preserve real document ends and dependency
 limits while preventing unused continued definitions from hiding later includes.
+
+The lexical projection follows that same collection context. Comments retain
+their TeX line semantics. Literal syntax stays opaque in ordinary source, while
+replacement arguments are collected without executing `\verb`: its braces,
+percent signs and subsequent tokens retain their unexpanded meanings. A consumed
+single paragraph or control token stays protected, and the next token returns to
+ordinary analysis. Included continuations take precedence over apparent local
+declarations starting inside their consumed prefix; later declarations are then
+selected from the existing index. Incomplete argument contents cannot export
+pending definition state into a caller.
 
 Definition recognition indexes delimiters once and resolves each candidate with
 bounded lookups, including incomplete definitions and caller continuations.
@@ -83,6 +94,10 @@ newlines and original locations. The
 [continuation tests](../crates/revayat-scientific/tests/lint_bidi_definition_continuations.rs)
 cover unbraced input returns, both definition commands, control-symbol names,
 recursive empty returns, invalid seams, conservative dependencies and real ends.
+The [lexical ownership tests](../crates/revayat-scientific/tests/lint_bidi_definition_lexical.rs)
+cover comment-only and blank lines, raw argument collection versus ordinary
+literals, single-token replacement bodies, malformed-name/pending recovery,
+continuation precedence and the shared lint/plain-text projection.
 The
 [large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
 production source loading and extraction with 100,000 incomplete declarations;

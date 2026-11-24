@@ -1,7 +1,7 @@
 //! Located immutable source model shared by lint, inventory and verification.
 use crate::tex::{
-    RegionKind, SourceClosure, balanced_argument, definitions, document_extent, ignored_regions,
-    live_tex, source_closure,
+    RegionKind, SourceClosure, balanced_argument, definitions, document_extent, mask_regions,
+    source_closure,
 };
 use anyhow::Result;
 use regex::Regex;
@@ -39,7 +39,8 @@ impl TexSource {
     pub fn load(path: &Path) -> Result<Self> {
         let path = std::fs::canonicalize(path)?;
         let closure = source_closure(&path, None)?;
-        let live = live_tex(&closure.text)?;
+        let regions = closure.lexical_regions()?;
+        let live = mask_regions(&closure.text, &regions).replace("\\\\", "  ");
         let mut structural = live.as_bytes().to_vec();
         // Definition names retain control-symbol backslashes; the separate
         // prose projection preserves byte offsets and document boundaries.
@@ -64,7 +65,7 @@ impl TexSource {
             bidi_paragraphs: Vec::new(),
             waivers: BTreeMap::new(),
         };
-        for region in ignored_regions(source.text())? {
+        for region in regions {
             source.protected.push((region.start, region.end));
             match region.kind {
                 RegionKind::Comment => source.comments.push((region.start, region.end)),
