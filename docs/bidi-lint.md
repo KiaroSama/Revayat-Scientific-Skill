@@ -36,8 +36,20 @@ its existing body extraction behavior. Direction checks use the same live-source
 view as admitted image and listing references. This does not expand macro
 invocations or change the existing source-closure limits.
 
+For literal unbraced `\input file `, a definition can continue in the caller
+after the included file ends at a supported LaTeX lookahead position: after the
+definition command, its complete name, or its first complete optional argument.
+The caller's body must be complete in one original file. Recursive returns and
+their generated newline separators retain ownership only after that body is
+established. A star without its name, an open argument/body, or a second optional
+argument without its body cannot transfer across EOF. Braced `\input{file}` and
+`\include{file}` do not transfer this state because their file-handling wrappers
+insert following tokens. These rules preserve real document ends and dependency
+limits while preventing unused continued definitions from hiding later includes.
+
 Definition recognition indexes delimiters once and resolves each candidate with
-bounded lookups, including incomplete definitions. Optional-argument prose scans
+bounded lookups, including incomplete definitions and caller continuations.
+Optional-argument prose scans
 skip inert preamble and post-document positions; ignored trailing declarations
 cannot trigger repeated scans of the remaining source.
 
@@ -68,6 +80,10 @@ compatibility, and explicit whitespace overrides. The
 [provenance tests](../crates/revayat-scientific/tests/lint_bidi_definition_provenance.rs)
 cover delimiter-changing dependencies, nested and repeated file visits, mixed
 newlines and original locations. The
+[continuation tests](../crates/revayat-scientific/tests/lint_bidi_definition_continuations.rs)
+cover unbraced input returns, both definition commands, control-symbol names,
+recursive empty returns, invalid seams, conservative dependencies and real ends.
+The
 [large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
 production source loading and extraction with 100,000 incomplete declarations;
 scanner unit tests separately assert a linear traversal bound without wall-clock
@@ -75,3 +91,7 @@ thresholds. Normal portable CI discovers all these suites.
 
 References: [Unicode Bidirectional Algorithm](https://www.unicode.org/reports/tr9/)
 and [CSS whitespace processing](https://www.w3.org/TR/css-text-3/#white-space-processing).
+LaTeX's [definition argument scanning](https://github.com/latex3/latex2e/blob/0919db37a88f89e6af3809f8d3aeac198b0cdf2b/base/ltdefns.dtx),
+[input dispatch](https://github.com/latex3/latex2e/blob/0919db37a88f89e6af3809f8d3aeac198b0cdf2b/base/ltfiles.dtx)
+and [file hooks](https://github.com/latex3/latex2e/blob/0919db37a88f89e6af3809f8d3aeac198b0cdf2b/base/ltfilehook.dtx)
+define the supported EOF continuation boundary.

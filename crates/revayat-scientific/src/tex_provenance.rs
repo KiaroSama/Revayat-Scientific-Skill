@@ -20,7 +20,10 @@ impl SourceClosure {
             if segment.start >= output_end {
                 continue;
             }
-            if segment.snapshot.definition_context {
+            if segment.snapshot.definition_context
+                || (segment.snapshot.definition_eof
+                    && segment.original_offset >= segment.snapshot.text.len())
+            {
                 append_range(&mut result, segment.start, output_end);
                 continue;
             }

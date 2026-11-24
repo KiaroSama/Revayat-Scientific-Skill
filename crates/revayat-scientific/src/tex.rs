@@ -118,6 +118,8 @@ pub struct Snapshot {
     definition_ranges: Option<Vec<(usize, usize)>>,
     #[serde(skip)]
     definition_context: bool,
+    #[serde(skip)]
+    definition_eof: bool,
 }
 
 impl Snapshot {
@@ -138,6 +140,7 @@ impl Snapshot {
             newlines,
             definition_ranges: None,
             definition_context: false,
+            definition_eof: false,
         })
     }
 
@@ -201,9 +204,27 @@ impl SourceClosure {
     }
 }
 
+struct PendingVisit {
+    snapshot: Snapshot,
+    continued_ranges: Vec<(usize, usize)>,
+}
+
+struct PendingSegment {
+    start: usize,
+    original_offset: usize,
+    visit: usize,
+}
+
+struct PendingDefinition {
+    state: definitions::Continuation,
+    owners: Vec<(usize, usize, usize)>,
+}
+
 struct Expansion {
     root: PathBuf,
     closure: SourceClosure,
+    snapshots: Vec<PendingVisit>,
+    segments: Vec<PendingSegment>,
     visits: usize,
     used_bytes: usize,
     started: bool,
@@ -211,16 +232,50 @@ struct Expansion {
 }
 
 impl Expansion {
-    fn append(&mut self, text: &str, snapshot: &Arc<Snapshot>, original_offset: usize) {
+    fn append(&mut self, text: &str, visit: usize, original_offset: usize) {
         if text.is_empty() {
             return;
         }
-        self.closure.segments.push(Segment {
+        self.segments.push(PendingSegment {
             start: self.closure.text.len(),
-            snapshot: snapshot.clone(),
             original_offset,
+            visit,
         });
         self.closure.text.push_str(text);
+    }
+
+    fn complete_definition(&mut self, pending: PendingDefinition) {
+        for (visit, start, end) in pending.owners {
+            self.snapshots[visit].continued_ranges.push((start, end));
+            // An included file without a final newline receives a synthetic
+            // separator. It belongs to a declaration continuing after EOF too.
+            self.snapshots[visit].snapshot.definition_eof = true;
+        }
+    }
+
+    fn finish(mut self) -> SourceClosure {
+        let snapshots: Vec<_> = self
+            .snapshots
+            .into_iter()
+            .map(|mut visit| {
+                if !visit.continued_ranges.is_empty() {
+                    let original = visit.snapshot.definition_ranges.take().unwrap();
+                    visit.snapshot.definition_ranges =
+                        Some(merge_definition_ranges(original, visit.continued_ranges));
+                }
+                Arc::new(visit.snapshot)
+            })
+            .collect();
+        self.closure.segments = self
+            .segments
+            .into_iter()
+            .map(|segment| Segment {
+                start: segment.start,
+                original_offset: segment.original_offset,
+                snapshot: snapshots[segment.visit].clone(),
+            })
+            .collect();
+        self.closure
     }
 
     fn expand(
@@ -228,7 +283,7 @@ impl Expansion {
         path: &Path,
         stack: &mut Vec<PathBuf>,
         definition_context: bool,
-    ) -> Result<()> {
+    ) -> Result<Option<PendingDefinition>> {
         let path = fs::canonicalize(path)
             .with_context(|| format!("missing literal TeX include: {}", path.display()))?;
         ensure!(
@@ -261,15 +316,22 @@ impl Expansion {
             self.closure.sources.push(path.clone());
         }
         let live = masked_tex(&text)?;
-        let definition_ranges = definitions::ranges(&live);
+        let definitions = definitions::Index::new(&live);
+        let local = definitions.local();
         let mut snapshot = Snapshot::new(path.clone(), Arc::from(text.as_str()))?;
-        snapshot.definition_ranges = Some(definition_ranges);
+        snapshot.definition_ranges = Some(local.ranges.clone());
         snapshot.definition_context = definition_context;
-        let snapshot = Arc::new(snapshot);
-        let definition_ranges = snapshot.definition_ranges.as_ref().unwrap();
+        let visit = self.snapshots.len();
+        self.snapshots.push(PendingVisit {
+            snapshot,
+            continued_ranges: Vec::new(),
+        });
+        let definition_ranges = &local.ranges;
         stack.push(path);
         let mut cursor = 0;
         let mut pos = 0;
+        let mut continuation_end = 0;
+        let mut continued = None;
         while pos < live.len() && !self.ended {
             let tail = &live[pos..];
             if !tail.starts_with('\\') {
@@ -282,6 +344,7 @@ impl Expansion {
             }
             let definition_index = definition_ranges.partition_point(|&(start, _)| start <= pos);
             let inside_definition = definition_context
+                || pos < continuation_end
                 || (definition_index > 0 && pos < definition_ranges[definition_index - 1].1);
             if tail.starts_with("\\begin{document}") {
                 if !inside_definition {
@@ -316,7 +379,8 @@ impl Expansion {
             let mut argument_start = pos + 1 + command_length;
             argument_start +=
                 live[argument_start..].len() - live[argument_start..].trim_start().len();
-            let (name_start, name_end, argument_end) = if live[argument_start..].starts_with('{') {
+            let braced = live[argument_start..].starts_with('{');
+            let (name_start, name_end, argument_end) = if braced {
                 let close = live[argument_start + 1..]
                     .find('}')
                     .context("unsupported dynamic or missing TeX include")?;
@@ -354,20 +418,87 @@ impl Expansion {
                 matches!(extension.as_str(), "tex" | "ltx"),
                 "unsupported TeX include type"
             );
-            self.append(&text[cursor..pos], &snapshot, cursor);
+            self.append(&text[cursor..pos], visit, cursor);
             // Includes remain conservative dependencies even in a definition;
             // their document-marker tokens still belong to replacement data.
-            self.expand(&self.root.join(child), stack, inside_definition)?;
+            let pending = self.expand(&self.root.join(child), stack, inside_definition)?;
+            // LaTeX's unbraced input delegates to primitive input. Its normal
+            // lookahead can return to the caller at selected definition phases;
+            // braced input and include insert their own following hook tokens.
+            if name == "input"
+                && !braced
+                && !inside_definition
+                && let Some(mut pending) = pending
+            {
+                match definitions.resume(argument_end, pending.state) {
+                    definitions::Completion::Complete(end) => {
+                        self.complete_definition(pending);
+                        self.snapshots[visit]
+                            .continued_ranges
+                            .push((argument_end, end));
+                        continuation_end = end;
+                    }
+                    definitions::Completion::Pending(state) => {
+                        pending.state = state;
+                        pending.owners.push((visit, argument_end, text.len()));
+                        continued = Some(pending);
+                    }
+                    definitions::Completion::Invalid => (),
+                }
+            }
             cursor = argument_end;
             pos = argument_end;
         }
-        self.append(&text[cursor..], &snapshot, cursor);
+        self.append(&text[cursor..], visit, cursor);
         if stack.len() > 1 && !text.is_empty() && !text.ends_with(['\n', '\r']) {
-            self.append("\n", &snapshot, text.len());
+            self.append("\n", visit, text.len());
         }
         stack.pop();
-        Ok(())
+        if definition_context || self.ended {
+            return Ok(None);
+        }
+        Ok(continued.or_else(|| {
+            local
+                .pending
+                .filter(|pending| pending.start >= continuation_end)
+                .map(|pending| PendingDefinition {
+                    state: pending.state,
+                    owners: vec![(visit, pending.start, text.len())],
+                })
+        }))
     }
+}
+
+fn merge_definition_ranges(
+    original: Vec<(usize, usize)>,
+    mut continued: Vec<(usize, usize)>,
+) -> Vec<(usize, usize)> {
+    // Original scanner ranges are already sorted. Only the small set of EOF
+    // continuations can arrive later, so merge without sorting the whole source.
+    continued.sort_unstable();
+    let mut original = original.into_iter().peekable();
+    let mut continued = continued.into_iter().peekable();
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    while original.peek().is_some() || continued.peek().is_some() {
+        let (start, end) = if continued.peek().is_none()
+            || original
+                .peek()
+                .is_some_and(|range| continued.peek().is_some_and(|next| range <= next))
+        {
+            original.next().unwrap()
+        } else {
+            continued.next().unwrap()
+        };
+        if start >= end {
+            continue;
+        }
+        if let Some(last) = merged.last_mut().filter(|last| start <= last.1) {
+            last.1 = last.1.max(end);
+        } else {
+            merged.push((start, end));
+        }
+    }
+    merged
 }
 
 pub fn source_closure(source: &Path, root: Option<&Path>) -> Result<SourceClosure> {
@@ -382,13 +513,15 @@ pub fn source_closure(source: &Path, root: Option<&Path>) -> Result<SourceClosur
             segments: Vec::new(),
             sources: Vec::new(),
         },
+        snapshots: Vec::new(),
+        segments: Vec::new(),
         visits: 0,
         used_bytes: 0,
         started: false,
         ended: false,
     };
     expansion.expand(&source, &mut Vec::new(), false)?;
-    Ok(expansion.closure)
+    Ok(expansion.finish())
 }
 
 pub fn document_extent(live: &str) -> (usize, usize) {

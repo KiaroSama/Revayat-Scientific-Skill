@@ -4,22 +4,119 @@ pub(crate) fn ranges(masked: &str) -> Vec<(usize, usize)> {
 }
 
 fn ranges_observed(masked: &str, mut visit: impl FnMut()) -> Vec<(usize, usize)> {
-    let mut tokens = tokenize(masked, &mut visit);
-    index_options(&mut tokens, &mut visit);
-    let mut ranges = Vec::new();
-    let mut pos = 0;
-    while let Some(token) = token_at(&tokens, pos, &mut visit) {
-        if token.kind == Kind::Definition
-            && let Some(end) = definition_end(&tokens, pos + 1, &mut visit)
-        {
-            let closing = token_at(&tokens, end - 1, &mut visit).unwrap();
-            ranges.push((token.offset, closing.offset + 1));
-            pos = end;
-        } else {
-            pos += 1;
+    Index::new_observed(masked, &mut visit)
+        .local_observed(&mut visit)
+        .ranges
+}
+
+pub(crate) struct Index {
+    tokens: Vec<Token>,
+    length: usize,
+}
+
+pub(crate) struct Local {
+    pub ranges: Vec<(usize, usize)>,
+    pub pending: Option<Pending>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Pending {
+    pub start: usize,
+    pub state: Continuation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Continuation {
+    // These are LaTeX's normal-state lookahead positions. Matching an
+    // argument, including a starred command's name, cannot cross file EOF.
+    Command,
+    AfterName,
+    AfterFirstOption,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Completion {
+    Complete(usize),
+    Pending(Continuation),
+    Invalid,
+}
+
+impl Index {
+    pub fn new(masked: &str) -> Self {
+        Self::new_observed(masked, &mut || {})
+    }
+
+    fn new_observed(masked: &str, visit: &mut impl FnMut()) -> Self {
+        let mut tokens = tokenize(masked, visit);
+        index_options(&mut tokens, visit);
+        Self {
+            tokens,
+            length: masked.len(),
         }
     }
-    ranges
+
+    pub fn local(&self) -> Local {
+        self.local_observed(&mut || {})
+    }
+
+    fn local_observed(&self, visit: &mut impl FnMut()) -> Local {
+        let mut ranges = Vec::new();
+        let mut pending = None;
+        let mut pos = 0;
+        while let Some(token) = token_at(&self.tokens, pos, visit) {
+            if token.kind == Kind::Definition {
+                match definition_end(&self.tokens, pos + 1, Continuation::Command, visit) {
+                    End::Complete(end) => {
+                        let closing = token_at(&self.tokens, end - 1, visit).unwrap();
+                        ranges.push((token.offset, closing.offset + 1));
+                        pos = end;
+                        continue;
+                    }
+                    End::Pending(state) if pending.is_none() => {
+                        // Preserve the first declaration's ownership when
+                        // its name happens to be another declaration command.
+                        pending = Some(Pending {
+                            start: token.offset,
+                            state,
+                        });
+                    }
+                    _ => (),
+                }
+            }
+            pos += 1;
+        }
+        Local { ranges, pending }
+    }
+
+    pub fn resume(&self, offset: usize, state: Continuation) -> Completion {
+        self.resume_observed(offset, state, &mut || {})
+    }
+
+    fn resume_observed(
+        &self,
+        offset: usize,
+        state: Continuation,
+        visit: &mut impl FnMut(),
+    ) -> Completion {
+        visit();
+        if offset > self.length {
+            return Completion::Invalid;
+        }
+        // Includes return at original token boundaries. Locate that suffix
+        // without tokenizing it again or walking earlier source bytes.
+        let pos = self.tokens.partition_point(|token| {
+            visit();
+            token.offset < offset
+        });
+        match definition_end(&self.tokens, pos, state, visit) {
+            End::Complete(end) => {
+                let closing = token_at(&self.tokens, end - 1, visit).unwrap();
+                Completion::Complete(closing.offset + 1)
+            }
+            End::Pending(state) => Completion::Pending(state),
+            End::Invalid => Completion::Invalid,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -155,28 +252,65 @@ fn index_options(tokens: &mut [Token], visit: &mut impl FnMut()) {
     }
 }
 
-fn definition_end(tokens: &[Token], mut pos: usize, visit: &mut impl FnMut()) -> Option<usize> {
-    if token_at(tokens, pos, visit)?.kind == Kind::Star {
-        pos += 1;
-    }
-    let name = token_at(tokens, pos, visit)?;
-    match name.kind {
-        Kind::OpenBrace if name.next != 0 => pos = name.next as usize,
-        Kind::Control | Kind::Definition => pos += 1,
-        _ => return None,
-    }
-    for _ in 0..2 {
-        let option = token_at(tokens, pos, visit)?;
-        if option.kind != Kind::OpenOption {
-            break;
+enum End {
+    Complete(usize),
+    Pending(Continuation),
+    Invalid,
+}
+
+fn definition_end(
+    tokens: &[Token],
+    mut pos: usize,
+    mut state: Continuation,
+    visit: &mut impl FnMut(),
+) -> End {
+    if state == Continuation::Command {
+        let Some(first) = token_at(tokens, pos, visit) else {
+            return End::Pending(Continuation::Command);
+        };
+        if first.kind == Kind::Star {
+            pos += 1;
         }
-        if option.next == 0 {
-            return None;
+        let Some(name) = token_at(tokens, pos, visit) else {
+            return End::Invalid;
+        };
+        match name.kind {
+            Kind::OpenBrace if name.next != 0 => pos = name.next as usize,
+            Kind::Control | Kind::Definition => pos += 1,
+            _ => return End::Invalid,
         }
-        pos = option.next as usize;
+        state = Continuation::AfterName;
     }
-    let body = token_at(tokens, pos, visit)?;
-    (body.kind == Kind::OpenBrace && body.next != 0).then_some(body.next as usize)
+
+    if state == Continuation::AfterName {
+        let Some(option) = token_at(tokens, pos, visit) else {
+            return End::Pending(Continuation::AfterName);
+        };
+        if option.kind == Kind::OpenOption {
+            if option.next == 0 {
+                return End::Invalid;
+            }
+            pos = option.next as usize;
+            state = Continuation::AfterFirstOption;
+        }
+    }
+    if state == Continuation::AfterFirstOption {
+        let Some(option) = token_at(tokens, pos, visit) else {
+            return End::Pending(Continuation::AfterFirstOption);
+        };
+        if option.kind == Kind::OpenOption {
+            if option.next == 0 {
+                return End::Invalid;
+            }
+            pos = option.next as usize;
+        }
+    }
+    match token_at(tokens, pos, visit) {
+        Some(body) if body.kind == Kind::OpenBrace && body.next != 0 => {
+            End::Complete(body.next as usize)
+        }
+        _ => End::Invalid,
+    }
 }
 
 pub(crate) fn mask(text: &str, ranges: &[(usize, usize)]) -> String {
@@ -285,3 +419,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tex_definitions_continuation_tests.rs"]
+mod continuation_tests;
