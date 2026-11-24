@@ -179,7 +179,7 @@ fn compliant_source_does_not_admit_or_change_an_existing_original() {
         Ok(())
     });
     assert_eq!(result.unwrap(), 0);
-    assert_eq!(notifications, [first.clone()]);
+    assert_eq!(notifications.as_slice(), std::slice::from_ref(&first));
     assert_eq!(fs::read(first).unwrap(), before[0]);
     assert_eq!(fs::read(second).unwrap(), before[1]);
     assert_eq!(
