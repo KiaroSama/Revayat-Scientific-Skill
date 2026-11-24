@@ -27,9 +27,19 @@ separator `U+2029`.
 
 TeX dependency discovery remains conservative: literal includes and image
 references inside definitions are still admitted and checked. Definition-body
-document markers cannot stop later include discovery. Direction checks use the
-same live-source view as admitted image and listing references. This does not
-expand macro invocations or change the existing source-closure limits.
+document markers cannot stop later include discovery. Definition ownership is
+retained on each original file visit and mapped through closure segments, so
+braces in a conservatively discovered child cannot end its parent's definition.
+The same file can be definition data in one visit and visible prose in another.
+Plain-text extraction uses this ownership for document boundaries while retaining
+its existing body extraction behavior. Direction checks use the same live-source
+view as admitted image and listing references. This does not expand macro
+invocations or change the existing source-closure limits.
+
+Definition recognition indexes delimiters once and resolves each candidate with
+bounded lookups, including incomplete definitions. Optional-argument prose scans
+skip inert preamble and post-document positions; ignored trailing declarations
+cannot trigger repeated scans of the remaining source.
 
 ## Waivers and bounded reporting
 
@@ -54,8 +64,14 @@ waivers, and the reporting ceiling. The
 [definition caller tests](../crates/revayat-scientific/tests/lint_bidi_definition_callers.rs),
 and [listing whitespace tests](../crates/revayat-scientific/tests/lint_bidi_listing.rs)
 cover definition-token variants, real document boundaries, dependency/direction
-compatibility, and explicit whitespace overrides. Normal portable CI discovers
-all these suites.
+compatibility, and explicit whitespace overrides. The
+[provenance tests](../crates/revayat-scientific/tests/lint_bidi_definition_provenance.rs)
+cover delimiter-changing dependencies, nested and repeated file visits, mixed
+newlines and original locations. The
+[large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
+production source loading and extraction with 100,000 incomplete declarations;
+scanner unit tests separately assert a linear traversal bound without wall-clock
+thresholds. Normal portable CI discovers all these suites.
 
 References: [Unicode Bidirectional Algorithm](https://www.unicode.org/reports/tr9/)
 and [CSS whitespace processing](https://www.w3.org/TR/css-text-3/#white-space-processing).

@@ -1,7 +1,7 @@
 //! Located immutable source model shared by lint, inventory and verification.
 use crate::tex::{
     RegionKind, SourceClosure, balanced_argument, definitions, document_extent, ignored_regions,
-    live_tex, masked_tex, source_closure,
+    live_tex, source_closure,
 };
 use anyhow::Result;
 use regex::Regex;
@@ -43,7 +43,7 @@ impl TexSource {
         let mut structural = live.as_bytes().to_vec();
         // Definition names retain control-symbol backslashes; the separate
         // prose projection preserves byte offsets and document boundaries.
-        let definition_ranges = definitions::ranges(&masked_tex(&closure.text)?);
+        let definition_ranges = closure.definition_ranges()?;
         let prose = definitions::mask(&live, &definition_ranges);
         let (preamble_end, body_end) = document_extent(&prose);
         let mut source = Self {
@@ -170,6 +170,9 @@ impl TexSource {
             "IfFontExistsTF",
         ];
         for item in Regex::new(r"\\[A-Za-z@]+\*?\s*\[")?.find_iter(&prose) {
+            if item.start() < preamble_end || item.start() >= body_end {
+                continue;
+            }
             let start = item.end() - 1;
             let mut nesting = 0;
             for (offset, c) in prose[start..].char_indices() {

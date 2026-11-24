@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 #[path = "tex_definitions.rs"]
 pub(crate) mod definitions;
+#[path = "tex_provenance.rs"]
+mod provenance;
 
 pub const MAX_FILES: usize = 128;
 pub const MAX_DEPTH: usize = 32;
@@ -112,6 +114,10 @@ pub struct Snapshot {
     pub text: Arc<str>,
     #[serde(skip)]
     newlines: Vec<u32>,
+    #[serde(skip)]
+    definition_ranges: Option<Vec<(usize, usize)>>,
+    #[serde(skip)]
+    definition_context: bool,
 }
 
 impl Snapshot {
@@ -130,6 +136,8 @@ impl Snapshot {
             path,
             text,
             newlines,
+            definition_ranges: None,
+            definition_context: false,
         })
     }
 
@@ -249,12 +257,16 @@ impl Expansion {
         self.used_bytes += raw.len();
         ensure!(self.used_bytes <= MAX_BYTES, "TeX closure exceeds 16 MiB");
         let text = String::from_utf8(raw).context("TeX source is not UTF-8")?;
-        let snapshot = Arc::new(Snapshot::new(path.clone(), Arc::from(text.as_str()))?);
         if !self.closure.sources.contains(&path) {
             self.closure.sources.push(path.clone());
         }
         let live = masked_tex(&text)?;
         let definition_ranges = definitions::ranges(&live);
+        let mut snapshot = Snapshot::new(path.clone(), Arc::from(text.as_str()))?;
+        snapshot.definition_ranges = Some(definition_ranges);
+        snapshot.definition_context = definition_context;
+        let snapshot = Arc::new(snapshot);
+        let definition_ranges = snapshot.definition_ranges.as_ref().unwrap();
         stack.push(path);
         let mut cursor = 0;
         let mut pos = 0;
@@ -423,10 +435,14 @@ pub fn balanced_argument(text: &str, open: usize) -> Result<usize> {
 }
 
 pub fn plain_tex(text: &str) -> Result<String> {
+    let definition_ranges = definitions::ranges(&masked_tex(text)?);
+    plain_tex_with_ranges(text, &definition_ranges)
+}
+
+fn plain_tex_with_ranges(text: &str, definition_ranges: &[(usize, usize)]) -> Result<String> {
     use regex::Regex;
     let live = live_tex(text)?;
-    let definition_ranges = definitions::ranges(&masked_tex(text)?);
-    let (start, end) = document_extent(&definitions::mask(&live, &definition_ranges));
+    let (start, end) = document_extent(&definitions::mask(&live, definition_ranges));
     let mut body = live[start..end].to_owned();
     for env in [
         "latin",
