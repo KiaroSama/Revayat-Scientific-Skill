@@ -84,6 +84,17 @@ argument without its body cannot transfer across EOF. Braced `\input{file}` and
 insert following tokens. These rules preserve real document ends and dependency
 limits while preventing unused continued definitions from hiding later includes.
 
+Document markers in a collected pending header remain provisional until the
+caller resolves its replacement argument. A complete body makes those markers
+declaration data. If continuation is invalid, blocked or unavailable, or remains
+unresolved at root EOF, their original ordered document-state transitions apply
+before further dependency discovery. Recursive returns carry the same bounded
+effect. This handles a count expression containing document tokens without
+evaluating that expression or prematurely ending source discovery.
+If settling that effect ends the document, the rejected return must not newly
+enable malformed-definition literal recovery in the following ordinary source.
+Existing recovery contexts and unfinished live declarations keep their behavior.
+
 The lexical projection follows that same collection context. Comments retain
 their TeX line semantics. Literal syntax stays opaque in ordinary source, while
 replacement arguments are collected without executing `\verb`: its braces,
@@ -99,11 +110,13 @@ recovery input; strict validation in ordinary source remains unchanged.
 
 Definition recognition indexes delimiters once and resolves each candidate with
 bounded lookups, including incomplete definitions and caller continuations.
-Optional-argument prose brackets are indexed once within the actual document
-body, using a stack for nested pairs and binary endpoint lookups. Unmatched
-openers do not protect following prose, and a preamble, definition-owned or
-post-document closer cannot complete a live body option. Hidden closers therefore
-cannot trigger repeated scans of the remaining source.
+Optional-argument brackets and command-argument braces are indexed together in
+one pass within the actual document body. Separate stacks retain nested pairs;
+brace matching honors TeX escapes, while brackets retain raw pairing. Endpoints
+are stored by body-byte offset for direct lookups, using linear body-size storage.
+Unmatched openers do not protect following prose, and a preamble,
+definition-owned or post-document closer cannot complete a live body argument.
+Hidden closers therefore cannot trigger repeated scans of the remaining source.
 
 ## Waivers and bounded reporting
 
@@ -139,6 +152,9 @@ The [lexical ownership tests](../crates/revayat-scientific/tests/lint_bidi_defin
 cover comment-only and blank lines, raw argument collection versus ordinary
 literals, single-token replacement bodies, malformed-name/pending recovery,
 continuation precedence and the shared lint/plain-text projection.
+The [pending-header marker tests](../crates/revayat-scientific/tests/tex_pending_header_markers.rs)
+check conditional count expressions across direct and recursive input returns,
+real document boundaries, original locations and retained visible text.
 The [definition dependency tests](../crates/revayat-scientific/tests/tex_definition_dependencies.rs)
 cover include-command boundaries, names versus references, bounded defaults and
 replacement arguments, nested declarations, inherited data and caller returns.
@@ -166,8 +182,9 @@ check actual images, input discovery, direction/listing findings and extraction
 at local, inherited and returned locations, including argument bounds and
 LF/CRLF/CR endings.
 The [optional bracket tests](../crates/revayat-scientific/tests/tex_optional_brackets.rs)
-exercise 100,000 owned closers plus nested, unmatched and real-document bounds;
-query unit tests count actual index reads and lookup comparisons.
+exercise 100,000 owned closers, 20,000 unfinished definition groups, nested and
+unmatched arguments, and real-document bounds. Query unit tests assert one read
+per body byte, exact stored endpoints and escaped-brace handling.
 The
 [large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
 production source loading and extraction with 100,000 incomplete declarations;

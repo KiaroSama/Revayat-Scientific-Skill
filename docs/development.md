@@ -92,6 +92,28 @@ gate. A passing build alone does not establish behavioral parity.
 Native collector regressions extend the existing collector contract test, keeping
 the reference branch's test registration count while exercising the added checks.
 
+When retrying this workflow, use **Re-run all jobs**. Execution reports are bound
+to one run ID and attempt, so **Re-run failed jobs** can leave successful jobs'
+artifacts from an earlier attempt alongside new reports. The aggregate correctly
+rejects that mixed evidence. A complete rerun must produce fresh reports for every
+required scope on the same revision and attempt; do not relax provenance checks
+or reuse an ancestor's successful status to make a retry pass. GitHub documents
+the distinction in [rerunning workflows and jobs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs).
+
+## Repository topics
+
+[`.github/topics.json`](../.github/topics.json) records the reviewed discovery
+topics, including `rust`, the document formats, Persian/RTL translation and the
+supported agent ecosystems. Committing this file does not change GitHub's live
+repository metadata. After a topic change, a maintainer must apply the reviewed
+list through **About > Edit repository metadata > Topics** or the authenticated
+[GitHub CLI topic options](https://cli.github.com/manual/gh_repo_edit), then check
+the live list against the file. Reconcile relevant existing topics before a
+replacement so a later synchronization does not silently remove them. GitHub's
+[topic rules](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics)
+allow at most 20 topics, each no longer than 50 characters, using lowercase
+letters, numbers and hyphens.
+
 ## Execution and parity boundaries
 
 The native collector executes the Windows native and standalone harnesses with
