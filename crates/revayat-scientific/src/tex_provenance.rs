@@ -124,7 +124,109 @@ impl SourceClosure {
             &self.text,
             &self.projected_definition_ranges(true)?,
             &self.lexical_regions()?,
+            &self.literal_candidates()?,
         )
+    }
+
+    pub(crate) fn literal_candidates(&self) -> Result<Vec<(usize, usize)>> {
+        if self.segments.is_empty() {
+            return Ok(definitions::Index::new(&self.text)
+                .analyze()?
+                .literal_candidates);
+        }
+        #[derive(Clone, Copy)]
+        struct Piece {
+            original_start: usize,
+            original_end: usize,
+            output_start: usize,
+            output_end: usize,
+        }
+        let mut groups: Vec<Vec<Piece>> = Vec::new();
+        let mut active: BTreeMap<_, usize> = BTreeMap::new();
+        let mut positions = vec![None; self.segments.len()];
+        for (index, segment) in self.segments.iter().enumerate() {
+            let output_end = self
+                .segments
+                .get(index + 1)
+                .map_or(self.text.len(), |next| next.start)
+                .min(self.text.len());
+            let original_start = segment.original_offset;
+            if segment.start >= output_end || original_start > segment.snapshot.text.len() {
+                continue;
+            }
+            let original_end = original_start
+                .saturating_add(output_end - segment.start)
+                .min(segment.snapshot.text.len());
+            let identity = Arc::as_ptr(&segment.snapshot);
+            // Expansion has one immutable snapshot per visit. A manually
+            // assembled closure may reuse an Arc for another visit; an offset
+            // reset starts another ordered projection group in that case.
+            let group = match active.get(&identity).copied() {
+                Some(group)
+                    if groups[group]
+                        .last()
+                        .is_some_and(|last| last.original_end <= original_start) =>
+                {
+                    group
+                }
+                _ => {
+                    let group = groups.len();
+                    groups.push(Vec::new());
+                    active.insert(identity, group);
+                    group
+                }
+            };
+            positions[index] = Some((group, groups[group].len()));
+            groups[group].push(Piece {
+                original_start,
+                original_end,
+                output_start: segment.start,
+                output_end,
+            });
+        }
+        let mut defaults: BTreeMap<_, Vec<(usize, usize)>> = BTreeMap::new();
+        let mut result = Vec::new();
+        for (index, segment) in self.segments.iter().enumerate() {
+            let Some((group, piece)) = positions[index] else {
+                continue;
+            };
+            let group = &groups[group];
+            let piece = group[piece];
+            let candidates = match &segment.snapshot.literal_candidates {
+                Some(candidates) => candidates,
+                None => match defaults.entry(Arc::as_ptr(&segment.snapshot)) {
+                    Entry::Occupied(entry) => entry.into_mut(),
+                    Entry::Vacant(entry) => entry.insert(
+                        definitions::Index::new(&segment.snapshot.text)
+                            .analyze()?
+                            .literal_candidates,
+                    ),
+                },
+            };
+            let first = candidates.partition_point(|&(start, _)| start < piece.original_start);
+            for &(start, limit) in &candidates[first..] {
+                if start >= piece.original_end {
+                    break;
+                }
+                // Map the upper bound through this visit, not just this piece:
+                // an included child's bytes may lie between the two endpoints.
+                let following = group.partition_point(|part| part.original_end < limit);
+                let projected_limit = group.get(following).map_or_else(
+                    || group.last().unwrap().output_end,
+                    |part| {
+                        part.output_start
+                            + limit
+                                .saturating_sub(part.original_start)
+                                .min(part.output_end - part.output_start)
+                    },
+                );
+                let projected_start = piece.output_start + start - piece.original_start;
+                if projected_start < projected_limit {
+                    result.push((projected_start, projected_limit));
+                }
+            }
+        }
+        Ok(result)
     }
 
     pub(crate) fn lexical_regions(&self) -> Result<Vec<Region>> {

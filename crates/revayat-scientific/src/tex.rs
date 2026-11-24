@@ -129,6 +129,8 @@ pub struct Snapshot {
     #[serde(skip)]
     definition_starts: Option<Vec<usize>>,
     #[serde(skip)]
+    literal_candidates: Option<Vec<(usize, usize)>>,
+    #[serde(skip)]
     definition_context: bool,
     #[serde(skip)]
     definition_eof: bool,
@@ -178,6 +180,7 @@ impl Snapshot {
             blank_line_breaks,
             definition_ranges: None,
             definition_starts: None,
+            literal_candidates: None,
             definition_context: false,
             definition_eof: false,
             lexical_regions: None,
@@ -419,6 +422,7 @@ impl Expansion {
         let mut snapshot = Snapshot::new(path.clone(), Arc::from(text.as_str()))?;
         snapshot.definition_ranges = Some(Vec::new());
         snapshot.definition_starts = Some(Vec::new());
+        snapshot.literal_candidates = Some(Vec::new());
         snapshot.lexical_regions = Some(Vec::new());
         snapshot.definition_context = definition_context;
         let visit = self.snapshots.len();
@@ -431,7 +435,7 @@ impl Expansion {
         let mut cursor = definitions.cursor(0);
         let mut owned_end = 0;
         let mut collected_end = 0;
-        let mut reference_scopes: Vec<definitions::References> = Vec::new();
+        let mut reference_scopes = definitions::ReferenceScopes::default();
         let mut local_pending = None;
         let mut continued = None;
         while let Some(item) = definitions.next(
@@ -463,8 +467,7 @@ impl Expansion {
                         .push(start);
                     owned_end = end;
                     collected_end = end;
-                    reference_scopes.clear();
-                    reference_scopes.push(references);
+                    reference_scopes.select(references);
                     continue;
                 }
                 definitions::Item::Pending(pending) => {
@@ -473,10 +476,7 @@ impl Expansion {
                     // Keep those tokens unexpanded without granting ownership
                     // until an eventual caller establishes the complete body.
                     collected_end = text.len();
-                    reference_scopes.clear();
-                    let mut references = definitions::References::default();
-                    references.end = text.len();
-                    reference_scopes.push(references);
+                    reference_scopes.pending(text.len());
                     continue;
                 }
                 definitions::Item::Ignored(region) => {
@@ -499,27 +499,21 @@ impl Expansion {
             if self.ended {
                 continue;
             }
-            while reference_scopes
-                .last()
-                .is_some_and(|scope| pos >= scope.end)
-            {
-                reference_scopes.pop();
-            }
-            let reference_limit = reference_scopes
-                .last()
-                .map_or(Some(text.len()), |scope| scope.limit(pos));
-            if let Some(mut references) = nested_references
-                && let Some(limit) = reference_limit
-                && references.end > pos
-            {
-                // Nested declarations inside raw replacement/default data do
-                // not acquire new prose ownership, but their names are still
-                // names rather than conservative include invocations.
-                references.end = references.end.min(limit);
-                reference_scopes.push(references);
-            }
+            let reference_limit =
+                reference_scopes.observe(pos, nested_references, Some(text.len()));
             let tail = &text[pos..];
             let inside_definition = definition_context || pos < owned_end;
+            if inside_definition
+                && let Some(limit) = reference_limit
+                && definitions::literal_start(&text, pos)
+            {
+                self.snapshots[visit]
+                    .snapshot
+                    .literal_candidates
+                    .as_mut()
+                    .unwrap()
+                    .push((pos, limit));
+            }
             if tail.starts_with("\\begin{document}") {
                 if !inside_definition {
                     self.started = true;
@@ -597,17 +591,15 @@ impl Expansion {
                             .push((argument.end, end));
                         owned_end = end;
                         collected_end = end;
-                        reference_scopes.clear();
-                        reference_scopes.push(references);
+                        reference_scopes.select(references);
                     }
                     definitions::Completion::Pending(state) => {
                         pending.state = state;
                         pending.owners.push((visit, argument.end, text.len()));
                         collected_end = text.len();
-                        reference_scopes.clear();
                         let mut references = references;
                         references.end = text.len();
-                        reference_scopes.push(references);
+                        reference_scopes.select(references);
                         continued = Some(pending);
                     }
                     definitions::Completion::Invalid => (),

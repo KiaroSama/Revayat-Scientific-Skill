@@ -6,6 +6,19 @@ fn closure_plain(closure: &SourceClosure) -> anyhow::Result<String> {
     closure.plain_text()
 }
 
+fn extract_three_routes(source: &str) -> [(&'static str, anyhow::Result<String>); 3] {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().canonicalize().unwrap();
+    let main = root.join("main.tex");
+    fs::write(&main, source).unwrap();
+    let closure = source_closure(&main, None).unwrap();
+    [
+        ("closure", closure.plain_text()),
+        ("production", source_plain(&main)),
+        ("standalone", plain_tex(source)),
+    ]
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Placement {
     Direct,
@@ -299,7 +312,7 @@ fn one_owner_keeps_math_pairing_across_conservative_include_segments() {
 fn public_snapshot_fallback_preserves_adjacent_owner_boundaries() {
     use revayat_scientific::tex::{Segment, Snapshot};
     use std::sync::Arc;
-    let text = "\\begin{document}پیش \\newcommand{\\first}{$FirstKeep}\\newcommand{\\second}{SecondKeep$} OutsideVisible $MathOnly$ TailMarker\\end{document}";
+    let text = "\\begin{document}پیش \\newcommand{\\first}{$FirstKeep}\\newcommand{\\second}{SecondKeep$}\\newcommand{\\literal}{\\verb|$LiteralPayload$| RetainedBody \\verb|$| $MathOnly$} OutsideVisible $MathOnly$ TailMarker\\end{document}";
     for step in [1, 7, 31] {
         let path = std::path::PathBuf::from("main.tex");
         let snapshot = Arc::new(Snapshot::new(path.clone(), Arc::from(text)).unwrap());
@@ -320,6 +333,8 @@ fn public_snapshot_fallback_preserves_adjacent_owner_boundaries() {
             "پیش",
             "FirstKeep",
             "SecondKeep",
+            "LiteralPayload",
+            "RetainedBody",
             "OutsideVisible",
             "TailMarker",
         ] {
@@ -371,17 +386,85 @@ fn escaped_math_tokens_preserve_live_and_owned_delimiter_boundaries() {
             "RetainedBody Before Tail",
         ),
     ] {
+        for (route, actual) in extract_three_routes(source) {
+            assert_eq!(actual.unwrap(), expected, "route={route}, source={source}");
+        }
+    }
+}
+
+#[test]
+fn owned_literals_hide_math_delimiters_but_keep_raw_replacement_payload() {
+    let mut cases: Vec<(String, bool)> = [
+        (r"\newcommand{\sample}{\verb|$| RetainedBody \verb|$|}", false),
+        (r"\newcommand{\sample}{\verb|$LiteralPayload$| $MathOnly$ RetainedBody} \verb|OutsideMathOnly|", true),
+        (r"\newcommand{\sample}{\verb*|$$LiteralPayload$$| $$MathOnly$$ RetainedBody}", true),
+        (r"\newcommand{\sample}{\verb🙂\(LiteralPayload\)🙂 \(MathOnly\) RetainedBody}", true),
+        (r"\newcommand{\sample}{\verb\$LiteralPayload$\\par $MathOnly$ RetainedBody}", true),
+        (r"\newcommand{\sample}{\verb|\begin{equation}| RetainedBody \verb|\end{equation}| \begin{equation}MathOnly\end{equation}}", false),
+        (r"\newcommand{\sample}{\verb|\newcommand{\verb}{$LiteralPayload$}| $MathOnly$ RetainedBody}", true),
+        (r"\renewcommand{\verb}{$MathOnly$ RetainedBody}", false),
+        (r"\newcommand{\sample}{\renewcommand{\verb}{$MathOnly$ RetainedBody}}", false),
+        (r"\newcommand{\sample}\verb RetainedBody $MathOnly$", false),
+        (r"\newcommand{\sample}{\verb|$MathOnly$ RetainedBody}", false),
+        (r"\newcommand{\sample}{\verb|$MathOnly$ RetainedBody}\newcommand{\other}{|}", false),
+        (r"\newcommand{\sample}{\begin{verbatim}$MathOnly$ RetainedBody}", false),
+        (r"\newcommand{\sample}{\\verb|$MathOnly$| RetainedBody}", false),
+        (r"\newcommand{\sample}[1][\verb|$LiteralPayload$|]{$MathOnly$ RetainedBody}", true),
+    ].into_iter().map(|(source, payload)| (source.to_owned(), payload)).collect();
+    for environment in ["verbatim", "verbatim*", "Verbatim", "lstlisting", "minted"] {
+        cases.push((format!("\\newcommand{{\\sample}}{{\\begin{{{environment}}}$LiteralPayload$\\end{{{environment}}} $MathOnly$ RetainedBody}}"), true));
+    }
+    let malformed: String = (0xe000..0xf000)
+        .map(|scalar| format!("\\verb{}x", char::from_u32(scalar).unwrap()))
+        .collect();
+    cases.push((
+        format!("\\newcommand{{\\sample}}{{{malformed} $MathOnly$ RetainedBody}}"),
+        false,
+    ));
+    for (index, (source, payload)) in cases.iter().enumerate() {
+        for (route, actual) in extract_three_routes(source) {
+            let plain = actual.unwrap();
+            assert!(
+                plain.contains("RetainedBody"),
+                "case={index}/{route}: {plain}"
+            );
+            assert!(!plain.contains("MathOnly"), "case={index}/{route}: {plain}");
+            assert_eq!(
+                plain.contains("LiteralPayload"),
+                *payload,
+                "case={index}/{route}: {plain}"
+            );
+            if index == 0 {
+                assert_eq!(plain, "|$| RetainedBody |$|", "{route}");
+            }
+        }
+    }
+}
+
+#[test]
+fn inherited_literal_bounds_follow_original_data_despite_child_braces() {
+    for child in [
+        r"\verb|$LiteralPayload$| RetainedBody $MathOnly$ \verb|$|",
+        r"} \verb|$LiteralPayload$| RetainedBody $MathOnly$ \verb|$| {",
+    ] {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().canonicalize().unwrap();
         let main = root.join("main.tex");
-        fs::write(&main, source).unwrap();
+        fs::write(root.join("data.tex"), child).unwrap();
+        fs::write(
+            &main,
+            r"\newcommand{\sample}{\input{data}} OutsideVisible $OutsideMathOnly$",
+        )
+        .unwrap();
         let closure = source_closure(&main, None).unwrap();
-        for (route, actual) in [
-            ("closure", closure.plain_text()),
-            ("production", source_plain(&main)),
-            ("standalone", plain_tex(source)),
-        ] {
-            assert_eq!(actual.unwrap(), expected, "route={route}, source={source}");
+        assert_eq!(closure.sources.len(), 2);
+        // Flattened standalone source has different braces; these routes use
+        // the authoritative original parent owner and inherited child context.
+        for plain in [closure.plain_text().unwrap(), source_plain(&main).unwrap()] {
+            for retained in ["LiteralPayload", "RetainedBody", "OutsideVisible"] {
+                assert!(plain.contains(retained), "{child}: {plain}");
+            }
+            assert!(!plain.contains("MathOnly"), "{child}: {plain}");
         }
     }
 }

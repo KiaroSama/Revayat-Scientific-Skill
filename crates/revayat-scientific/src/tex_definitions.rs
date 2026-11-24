@@ -6,7 +6,9 @@ mod lexical;
 use lexical::{Kind, Token, Tokens};
 #[path = "tex_definition_references.rs"]
 mod references;
-pub(crate) use references::References;
+pub(crate) use references::{ReferenceScopes, References, literal_start};
+#[path = "tex_definition_analysis.rs"]
+mod analysis;
 
 #[cfg(test)]
 fn ranges(masked: &str) -> Vec<(usize, usize)> {
@@ -31,6 +33,7 @@ pub(crate) struct Analysis {
     pub ranges: Vec<(usize, usize)>,
     pub pending: Option<Pending>,
     pub regions: Vec<Region>,
+    pub literal_candidates: Vec<(usize, usize)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -264,41 +267,6 @@ impl<'a> Index<'a> {
             end,
             references: candidate.map(|candidate| candidate.references),
         }))
-    }
-
-    pub fn analyze(&self) -> Result<Analysis> {
-        self.analyze_observed(&mut || {})
-    }
-
-    fn analyze_observed(&self, visit: &mut impl FnMut()) -> Result<Analysis> {
-        let mut cursor = Cursor {
-            token: 0,
-            offset: 0,
-            candidate: 0,
-            blocked: false,
-            pending_header: false,
-        };
-        let mut result = Analysis {
-            ranges: Vec::new(),
-            pending: None,
-            regions: Vec::new(),
-        };
-        let mut collected_until = 0;
-        while let Some(item) = self.next_observed(&mut cursor, collected_until, visit)? {
-            match item {
-                Item::Definition { start, end, .. } => {
-                    result.ranges.push((start, end));
-                    collected_until = end;
-                }
-                Item::Pending(pending) => {
-                    result.pending = Some(pending);
-                    collected_until = self.text.len();
-                }
-                Item::Ignored(region) => result.regions.push(region),
-                Item::Token { .. } => (),
-            }
-        }
-        Ok(result)
     }
 
     #[cfg(test)]

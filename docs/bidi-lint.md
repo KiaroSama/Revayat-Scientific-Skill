@@ -40,7 +40,14 @@ matching while retaining ordinary replacement text. Live math and excluded
 environment pairs are matched with declaration data masked; they may still span
 an unused declaration. Escaped math delimiters cannot terminate these matches.
 Paired math inside each declaration is removed separately,
-so a delimiter cannot pair with live prose or another declaration's data. Original
+so a delimiter cannot pair with live prose or another declaration's data. Complete
+inline/verbatim literal spans hide their delimiters only in this owner-local
+matching view; retained output still follows raw replacement-text extraction.
+Eligible literal starts and their data limits come from original file visits.
+Declaration names, count headers and single-token replacements cannot supply
+literal starts. Incomplete literal spelling does not introduce an extraction
+error, borrow a closer beyond its data/owner boundary, or repeatedly scan a suffix.
+These extraction rules do not change unexpanded argument collection. Original
 declaration starts separate adjacent owners while keeping one owner's included
 and continued fragments together. Direction checks use the same live-source view
 as admitted image and listing references. This does not expand macro invocations
@@ -118,7 +125,8 @@ cover include-command boundaries, names versus references, bounded defaults and
 replacement arguments, nested declarations, inherited data and caller returns.
 The [definition extraction tests](../crates/revayat-scientific/tests/tex_definition_extraction.rs)
 cover live and owned math/environment pairs, adjacent owners, included and
-continued fragments, retained replacement text, public snapshots and a dense
+continued fragments, retained replacement text, bounded literal matching,
+declaration-header and malformed-literal controls, public snapshots and a dense
 valid-declaration workload.
 The
 [large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
