@@ -6,6 +6,12 @@ use std::sync::Arc;
 
 type CachedDefinitionMetadata = (Vec<(usize, usize)>, bool, Vec<usize>);
 
+#[derive(Clone, Copy)]
+enum DataSpanKind {
+    Literal,
+    Comment,
+}
+
 impl SourceClosure {
     pub(crate) fn is_blank_line_break(&self, offset: usize) -> bool {
         if self.segments.is_empty() {
@@ -125,23 +131,35 @@ impl SourceClosure {
             &self.projected_definition_ranges(true)?,
             &self.lexical_regions()?,
             &self.literal_spans()?,
+            &self.data_comments()?,
         )
     }
 
     pub(crate) fn literal_spans(&self) -> Result<Vec<(usize, usize)>> {
+        self.projected_data_spans(DataSpanKind::Literal)
+    }
+
+    pub(crate) fn data_comments(&self) -> Result<Vec<(usize, usize)>> {
+        self.projected_data_spans(DataSpanKind::Comment)
+    }
+
+    fn projected_data_spans(&self, kind: DataSpanKind) -> Result<Vec<(usize, usize)>> {
         if self.segments.is_empty() {
-            return Ok(definitions::Index::new(&self.text).analyze()?.literal_spans);
+            let analysis = definitions::Index::new(&self.text).analyze()?;
+            return Ok(match kind {
+                DataSpanKind::Literal => analysis.literal_spans,
+                DataSpanKind::Comment => analysis.data_comments,
+            });
         }
         #[derive(Clone, Copy)]
-        struct Piece {
-            original_start: usize,
+        struct Origin {
+            snapshot: *const super::Snapshot,
+            span: (usize, usize),
             original_end: usize,
-            output_start: usize,
-            output_end: usize,
         }
-        let mut groups: Vec<Vec<Piece>> = Vec::new();
-        let mut active: BTreeMap<_, usize> = BTreeMap::new();
-        let mut positions = vec![None; self.segments.len()];
+        let mut defaults: BTreeMap<_, Vec<(usize, usize)>> = BTreeMap::new();
+        let mut result: Vec<(usize, usize)> = Vec::new();
+        let mut previous: Option<Origin> = None;
         for (index, segment) in self.segments.iter().enumerate() {
             let output_end = self
                 .segments
@@ -155,74 +173,59 @@ impl SourceClosure {
             let original_end = original_start
                 .saturating_add(output_end - segment.start)
                 .min(segment.snapshot.text.len());
-            let identity = Arc::as_ptr(&segment.snapshot);
-            // Expansion has one immutable snapshot per visit. A manually
-            // assembled closure may reuse an Arc for another visit; an offset
-            // reset starts another ordered projection group in that case.
-            let group = match active.get(&identity).copied() {
-                Some(group)
-                    if groups[group]
-                        .last()
-                        .is_some_and(|last| last.original_end <= original_start) =>
-                {
-                    group
-                }
-                _ => {
-                    let group = groups.len();
-                    groups.push(Vec::new());
-                    active.insert(identity, group);
-                    group
-                }
-            };
-            positions[index] = Some((group, groups[group].len()));
-            groups[group].push(Piece {
-                original_start,
-                original_end,
-                output_start: segment.start,
-                output_end,
-            });
-        }
-        let mut defaults: BTreeMap<_, Vec<(usize, usize)>> = BTreeMap::new();
-        let mut result = Vec::new();
-        for (index, segment) in self.segments.iter().enumerate() {
-            let Some((group, piece)) = positions[index] else {
+            if original_start >= original_end {
                 continue;
+            }
+            let identity = Arc::as_ptr(&segment.snapshot);
+            let stored = match kind {
+                DataSpanKind::Literal => &segment.snapshot.literal_spans,
+                DataSpanKind::Comment => &segment.snapshot.data_comments,
             };
-            let group = &groups[group];
-            let piece = group[piece];
-            let spans = match &segment.snapshot.literal_spans {
+            let spans = match stored {
                 Some(spans) => spans,
-                None => match defaults.entry(Arc::as_ptr(&segment.snapshot)) {
+                None => match defaults.entry(identity) {
                     Entry::Occupied(entry) => entry.into_mut(),
-                    Entry::Vacant(entry) => entry.insert(
-                        definitions::Index::new(&segment.snapshot.text)
-                            .analyze()?
-                            .literal_spans,
-                    ),
+                    Entry::Vacant(entry) => {
+                        let analysis = definitions::Index::new(&segment.snapshot.text).analyze()?;
+                        entry.insert(match kind {
+                            DataSpanKind::Literal => analysis.literal_spans,
+                            DataSpanKind::Comment => analysis.data_comments,
+                        })
+                    }
                 },
             };
-            let first = spans.partition_point(|&(start, _)| start < piece.original_start);
+            let first = spans.partition_point(|&(_, end)| end <= original_start);
             for &(start, end) in &spans[first..] {
-                if start >= piece.original_end {
+                if start >= original_end {
                     break;
                 }
-                // Project the accepted endpoint through this original visit.
-                // A literal may cross several manually supplied source pieces;
-                // its ownership and endpoint must not be reparsed per piece.
-                let following = group.partition_point(|part| part.original_end < end);
-                let projected_end = group.get(following).map_or_else(
-                    || group.last().unwrap().output_end,
-                    |part| {
-                        part.output_start
-                            + end
-                                .saturating_sub(part.original_start)
-                                .min(part.output_end - part.output_start)
-                    },
-                );
-                let projected_start = piece.output_start + start - piece.original_start;
-                if projected_start < projected_end {
+                let clipped_start = start.max(original_start);
+                let clipped_end = end.min(original_end);
+                if clipped_start >= clipped_end {
+                    continue;
+                }
+                let projected_start = segment.start + clipped_start - original_start;
+                let projected_end = segment.start + clipped_end - original_start;
+                // Intersect with each source piece; a foreign visit between
+                // pieces must never inherit this span. Contiguous byte-stride
+                // pieces of the same original span still form one UTF-8 mask.
+                let same_span = previous.is_some_and(|previous| {
+                    previous.snapshot == identity
+                        && previous.span == (start, end)
+                        && previous.original_end == clipped_start
+                });
+                if same_span
+                    && let Some(last) = result.last_mut().filter(|last| last.1 == projected_start)
+                {
+                    last.1 = projected_end;
+                } else {
                     result.push((projected_start, projected_end));
                 }
+                previous = Some(Origin {
+                    snapshot: identity,
+                    span: (start, end),
+                    original_end: clipped_end,
+                });
             }
         }
         Ok(result)

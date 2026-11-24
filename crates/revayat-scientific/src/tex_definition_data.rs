@@ -12,6 +12,7 @@ pub(crate) struct DataInput {
 #[derive(Default)]
 pub(crate) struct DataView {
     pub literal_spans: Vec<(usize, usize)>,
+    pub comments: Vec<(usize, usize)>,
     pub includes: Vec<DataInput>,
 }
 
@@ -73,6 +74,26 @@ impl Index<'_> {
         // Raw bounds were established separately. This cursor may restart at
         // any scalar entry after a literal without changing that collection.
         while let Some(item) = self.next_observed(&mut cursor, self.text.len(), visit)? {
+            if let Item::Ignored(region) = &item {
+                if region.start >= end {
+                    break;
+                }
+                if region.kind == RegionKind::Comment
+                    && let Some(limit) =
+                        scopes.observe_observed(region.start, None, fallback, visit)
+                {
+                    let comment_end = region.end.min(limit).min(end);
+                    if region.start < comment_end {
+                        result.comments.push((region.start, comment_end));
+                    }
+                    // The raw token can extend beyond this data argument.
+                    // Resume at the same bound used by all other consumers.
+                    if cursor.offset > comment_end {
+                        self.advance_observed(&mut cursor, comment_end, visit);
+                    }
+                }
+                continue;
+            }
             let Item::Token {
                 start: position,
                 end: token_end,

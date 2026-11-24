@@ -53,6 +53,16 @@ impl TexSource {
                     kind: RegionKind::Literal,
                 }),
         );
+        regions.extend(
+            closure
+                .data_comments()?
+                .into_iter()
+                .map(|(start, end)| Region {
+                    start,
+                    end,
+                    kind: RegionKind::Comment,
+                }),
+        );
         let live = mask_regions(&closure.text, &regions).replace("\\\\", "  ");
         let mut structural = live.as_bytes().to_vec();
         // Definition names retain control-symbol backslashes; the separate
@@ -183,22 +193,14 @@ impl TexSource {
             "pdfstringdefDisableCommands",
             "IfFontExistsTF",
         ];
+        let optional_brackets = query::BracketIndex::new(&prose, preamble_end, body_end);
         for item in Regex::new(r"\\[A-Za-z@]+\*?\s*\[")?.find_iter(&prose) {
             if item.start() < preamble_end || item.start() >= body_end {
                 continue;
             }
             let start = item.end() - 1;
-            let mut nesting = 0;
-            for (offset, c) in prose[start..].char_indices() {
-                if c == '[' {
-                    nesting += 1;
-                } else if c == ']' {
-                    nesting -= 1;
-                    if nesting == 0 {
-                        source.protected.push((start, start + offset + 1));
-                        break;
-                    }
-                }
+            if let Some(end) = optional_brackets.end(start) {
+                source.protected.push((start, end));
             }
         }
         let mut bidi_exclusions = source.protected.clone();

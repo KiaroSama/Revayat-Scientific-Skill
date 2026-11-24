@@ -20,6 +20,7 @@ impl Index<'_> {
             pending: None,
             regions: Vec::new(),
             literal_spans: Vec::new(),
+            data_comments: Vec::new(),
         };
         let mut collected_until = 0;
         while let Some(item) = self.next_observed(&mut cursor, collected_until, visit)? {
@@ -31,10 +32,9 @@ impl Index<'_> {
                 } => {
                     result.ranges.push((start, end));
                     collected_until = end;
-                    result.literal_spans.extend(
-                        self.data_view_observed(start, end, Some(references), visit)?
-                            .literal_spans,
-                    );
+                    let data = self.data_view_observed(start, end, Some(references), visit)?;
+                    result.literal_spans.extend(data.literal_spans);
+                    result.data_comments.extend(data.comments);
                 }
                 Item::Pending(pending) => {
                     result.pending = Some(pending);

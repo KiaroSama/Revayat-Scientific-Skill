@@ -131,6 +131,8 @@ pub struct Snapshot {
     #[serde(skip)]
     literal_spans: Option<Vec<(usize, usize)>>,
     #[serde(skip)]
+    data_comments: Option<Vec<(usize, usize)>>,
+    #[serde(skip)]
     definition_context: bool,
     #[serde(skip)]
     definition_eof: bool,
@@ -181,6 +183,7 @@ impl Snapshot {
             definition_ranges: None,
             definition_starts: None,
             literal_spans: None,
+            data_comments: None,
             definition_context: false,
             definition_eof: false,
             lexical_regions: None,
@@ -409,6 +412,12 @@ impl Expansion {
             .as_mut()
             .unwrap()
             .extend(view.literal_spans);
+        self.snapshots[visit]
+            .snapshot
+            .data_comments
+            .as_mut()
+            .unwrap()
+            .extend(view.comments);
         for input in view.includes {
             if input.start < *append_start {
                 continue;
@@ -494,6 +503,7 @@ impl Expansion {
         snapshot.definition_ranges = Some(Vec::new());
         snapshot.definition_starts = Some(Vec::new());
         snapshot.literal_spans = Some(Vec::new());
+        snapshot.data_comments = Some(Vec::new());
         snapshot.lexical_regions = Some(Vec::new());
         snapshot.definition_context = definition_context;
         let visit = self.snapshots.len();

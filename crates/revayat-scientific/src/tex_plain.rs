@@ -10,6 +10,7 @@ pub fn plain_tex(text: &str) -> Result<String> {
         &analysis.ranges,
         &analysis.regions,
         &analysis.literal_spans,
+        &analysis.data_comments,
     )
 }
 
@@ -18,6 +19,7 @@ pub(super) fn plain_tex_with_ranges(
     owners: &[(usize, usize)],
     regions: &[Region],
     literal_spans: &[(usize, usize)],
+    data_comments: &[(usize, usize)],
 ) -> Result<String> {
     let region_masked = mask_regions(text, regions);
     let live = region_masked.replace("\\\\", "  ");
@@ -25,8 +27,8 @@ pub(super) fn plain_tex_with_ranges(
     let (start, end) = document_extent(&structural);
     let mut body = live.as_bytes()[start..end].to_vec();
     let mut owned_matching = region_masked.into_bytes();
-    for &(literal_start, literal_end) in literal_spans {
-        owned_matching[literal_start..literal_end].fill(b' ');
+    for &(range_start, range_end) in literal_spans.iter().chain(data_comments) {
+        owned_matching[range_start..range_end].fill(b' ');
     }
     // A literal's closing backslash belongs to that literal. Only normalize
     // remaining pairs after masking, so the next active control token survives.

@@ -47,7 +47,11 @@ view; retained output still follows raw replacement-text extraction.
 One data cursor supplies accepted literal spans and dependency events from each
 original file visit. It resumes at the exact literal endpoint, including after a
 backslash delimiter, while the separate raw collector retains comment and brace
-semantics. Matching masks literals before normalizing remaining backslashes.
+semantics. A comment reached after a literal is bounded by its original data
+argument in both stored metadata and cursor progress. Source consumers and owned
+delimiter matching share these accepted comments; raw retained output keeps its
+existing extraction policy. Matching masks literals and accepted data comments
+before normalizing remaining backslashes.
 Declaration names, count headers and single-token replacements cannot supply
 literal starts. Incomplete literal spelling does not introduce an extraction
 error, borrow a closer beyond its data/owner boundary, or repeatedly scan a suffix.
@@ -56,6 +60,10 @@ declaration starts separate adjacent owners while keeping one owner's included
 and continued fragments together. Image, listing and direction checks consume
 the same accepted literal spans. A real listing environment still supplies its
 opener for direction checks; command-looking inline-literal payload does not.
+Span projection intersects each original visit with each closure segment. It
+joins only contiguous pieces of the same original span, so an interleaved
+snapshot or repeated visit cannot inherit another literal's mask. Public
+snapshots without precomputed metadata use the same indexed analysis.
 This does not expand macro invocations
 or change the existing source-closure limits.
 
@@ -85,11 +93,16 @@ ordinary analysis. Included continuations take precedence over apparent local
 declarations starting inside their consumed prefix; later declarations are then
 selected from the existing index. Incomplete argument contents cannot export
 pending definition state into a caller.
+Recovery inside an unfinished declaration still hides complete literal payloads
+without clearing that blocker. An incomplete recovery literal stays ordinary
+recovery input; strict validation in ordinary source remains unchanged.
 
 Definition recognition indexes delimiters once and resolves each candidate with
 bounded lookups, including incomplete definitions and caller continuations.
-Optional-argument prose scans
-skip inert preamble and post-document positions; ignored trailing declarations
+Optional-argument prose brackets are indexed once within the actual document
+body, using a stack for nested pairs and binary endpoint lookups. Unmatched
+openers do not protect following prose, and a preamble, definition-owned or
+post-document closer cannot complete a live body option. Hidden closers therefore
 cannot trigger repeated scans of the remaining source.
 
 ## Waivers and bounded reporting
@@ -143,6 +156,18 @@ resumption alongside genuine image, listing and input controls.
 The [literal dependency tests](../crates/revayat-scientific/tests/tex_literal_dependencies.rs)
 cover complete literal payloads, exact endpoint resumption, active and escaped
 inputs, declaration roles, original argument limits and raw comment endings.
+The [piecewise projection tests](../crates/revayat-scientific/tests/tex_literal_projection.rs)
+cover interleaved snapshots, repeated visits and contiguous UTF-8 splits.
+The [literal recovery tests](../crates/revayat-scientific/tests/tex_literal_recovery.rs)
+cover complete and incomplete literal forms, unfinished declarations and blocked
+caller returns alongside genuine dependency controls.
+The [data comment tests](../crates/revayat-scientific/tests/tex_data_comment_consumers.rs)
+check actual images, input discovery, direction/listing findings and extraction
+at local, inherited and returned locations, including argument bounds and
+LF/CRLF/CR endings.
+The [optional bracket tests](../crates/revayat-scientific/tests/tex_optional_brackets.rs)
+exercise 100,000 owned closers plus nested, unmatched and real-document bounds;
+query unit tests count actual index reads and lookup comparisons.
 The
 [large-tail tests](../crates/revayat-scientific/tests/tex_definition_work.rs) exercise
 production source loading and extraction with 100,000 incomplete declarations;

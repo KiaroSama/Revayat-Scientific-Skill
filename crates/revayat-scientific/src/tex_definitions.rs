@@ -40,6 +40,7 @@ pub(crate) struct Analysis {
     pub pending: Option<Pending>,
     pub regions: Vec<Region>,
     pub literal_spans: Vec<(usize, usize)>,
+    pub data_comments: Vec<(usize, usize)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,12 +251,30 @@ impl<'a> Index<'a> {
                     _ => (),
                 }
             }
-            if !cursor.blocked
-                && matches!(token.kind, Kind::Control | Kind::Definition)
-                && let Some(region) = lexical::literal(self.text, start, visit)?
-            {
-                self.advance_observed(cursor, region.end, visit);
-                return Ok(Some(Item::Ignored(region)));
+            if matches!(token.kind, Kind::Control | Kind::Definition) {
+                let region = if cursor.blocked {
+                    // Recovery still hides complete literals, but does not
+                    // turn an incomplete spelling into a whole-tail error.
+                    // Advancing preserves the unfinished-argument blocker.
+                    if references::literal_start_observed(self.text, start, visit) {
+                        self.literal_index
+                            .get_or_init(|| literals::LiteralIndex::new(self.text, visit))
+                            .end(start, self.text.len())
+                            .map(|end| Region {
+                                start,
+                                end,
+                                kind: RegionKind::Literal,
+                            })
+                    } else {
+                        None
+                    }
+                } else {
+                    lexical::literal(self.text, start, visit)?
+                };
+                if let Some(region) = region {
+                    self.advance_observed(cursor, region.end, visit);
+                    return Ok(Some(Item::Ignored(region)));
+                }
             }
         }
         // A single-character body may end inside an ordinary text run. Keep
