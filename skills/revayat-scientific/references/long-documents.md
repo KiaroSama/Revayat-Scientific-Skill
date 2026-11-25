@@ -173,8 +173,8 @@ claim depends on them. Do not guess across a context boundary or duplicate overl
 ## Book checkpoints and assembly
 
 Use the [book and batch protocol](parallel-work.md#book-and-batch-orchestration)
-for approved parallel work, whether chapter shards share one book or a wave
-contains chapters from several books. The coordinator maintains a
+within the [six-stage workflow](multi-agent-workflow.md), whether chapter shards
+share one book or a wave contains chapters from several books. The coordinator maintains a
 `progress.md` and a coverage map under `WORK/<book_id>/` for each book, keyed
 by chapter and shard IDs from `WORK/batch-manifest.json`.
 

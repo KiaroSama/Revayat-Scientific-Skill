@@ -3,7 +3,7 @@ name: revayat-scientific
 description: Translate scientific papers, theses, scholarly books and technical documentation from any source language into accurate Persian, with source-language review and natural scholarly register. Preserve claims, equations, citations, page dimensions and image fidelity; deliver editable sources and a verified PDF. Use for scientific Persian translation or review (فارسی).
 license: GPL-3.0-or-later
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, Agent, AskUserQuestion
-metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"native Rust executable 2.2.2","dependencies":"Optional native render/verification tools; see references/pdf-output.md"}
+metadata: {"homepage":"https://github.com/KiaroSama/Revayat-Scientific-Skill","runtime":"native Rust executable 2.2.3","dependencies":"Optional native render/verification tools; see references/pdf-output.md"}
 ---
 
 # Revayat Scientific — scientific documents into Persian
@@ -121,17 +121,13 @@ Never change reported facts, numbers or status. Missing guidance follows the war
 
 Initialize the translation log before the first operation and record this check.
 
-Ask once per job: **"Would you like parallel subagents for translation and
-editing, or sequential work? Parallel work can be faster but may use more
-tokens; you can specify a worker limit."** Record the answer in `progress.md`
-and the translation log. Only an affirmative answer enables subagents. Refusal
-or no answer means sequential work; do not wait to begin independent sequential
-steps. Reuse the recorded choice on resume unless the user changes it.
-If approved, read [parallel-work.md](references/parallel-work.md) before assigning
-translation, review or correction. For one book split by chapter or for a batch
-of books, create `WORK/batch-manifest.json` and follow the
-[long-document checkpoints](references/long-documents.md#book-checkpoints-and-assembly).
-If the host cannot spawn subagents, disclose that and continue sequentially.
+Read the [six-stage translation workflow](references/multi-agent-workflow.md)
+before drafting. Every job uses its six ordered prompts and separate specialists.
+Record the actual mode and handoffs in `progress.md` and the translation log.
+If the host physically lacks subagent spawning, disclose that limitation and
+execute the same six prompts as separate passes. Failed or denied delegation on
+a capable host blocks that stage. For a book or batch, create
+`WORK/batch-manifest.json` and use the [long-document checkpoints](references/long-documents.md#book-checkpoints-and-assembly).
 
 ```bash
 "$REVAYAT" doctor
@@ -276,11 +272,12 @@ wrap plain-text and Markdown sentences that start with an English word in
 (`U+200F`) immediately before `RLI`. Keep `<span dir="ltr">` and `\lr{…}`
 for LTR runs in HTML and XeLaTeX bodies respectively.
 
-Use the current host model. For approved parallel book work, use the
-[batch protocol](references/parallel-work.md#book-and-batch-orchestration):
-assign disjoint shards against a read-only `terms.tsv` snapshot per wave;
-the coordinator alone accepts drafts and reconciles glossary proposals.
-Record which workers actually ran.
+Dispatch Stages 1 and 2 in the [six-stage workflow](references/multi-agent-workflow.md):
+accept the located translation draft before sending it to the layout specialist.
+For books, assign disjoint shards against a read-only `terms.tsv` snapshot per
+wave using the [batch protocol](references/parallel-work.md#book-and-batch-orchestration).
+The coordinator accepts drafts, reconciles glossary proposals and records which
+workers actually ran.
 
 Start from `assets/rtl-document.tex` or `assets/rtl-document.html` and replace
 all demonstration content. Set the measured source page dimensions before layout;
@@ -306,6 +303,7 @@ approved parts when resuming.
 
 ## Step 6 — Review meaning and Persian fluency
 
+Dispatch the independent Stage 3 reviewer in the [six-stage workflow](references/multi-agent-workflow.md).
 Follow [review.md](references/review.md): compare every selected source part and target for omissions,
 added claims, changed certainty, wrong quantities and incorrect references.
 Apply source-location claim checks in
@@ -323,22 +321,18 @@ Check officialese, calques and forced conversation against the source register.
 Follow the [precedence rule](references/voice/README.md#precedence). Recheck each
 fluency edit for scientific meaning and log the guidance actually used.
 
-Approved review/correction workers receive completed draft snapshots and return
-located findings or separate patches. The coordinator alone accepts corrections
-into the canonical translation and reconciles cross-part terminology and meaning.
-
-| Review arrangement | Record |
-| --- | --- |
-| Separate reviewer available and authorized | Actual reviewer and covered parts |
-| Same model performs a separate pass | `self-review`; not independent review |
-| Review not performed | `unreviewed`; do not imply approval |
-| Meaning-changing disagreement remains | Queue the exact source/target spans for the user |
+The reviewer reads a completed draft snapshot and returns located findings.
+The coordinator validates those findings for Stage 4 and records the actual
+reviewer, covered parts and unresolved source/target spans. A physically
+incapable host records `self-review`; a missing pass remains `unreviewed`.
 
 A part becomes `done` only after its required checks and reading passes. Keep
 unresolved questions visible in `progress.md`.
 
 ## Step 7 — Finish typography and run the gate
 
+Dispatch the Stage 4 integrator in the [six-stage workflow](references/multi-agent-workflow.md)
+to apply the draft and verified findings in a staged editable document.
 Apply the orthography and isolation rules to translated Persian prose from
 [scientific-style.md](references/scientific-style.md) and
 [rtl-bidi.md](references/rtl-bidi.md). Use ordinary Persian Unicode, consistent
@@ -367,14 +361,16 @@ failure paths. Strict lint must exit zero before building a deliverable.
 
 ## Step 8 — Build and verify
 
-Read [pdf-output.md](references/pdf-output.md). Carry the selected level and output
-directory into the build:
+Use the [six-stage workflow](references/multi-agent-workflow.md) to build the
+Stage 4 candidate and hand it to the Stage 5 verifier for inspection, fixes and a
+fresh build. Read [pdf-output.md](references/pdf-output.md). Carry the selected
+level and a dedicated staging path into the build:
 
 ```bash
-"$REVAYAT" build "$WORK/doc.tex" --out "$OUTPUT/article.pdf" --engine tex --level "$LEVEL" --verify --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt"
+"$REVAYAT" build "$WORK/doc.tex" --out "$STAGING/article.pdf" --engine tex --level "$LEVEL" --verify --terms "$WORK/terms.tsv" --manifest "$WORK/manifest.txt"
 ```
 
-The build checks the source before replacing the delivered PDF. Verification
+The build checks the source before writing the staged PDF. Verification
 checks page count, embedded fonts, sample rasters and native Poppler text extraction.
 It does not replace the agent's visual inspection.
 
@@ -386,12 +382,13 @@ It does not replace the agent's visual inspection.
 | Timeout / cancellation | The command is incomplete; inspect the cause before retrying |
 | Path printed with exit zero | Inspect that actual file in step 9 |
 
-Markdown/text-only requests can finish without this stage, with their output scope
-stated explicitly.
+For Markdown or text-only requests, reopen and verify the actual staged text file
+in Stages 4 and 5. Mark PDF-only checks inapplicable and keep all six handoffs.
 
 ## Step 9 — Inspect and deliver the actual output
 
-Look at first, middle and last page samples, plus every page containing complex
+Dispatch the independent Stage 6 reviewer in the [six-stage workflow](references/multi-agent-workflow.md)
+against the exact rebuilt file and Stage 5 fix log. For PDF, look at first, middle and last page samples, plus every page containing complex
 tables, math or figures. Compare against the source for missing objects, broken
 letter joining, clipping, bidi mistakes and incorrect labels.
 Measure the delivered page geometry against the inventory and inspect every altered
@@ -401,7 +398,7 @@ PPI and improvement evidence; `--verify` does not automate these source comparis
 The standalone extraction check is:
 
 ```bash
-"$REVAYAT" text-order "$OUTPUT/article.pdf" --source "$WORK/doc.tex"
+"$REVAYAT" text-order "$STAGING/article.pdf" --source "$WORK/doc.tex"
 ```
 
 It compares NFKC-normalized source phrases with native Poppler extraction. Report its
@@ -409,7 +406,8 @@ It compares NFKC-normalized source phrases with native Poppler extraction. Repor
 viewer's clipboard behavior. A zero exit alone does not make an inconclusive
 standalone result conclusive.
 
-Deliver the PDF and editable source, and report: absolute paths, page count,
+After accepting the Stage 6 receipt, publish the verified bytes and deliver the
+artifact and editable source. Report absolute paths, applicable page count and
 engine, review coverage, unresolved ambiguities and unperformed checks. Retain
 the source inventory, terms and progress for resumption. Finish the translation
 log beside the delivered translation and report its path. Never describe an unbuilt
@@ -421,6 +419,7 @@ or uninspected artifact as a finished publication.
 
 Read each only when its stage calls for it:
 
+- [multi-agent-workflow.md](references/multi-agent-workflow.md): six stage prompts and handoffs
 - [translation-policy.md](references/translation-policy.md) — translator and reviewer roles
 - [extraction.md](references/extraction.md) — source collection and figure extraction
 - [source-languages.md](references/source-languages.md) — language profiles and per-language research

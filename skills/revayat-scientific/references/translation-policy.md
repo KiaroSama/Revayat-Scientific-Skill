@@ -1,14 +1,10 @@
 # Translation and review roles
 
-Use the current host's available model and tools. Vendors, model names and parallel agents are optional. Respect the user's model and delegation choices.
-
-## One-model workflow
-
-Translate a bounded section, strict-lint it, compare with the source for fidelity, then read the Persian alone for fluency. Revise flagged spans without changing claims, quantities, hedges or terms. Record `self-review` in `progress.md`; this is not independent review.
+Follow the [six-stage workflow](multi-agent-workflow.md) on every translation. Use the current host's tools and the requested model where available. Record the actual reviewer and coverage. Only a host that physically lacks spawning can use the disclosed sequential fallback; record `self-review` in `progress.md` for both review passes in that mode.
 
 ## Independent review
 
-Delegate a bounded review only when available and authorized. The translator owns the output; the reviewer returns exact source/target spans and reasons. Use a judge only for unresolved disagreements, with source and competing spans instead of duplicate full drafts. Record actual reviewer and coverage. Without a reviewer, use the one-model workflow and disclose that limitation.
+Stages 3 and 6 use separate reviewers who did not write, apply or repair the translation. Reviewers return exact source/target locations and reasons. The coordinator validates findings before the Stage 4 integrator applies them and routes unresolved disagreements with the source and competing spans. A missing review stays unverified.
 
 ## Translation brief
 

@@ -21,7 +21,8 @@
 | Image enhancement | A recorded derivative that improves legibility without inventing or changing source evidence |
 | Figure review record | Per-image assertion that a reviewer compared the current asset with its source and found legitimate darkness; the record itself is not proof of review |
 | PDF outline target | Bookmark action or exact page destination plus presentation that a merge preserves or explicitly refuses |
-| Parallel work choice | The user's recorded permission to use translation or editing subagents for one job |
+| Translation stage | One of six ordered specialist assignments with its own inputs, output and acceptance check |
+| Single-agent fallback | Disclosed use of the same six stages as separate passes when the host cannot spawn subagents |
 | Work unit | A bounded source section with one owner, draft revision and acceptance state |
 | Coordinator | Agent responsible for canonical output, shared terminology and integration of worker submissions |
 | Checked input snapshot | The source and resource revisions accepted for one document build |

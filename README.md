@@ -6,7 +6,7 @@
 
 [![GitHub Actions CI workflow on main](https://img.shields.io/badge/CI-GitHub%20Actions-16a34a)](.github/workflows/ci.yml)
 [![GNU General Public License v3.0 or later](https://img.shields.io/badge/license-GPL--3.0--or--later-2563eb)](LICENSE)
-[![Release v2.2.2 standalone Rust packages](https://img.shields.io/badge/release-v2.2.2-ea580c)](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases/tag/v2.2.2)
+[![Release v2.2.3 standalone Rust packages](https://img.shields.io/badge/release-v2.2.3-ea580c)](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases/tag/v2.2.3)
 [![Rust debug and release tests; inspect the exact revision's CI evidence](https://img.shields.io/badge/tests-Debug%20%2B%20Release-0d9488)](.github/workflows/ci.yml)
 [![Rust 1.100.0 toolchain measured via rustc](https://img.shields.io/badge/Rust-1.100.0-8b5cf6)](rust-toolchain.toml)
 [![Runs on Linux x64, Linux arm64, Windows x64, and Windows arm64](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%2064--bit-0891b2)](.github/workflows/release.yml)
@@ -114,7 +114,7 @@ Give the host agent this repository or the generated `.skill` archive, then ask 
 
 ## How it works
 
-The nine stages are tool readiness, extraction, terminology, object preparation, translation, scientific/fluency review, typography/lint, build/verification and inspection/delivery. Translation uses the host model. Rust modules provide the common source model, bounded parsers, CLI, process ownership, DOCX/PDF operations, renderer controls, installers and CI tools. See [architecture](docs/architecture.md).
+The skill's nine steps cover setup through delivery. Each translation uses [six specialist stages](skills/revayat-scientific/references/multi-agent-workflow.md): initial translation, layout and typesetting, review, application, file re-check and fixes, then final review and delivery. A host that cannot spawn subagents discloses that limit and runs the same six passes in order. Rust provides the source model, parsers, document and renderer tools, installers and CI checks. See [architecture](docs/architecture.md).
 
 ## What it is honest about
 
@@ -154,6 +154,15 @@ The CI contract requires debug/release builds and portable tests on Linux and Wi
 
 Keep a translation log beside each document throughout all nine stages. The CLI separately writes content-free UTC operation logs to `./logs` (`REVAYAT_LOG_DIR` overrides the location; `REVAYAT_LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`). Records contain only the command category, exit category/code and duration, without arguments, tool output or private paths. Diagnostics and unresolved recovery journals stay local. See the skill for required delivery records.
 
+## Author
+
+Author: Kiaro Sama ([GitHub](https://github.com/KiaroSama))
+
+## License
+
+[GNU General Public License v3.0 or later](LICENSE). Optional dependencies and
+source documents keep their own licenses.
+
 ## Donate
 
 If this project helps you, donations are appreciated.
@@ -168,13 +177,3 @@ If this project helps you, donations are appreciated.
 | Litecoin (LTC) | LTC | `ltc1qntqnnrunadurnw4cshv3qgspywrueyyeyngwuy` |
 | Solana (SOL) | Solana | `7B2wkczUjmkDhETwQuknBL8sUsbuV7nErxc317TmQuwR` |
 | Polygon (POL) | Polygon | `0x0Bd0BA443a8B9cf15922bf7f0Bb0a4b495fD06Ef` |
-
-## Author
-
-Author: Kiaro Sama  
-GitHub: [KiaroSama](https://github.com/KiaroSama)
-
-## License
-
-[GNU General Public License v3.0 or later](LICENSE). Optional dependencies and
-source documents keep their own licenses.

@@ -8,7 +8,7 @@
 
 [![GitHub Actions CI workflow on main](https://img.shields.io/badge/CI-GitHub%20Actions-16a34a)](.github/workflows/ci.yml)
 [![GNU General Public License v3.0 or later](https://img.shields.io/badge/license-GPL--3.0--or--later-2563eb)](LICENSE)
-[![Release v2.2.2 standalone Rust packages](https://img.shields.io/badge/release-v2.2.2-ea580c)](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases/tag/v2.2.2)
+[![Release v2.2.3 standalone Rust packages](https://img.shields.io/badge/release-v2.2.3-ea580c)](https://github.com/KiaroSama/Revayat-Scientific-Skill/releases/tag/v2.2.3)
 [![Rust debug and release tests; inspect the exact revision's CI evidence](https://img.shields.io/badge/tests-Debug%20%2B%20Release-0d9488)](.github/workflows/ci.yml)
 [![Rust 1.100.0 toolchain measured via rustc](https://img.shields.io/badge/Rust-1.100.0-8b5cf6)](rust-toolchain.toml)
 [![Runs on Linux x64, Linux arm64, Windows x64, and Windows arm64](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%2064--bit-0891b2)](.github/workflows/release.yml)
@@ -132,7 +132,7 @@ revayat-scientific pdf --help
 
 ## معماری
 
-نه مرحله شامل آمادگی ابزار، استخراج، اصطلاحات، آماده‌سازی اجزا، ترجمه، بازبینی معنا و روانی، تایپوگرافی، ساخت و بررسی، و بازرسی و تحویل است. مدل میزبان ترجمه می‌کند. ماژول‌های Rust مدل منبع، تجزیهٔ محدود، فرمان‌ها، مالکیت فرایندها، DOCX/PDF، رندر، نصب و ابزار CI را اجرا می‌کنند. [معماری](docs/architecture.md).
+‏⁧راهنمای مهارت ۹ گام دارد، از آماده‌کردن ابزار تا تحویل فایل. هر ترجمه [۶ مرحلهٔ تخصصی](skills/revayat-scientific/references/multi-agent-workflow.md) دارد: ترجمهٔ اولیه، صفحه‌آرایی، بازبینی، اعمال ترجمه، بررسی دوبارهٔ فایل و رفع ایرادها، و بازبینی نهایی و تحویل. اگر میزبان نتواند ایجنت جداگانه اجرا کند، این محدودیت را اعلام می‌کند و همان مراحل را به‌ترتیب پیش می‌برد. ابزارهای پردازش سند، رندر، نصب و بررسی مخزن با Rust نوشته شده‌اند. [معماری](docs/architecture.md).⁩
 
 ## آنچه صادقانه باید گفت
 
@@ -176,10 +176,6 @@ cargo run --locked --release --bin revayat-scientific -- package
 
 گزارش ترجمه را کنار سند و در تمام نه مرحله تکمیل کنید. برنامه گزارش عملیاتی جداگانه با زمان UTC در `./logs` می‌نویسد؛ `REVAYAT_LOG_DIR` محل و `REVAYAT_LOG_LEVEL` یکی از `DEBUG`، `INFO`، `WARNING` یا `ERROR` را تعیین می‌کند. این گزارش فقط نام دستهٔ فرمان، دسته و کد خروج و مدت اجرا را ثبت می‌کند و شامل آرگومان، خروجی ابزار یا مسیر خصوصی نیست. تشخیص‌ها و دفتر بازیابی محلی‌اند.
 
-## حمایت مالی
-
-اگر این پروژه به کارتان آمده، حمایت مالی قدردانی می‌شود. نشانی‌ها و شبکه‌ها در [بخش حمایت انگلیسی](README.md#donate) آمده‌اند.
-
 ## نویسنده
 
 Kiaro Sama — [KiaroSama](https://github.com/KiaroSama)
@@ -187,5 +183,9 @@ Kiaro Sama — [KiaroSama](https://github.com/KiaroSama)
 ## مجوز
 
 [GNU GPL نسخهٔ ۳ یا بالاتر](LICENSE). ابزارهای اختیاری و اسناد منبع مجوز خود را دارند.
+
+## حمایت مالی
+
+اگر این پروژه به کارتان آمده، حمایت مالی قدردانی می‌شود. نشانی‌ها و شبکه‌ها در [بخش حمایت انگلیسی](README.md#donate) آمده‌اند.
 
 </div>

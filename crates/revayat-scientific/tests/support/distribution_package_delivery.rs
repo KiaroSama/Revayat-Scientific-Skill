@@ -24,6 +24,18 @@ fn test_metadata_and_references() -> Result<()> {
     for link in links.captures_iter(&text) {
         assert!(skill.join(link[1].split('#').next().unwrap()).is_file());
     }
+    let workflow = fs::read_to_string(skill.join("references/multi-agent-workflow.md"))?;
+    let stages: Vec<_> = workflow.lines().filter(|line| line.starts_with("## Stage ")).collect();
+    assert_eq!(stages, [
+        "## Stage 1: Initial translation",
+        "## Stage 2: Layout and typesetting",
+        "## Stage 3: Review",
+        "## Stage 4: Apply translation",
+        "## Stage 5: Re-check the file and fix issues",
+        "## Stage 6: Final review and delivery",
+    ]);
+    assert_eq!(workflow.matches("\n```text\n").count(), stages.len());
+    assert_eq!(workflow.matches("Exit gate:").count(), stages.len());
     for name in [
         "plugin.json",
         ".antigravity-plugin/plugin.json",
@@ -33,7 +45,7 @@ fn test_metadata_and_references() -> Result<()> {
     ] {
         let value: serde_json::Value = serde_json::from_slice(&fs::read(root.join(name))?)?;
         assert_eq!(value["name"], "revayat-scientific", "{name}");
-        assert_eq!(value["version"], "2.2.2", "{name}");
+        assert_eq!(value["version"], "2.2.3", "{name}");
         assert_eq!(value["license"], "GPL-3.0-or-later", "{name}");
         assert!(
             value["keywords"].as_array().unwrap().iter().any(|v| v == "rust"),
@@ -75,7 +87,7 @@ fn test_metadata_and_references() -> Result<()> {
     assert_eq!(claude_mkt["name"], "revayat-scientific-skill");
     assert_eq!(claude_mkt["plugins"][0]["name"], "revayat-scientific");
     assert_eq!(claude_mkt["plugins"][0]["source"], "./");
-    assert_eq!(claude_mkt["plugins"][0]["version"], "2.2.2");
+    assert_eq!(claude_mkt["plugins"][0]["version"], "2.2.3");
     let codex_mkt: serde_json::Value =
         serde_json::from_slice(&fs::read(root.join(".agents/plugins/marketplace.json"))?)?;
     assert_eq!(codex_mkt["name"], "revayat-scientific-skill");
@@ -136,7 +148,7 @@ fn test_install_launchers_replacement_and_logs() -> Result<()> {
     let executable = target.join("bin").join(if cfg!(windows) { "revayat-scientific.exe" } else { "revayat-scientific" });
     let output = delivery_command(&executable, &f.root, &["--version"], None)?;
     assert!(output.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("2.2.2"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("2.2.3"));
     assert!(target.join("LICENSE").is_file());
     #[cfg(unix)]
     assert_companion_layout(&executable, &f.root)?;
@@ -304,7 +316,7 @@ fn test_archive_is_self_contained() -> Result<()> {
     for relative in [
         "SKILL.md", "LICENSE", "NOTICE.md", "assets/Dockerfile.tex",
         "references/terminology.md", "references/docx.md", "references/pdf-processing.md",
-        "references/evidence-and-terminology.md",
+        "references/evidence-and-terminology.md", "references/multi-agent-workflow.md",
     ] {
         let mut bytes = Vec::new();
         actual.by_name(&format!("{NAME}/{relative}"))?.read_to_end(&mut bytes)?;

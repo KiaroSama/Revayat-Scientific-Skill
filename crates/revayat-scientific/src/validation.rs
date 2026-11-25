@@ -15,9 +15,9 @@ pub fn validate_family_layout(root: &Path) -> Result<()> {
                 "What it is honest about",
                 "Documentation",
                 "Development",
-                "Donate",
                 "Author",
                 "License",
+                "Donate",
             ],
         ),
         (
@@ -30,9 +30,9 @@ pub fn validate_family_layout(root: &Path) -> Result<()> {
                 "آنچه صادقانه باید گفت",
                 "مستندات",
                 "توسعه",
-                "حمایت مالی",
                 "نویسنده",
                 "مجوز",
+                "حمایت مالی",
             ],
         ),
     ] {
