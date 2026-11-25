@@ -44,13 +44,30 @@ Page count may grow from faithful Persian reflow; retain source-location mapping
 and regenerate the contents page. Preserving dimensions does not promise identical
 line breaks or pagination. An exact-facsimile request needs a separate layout plan.
 
+## Preserve inline styles and text fit
+
+Keep bold, italic, bold-italic, superscripts, subscripts, small-caps and inline
+code/math as styled runs or spans in DOCX, LaTeX and HTML-PDF. Use format-native
+styles with Vazirmatn Regular/Bold as the default Persian faces; keep required
+math or code fonts. Do not flatten styled text into plain runs.
+
+At layout, file re-check and final review, verify that Persian expansion causes
+no clipping or overflow in table cells, figure captions, columns, headers,
+footers or callouts. Set leading to prevent overlap of ascenders, descenders and
+diacritics. Keep the source font-size hierarchy for each role. Compare the source
+inventory with the candidate: no chapter or section heading, caption, table
+header or cell, footnote or callout may be unintentionally untranslated.
+
 ## Preserve image information
 
 For each figure, record original file or PDF object/page, vector/raster kind,
-pixel width/height, intended printed width/height, effective PPI, and any derivative.
-Keep untouched originals, aspect ratio, orientation, color interpretation, labels,
-scale bars, subfigure relationships and source order. Never mirror figures for RTL.
-Avoid repeated JPEG encoding and avoid downsampling to make the PDF smaller.
+pixel width/height, bit depth, color interpretation, source DPI where present,
+intended printed width/height, effective PPI and any derivative. Keep untouched
+originals, aspect ratio, orientation, labels, scale bars, subfigure relationships
+and source order. Never mirror figures for RTL. When exporting DOCX or PDF,
+retain the original pixel dimensions, bit depth, color interpretation and DPI.
+Disable lossy downscaling and unnecessary recompression; if the export cannot
+preserve these properties, report the limitation before delivery.
 
 Effective PPI is `pixels / printed_inches`, separately for width and height.
 Changing a DPI tag alone changes neither pixel detail nor the printed result's
@@ -127,6 +144,14 @@ Record the tool/version, operation, before/after pixels and PPI, parameters,
 source/derivative paths, observed improvement and inspection result in the job
 inventory and translation log. Never overwrite the only original. Existing figure
 flattening keeps an `.orig` backup but is not a general resolution enhancer.
+
+## Verify embedded figures and file integrity
+
+In Stages 5 and 6, compare embedded figures with the source assets for pixel
+dimensions, bit depth, color interpretation, DPI and crispness at native pixels
+and intended print size. Check DOCX archive integrity by reopening and checking
+package parts, media and relationships. Check PDF integrity by reopening,
+checking page and image objects, and rendering representative pages.
 
 ## Verify the delivered PDF
 

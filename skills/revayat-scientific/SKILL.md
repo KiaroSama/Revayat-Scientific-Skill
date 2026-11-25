@@ -216,16 +216,22 @@ terms; a technical concept is not automatically English-only.
 
 Before locking the ledger or drafting, run the mandatory
 [live name and term lookup](references/terminology.md#verify-names-and-unfamiliar-terms)
-for foreign names, author names, eponyms, places, institutions and unfamiliar
-specialist terms. Verify native pronunciation, established Persian
-transliteration and domain context. If the web is unavailable, retain the
-original spelling and mark the row `[unverified pronunciation]` in
-`WORK/terms.tsv`. Retain the ledger with the editable source.
+for unfamiliar specialist terms and proper nouns: authors and scientists, eponyms,
+named methods, theorems, models and datasets, institutions and places. Confirm the
+scientific sense, native pronunciation and established Persian transliteration or
+usage. Record supporting URLs in the `evidence` column of `WORK/terms.tsv`. Only
+when offline, retain the original spelling and mark it `[unverified pronunciation]`.
+If an online search is inconclusive, record the URLs and unresolved issue without
+guessing. Retain the ledger with the editable source.
 
-Before Step 4, read the [vendored Persian drafting and review route](references/voice/README.md#stage-routes)
-and all five files it names: `SKILL.md`, `ai-tells.md`, `pitfalls.md`,
-`register-guide.md` and `lexicon.md`. Apply them from the first draft through
-review. No separate Persian skill installation is needed.
+In Stages 1, 3, 4 and 6, read and apply
+[`voice/README.md`](references/voice/README.md#stage-routes), the five
+[`voice/persian/`](references/voice/persian/SKILL.md) files it routes, and
+[`voice/humanizer/SKILL.md`](references/voice/humanizer/SKILL.md). Use the bundled
+guidance on every run without an external plugin. Write idiomatic scholarly Persian
+that reads like a human translator's work, without robotic calques, officialese or
+AI tells. Preserve scientific claims, hedges and precision; voice edits cannot add
+facts or override the approved glossary.
 
 For reviewed extracted text, `term-brief` selects only matching approved ledger
 rows and records source/ledger hashes; inspect ambiguous candidates before use:
@@ -273,7 +279,12 @@ wrap plain-text and Markdown sentences that start with an English word in
 for LTR runs in HTML and XeLaTeX bodies respectively.
 
 Dispatch Stages 1 and 2 in the [six-stage workflow](references/multi-agent-workflow.md):
-accept the located translation draft before sending it to the layout specialist.
+accept the located draft only after Stage 1 records its pre-draft lookup in
+`WORK/terms.tsv` or the proposed evidence rows. Preserve bold, italic, bold-italic,
+superscripts, subscripts, small-caps and inline code/math across DOCX, LaTeX and
+HTML-PDF. Use Vazirmatn Regular/Bold by default with format-native styles; never
+flatten styled runs. Stage 2 verifies text fit, leading, font hierarchy and complete
+translation coverage using [layout-and-images.md](references/layout-and-images.md).
 For books, assign disjoint shards against a read-only `terms.tsv` snapshot per
 wave using the [batch protocol](references/parallel-work.md#book-and-batch-orchestration).
 The coordinator accepts drafts, reconciles glossary proposals and records which
@@ -314,10 +325,11 @@ Back-translate a small sample into its original language as an additional check,
 not a substitute for source comparison. Use the same terminology revision and
 neighbor context for drafting and review; label actual coverage and error severity.
 
-After fidelity review, reapply the
-[vendored Persian review route](references/voice/README.md#stage-routes) and
-compare prose with the matching examples in [fluency-gold.md](references/fluency-gold.md).
-Check officialese, calques and forced conversation against the source register.
+In Stage 3, verify the live lookup and supporting URLs for unfamiliar terms and
+proper nouns in `WORK/terms.tsv` or Stage 1's proposals. After fidelity review,
+apply the bundled Persian and Humanizer patterns and compare with
+[fluency-gold.md](references/fluency-gold.md). Flag officialese, calques and AI
+tells against the source register.
 Follow the [precedence rule](references/voice/README.md#precedence). Recheck each
 fluency edit for scientific meaning and log the guidance actually used.
 
@@ -372,7 +384,10 @@ level and a dedicated staging path into the build:
 
 The build checks the source before writing the staged PDF. Verification
 checks page count, embedded fonts, sample rasters and native Poppler text extraction.
-It does not replace the agent's visual inspection.
+Stage 5 checks the actual file for preserved inline styles, source figure fidelity,
+archive or PDF integrity, and zero clipping, overflow, line overlap or unintended
+untranslated text. Use [layout-and-images.md](references/layout-and-images.md) for
+those comparisons; the build does not perform all of them.
 
 | Result | Action |
 | --- | --- |
@@ -388,12 +403,15 @@ in Stages 4 and 5. Mark PDF-only checks inapplicable and keep all six handoffs.
 ## Step 9 — Inspect and deliver the actual output
 
 Dispatch the independent Stage 6 reviewer in the [six-stage workflow](references/multi-agent-workflow.md)
-against the exact rebuilt file and Stage 5 fix log. For PDF, look at first, middle and last page samples, plus every page containing complex
-tables, math or figures. Compare against the source for missing objects, broken
-letter joining, clipping, bidi mistakes and incorrect labels.
-Measure the delivered page geometry against the inventory and inspect every altered
-or low-resolution figure at its intended print size. Record source/output dimensions,
-PPI and improvement evidence; `--verify` does not automate these source comparisons.
+against the exact rebuilt file and Stage 5 fix log. Recheck the live lookup URLs
+in `WORK/terms.tsv` and apply the bundled Persian and Humanizer guidance after
+checking fidelity. For PDF, inspect first, middle and last page samples plus every
+page containing complex tables, math or figures. Compare with the source for
+missing objects, broken letter joining, bidi mistakes and incorrect labels.
+Check styled spans, text fit, leading, font hierarchy and complete translation
+coverage. Compare figure dimensions, bit depth, color interpretation, DPI and
+crispness with the source assets. Record these checks and DOCX archive or PDF
+integrity using [layout-and-images.md](references/layout-and-images.md).
 
 The standalone extraction check is:
 
